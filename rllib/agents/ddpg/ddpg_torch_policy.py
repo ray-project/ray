@@ -1,24 +1,34 @@
 import logging
+import gym
+from typing import Dict, Tuple
 
 import ray
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
     TorchDirichlet
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss, l2_loss
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    LocalOptimizer, GradInfoDict
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-def build_ddpg_models_and_action_dist(policy, obs_space, action_space, config):
+def build_ddpg_models_and_action_dist(
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict) -> Tuple[ModelV2, ActionDistribution]:
     model = build_ddpg_models(policy, obs_space, action_space, config)
     # TODO(sven): Unify this once we generically support creating more than
     #  one Model per policy. Note: Device placement is done automatically
@@ -33,7 +43,8 @@ def build_ddpg_models_and_action_dist(policy, obs_space, action_space, config):
         return model, TorchDeterministic
 
 
-def ddpg_actor_critic_loss(policy, model, _, train_batch):
+def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
+                           train_batch: SampleBatch) -> TensorType:
     twin_q = policy.config["twin_q"]
     gamma = policy.config["gamma"]
     n_step = policy.config["n_step"]
@@ -173,7 +184,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     return policy.actor_loss, policy.critic_loss
 
 
-def make_ddpg_optimizers(policy, config):
+def make_ddpg_optimizers(policy: Policy,
+                         config: TrainerConfigDict) -> Tuple[LocalOptimizer]:
     """Create separate optimizers for actor & critic losses."""
 
     # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
@@ -189,7 +201,7 @@ def make_ddpg_optimizers(policy, config):
     return policy._actor_optimizer, policy._critic_optimizer
 
 
-def apply_gradients_fn(policy, gradients):
+def apply_gradients_fn(policy: Policy, gradients: GradInfoDict) -> None:
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     if policy.global_step % policy.config["policy_delay"] == 0:
@@ -201,7 +213,8 @@ def apply_gradients_fn(policy, gradients):
     policy.global_step += 1
 
 
-def build_ddpg_stats(policy, batch):
+def build_ddpg_stats(policy: Policy,
+                     batch: SampleBatch) -> Dict[str, TensorType]:
     stats = {
         "actor_loss": policy.actor_loss,
         "critic_loss": policy.critic_loss,
@@ -214,7 +227,9 @@ def build_ddpg_stats(policy, batch):
     return stats
 
 
-def before_init_fn(policy, obs_space, action_space, config):
+def before_init_fn(policy: Policy, obs_space: gym.spaces.Space,
+                   action_space: gym.spaces.Space,
+                   config: TrainerConfigDict) -> None:
     # Create global step for counting the number of update operations.
     policy.global_step = 0
 
@@ -247,7 +262,7 @@ class TargetNetworkMixin:
         # Hard initial update from Q-net(s) to target Q-net(s).
         self.update_target(tau=1.0)
 
-    def update_target(self, tau=None):
+    def update_target(self, tau: int = None):
         tau = tau or self.config.get("tau")
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
@@ -265,7 +280,9 @@ class TargetNetworkMixin:
                     (1.0 - tau) * var_target.data
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy, ddpg_actor_critic_loss)
     TargetNetworkMixin.__init__(policy)
 

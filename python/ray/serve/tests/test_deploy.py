@@ -234,7 +234,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
 
@@ -353,7 +353,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
     responses3, blocking3 = make_nonblocking_calls(
@@ -650,6 +650,37 @@ def test_input_validation():
 
     with pytest.raises(ValueError):
         Base.options(max_concurrent_queries=-1)
+
+
+def test_deployment_properties():
+    class DClass():
+        pass
+
+    D = serve.deployment(
+        name="name",
+        init_args=("hello", 123),
+        version="version",
+        num_replicas=2,
+        user_config="hi",
+        max_concurrent_queries=100,
+        route_prefix="/hello",
+        ray_actor_options={"num_cpus": 2})(DClass)
+
+    assert D.name == "name"
+    assert D.init_args == ("hello", 123)
+    assert D.version == "version"
+    assert D.num_replicas == 2
+    assert D.user_config == "hi"
+    assert D.max_concurrent_queries == 100
+    assert D.route_prefix == "/hello"
+    assert D.ray_actor_options == {"num_cpus": 2}
+
+    D = serve.deployment(
+        version=None,
+        route_prefix=None,
+    )(DClass)
+    assert D.version is None
+    assert D.route_prefix is None
 
 
 class TestGetDeployment:

@@ -61,10 +61,15 @@ class RuntimeEnvDict:
 
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
-        # contain all supported keys; values will be set to None if unspecified
+        # contain all supported keys; values will be set to None if
+        # unspecified.  However, if all values are None this is set to {}.
         self._dict = {}
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
+            if sys.platform == "win32":
+                raise NotImplementedError("The 'conda' field in runtime_env "
+                                          "is not currently supported on "
+                                          "Windows.")
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
                 self._dict["conda"] = conda
@@ -82,9 +87,9 @@ class RuntimeEnvDict:
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support env_vars, docker
 
-        # TODO(architkulkarni) remove once workers are cached by runtime env.
-        # Currently the worker pool just checks for a nonempty runtime env
-        # and if so, starts a new worker process and calls the shim process.
+        # TODO(architkulkarni) This is to make it easy for the worker caching
+        # code in C++ to check if the env is empty without deserializing and
+        # parsing it.  We should use a less confusing approach here.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
 
