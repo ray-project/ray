@@ -544,14 +544,6 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def get_nightly_url() -> str:
-    """Returns the URL of the latest Ray nightly wheel."""
-
-    nightly_url = (f"https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
-                   f"{get_wheel_filename()}")
-    return nightly_url
-
-
 def get_wheel_filename() -> str:
     """Returns the filename used for the Ray wheel of the current build."""
     ray_version = ray.__version__
