@@ -523,11 +523,11 @@ sleep(600)
     # waiting it to be up
     sleep(5)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the second one which should work because Ray Client servers.
+    # Execute the second one which should trigger an error
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "ERROR"
     proc.kill()
     proc.wait()
 
@@ -573,14 +573,14 @@ sleep(600)
     sleep(5)
     runtime_env = f"""
 {{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
-    # Execute the following cmd in the second one and ensure that
-    # it is able to run.
+    # Execute the following cmd in the second one which should
+    # fail
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     proc.kill()
     proc.wait()
-    assert out.strip().split()[-1] == "OK"
+    assert out.strip().split()[-1] == "ERROR"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
