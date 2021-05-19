@@ -2,6 +2,8 @@ import ray
 import uuid
 import hashlib
 
+from ray.core.generated.common_pb2 import RuntimeEnvPB
+
 
 class JobConfig:
     """A class used to store the configurations of a job.
@@ -116,9 +118,8 @@ class JobConfig:
             md5.update(uri.encode())
         return md5.digest().hex()
 
-    def _get_proto_runtime(self) -> ray.core.generated.common_pb2.RuntimeEnv:
-        from ray.core.generated.common_pb2 import RuntimeEnv
-        runtime_env = RuntimeEnv()
+    def _get_proto_runtime(self) -> RuntimeEnvPB:
+        runtime_env = RuntimeEnvPB()
         runtime_env.uris[:] = self.get_runtime_env_uris()
         runtime_env.digest_id = self.get_digest_id()
         return runtime_env
