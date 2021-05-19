@@ -40,11 +40,17 @@ class RuntimeEnvDict:
             modules to add to the `sys.path`.
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
+        pip: A string containing the contents of a pip requirements.txt file.
+            This will be dynamically installed in the runtime env.
         conda (dict | str): Either the conda YAML config or the name of a
             local conda env (e.g., "pytorch_p36"). The Ray dependency will be
             automatically injected into the conda env to ensure compatibility
             with the cluster Ray. The conda name may be mangled automatically
             to avoid conflicts between runtime envs.
+            This field overrides the pip field.  To use pip with conda, please
+            specify your pip dependencies within the conda YAML config:
+            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
+            nvironments.html#create-env-file-manually
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
@@ -78,6 +84,15 @@ class RuntimeEnvDict:
             elif conda is not None:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
+
+        self._dict["pip"] = None
+        if "pip" in runtime_env_json:
+            pip = runtime_env_json["pip"]
+            if isinstance(pip, str):
+                self._dict["pip"] = pip
+            else:
+                raise TypeError("runtime_env['pip'] must be of type str")
+
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
         else:

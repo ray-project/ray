@@ -186,7 +186,8 @@ def test_get_conda_env_dir(tmp_path):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_task(shutdown_only):
@@ -196,7 +197,6 @@ def test_conda_create_task(shutdown_only):
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
     ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
-    print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
             "dependencies": [
@@ -226,7 +226,8 @@ def test_conda_create_task(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_job_config(shutdown_only):
@@ -250,6 +251,64 @@ def test_conda_create_job_config(shutdown_only):
             ]
         }
     }
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+def test_pip_task(shutdown_only):
+    """Tests pip installs in the runtime env specified in the job config."""
+
+    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
+    requirements_txt = f"""
+    {ray_wheel_path}
+    pip-install-test==0.5
+    """
+    runtime_env = {"pip": requirements_txt}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+def test_pip_job_config(shutdown_only):
+    """Tests dynamic installation of pip packages in a task's runtime env."""
+
+    ray.init()
+    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
+    requirements_txt = f"""
+    {ray_wheel_path}
+    pip-install-test==0.5
+    """
+    runtime_env = {"pip": requirements_txt}
+
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
 
     @ray.remote
