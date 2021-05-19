@@ -1211,6 +1211,8 @@ class Deployment:
     def replicas(self) -> List[Replica]:
         """Return a list of the current running replicas in the deployment.
 
+        THIS FEATURE IS EXPERIMENTAL.
+
         This will be updated in the background as new replicas are added,
         updated, or removed from the deployment.
         """
