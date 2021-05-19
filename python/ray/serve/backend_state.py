@@ -143,9 +143,11 @@ class ActorReplicaWrapper:
             return True
 
         try:
-            ray.get_actor(self._actor_name)
+            handle = ray.get_actor(self._actor_name)
             ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
             self._stopped = len(ready) == 1
+            if self._stopped:
+                ray.kill(handle, no_restart=True)
         except ValueError:
             self._stopped = True
 
