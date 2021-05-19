@@ -8,6 +8,7 @@ This is a case of integrating DGL(https://github.com/dmlc/dgl) and RaySGD for gr
 - ray: 1.1.0  
 - DGL: 0.6.0 \
 - torch: 1.8.1+cu102
+
 ##Run
 
 ```
