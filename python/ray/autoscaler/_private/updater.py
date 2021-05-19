@@ -82,6 +82,7 @@ class NodeUpdater:
 
         self.daemon = True
         self.node_id = node_id
+        self.provider_type = provider_config.get("type")
         self.provider = provider
         # Some node providers don't specify empty structures as
         # defaults. Better to be defensive.
@@ -438,12 +439,18 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    if self.node_resources:
+
+                    # Add a resource override env variable if needed:
+                    if self.provider_type == "local":
+                        # Local NodeProvider doesn't need resource override.
+                        env_vars = {}
+                    elif self.node_resources:
                         env_vars = {
                             RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
                         }
                     else:
                         env_vars = {}
+
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(False)
