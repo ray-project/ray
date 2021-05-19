@@ -477,8 +477,8 @@ the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/exa
 API reference
 -------------
 
-.. autoclass:: xgboost_ray.RayParams
-.. autoclass:: xgboost_ray.RayDMatrix
+.. autoclass:: xgboost_ray.main.RayParams
+.. autoclass:: xgboost_ray.matrix.RayDMatrix
 
-.. autofunction:: xgboost_ray.train
-.. autofunction:: xgboost_ray.predict
+.. autofunction:: xgboost_ray.main.train
+.. autofunction:: xgboost_ray.main.predict
