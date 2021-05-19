@@ -947,20 +947,6 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
-  // auto job_id = JobID::FromInt(1);
-  // auto registered_actor = RegisterActor(job_id);
-  // rpc::CreateActorRequest create_actor_request;
-  // create_actor_request.mutable_task_spec()->CopyFrom(
-  //                                                    registered_actor->GetActorTableData().task_spec());
-
-  // std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  // RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-  //                                              create_actor_request,
-  //                                              [&finished_actors](std::shared_ptr<gcs::GcsActor>
-  //                                              actor) {
-  //                                                finished_actors.emplace_back(actor);
-  //                                              }));
-
   // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
   gcs_actor_manager_->OnJobFinished(job_id_1);
