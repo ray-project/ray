@@ -226,7 +226,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     Add MemoryTrackingCallbacks callback to the tune config
     e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
 
-    Note: 
+    Note:
         This class is meant for debugging and should not be used
         in production code as tracemalloc incurs
         a significant slowdown in execution speed.
@@ -268,12 +268,13 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
 
 class MultiCallbacks(DefaultCallbacks):
-    """MultiCallbacks allows multiple callbacks to be registered at the same time in the config of the environment.
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
 
     Example:
 
         .. code-block:: python
-        
+
             'callbacks': MultiCallbacks([
                 MyCustomStatsCallbacks,
                 MyCustomVideoCallbacks,
