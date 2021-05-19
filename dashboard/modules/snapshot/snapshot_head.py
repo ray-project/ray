@@ -50,23 +50,16 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
 
         return jobs
 
-    def _get_actor_class(self, actor_table_entry_pb):
-        function_descriptor = actor_table_entry_pb.task_spec.\
-            function_descriptor
-
-        if function_descriptor.HasField("python_function_descriptor"):
-            return function_descriptor.python_function_descriptor.class_name
-        elif function_descriptor.HasField("java_descriptor"):
-            return function_descriptor.java_function_descriptor.class_name
-        # # TODO (Alex): We need to store some info about the C++ class name to
-        # # do this for C++.
-        return "N/A"
-
     async def get_actor_info(self):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
+        request.show_dead_jobs = True
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=5)
+        import sys
+        print("======================", file=sys.stderr)
+        print(reply.actor_table_data, file=sys.stderr)
+        print("======================", file=sys.stderr)
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
@@ -83,7 +76,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
                 "is_detached": actor_table_entry.is_detached,
                 "resources": dict(
                     actor_table_entry.task_spec.required_resources),
-                "actor_class": self._get_actor_class(actor_table_entry),
+                "actor_class": actor_table_entry.class_name,
                 "ip_address": actor_table_entry.address.ip_address,
                 "port": actor_table_entry.address.port,
             }

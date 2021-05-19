@@ -13,6 +13,7 @@ import collections
 import numpy as np
 import aiohttp.web
 import ray
+import pprint
 import psutil
 import pytest
 import redis
@@ -557,9 +558,10 @@ ray.get(a.ping.remote())
     schema_path = os.path.join(
         os.path.dirname(dashboard.__file__),
         "modules/snapshot/snapshot_schema.json")
+    pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
-    # assert len(data["data"]["snapshot"]["actors"]) == 3
+    assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
 
 

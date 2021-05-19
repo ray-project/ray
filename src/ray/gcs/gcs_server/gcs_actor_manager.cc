@@ -102,14 +102,18 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::string(const JobID &)> get_ray_namespace,
-    const rpc::ClientFactoryFn &worker_client_factory)
+    const rpc::ClientFactoryFn &worker_client_factory,
+    std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+        run_delayed)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       get_ray_namespace_(get_ray_namespace),
-      runtime_env_manager_(runtime_env_manager) {
+      runtime_env_manager_(runtime_env_manager),
+      run_delayed_(run_delayed),
+      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
@@ -190,16 +194,38 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
                                             rpc::GetAllActorInfoReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
-
-  for (const auto &iter : registered_actors_) {
-    reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+  if (request.show_dead_jobs() == false) {
+    RAY_LOG(ERROR) << "Getting all actor info for live jobs only";
+    for (const auto &iter : registered_actors_) {
+      reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+    }
+    for (const auto &iter : destroyed_actors_) {
+      reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+    }
+    RAY_LOG(DEBUG) << "Finished getting all actor info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
   }
-  for (const auto &iter : destroyed_actors_) {
-    reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
-  }
-  RAY_LOG(DEBUG) << "Finished getting all actor info.";
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
+
+  RAY_CHECK(request.show_dead_jobs());
+  RAY_LOG(ERROR) << "Getting actor info for all jobs";
+  // We don't maintain an in-memory cache of all actors which belong to dead
+  // jobs, so fetch it from redis.
+  Status status = gcs_table_storage_->ActorTable().GetAll(
+      [reply, send_reply_callback](
+          const std::unordered_map<ActorID, rpc::ActorTableData> &result) {
+        for (const auto &pair : result) {
+          reply->add_actor_table_data()->CopyFrom(pair.second);
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        RAY_LOG(DEBUG) << "Finished getting all actor info.";
+      });
+  if (!status.ok()) {
+    RAY_LOG(WARNING) << "Failed to get actor table from redis!";
+    // Send the response to unblock the sender and free the request.
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
@@ -961,8 +987,14 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
           non_detached_actors_set.insert(item.first);
         }
       }
-      RAY_CHECK_OK(
-          gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors, nullptr));
+
+      run_delayed_(
+          [this, non_detached_actors]() {
+            RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors,
+                                                                      nullptr));
+          },
+
+          actor_gc_delay_);
 
       for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
         if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
@@ -1077,6 +1109,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
     const auto &actor_id = sorted_destroyed_actor_list_.front().first;
+    RAY_CHECK(false);
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(actor_id, nullptr));
     destroyed_actors_.erase(actor_id);
     sorted_destroyed_actor_list_.pop_front();

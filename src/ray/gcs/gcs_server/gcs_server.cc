@@ -249,6 +249,17 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+      },
+      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
+        boost::asio::deadline_timer timer(main_service_);
+        timer.expires_from_now(delay);
+        timer.async_wait([fn](const boost::system::error_code &error) {
+          if (error != boost::asio::error::operation_aborted) {
+            fn();
+          } else {
+            RAY_LOG(WARNING) << "Timer failed to fire.";
+          }
+        });
       });
 
   // Initialize by gcs tables data.
