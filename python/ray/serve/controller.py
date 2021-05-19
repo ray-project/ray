@@ -230,10 +230,10 @@ class ServeController:
             for endpoint, info in self.endpoint_state.get_endpoints().items():
                 if (backend_tag in info["traffic"]
                         or backend_tag in info["shadows"]):
-                    raise ValueError(f"Backend '{}' is used by endpoint '{}' "
-                                     "and cannot be deleted. Please remove "
-                                     "the backend from all endpoints and try "
-                                     "again.".format(backend_tag, endpoint))
+                    raise ValueError(f"Backend '{backend_tag}' is used by "
+                                     "endpoint '{endpoint}' and cannot be "
+                                     "deleted. Please remove the backend "
+                                     "from all endpoints and try again.")
             return self.backend_state.delete_backend(backend_tag, force_kill)
 
     async def update_backend_config(self, backend_tag: BackendTag,
