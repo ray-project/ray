@@ -168,8 +168,8 @@ class DataOrganizer:
 
         return node_info
 
-    @staticmethod
-    async def get_node_summary(node_id):
+    @classmethod
+    async def get_node_summary(cls, node_id):
         node_physical_stats = dict(
             DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
@@ -177,11 +177,16 @@ class DataOrganizer:
 
         node_physical_stats.pop("workers", None)
         node_stats.pop("workersStats", None)
+        view_data = node_stats.get("viewData", [])
+        ray_stats = cls._extract_view_data(
+            view_data,
+            {"object_store_used_memory", "object_store_available_memory"})
         node_stats.pop("viewData", None)
 
         node_summary = node_physical_stats
         # Merge node stats to node physical stats
         node_summary["raylet"] = node_stats
+        node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
 

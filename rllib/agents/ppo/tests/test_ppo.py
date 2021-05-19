@@ -88,7 +88,7 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
-        num_iterations = 2
+        num_iterations = 1
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
@@ -124,7 +124,10 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        # Test w/ LSTMs.
+        config["model"]["use_lstm"] = True
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False

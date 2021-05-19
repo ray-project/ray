@@ -27,16 +27,15 @@ const ActorClassGroups: React.FC<ActorClassGroupsProps> = ({ actorGroups }) => {
     }
     return title1 > title2 ? 1 : -1;
   };
-  const children = stableSort(
-    Object.entries(actorGroups),
-    groupComparator,
-  ).map(([title, actorGroup]) => (
-    <ActorClassGroup
-      actorGroup={actorGroup}
-      title={title}
-      key={`acg-${title}`}
-    />
-  ));
+  const children = stableSort(Object.entries(actorGroups), groupComparator).map(
+    ([title, actorGroup]) => (
+      <ActorClassGroup
+        actorGroup={actorGroup}
+        title={title}
+        key={`acg-${title}`}
+      />
+    ),
+  );
 
   return (
     <React.Fragment>
