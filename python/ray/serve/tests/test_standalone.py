@@ -365,12 +365,16 @@ def test_serve_shutdown(ray_shutdown):
 
 def test_detached_namespace_warning(ray_shutdown):
     ray.init()
+
+    # Can't start detached instance in anonymous namespace.
     with pytest.raises(RuntimeError, match="anonymous Ray namespace"):
         serve.start(detached=True)
 
+    # Can start non-detached instance in anonymous namespace.
     serve.start()
     ray.shutdown()
 
+    # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
 
