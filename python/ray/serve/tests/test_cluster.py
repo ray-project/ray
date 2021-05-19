@@ -22,7 +22,7 @@ def ray_cluster():
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect()
+    cluster.connect(namespace="serve")
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
@@ -71,7 +71,7 @@ def test_scale_up(ray_cluster):
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
-    cluster.connect()
+    cluster.connect(namespace="serve")
 
     worker_node = cluster.add_node(num_cpus=2)
 
