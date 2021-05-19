@@ -946,31 +946,20 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self._lr_schedule = None
-        if lr_schedule is None:
-            self.cur_lr = tf1.get_variable(
-                "lr", initializer=lr, trainable=False)
-        else:
+        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
+        self._lr_schedule = lr_schedule
+        if self._lr_schedule is not None:
             self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
-            self.cur_lr = tf1.get_variable(
-                "lr", initializer=self._lr_schedule.value(0), trainable=False)
-            if self.framework == "tf":
-                self._lr_placeholder = tf1.placeholder(
-                    dtype=tf.float32, name="lr")
-                self._lr_update = self.cur_lr.assign(
-                    self._lr_placeholder, read_value=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
-        super(LearningRateSchedule, self).on_global_var_update(global_vars)
+        super().on_global_var_update(global_vars)
         if self._lr_schedule is not None:
             new_val = self._lr_schedule.value(global_vars["timestep"])
-            if self.framework == "tf":
-                self._sess.run(
-                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
-            else:
-                self.cur_lr.assign(new_val, read_value=False)
+            op_or_none = self.cur_lr.assign(new_val, read_value=False)
+            if self._sess is not None:
+                self._sess.run(op_or_none)
 
     @override(TFPolicy)
     def optimizer(self):
