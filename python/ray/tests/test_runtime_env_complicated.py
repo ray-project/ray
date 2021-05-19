@@ -231,7 +231,7 @@ def test_conda_create_job_config(shutdown_only):
     ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("./.whl", ray_wheel_filename)
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
 
     runtime_env = {
         "conda": {
