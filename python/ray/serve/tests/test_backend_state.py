@@ -68,7 +68,9 @@ class MockReplicaActorWrapper:
 
     def check_ready(self) -> bool:
         assert self.started
-        return self.ready
+        ready = self.ready
+        self.ready = False
+        return ready
 
     def resource_requirements(
             self) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -780,12 +782,26 @@ def test_deploy_new_config_same_version(mock_backend_state):
         version=b_version_1,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
+
     backend_state.update()
+    check_counts(backend_state, total=1)
+    check_counts(
+        backend_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+
+    # Mark the replica as ready.
+    backend_state._replicas[TEST_TAG].get()[0]._actor.set_ready()
+
+    backend_state.update()
+    check_counts(backend_state, total=1)
     check_counts(
         backend_state,
         version=b_version_2,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
+
     backend_state.update()
     assert goal_manager.check_complete(update_goal)
 
@@ -882,12 +898,14 @@ def test_initial_deploy_no_throttling(mock_backend_state):
 
 def test_new_version_deploy_throttling(mock_backend_state):
     # All replicas should be started at once for a new deployment.
-    # When the version is updated, it should be throttled.
+    # When the version is updated, it should be throttled. The throttling
+    # should apply to both code version and user config updates.
     backend_state, timer, goal_manager = mock_backend_state
 
     assert len(backend_state._replicas) == 0
 
-    b_info_1, b_version_1 = backend_info(num_replicas=10, version="1")
+    b_info_1, b_version_1 = backend_info(
+        num_replicas=10, version="1", user_config="1")
     goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
     assert updating
 
@@ -910,7 +928,8 @@ def test_new_version_deploy_throttling(mock_backend_state):
     assert goal_manager.check_complete(goal_1)
 
     # Now deploy a new version. Two old replicas should be stopped.
-    b_info_2, b_version_2 = backend_info(num_replicas=10, version="2")
+    b_info_2, b_version_2 = backend_info(
+        num_replicas=10, version="2", user_config="2")
     goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
     assert updating
     backend_state.update()
@@ -1147,6 +1166,94 @@ def test_new_version_deploy_throttling(mock_backend_state):
 
     backend_state.update()
     assert goal_manager.check_complete(goal_2)
+
+
+def test_reconfigure_throttling(mock_backend_state):
+    # All replicas should be started at once for a new deployment.
+    # When the version is updated, it should be throttled.
+    backend_state, timer, goal_manager = mock_backend_state
+
+    assert len(backend_state._replicas) == 0
+
+    b_info_1, b_version_1 = backend_info(
+        num_replicas=2, version="1", user_config="1")
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
+
+    backend_state.update()
+    check_counts(
+        backend_state,
+        total=2,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
+    assert not goal_manager.check_complete(goal_1)
+
+    for replica in backend_state._replicas[TEST_TAG].get():
+        replica._actor.set_ready()
+
+    backend_state.update()
+
+    # Check that the new replicas have started.
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+    assert goal_manager.check_complete(goal_1)
+
+    # Now deploy a new user_config. One replica should be updated.
+    b_info_2, b_version_2 = backend_info(
+        num_replicas=2, version="1", user_config="2")
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
+    backend_state.update()
+    check_counts(
+        backend_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+
+    # Mark the updating replica as ready.
+    backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
+
+    # The updated replica should now be RUNNING.
+    backend_state.update()
+    check_counts(
+        backend_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)])
+
+    # The second replica should now be updated.
+    backend_state.update()
+    check_counts(
+        backend_state,
+        version=b_version_2,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1),
+                  (ReplicaState.STARTING_OR_UPDATING, 1)])
+
+    # Mark the updating replica as ready.
+    backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
+
+    # Both replicas should now be RUNNING.
+    backend_state.update()
+    check_counts(
+        backend_state,
+        version=b_version_2,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 2)])
+
+    backend_state.update()
+    assert goal_manager.check_complete(goal_1)
 
 
 def test_new_version_and_scale_down(mock_backend_state):
