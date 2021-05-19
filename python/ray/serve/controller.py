@@ -289,13 +289,11 @@ class ServeController:
                         "there is no existing deployment")
                 if existing_backend_info.version != prev_version:
                     raise ValueError(f"prev_version '{prev_version}' does not match with "
-                                     "the existing version '{existing_backend_info.version}'".format(
-                                         prev_version,
-                                         existing_backend_info.version))
+                                     "the existing version '{existing_backend_info.version}'")
 
             backend_info = BackendInfo(
                 actor_def=ray.remote(
-                    create_backend_replica(
+                    create_backend_replica(g
                         name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
