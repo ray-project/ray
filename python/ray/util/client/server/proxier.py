@@ -79,19 +79,24 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
-    def start_specific_server(self, client_id) -> None:
+    def start_specific_server(self, client_id: str,
+                              job_config: JobConfig) -> None:
         """
         Start up a RayClient Server for an incoming client to
         communicate with.
         """
         port = self._get_unused_port()
+        serialized_runtime_env = job_config.get_serialized_runtime_env()
+        proc = start_ray_client_server(
+            self.redis_address,
+            port,
+            fate_share=self.fate_share,
+            server_type="specific-server",
+            serialized_runtime_env=serialized_runtime_env)
+
         specific_server = SpecificServer(
             port=port,
-            process_handle=start_ray_client_server(
-                self.redis_address,
-                port,
-                fate_share=self.fate_share,
-                server_type="specific-server"),
+            process_handle=proc,
             channel=grpc.insecure_channel(
                 f"localhost:{port}", options=GRPC_OPTIONS))
         with self.server_lock:
@@ -217,18 +222,24 @@ def forward_streaming_requests(grpc_input_generator: Iterator[Any],
         output_queue.put(None)
 
 
+def ray_client_server_env_prep(job_config: JobConfig) -> JobConfig:
+    return job_config
+
+
 def prepare_runtime_init_req(req: ray_client_pb2.InitRequest
                              ) -> Tuple[ray_client_pb2.InitRequest, JobConfig]:
     """
     Extract JobConfig and possibly mutate InitRequest before it is passed to
     the specific RayClient Server.
     """
+    import pickle
     job_config = JobConfig()
     if req.job_config:
-        import pickle
         job_config = pickle.loads(req.job_config)
-
-    return (req, job_config)
+    new_job_config = ray_client_server_env_prep(job_config)
+    return (
+        ray_client_pb2.InitRequest(job_config=pickle.dumps(new_job_config)),
+        new_job_config)
 
 
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
@@ -251,7 +262,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         queue = Queue()
         queue.put(init_req)
 
-        self.proxy_manager.start_specific_server(client_id)
+        self.proxy_manager.start_specific_server(client_id, job_config)
 
         channel = self.proxy_manager.get_channel(client_id)
         if channel is None:
