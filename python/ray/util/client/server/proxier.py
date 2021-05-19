@@ -15,6 +15,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.services import ProcessInfo, start_ray_client_server
+from ray._private.utils import detect_fate_sharing_support
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ class ProxyManager():
         self._check_thread = Thread(target=self._check_processes, daemon=True)
         self._check_thread.start()
 
+        self.fate_share = bool(detect_fate_sharing_support())
+
     def _get_unused_port(self) -> int:
         """
         Search for a port in _free_ports that is unused.
@@ -87,7 +90,7 @@ class ProxyManager():
             process_handle=start_ray_client_server(
                 self.redis_address,
                 port,
-                fate_share=True,
+                fate_share=self.fate_share,
                 server_type="specific-server"),
             channel=grpc.insecure_channel(
                 f"localhost:{port}", options=GRPC_OPTIONS))
