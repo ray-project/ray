@@ -14,6 +14,8 @@ int Plus(int x, int y) { return x + y; }
 
 int Triple(int x, int y, int z) { return x + y + z; }
 
+RAY_REMOTE(Return1, Plus1, Plus, Triple);
+
 class Counter {
  public:
   int count;
@@ -38,6 +40,9 @@ class Counter {
     return count;
   }
 };
+
+RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
+           &Counter::Add);
 
 TEST(RayApiTest, PutTest) {
   Ray::Init();

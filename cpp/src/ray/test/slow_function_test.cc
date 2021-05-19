@@ -12,6 +12,8 @@ int slow_function(int i) {
   return i;
 }
 
+RAY_REMOTE(slow_function);
+
 TEST(RaySlowFunctionTest, BaseTest) {
   Ray::Init();
   auto time1 = std::chrono::duration_cast<std::chrono::milliseconds>(

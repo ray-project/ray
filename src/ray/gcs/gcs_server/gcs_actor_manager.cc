@@ -14,13 +14,21 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <boost/regex.hpp>
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
+
+bool is_uuid(const std::string &str) {
+  static const boost::regex e(
+      "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
+  return regex_match(str, e);  // note: case sensitive now
+}
 
 NodeID GcsActor::GetNodeID() const {
   const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
@@ -72,6 +80,10 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
+std::string GcsActor::GetRayNamespace() const {
+  return actor_table_data_.ray_namespace();
+}
+
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
   return TaskSpecification(task_spec);
@@ -89,12 +101,14 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    std::function<std::string(const JobID &)> get_ray_namespace,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      get_ray_namespace_(get_ray_namespace),
       runtime_env_manager_(runtime_env_manager) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
@@ -192,10 +206,11 @@ void GcsActorManager::HandleGetNamedActorInfo(
     const rpc::GetNamedActorInfoRequest &request, rpc::GetNamedActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
+  const std::string &ray_namespace = request.ray_namespace();
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
 
   // Try to look up the actor ID for the named actor.
-  ActorID actor_id = GetActorIDByName(name);
+  ActorID actor_id = GetActorIDByName(name, ray_namespace);
 
   Status status = Status::OK();
   if (actor_id.IsNil()) {
@@ -261,11 +276,31 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     return Status::OK();
   }
 
-  auto actor = std::make_shared<GcsActor>(request.task_spec());
+  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
+  auto actor =
+      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   if (!actor->GetName().empty()) {
-    auto it = named_actors_.find(actor->GetName());
-    if (it == named_actors_.end()) {
-      named_actors_.emplace(actor->GetName(), actor->GetActorID());
+    auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
+    auto it = actors_in_namespace.find(actor->GetName());
+    if (it == actors_in_namespace.end()) {
+      if (is_uuid(actor->GetRayNamespace()) && actor->IsDetached()) {
+        std::ostringstream stream;
+        stream
+            << "It looks like you're creating a detached actor in an anonymous "
+               "namespace. In order to access this actor in the future, you will need to "
+               "explicitly connect to this namespace with ray.init(namespace=\""
+            << actor->GetRayNamespace() << "\", ...)";
+
+        auto error_data_ptr =
+            gcs::CreateErrorTableData("detached_actor_anonymous_namespace", stream.str(),
+                                      absl::GetCurrentTimeNanos(), job_id);
+
+        RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
+                                           error_data_ptr->SerializeAsString(), nullptr));
+      }
+
+      actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {
       std::stringstream stream;
       stream << "Actor with name '" << actor->GetName() << "' already exists.";
@@ -376,7 +411,9 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   }
 
   // Remove the actor from the unresolved actor map.
-  auto actor = std::make_shared<GcsActor>(request.task_spec());
+  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
+  auto actor =
+      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   RemoveUnresolvedActor(actor);
 
@@ -389,11 +426,15 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   return Status::OK();
 }
 
-ActorID GcsActorManager::GetActorIDByName(const std::string &name) {
+ActorID GcsActorManager::GetActorIDByName(const std::string &name,
+                                          const std::string &ray_namespace) const {
   ActorID actor_id = ActorID::Nil();
-  auto it = named_actors_.find(name);
-  if (it != named_actors_.end()) {
-    actor_id = it->second;
+  auto namespace_it = named_actors_.find(ray_namespace);
+  if (namespace_it != named_actors_.end()) {
+    auto it = namespace_it->second.find(name);
+    if (it != namespace_it->second.end()) {
+      actor_id = it->second;
+    }
   }
   return actor_id;
 }
@@ -466,9 +507,16 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 
   // Remove actor from `named_actors_` if its name is not empty.
   if (!actor->GetName().empty()) {
-    auto it = named_actors_.find(actor->GetName());
-    if (it != named_actors_.end() && it->second == actor->GetActorID()) {
-      named_actors_.erase(it);
+    auto namespace_it = named_actors_.find(actor->GetRayNamespace());
+    if (namespace_it != named_actors_.end()) {
+      auto it = namespace_it->second.find(actor->GetName());
+      if (it != namespace_it->second.end()) {
+        namespace_it->second.erase(it);
+      }
+      // If we just removed the last actor in the namespace, remove the map.
+      if (namespace_it->second.empty()) {
+        named_actors_.erase(namespace_it);
+      }
     }
   }
 
@@ -506,6 +554,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  auto time = current_sys_time_ms();
+  mutable_actor_table_data->set_end_time(time);
+  mutable_actor_table_data->set_timestamp(time);
+
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
@@ -720,9 +772,16 @@ void GcsActorManager::ReconstructActor(
   } else {
     // Remove actor from `named_actors_` if its name is not empty.
     if (!actor->GetName().empty()) {
-      auto it = named_actors_.find(actor->GetName());
-      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
-        named_actors_.erase(it);
+      auto namespace_it = named_actors_.find(actor->GetRayNamespace());
+      if (namespace_it != named_actors_.end()) {
+        auto it = namespace_it->second.find(actor->GetName());
+        if (it != namespace_it->second.end()) {
+          namespace_it->second.erase(it);
+        }
+        // If we just removed the last actor in the namespace, remove the map.
+        if (namespace_it->second.empty()) {
+          named_actors_.erase(namespace_it);
+        }
       }
     }
 
@@ -731,7 +790,9 @@ void GcsActorManager::ReconstructActor(
       mutable_actor_table_data->set_allocated_creation_task_exception(
           new rpc::RayException(*creation_task_exception));
     }
-    mutable_actor_table_data->set_timestamp(current_sys_time_ms());
+    auto time = current_sys_time_ms();
+    mutable_actor_table_data->set_end_time(time);
+    mutable_actor_table_data->set_timestamp(time);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -771,9 +832,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   if (registered_actors_.count(actor_id) == 0) {
     return;
   }
+  auto mutable_actor_table_data = actor->GetMutableActorTableData();
+  auto time = current_sys_time_ms();
+  mutable_actor_table_data->set_timestamp(time);
+  if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
+    mutable_actor_table_data->set_start_time(time);
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
-  auto actor_table_data = actor->GetActorTableData();
-  actor_table_data.set_timestamp(current_sys_time_ms());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
@@ -782,6 +847,8 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
+
+  auto actor_table_data = *mutable_actor_table_data;
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data,
@@ -825,7 +892,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       registered_actors_.emplace(entry.first, actor);
 
       if (!actor->GetName().empty()) {
-        named_actors_.emplace(actor->GetName(), actor->GetActorID());
+        auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
+        actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
       }
 
       if (entry.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
@@ -1051,6 +1119,10 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
 }
 
 std::string GcsActorManager::DebugString() const {
+  uint64_t num_named_actors = 0;
+  for (const auto &pair : named_actors_) {
+    num_named_actors += pair.second.size();
+  }
   std::ostringstream stream;
   stream << "GcsActorManager: {RegisterActor request count: "
          << counts_[CountType::REGISTER_ACTOR_REQUEST]
@@ -1061,7 +1133,7 @@ std::string GcsActorManager::DebugString() const {
          << ", KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
          << ", Registered actors count: " << registered_actors_.size()
          << ", Destroyed actors count: " << destroyed_actors_.size()
-         << ", Named actors count: " << named_actors_.size()
+         << ", Named actors count: " << num_named_actors
          << ", Unresolved actors count: " << unresolved_actors_.size()
          << ", Pending actors count: " << pending_actors_.size()
          << ", Created actors count: " << created_actors_.size() << "}";

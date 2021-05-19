@@ -98,7 +98,8 @@ struct CoreWorkerOptions {
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
-        connect_on_start(true) {}
+        connect_on_start(true),
+        runtime_env_hash(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -182,6 +183,8 @@ struct CoreWorkerOptions {
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
+  /// The hash of the runtime env for this worker.
+  int runtime_env_hash;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -819,20 +822,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
  public:
-  /// Allocate the return objects for an executing task. The caller should write into the
-  /// data buffers of the allocated buffers.
+  /// Allocate the return object for an executing task. The caller should write into the
+  /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
+  /// To avoid deadlock, the caller should allocate and seal a single object at a time.
   ///
-  /// \param[in] object_ids Object IDs of the return values.
-  /// \param[in] data_sizes Sizes of the return values.
-  /// \param[in] metadatas Metadata buffers of the return values.
-  /// \param[in] contained_object_ids IDs serialized within each return object.
-  /// \param[out] return_objects RayObjects containing buffers to write results into.
+  /// \param[in] object_id Object ID of the return value.
+  /// \param[in] data_size Size of the return value.
+  /// \param[in] metadata Metadata buffer of the return value.
+  /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObjects(
-      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
-      const std::vector<std::shared_ptr<Buffer>> &metadatas,
-      const std::vector<std::vector<ObjectID>> &contained_object_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects);
+  Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
+                              const std::shared_ptr<Buffer> &metadata,
+                              const std::vector<ObjectID> &contained_object_id,
+                              std::shared_ptr<RayObject> *return_object);
+
+  /// Seal a return object for an executing task. The caller should already have
+  /// written into the data buffer.
+  ///
+  /// \param[in] return_id Object ID of the return value.
+  /// \param[in] return_object RayObject containing the buffer written info.
+  /// \return Status.
+  Status SealReturnObject(const ObjectID &return_id,
+                          std::shared_ptr<RayObject> return_object);
 
   /// Get a handle to an actor.
   ///
