@@ -951,7 +951,7 @@ class TestRuntimeMetadata:
 
         D.deploy()
         assert len(D.replicas) == 2
-        assert len(set(r.runtime_metadata for r in D.replicas)) == 2
+        assert len({r.runtime_metadata for r in D.replicas}) == 2
 
     def test_redeploy_different_meta(self, serve_instance):
         @serve.deployment(name="test", num_replicas=2)
@@ -962,7 +962,7 @@ class TestRuntimeMetadata:
         D.deploy()
         assert len(D.replicas) == 2
         assert all(r.runtime_metadata == "meta1" for r in D.replicas)
-        tags1 = set(r.replica_tag for r in D.replicas)
+        tags1 = {r.replica_tag for r in D.replicas}
         assert len(tags1) == 2
 
         @serve.deployment(name="test", num_replicas=2)
@@ -973,7 +973,7 @@ class TestRuntimeMetadata:
         D.deploy()
         assert len(D.replicas) == 2
         assert all(r.runtime_metadata == "meta2" for r in D.replicas)
-        tags2 = set(r.replica_tag for r in D.replicas)
+        tags2 = {r.replica_tag for r in D.replicas}
         assert len(tags2) == 2
         assert tags2.isdisjoint(tags1)
 
@@ -985,21 +985,21 @@ class TestRuntimeMetadata:
 
         D.deploy()
         assert len(D.replicas) == 2
-        metas1 = set(r.runtime_metadata for r in D.replicas)
+        metas1 = {r.runtime_metadata for r in D.replicas}
         assert len(metas1) == 2
-        tags1 = set(r.replica_tag for r in D.replicas)
+        tags1 = {r.replica_tag for r in D.replicas}
         assert len(tags1) == 2
 
         [ray.kill(r.actor_handle) for r in D.replicas]
 
         def restarted():
-            new_tags = set(r.replica_tag for r in D.replicas)
+            new_tags = {r.replica_tag for r in D.replicas}
             return len(D.replicas) == 2 and new_tags.isdisjoint(tags1)
 
         wait_for_condition(restarted)
 
         assert len(D.replicas) == 2
-        metas2 = set(r.runtime_metadata for r in D.replicas)
+        metas2 = {r.runtime_metadata for r in D.replicas}
         assert metas2.isdisjoint(metas1)
 
 
