@@ -5,7 +5,6 @@ import json
 import logging
 import yaml
 import hashlib
-import subprocess
 
 from filelock import FileLock
 
@@ -42,8 +41,12 @@ def setup(input_args):
             commands += get_conda_activate_commands(runtime_env["conda"])
         elif isinstance(runtime_env["conda"], dict):
             # Locking to avoid multiple processes installing concurrently
-            with FileLock(
-                    os.path.join(args.session_dir, "ray-conda-install.lock")):
+            conda_hash = hashlib.sha1(
+                json.dumps(runtime_env["conda"],
+                           sort_keys=True).encode("utf-8")).hexdigest()
+            conda_hash_str = f"conda-generated-{conda_hash}"
+            file_lock_name = f"ray-{conda_hash_str}.lock"
+            with FileLock(os.path.join(args.session_dir, file_lock_name)):
                 conda_dir = os.path.join(args.session_dir, "runtime_resources",
                                          "conda")
                 try_to_create_directory(conda_dir)
@@ -55,49 +58,42 @@ def setup(input_args):
                     yaml.dump(runtime_env["conda"], file, sort_keys=True)
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
-                if os.path.exists(conda_yaml_path):
-                    os.remove(conda_yaml_path)
             commands += get_conda_activate_commands(conda_env_name)
     elif runtime_env.get("pip"):
         # Install pip requirements into an empty conda env.
         py_executable = "python"
         requirements_txt = runtime_env["pip"]
+        pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
+        pip_hash_str = f"pip-generated-{pip_hash}"
 
-        pip_contents_hash = "pip-%s" % hashlib.sha1(
-            requirements_txt.encode("utf-8")).hexdigest()
-        # E.g. 3.6.13
-        py_version = ".".join(map(str, sys.version_info[:3]))
+        conda_dir = os.path.join(args.session_dir, "runtime_resources",
+                                 "conda")
+        requirements_txt_path = os.path.join(
+            conda_dir, f"requirements-{pip_hash_str}.txt")
+
+        py_version = ".".join(map(str, sys.version_info[:3]))  # E.g. 3.6.13
         conda_dict = {
-            "name": pip_contents_hash,
-            "dependencies": [f"python={py_version}", "pip"]
+            "name": pip_hash_str,
+            "dependencies": [
+                f"python={py_version}", "pip", {
+                    "pip": [f"-r {requirements_txt_path}"]
+                }
+            ]
         }
-        with FileLock(
-                os.path.join(args.session_dir, "ray-conda-install.lock")):
-            conda_dir = os.path.join(args.session_dir, "runtime_resources",
-                                     "conda")
+
+        file_lock_name = f"ray-{pip_hash_str}.lock"
+        with FileLock(os.path.join(args.session_dir, file_lock_name)):
             try_to_create_directory(conda_dir)
             conda_yaml_path = os.path.join(conda_dir,
-                                           f"env-{pip_contents_hash}.yml")
+                                           f"env-{pip_hash_str}.yml")
             with open(conda_yaml_path, "w") as file:
                 yaml.dump(conda_dict, file, sort_keys=True)
-            conda_env_name = get_or_create_conda_env(conda_yaml_path,
-                                                     conda_dir)
-            if os.path.exists(conda_yaml_path):
-                os.remove(conda_yaml_path)
-            requirements_txt_path = os.path.join(
-                conda_dir, f"requirements-{pip_contents_hash}.txt")
+
             with open(requirements_txt_path, "w") as file:
                 file.write(requirements_txt)
 
-            # In a subprocess, activate the conda env and install pip packages.
-
-            pip_install_commands = []
-            pip_install_commands += get_conda_activate_commands(conda_env_name)
-            pip_install_commands += [f"pip install -r {requirements_txt_path}"]
-            pip_install_command_str = " && ".join(pip_install_commands)
-
-            subprocess.run(pip_install_command_str, shell=True, check=True)
-            logger.info("Successfully installed pip packages.")
+            conda_env_name = get_or_create_conda_env(conda_yaml_path,
+                                                     conda_dir)
 
         commands += get_conda_activate_commands(conda_env_name)
 
