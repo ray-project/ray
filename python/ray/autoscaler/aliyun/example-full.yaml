@@ -30,6 +30,7 @@ provider:
     cache_stopped_nodes: True # If not present, the default is True.
     access_key:
     access_key_secret:
+    # KeyPair Name on aliyun. If not set, the default value is "ray"
     key_name: ray
     security_group_rule:
         - port_range: "22/22"
@@ -44,10 +45,8 @@ provider:
 auth:
     ssh_user: root
 # By default Ray creates a new private keypair, but you can also use your own.
-# If you do so, make sure to also set "KeyName" in the head and worker node
-# configurations below.
-#    ssh_private_key: ~/.ssh/id_rsa
-#    ssh_public_key: ~/.ssh/id_rsa.pub
+# If you do so, make sure to also set "key_name".
+#    ssh_private_key: ~/.ssh/ray
 
 # Tell the autoscaler the allowed node types and the resources they provide.
 # The key is the name of the node type, which is just for debugging purposes.
@@ -87,7 +86,7 @@ available_node_types:
         # resources: {"CPU": 1, "GPU": 1, "custom": 5}
         resources: {"CPU": 8}
         # Provider-specific config for this node type, e.g. instance type. By default
-        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # Ray will auto-configure unspecified fields such as SubnetId.
         node_config:
             InstanceType: ecs.n4.2xlarge
             ImageId: ubuntu_18_04_64_20G_alibase_20190624.vhd
