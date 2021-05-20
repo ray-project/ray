@@ -6,10 +6,10 @@
 .+\.py.*Created new security group ray-autoscaler-test-cli \[id=sg-.+\]
 .+\.py.*AWS config
 .+\.py.*IAM Profile: ray-autoscaler-v1 \[default\]
-.+\.py.*EC2 Key pair \(head & workers\): __test-cli_key-1 \[default\]
-.+\.py.*VPC Subnets \(head & workers\): subnet-.+ \[default\]
-.+\.py.*EC2 Security groups \(head & workers\): sg-.+ \[default\]
-.+\.py.*EC2 AMI \(head & workers\): ami-dca37ea5 \[dlami\]
+.+\.py.*EC2 Key pair \(all available node types\): __test-cli_key-1 \[default\]
+.+\.py.*VPC Subnets \(all available node types\): subnet-.+ \[default\]
+.+\.py.*EC2 Security groups \(all available node types\): sg-.+ \[default\]
+.+\.py.*EC2 AMI \(all available node types\): ami-dca37ea5 \[dlami\]
 .+\.py.*No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
 .+\.py.*Acquiring an up-to-date head node
 .+\.py.*Launched 1 nodes \[subnet_id=subnet-.+\]

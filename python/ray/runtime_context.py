@@ -151,6 +151,15 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
+    @property
+    def runtime_env(self):
+        """Get the runtime env passed to job_config
+
+        Returns:
+            The runtime env currently using by this worker.
+        """
+        return self.worker.runtime_env
+
 
 _runtime_context = None
 

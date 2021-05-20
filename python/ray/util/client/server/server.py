@@ -5,6 +5,7 @@ import base64
 from collections import defaultdict
 import os
 import queue
+import pickle
 
 import threading
 from typing import Any
@@ -60,7 +61,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.ray_connect_handler = ray_connect_handler
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
-        import pickle
         if request.job_config:
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
@@ -158,6 +158,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.node_id = rtc.node_id.binary()
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
+                ctx.runtime_env = json.dumps(rtc.runtime_env)
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
