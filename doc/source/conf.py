@@ -154,11 +154,19 @@ extensions = [
 
 versionwarning_admonition_type = "tip"
 
+SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
+               "?utm_source=anyscale&utm_medium=docs&utm_campaign=raysummit")
+
 versionwarning_messages = {
     "latest": (
         "This document is for the latest pip release. "
         'Visit the <a href="/en/master/">master branch documentation here</a>.'
     ),
+    "master": ("[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+               f'<a href="{SUMMIT_LINK}">Join the global Ray '
+               "community at Ray Summit 2021</a> "
+               "to learn about new Ray features and hear how "
+               "users are scaling machine learning applications with Ray!"),
 }
 
 versionwarning_body_selector = "#main-content"
