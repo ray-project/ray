@@ -31,7 +31,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         if uris:
             logger.info("Create runtime env with uris %s", repr(uris))
             # TODO(guyang.sgy): Try `ensure_runtime_env_setup(uris)`
-            # to don't packages.
+            # to download packages.
             # But we don't initailize internal kv in agent now.
             pass
 
