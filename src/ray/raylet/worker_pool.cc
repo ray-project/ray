@@ -836,19 +836,19 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   bool create_runtime_env = false;
-  auto start_worker_process_fn =
-        [this](const TaskSpecification &task_spec, State &state,
-                std::vector<std::string> dynamic_options, bool dedicated) -> Process {
-      Process proc = StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
-          dynamic_options, task_spec.SerializedRuntimeEnv(),
-          task_spec.OverrideEnvironmentVariables());
-      if (proc.IsValid() && dedicated) {
-        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
-      }
-      return proc;
-    };
+  auto start_worker_process_fn = [this](const TaskSpecification &task_spec, State &state,
+                                        std::vector<std::string> dynamic_options,
+                                        bool dedicated) -> Process {
+    Process proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                                      task_spec.JobId(), dynamic_options,
+                                      task_spec.SerializedRuntimeEnv(),
+                                      task_spec.OverrideEnvironmentVariables());
+    if (proc.IsValid() && dedicated) {
+      state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+      state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
+    }
+    return proc;
+  };
 
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
@@ -887,8 +887,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                 Status status, const rpc::CreateRuntimeEnvReply &reply) {
               state.tasks_to_pending_runtime_envs.erase(task_spec.TaskId());
               if (!status.ok()) {
-                RAY_LOG(ERROR)
-                    << "Create runtime env(for dedicated actor) rpc failed. Wait for next time to retry.";
+                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
+                                  "Wait for next time to retry.";
                 return;
               }
               start_worker_process_fn(task_spec, state, dynamic_options, true);
