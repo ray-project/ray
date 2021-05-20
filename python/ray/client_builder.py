@@ -40,7 +40,7 @@ class ClientBuilder:
         self._job_config.set_runtime_env(env)
         return self
 
-    def namespace(self, namespace):
+    def namespace(self, namespace: str) -> "ClientBuilder":
         self._job_config.set_ray_namespace(namespace)
         return self
 

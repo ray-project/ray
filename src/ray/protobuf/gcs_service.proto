@@ -90,6 +90,8 @@ message GetNamedActorInfoReply {
 }
 
 message GetAllActorInfoRequest {
+  // Whether or not to filter out actors which belong to dead jobs.
+  bool show_dead_jobs = 1;
 }
 
 message GetAllActorInfoReply {
