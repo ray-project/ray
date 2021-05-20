@@ -9,7 +9,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
-from ray.test_utils import get_wheel_filename
+from ray.test_utils import get_wheel_filename, run_string_as_driver
 
 
 @pytest.fixture(scope="session")
@@ -57,6 +57,18 @@ def conda_envs():
     ray.shutdown()
 
 
+check_remote_client_conda = """
+import ray
+ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).connect()
+@ray.remote
+def get_tf_version():
+    import tensorflow as tf
+    return tf.__version__
+
+assert ray.get(get_tf_version.remote()) == "{tf_version}"
+"""
+
+
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
@@ -79,12 +91,18 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
             return tf.__version__
 
     tf_versions = ["2.2.0", "2.3.0"]
-    for tf_version in tf_versions:
+    for i, tf_version in enumerate(tf_versions):
         runtime_env = {"conda": f"tf-{tf_version}"}
         ray.client("localhost:24001").env(runtime_env).connect()
         assert ray.get(get_tf_version.remote()) == tf_version
         actor_handle = TfVersionActor.remote()
         assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
+
+        # Ensure that we can have a second client connect using the other
+        # conda environment.
+        other_tf_version = tf_versions[(i + 1) % 2]
+        run_string_as_driver(
+            check_remote_client_conda.format(tf_version=other_tf_version))
         ray.util.disconnect()
 
 

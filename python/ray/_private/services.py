@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+from pathlib import Path
 import mmap
 import random
 import shutil
@@ -1898,8 +1899,7 @@ def start_ray_client_server(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    root_ray_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "../")
+    root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
     conda_shim_flag = (
@@ -1909,7 +1909,6 @@ def start_ray_client_server(redis_address,
         sys.executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
-        f"--session-dir={session_dir}" if session_dir else None,
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),
@@ -1919,9 +1918,10 @@ def start_ray_client_server(redis_address,
     if redis_password:
         command.append("--redis-password=" + redis_password)
 
-    command = [c for c in command if c is not None]
     if serialized_runtime_env:
         command.append("--serialized-runtime-env=" + serialized_runtime_env)
+    if session_dir:
+        command.append(f"--session-dir={session_dir}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

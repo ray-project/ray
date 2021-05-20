@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import ray
+from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -131,7 +132,9 @@ class ProxyManager():
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
             session_dir=self._get_session_dir())
-        # Wait for proc to reach 'client server'
+
+        # Wait for the process being run transitions from the shim process
+        # to the actual RayClient Server.
         psutil_proc = psutil.Process(proc.process.pid)
         while True:
             cmd = psutil_proc.cmdline()
@@ -187,7 +190,11 @@ class ProxyManager():
 
             time.sleep(CHECK_PROCESS_INTERVAL_S)
 
-    def _cleanup(self):
+    def _cleanup(self) -> None:
+        """
+        Forcibly kill all spawned RayClient Servers. This ensures cleanup
+        for platforms where fate sharing is not supported.
+        """
         for server in self.servers.values():
             try:
                 server.wait_ready(0.1)
@@ -299,7 +306,6 @@ def prepare_runtime_init_req(iterator: Iterator[ray_client_pb2.DataRequest]
     assert init_type == "init", ("Received initial message of type "
                                  f"{init_type}, not 'init'.")
     req = init_req.init
-    import pickle
     job_config = JobConfig()
     if req.job_config:
         job_config = pickle.loads(req.job_config)

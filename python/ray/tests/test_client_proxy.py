@@ -10,7 +10,15 @@ from ray.job_config import JobConfig
 import ray.util.client.server.proxier as proxier
 
 
-def test_proxy_manager(shutdown_only):
+def test_proxy_manager_lifecycle(shutdown_only):
+    """
+    Creates a ProxyManager and tests basic handling of the lifetime of a
+    specific RayClient Server. It checks the following properties:
+    1. The SpecificServer is created using the first port.
+    2. The SpecificServer comes alive.
+    3. The SpecificServer destructs itself when no client connects.
+    4. The ProxyManager returns the port of the destructed SpecificServer.
+    """
     ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
@@ -38,24 +46,42 @@ def test_proxy_manager(shutdown_only):
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
     indirect=True)
-def test_multi_clients(call_ray_start):
-    # TODO(ilr) Merge all connect tests to use proxier by default
+def test_multiple_clients_use_different_drivers(call_ray_start):
+    """
+    Test that each client uses a separate JobIDs and namespaces.
+    """
+
+    @ray.remote
+    def get_namespace():
+        return ray.get_runtime_context().namespace
+
     ray.client("localhost:25001").connect()
     job_id_one = ray.get_runtime_context().job_id
+    namespace_one = ray.get(get_namespace.remote())
     ray.util.disconnect()
     ray.client("localhost:25001").connect()
     job_id_two = ray.get_runtime_context().job_id
+    namespace_two = ray.get(get_namespace.remote())
+    ray.util.disconnect()
 
     assert job_id_one != job_id_two
+    assert namespace_one != namespace_two
 
 
 def test_prepare_runtime_init_req_fails():
+    """
+    Check that a connection that is initiated with a non-Init request
+    raises an error.
+    """
     put_req = ray_client_pb2.DataRequest(put=ray_client_pb2.PutRequest())
     with pytest.raises(AssertionError):
         proxier.prepare_runtime_init_req(iter([put_req]))
 
 
 def test_prepare_runtime_init_req_no_modification():
+    """
+    Check that `prepare_runtime_init_req` properly extracts the JobConfig.
+    """
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
@@ -67,6 +93,10 @@ def test_prepare_runtime_init_req_no_modification():
 
 
 def test_prepare_runtime_init_req_modified_job():
+    """
+    Check that `prepare_runtime_init_req` properly extracts the JobConfig and
+    modifies it according to `ray_client_server_env_prep`.
+    """
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
