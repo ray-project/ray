@@ -120,6 +120,7 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
+<<<<<<< HEAD
     .. group-tab:: Staroid Kubernetes Engine (contributed)
 
         The Ray Cluster Launcher can be used to start Ray clusters on an existing Staroid Kubernetes Engine (SKE) cluster.
@@ -151,11 +152,15 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster
             $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
 
+=======
+>>>>>>> add note in doc
     .. group-tab:: Aliyun
 
         First, you need to configure your aliyun account. You need to set access key and access key secret in yaml config file.
 
         Once above done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ecs.n4.large head node (on-demand) configured to autoscale up to two ecs.n4.2xlarge.
+
+        Make sure account balance is not less than 100 RMB, otherwise you will got InvalidAccountStatus.NotEnoughBalance error.
 
         Test that it works by running the following commands from your local machine:
 
@@ -172,7 +177,7 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
-        If you encounters error: 403 Error:InvalidAccountStatus.NotEnoughBalance, make sure account balance is not less than 100 RMB.
+        Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
 
     .. group-tab:: Custom
 
