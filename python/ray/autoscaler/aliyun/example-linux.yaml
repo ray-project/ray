@@ -92,7 +92,7 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: ecs.n4.2xlarge
-            ImageId: ubuntu_18_04_64_20G_alibase_20190624.vhd
+            ImageId: ubuntu_20_04_x64_20G_alibase_20210420.vhd
 #            KeyPairName: id_rsa.pub
             # Run workers on spot by default. Comment this out to use on-demand.
             InstanceMarketOptions:

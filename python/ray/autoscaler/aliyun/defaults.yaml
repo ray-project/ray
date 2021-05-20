@@ -83,7 +83,7 @@ available_node_types:
         # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
         node_config:
             InstanceType: ecs.n4.2xlarge
-            ImageId: ubuntu_18_04_64_20G_alibase_20190624.vhd
+            ImageId: ubuntu_20_04_x64_20G_alibase_20210420.vhd
 #            KeyPairName: id_rsa.pub
             # Run workers on spot by default. Comment this out to use on-demand.
             InstanceMarketOptions:
