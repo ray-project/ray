@@ -35,8 +35,8 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
   ~MockActorInfoAccessor() {}
 
   ray::Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const ActorID &actor_id, const WorkerID &worker_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> subscribe,
       const gcs::StatusCallback &done) {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
