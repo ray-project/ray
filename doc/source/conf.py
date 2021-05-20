@@ -160,6 +160,10 @@ SUMMIT_LINK = (
 )
 
 versionwarning_messages = {
+    "latest": (
+        "This document is for the latest pip release. "
+        'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    ),
     "master": (
         "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
         f'<a href="{SUMMIT_LINK}">Join the global Ray '
