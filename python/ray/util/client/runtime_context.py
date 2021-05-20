@@ -1,4 +1,4 @@
-import pickle
+import json
 from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
@@ -45,4 +45,4 @@ class ClientWorkerPropertyAPI:
 
     @property
     def runtime_env(self) -> Dict:
-        return pickle.loads(self._fetch_runtime_context().runtime_env)
+        return json.loads(self._fetch_runtime_context().runtime_env)

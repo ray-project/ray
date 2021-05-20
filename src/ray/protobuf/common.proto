@@ -138,9 +138,8 @@ message RayException {
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
-  /// The hashed digest of the runtime env.
-  /// It's supposed to be the unique id for a given runtime env
-  string digest_id = 1;
+  /// The raw json passed from user
+  string raw_json = 1;
   /// Uris used in this runtime env
   repeated string uris = 2;
 }

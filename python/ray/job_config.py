@@ -1,8 +1,9 @@
 import ray
 import uuid
 import hashlib
+import json
 
-from ray.core.generated.common_pb2 import RuntimeEnvPB
+from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
 
 
 class JobConfig:
@@ -106,20 +107,8 @@ class JobConfig:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._parsed_runtime_env.serialize()
 
-    def get_digest_id(self) -> str:
-        """Return the hash val of runtime env.
-
-        Only URIs are used in the hashing since it's the actual resources
-        using."""
-        uris = self.get_runtime_env_uris()
-        uris.sort()
-        md5 = hashlib.md5()
-        for uri in uris:
-            md5.update(uri.encode())
-        return md5.digest().hex()
-
     def _get_proto_runtime(self) -> RuntimeEnvPB:
         runtime_env = RuntimeEnvPB()
         runtime_env.uris[:] = self.get_runtime_env_uris()
-        runtime_env.digest_id = self.get_digest_id()
+        runtime_env.raw_json = json.dumps(self.runtime_env)
         return runtime_env
