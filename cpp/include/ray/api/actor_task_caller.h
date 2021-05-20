@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/arguments.h>
-#include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/static_check.h>
 #include "ray/core.h"

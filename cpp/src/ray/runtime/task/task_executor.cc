@@ -1,8 +1,6 @@
 
 #include "task_executor.h"
 
-#include <ray/api/exec_funcs.h>
-
 #include <memory>
 
 #include "../../util/function_helper.h"
