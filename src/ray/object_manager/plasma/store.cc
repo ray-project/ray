@@ -236,8 +236,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
                      << " num bytes unsealed: " << num_bytes_unsealed_;
       space_needed -= num_bytes_unsealed_;
       if (space_needed > 0) {
-        // Even after all unsealed objects are sealed, there would not be
-        // enough space.
+        // Even if all unsealed objects were sealed and spilled, there would
+        // not be enough space.
         *error = PlasmaError::OutOfMemory;
       } else {
         // There will be enough space once there are no more unsealed objects.
@@ -296,8 +296,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
                                       int64_t metadata_size, int device_num,
                                       const std::shared_ptr<Client> &client,
                                       PlasmaObject *result) {
-  RAY_LOG(DEBUG) << "attempting to create object " << object_id.Hex() << " size "
-                 << data_size;
+  RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -323,7 +322,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::OutOfMemory;
   }
 
-  RAY_LOG(DEBUG) << "create object " << object_id.Hex() << " succeeded";
+  RAY_LOG(DEBUG) << "create object " << object_id << " succeeded";
   auto ptr = std::make_unique<ObjectTableEntry>();
   entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
   entry->data_size = data_size;
