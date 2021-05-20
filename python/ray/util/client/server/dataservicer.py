@@ -49,7 +49,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
-        client_id = metadata["client_id"]
+        client_id = metadata.get("client_id") or ""
         if client_id == "":
             logger.error("Client connecting with no client_id")
             return

@@ -364,6 +364,7 @@ class Client:
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
@@ -403,9 +404,9 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, python_methods,
-                                           version, route_prefix))
+            self._controller.deploy.remote(
+                name, backend_config, replica_config, python_methods, version,
+                prev_version, route_prefix))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -1079,6 +1080,7 @@ class Deployment:
                  name: str,
                  config: BackendConfig,
                  version: Optional[str] = None,
+                 prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
                  route_prefix: Optional[str] = None,
                  ray_actor_options: Optional[Dict] = None,
@@ -1101,6 +1103,8 @@ class Deployment:
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
+        if not (prev_version is None or isinstance(prev_version, str)):
+            raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
             raise TypeError("init_args must be a tuple.")
         if route_prefix is not None:
@@ -1123,6 +1127,7 @@ class Deployment:
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
+        self._prev_version = prev_version
         self._config = config
         self._init_args = init_args
         self._route_prefix = route_prefix
@@ -1139,8 +1144,16 @@ class Deployment:
 
         If None, will be redeployed every time `.deploy()` is called.
         """
-
         return self._version
+
+    @property
+    def prev_version(self) -> Optional[str]:
+        """Existing version of deployment to target.
+
+        If prev_version does not match with existing deployment
+        version, the deployment will fail to be deployed.
+        """
+        return self._prev_version
 
     @property
     def func_or_class(self) -> Callable:
@@ -1198,6 +1211,7 @@ class Deployment:
             ray_actor_options=self._ray_actor_options,
             config=self._config,
             version=self._version,
+            prev_version=self._prev_version,
             route_prefix=self._route_prefix,
             _blocking=_blocking,
             _internal=True)
@@ -1232,6 +1246,7 @@ class Deployment:
             func_or_class: Optional[Callable] = None,
             name: Optional[str] = None,
             version: Optional[str] = None,
+            prev_version: Optional[str] = None,
             init_args: Optional[Tuple[Any]] = None,
             route_prefix: Optional[str] = None,
             num_replicas: Optional[int] = None,
@@ -1278,6 +1293,7 @@ class Deployment:
             name,
             new_config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
@@ -1315,6 +1331,7 @@ def deployment(func_or_class: Callable) -> Deployment:
 @overload
 def deployment(name: Optional[str] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                num_replicas: Optional[int] = None,
                init_args: Optional[Tuple[Any]] = None,
                ray_actor_options: Optional[Dict] = None,
@@ -1328,6 +1345,7 @@ def deployment(
         _func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
         version: Optional[str] = None,
+        prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
         route_prefix: Optional[str] = None,
@@ -1345,6 +1363,11 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
+        prev_version (Optional[str]): Version of the existing deployment which
+            is used as a precondition for the next deployment. If prev_version
+            does not match with the existing deployment's version, the
+            deployment will fail. If not provided, deployment procedure will
+            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.
         init_args (Optional[Tuple]): Arguments to be passed to the class
@@ -1396,6 +1419,7 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
