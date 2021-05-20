@@ -152,7 +152,7 @@ extensions = [
     'versionwarning.extension',
 ]
 
-versionwarning_admonition_type = "tip"
+versionwarning_admonition_type = "note"
 versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
 
 SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
