@@ -375,7 +375,9 @@ def compute_q_values(policy: Policy,
     return value, logits, dist, state
 
 
-def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
+                  actions: TensorType, rewards: TensorType,
+                  new_obs: TensorType, dones: TensorType):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
@@ -436,7 +438,7 @@ DQNTFPolicy = build_tf_policy(
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
-    gradients_fn=clip_gradients,
+    compute_gradients_fn=clip_gradients,
     extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_loss_init=setup_mid_mixins,

@@ -92,7 +92,7 @@ matrix:
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
-        - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6
+        - RLLIB_TESTING=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_RLLIB_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
@@ -207,16 +207,6 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh multiplatform
         - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
-  allow_failures:
-    - os: osx
-      osx_image: xcode7
-      env:
-        - PYTHON=3.6 FLAKY=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-        - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6
 
 after_script:
   - if [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi

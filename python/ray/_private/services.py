@@ -31,6 +31,14 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 
+# The number of seconds to wait for the Raylet to start. This is normally
+# fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
+# (a few GB/s) to populate all the pages on Raylet startup.
+if os.environ.get("RAY_PREALLOCATE_PLASMA_MEMORY") == "1":
+    RAYLET_START_WAIT_TIME_S = 120
+else:
+    RAYLET_START_WAIT_TIME_S = 10
+
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -290,7 +298,7 @@ def get_address_info_from_redis_helper(redis_address,
 
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
-                                num_retries=5,
+                                num_retries=RAYLET_START_WAIT_TIME_S,
                                 redis_password=None,
                                 log_warning=True):
     counter = 0
@@ -1469,6 +1477,7 @@ def start_raylet(redis_address,
         sys.executable,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1868,7 +1877,8 @@ def start_ray_client_server(redis_address,
                             stdout_file=None,
                             stderr_file=None,
                             redis_password=None,
-                            fate_share=None):
+                            fate_share=None,
+                            server_type="proxy"):
     """Run the server process of the Ray client.
 
     Args:
@@ -1878,6 +1888,7 @@ def start_ray_client_server(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        server_type (str): Whether to start the proxy version of Ray Client.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1885,7 +1896,7 @@ def start_ray_client_server(redis_address,
     command = [
         sys.executable, "-m", "ray.util.client.server",
         "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port)
+        "--port=" + str(ray_client_server_port), "--mode=" + server_type
     ]
     if redis_password:
         command.append("--redis-password=" + redis_password)

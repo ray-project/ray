@@ -296,6 +296,45 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
 
 
 @pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    object_spilling_config, _ = slow_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
+        })
+    replay_buffer = []
+    solution_buffer = []
+    buffer_length = 10
+
+    # Create objects of more than 800 MiB.
+    for _ in range(buffer_length):
+        ref = None
+        while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+            solution_buffer.append(arr)
+    print("spill done.")
+    # randomly sample objects
+    for _ in range(buffer_length):
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, solution)
+    assert_no_thrashing(address["redis_address"])
+
+
+@pytest.mark.skipif(
     platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -408,6 +447,21 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
     assert_no_thrashing(address["redis_address"])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_partial_retval_allocation():
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote(num_returns=4)
+    def f():
+        return [np.zeros(50 * 1024 * 1024, dtype=np.uint8) for _ in range(4)]
+
+    ret = f.remote()
+    for obj in ret:
+        obj = ray.get(obj)
+        print(obj.size)
 
 
 if __name__ == "__main__":

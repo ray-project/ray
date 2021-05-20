@@ -537,3 +537,26 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+def get_wheel_filename() -> str:
+    """Returns the filename used for the Ray wheel of the current build."""
+    ray_version = ray.__version__
+    python_version = f"{sys.version_info.major}{sys.version_info.minor}"
+    os_strings = {
+        "darwin": "macosx_10_13_x86_64"
+        if python_version == "38" else "macosx_10_13_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    wheel_filename = (
+        f"ray-{ray_version}-cp{python_version}-"
+        f"cp{python_version}{'m' if python_version != '38' else ''}"
+        f"-{os_strings[sys.platform]}.whl")
+    return wheel_filename

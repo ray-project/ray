@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
+#include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +39,51 @@ namespace raylet {
 
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
+
+/// \class WorkerCacheKey
+///
+/// Class used to cache workers, keyed by runtime_env.
+class WorkerCacheKey {
+ public:
+  /// Create a cache key with the given environment variable overrides and serialized
+  /// runtime_env.
+  ///
+  /// \param override_environment_variables The environment variable overrides set in this
+  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
+  /// worker.
+  WorkerCacheKey(
+      const std::unordered_map<std::string, std::string> override_environment_variables,
+      const std::string serialized_runtime_env);
+
+  bool operator==(const WorkerCacheKey &k) const;
+
+  /// Check if this worker's environment is empty (the default).
+  ///
+  /// \return true if there are no environment variables set and the runtime env is the
+  /// empty string (protobuf default) or a JSON-serialized empty dict.
+  bool EnvIsEmpty() const;
+
+  /// Get the hash for this worker's environment.
+  ///
+  /// \return The hash of the override_environment_variables and the serialized
+  /// runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
+
+ private:
+  /// The environment variable overrides for this worker.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
+  /// The JSON-serialized runtime env for this worker.
+  const std::string serialized_runtime_env;
+  /// The cached hash of the worker's environment.  This is set to 0
+  /// for unspecified or empty environments.
+  mutable std::size_t hash_ = 0;
+};
 
 /// \class WorkerPoolInterface
 ///
@@ -385,7 +431,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
     /// The pool of dedicated workers for actor creation tasks
-    /// with prefix or suffix worker command.
+    /// with dynamic worker options (prefix or suffix worker command.)
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
@@ -406,14 +452,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the task with dynamic options by the pid of the pending
+    /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
+    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
-    /// A map for looking up tasks with existing dedicated worker processes (processes
-    /// with a specially installed environment) so the processes can be reused.
-    std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
+    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

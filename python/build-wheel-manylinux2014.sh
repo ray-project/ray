@@ -91,13 +91,5 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   popd
 done
 
-# Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
-# hack, we should use auditwheel instead.
-for path in .whl/*.whl; do
-  if [ -f "${path}" ]; then
-    mv "${path}" "${path//linux/manylinux2014}"
-  fi
-done
-
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client

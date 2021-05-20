@@ -129,6 +129,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  void AddJob(const JobID &job_id) {
+    auto job_table_data = std::make_shared<rpc::JobTableData>();
+    job_table_data->set_job_id(job_id.Binary());
+    AddJob(job_table_data);
+  }
+
   bool MarkJobFinished(const JobID &job_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
@@ -578,6 +584,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // messages from `TestActorInfo`.
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data1 = Mocker::GenActorTableData(job_id);
   auto actor_table_data2 = Mocker::GenActorTableData(job_id);
 
@@ -604,6 +611,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
@@ -843,6 +851,7 @@ TEST_F(ServiceBasedGcsClientTest,
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
@@ -994,6 +1003,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
@@ -1185,6 +1195,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
+  AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
@@ -1320,6 +1331,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   // Register actors.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   int actor_count = 5000;
   rpc::TaskSpec task_spec;
   rpc::TaskArg task_arg;
@@ -1348,6 +1360,7 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {

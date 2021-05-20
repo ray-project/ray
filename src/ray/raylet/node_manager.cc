@@ -701,7 +701,8 @@ void NodeManager::WarnResourceDeadlock() {
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
-        << "if this Ray cluster is expected to auto-scale.";
+        << "if this Ray cluster is expected to auto-scale or if you specified a "
+        << "runtime_env for this task or actor because it takes time to install.";
     auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
@@ -1011,6 +1012,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   const JobID job_id = from_flatbuf<JobID>(*message->job_id());
+  const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
@@ -1025,7 +1027,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     RAY_CHECK(job_id.IsNil());
   }
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(
-      std::make_shared<Worker>(job_id, worker_id, language, worker_type,
+      std::make_shared<Worker>(job_id, runtime_env_hash, worker_id, language, worker_type,
                                worker_ip_address, client, client_call_manager_));
 
   auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
@@ -1215,8 +1217,15 @@ void NodeManager::DisconnectClient(
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
-                      << ".";
+        error_message << "A worker died or was killed while executing a task by an "
+                         "unexpected system "
+                         "error. To troubleshoot the problem, check the logs for the "
+                         "dead worker. Task ID: "
+                      << task_id << " Worker ID: " << worker->WorkerId()
+                      << " Node ID: " << self_node_id_
+                      << " Worker IP address: " << worker->IpAddress()
+                      << " Worker port: " << worker->Port()
+                      << " Worker PID: " << worker->GetProcess().GetId();
         auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
                                                         current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
