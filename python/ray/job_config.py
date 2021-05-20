@@ -1,6 +1,5 @@
 import ray
 import uuid
-import hashlib
 import json
 
 from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
