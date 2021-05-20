@@ -1,9 +1,13 @@
 import pytest
+import subprocess
 import sys
 
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
+
+from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.mark.parametrize("address", [
@@ -32,6 +36,41 @@ def test_client(address):
     else:
         assert type(builder) == client_builder.ClientBuilder
         assert builder.address == address.replace("ray://", "")
+
+
+def test_namespace():
+    cluster = Cluster()
+    cluster.add_node(num_cpus=4, ray_client_server_port=50055)
+    cluster.wait_for_nodes(1)
+
+    template = """
+import ray
+ray.client("localhost:50055").namespace({namespace}).connect()
+
+@ray.remote
+class Foo:
+    def ping(self):
+        return "pong"
+
+a = Foo.options(lifetime="detached", name="abc").remote()
+ray.get(a.ping.remote())
+print(ray.get_runtime_context().namespace)
+    """
+
+    anon_driver = template.format(namespace="None")
+    run_string_as_driver(anon_driver)
+    # This second run will fail if the actors don't run in separate anonymous
+    # namespaces.
+    run_string_as_driver(anon_driver)
+
+    run_in_namespace = template.format(namespace="'namespace'")
+    script_namespace = run_string_as_driver(run_in_namespace)
+    # This second run will fail if the actors don't run in separate anonymous
+    # namespaces.
+    with pytest.raises(subprocess.CalledProcessError):
+        run_string_as_driver(run_in_namespace)
+
+    assert script_namespace.strip() == "namespace"
 
 
 def test_connect_to_cluster(ray_start_regular_shared):

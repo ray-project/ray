@@ -163,7 +163,7 @@ class Worker:
 
     @property
     def namespace(self):
-        return self.core_worker.get_job_config().namespace
+        return self.core_worker.get_job_config().ray_namespace
 
     @property
     def placement_group_id(self):
