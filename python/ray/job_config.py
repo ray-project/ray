@@ -1,4 +1,5 @@
 import ray
+from typing import Any, Dict, Optional
 import uuid
 
 
@@ -44,9 +45,8 @@ class JobConfig:
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
-        self._cached_pb = None
 
-    def set_metadata(self, key, value):
+    def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
 
     def serialize(self):
@@ -54,7 +54,7 @@ class JobConfig:
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
-    def set_runtime_env(self, runtime_env):
+    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
@@ -72,7 +72,7 @@ class JobConfig:
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 
-    def set_ray_namespace(self, ray_namespace):
+    def set_ray_namespace(self, ray_namespace: str) -> None:
         if ray_namespace != self.ray_namespace:
             self.ray_namespace = ray_namespace
             self._cached_pb = None

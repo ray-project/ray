@@ -39,6 +39,20 @@ def test_client(address):
 
 
 def test_namespace():
+    """
+    Most of the "checks" in this test case rely on the fact that
+    `run_string_as_driver` will throw an exception if the driver string exits
+    with a non-zero exit code (e.g. when the driver scripts throws an
+    exception). Since all of these drivers start named, detached actors, the
+    most likely failure case would be a collision of named actors if they're
+    put in the same namespace.
+
+    This test checks that:
+    * When two drivers don't specify a namespace, they are placed in different
+      anonymous namespaces.
+    * When two drivers specify a namespace, they collide.
+    * The namespace name (as provided by the runtime context) is correct.
+    """
     cluster = Cluster()
     cluster.add_node(num_cpus=4, ray_client_server_port=50055)
     cluster.wait_for_nodes(1)
@@ -65,8 +79,7 @@ print(ray.get_runtime_context().namespace)
 
     run_in_namespace = template.format(namespace="'namespace'")
     script_namespace = run_string_as_driver(run_in_namespace)
-    # This second run will fail if the actors don't run in separate anonymous
-    # namespaces.
+    # The second run fails because the actors are run in the same namespace.
     with pytest.raises(subprocess.CalledProcessError):
         run_string_as_driver(run_in_namespace)
 
