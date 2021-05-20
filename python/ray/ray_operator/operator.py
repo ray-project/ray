@@ -26,7 +26,8 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 # Queue to process cluster status updates.
-cluster_status_q = queue.Queue()  # type: queue.Queue[Union[None, Tuple[str, str, str]]]
+cluster_status_q = queue.Queue(
+)  # type: queue.Queue[Union[None, Tuple[str, str, str]]]
 
 
 class RayCluster(object):
@@ -77,7 +78,8 @@ class RayCluster(object):
             self.start_monitor()
         except Exception:
             # Report failed autoscaler status to trigger cluster restart.
-            cluster_status_q.put((self.name, self.namespace, STATUS_AUTOSCALING_EXCEPTION))
+            cluster_status_q.put((self.name, self.namespace,
+                                  STATUS_AUTOSCALING_EXCEPTION))
             # `status_handling_loop` will increment the
             # `status.AutoscalerRetries` of the CR. A restart will trigger
             # at the subsequent "MODIFIED" event.
@@ -174,18 +176,20 @@ class RayCluster(object):
             os.remove(self.config_path)
         except OSError:
             log_prefix = ",".join([self.name, self.namespace])
-            logger.warning(f"{log_prefix}: config path does not exist {self.config_path}")
+            logger.warning(
+                f"{log_prefix}: config path does not exist {self.config_path}")
 
 
 # Maps ray cluster (name, namespace) pairs to RayCluster python objects.
-# TODO: decouple monitoring background thread into a kopf.daemon and move this into
-#  the memo state.
+# TODO: decouple monitoring background thread into a kopf.daemon and move this
+# into the memo state.
 ray_clusters = {}  # type: Dict[Tuple[str, str], RayCluster]
 
 
 @kopf.on.startup()
 def start_background_worker(memo: kopf.Memo, **_):
-    memo.status_handler = threading.Thread(target=status_handling_loop, args=(cluster_status_q,))
+    memo.status_handler = threading.Thread(
+        target=status_handling_loop, args=(cluster_status_q, ))
     memo.status_handler.start()
 
 
@@ -209,15 +213,15 @@ def status_handling_loop(queue: queue.Queue):
             logger.exception(f"{log_prefix}: Error setting RayCluster status.")
 
 
-@kopf.on.resume('rayclusters')
-@kopf.on.create('rayclusters')
+@kopf.on.resume("rayclusters")
+@kopf.on.create("rayclusters")
 def create_fn(body, name, namespace, logger, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
     log_prefix = ",".join(cluster_identifier)
 
-    operator_utils.check_redis_password_not_specified(
-        cluster_config, cluster_identifier)
+    operator_utils.check_redis_password_not_specified(cluster_config,
+                                                      cluster_identifier)
 
     ray_cluster = RayCluster(cluster_config)
     ray_clusters[cluster_identifier] = ray_cluster
@@ -231,7 +235,7 @@ def create_fn(body, name, namespace, logger, **kwargs):
     cluster_status_q.put((name, namespace, STATUS_RUNNING))
 
 
-@kopf.on.update('rayclusters')
+@kopf.on.update("rayclusters")
 def update_fn(body, old, new, name, namespace, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
@@ -241,7 +245,8 @@ def update_fn(body, old, new, name, namespace, **kwargs):
     current_generation = new["metadata"]["generation"]
     # Check metadata.labels.autoscalerRetries to see if we need to restart
     # Ray processes.
-    old_autoscaler_retries = old.get("status", {}).get(AUTOSCALER_RETRIES_FIELD, 0)
+    old_autoscaler_retries = old.get("status", {}).get(
+        AUTOSCALER_RETRIES_FIELD, 0)
     autoscaler_retries = new.get("status", {}).get(AUTOSCALER_RETRIES_FIELD, 0)
 
     # True if there's been a chamge to the spec of the custom resource,
@@ -249,8 +254,7 @@ def update_fn(body, old, new, name, namespace, **kwargs):
     spec_changed = current_generation > old_generation
     # True if monitor has failed, triggering an increment of
     # status.autoscalerRetries:
-    ray_restart_required = (autoscaler_retries >
-                            old_autoscaler_retries)
+    ray_restart_required = (autoscaler_retries > old_autoscaler_retries)
 
     # Update if there's been a change to the spec or if we're attempting
     # recovery from autoscaler failure.
@@ -262,17 +266,18 @@ def update_fn(body, old, new, name, namespace, **kwargs):
 
         cluster_status_q.put((name, namespace, STATUS_UPDATING))
 
-        # Clean up the previous cluster monitor processes to prevent running multiple
-        # overlapping background threads
+        # Clean up the previous cluster monitor processes to prevent running
+        # multiple overlapping background threads
         ray_cluster.clean_up_subprocess()
 
-        # Update the config and restart the Ray processes if there's been a failure
+        # Update the config and restart the Ray processes if there's been a
+        # failure.
         ray_cluster.set_config(cluster_config)
         ray_cluster.create_or_update(restart_ray=ray_restart_required)
         cluster_status_q.put((name, namespace, STATUS_RUNNING))
 
 
-@kopf.on.delete('rayclusters')
+@kopf.on.delete("rayclusters")
 def delete_fn(name, namespace, **kwargs):
     cluster_identifier = (name, namespace)
     ray_cluster = ray_clusters.get(cluster_identifier)
