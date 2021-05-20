@@ -208,31 +208,35 @@ class AliyunNodeProvider(NodeProvider):
             "Value": tags[TAG_RAY_NODE_NAME]
         }]
 
-        reuse_nodes_candidate = self.acs.describe_instances(tags=filter_tags)
-        reuse_node_ids = []
-        if reuse_nodes_candidate:
-            with cli_logger.group("Stopping instances to reuse"):
-                for node in reuse_nodes_candidate:
-                    node_id = node.get("InstanceId")
-                    status = node.get("Status")
-                    if status != STOPPING and status != STOPPED:
-                        continue
-                    if status == STOPPING:
-                        while self.acs.describe_instances(
-                                instance_ids=[node_id])[0].get(
-                                    "Status") == STOPPING:
-                            logging.info("wait for %s stop" % node_id)
-                            time.sleep(STOPPING_NODE_DELAY)
-                    # logger.info("reuse %s" % node_id)
-                    reuse_node_ids.append(node_id)
-                    self.acs.start_instance(node_id)
-                    self.tag_cache[node_id] = node.get("Tags")
-                    self.set_node_tags(node_id, tags)
-                    if len(reuse_node_ids) == count:
-                        break
-            count -= len(reuse_node_ids)
+        reused_nodes_dict = {}
+        if self.cache_stopped_nodes:
+            reuse_nodes_candidate = self.acs.describe_instances(tags=filter_tags)
+            if reuse_nodes_candidate:
+                with cli_logger.group("Stopping instances to reuse"):
+                    reuse_node_ids = []
+                    for node in reuse_nodes_candidate:
+                        node_id = node.get("InstanceId")
+                        status = node.get("Status")
+                        if status != STOPPING and status != STOPPED:
+                            continue
+                        if status == STOPPING:
+                            # wait for node stopped
+                            while self.acs.describe_instances(
+                                    instance_ids=[node_id])[0].get(
+                                        "Status") == STOPPING:
+                                logging.info("wait for %s stop" % node_id)
+                                time.sleep(STOPPING_NODE_DELAY)
+                        # logger.info("reuse %s" % node_id)
+                        reuse_node_ids.append(node_id)
+                        reused_nodes_dict[node.get("InstanceId")] = node
+                        self.acs.start_instance(node_id)
+                        self.tag_cache[node_id] = node.get("Tags")
+                        self.set_node_tags(node_id, tags)
+                        if len(reuse_node_ids) == count:
+                            break
+                count -= len(reuse_node_ids)
 
-        created_nodes_dict = dict()
+        created_nodes_dict = {}
         if count > 0:
             filter_tags.append({
                 "Key": TAG_RAY_NODE_STATUS,
@@ -252,15 +256,33 @@ class AliyunNodeProvider(NodeProvider):
             if instances is not None:
                 for instance in instances:
                     created_nodes_dict[instance.get("InstanceId")] = instance
-        return created_nodes_dict
+
+        all_created_nodes = reused_nodes_dict
+        all_created_nodes.update(created_nodes_dict)
+        return all_created_nodes
 
     def terminate_node(self, node_id: str) -> None:
         logger.info("terminate node: %s" % node_id)
-        self.acs.stop_instance(node_id)
+        if self.cache_stopped_nodes:
+            logger.info("Stopping instance {} (to terminate instead, "
+                "set `cache_stopped_nodes: False` "
+                "under `provider` in the cluster configuration)").format(node_id)
+            self.acs.stop_instance(node_id)
+        else:
+            self.acs.delete_instance(node_id)
 
     def terminate_nodes(self, node_ids: List[str]) -> None:
-        logger.info("terminate nodes: %s" % node_ids)
-        self.acs.stop_instances(node_ids)
+        if not node_ids:
+            return
+        if self.cache_stopped_nodes:
+            logger.info(
+                    "Stopping instances {} (to terminate instead, "
+                        "set `cache_stopped_nodes: False` "
+                        "under `provider` in the cluster configuration)".format(node_ids))
+
+            self.acs.stop_instances(node_ids)
+        else:
+            self.acs.delete_instances(node_ids)
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
