@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional, Tuple
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray.job_config import JobConfig
 import ray.util.client_connect
-from ray._private.services import find_redis_address
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ class _LocalClientBuilder(ClientBuilder):
         """
         Begin a connection to the address passed in via ray.client(...).
         """
-        ray.init(address=self.address, job_config = self._job_config)
+        return ray.init(address=self.address, job_config=self._job_config)
 
 
 def _split_address(address: str) -> Tuple[str, str]:

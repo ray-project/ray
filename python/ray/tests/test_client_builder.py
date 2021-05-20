@@ -5,10 +5,10 @@ import sys
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
-from ray.test_utils import run_string_as_driver
+from ray.test_utils import run_string_as_driver_nonblocking,\
+    wait_for_condition, run_string_as_driver
 
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver
 
 
 @pytest.mark.parametrize("address", [
@@ -88,17 +88,68 @@ def test_connect_to_cluster(ray_start_regular_shared):
 
     server.stop(0)
 
+
 def test_local_clusters():
     driver_template = """
 import ray
-ray.client({address}).namespace("").connect()
+info = ray.client({address}).namespace("").connect()
 
 @ray.remote
 class Foo:
-    def ping(self)
+    def ping(self):
         return "pong"
 
-a = Foo.options(name="abc", lifetime="detached")
-ray.get(a.ping())
+a = Foo.options(name="abc", lifetime="detached").remote()
+ray.get(a.ping.remote())
+
+if {blocking}:
+    import time
+    while True:
+        time.sleep(30)
+
 """
-    pass
+    # no_address_script = driver_template.format(address="")
+    blocking_local_script = driver_template.format(
+        address="'local'", blocking=True)
+    blocking_noaddr_script = driver_template.format(address="", blocking=True)
+
+    # This should start a cluster.
+    p1 = run_string_as_driver_nonblocking(blocking_local_script)
+    # ray.client("local").connect() should start a second cluster.
+    p2 = run_string_as_driver_nonblocking(blocking_local_script)
+    # ray.client().connect() shouldn't connect to a cluster started by
+    # ray.client("local").connect() so it should create a third one.
+    p3 = run_string_as_driver_nonblocking(blocking_noaddr_script)
+    # ray.client().connect() shouldn't connect to a cluster started by
+    # ray.client().connect() so it should create a fourth one.
+    p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
+
+    wait_for_condition(
+        lambda: len(ray._private.services.find_redis_address()) == 4,
+        retry_interval_ms=1000)
+
+    p1.kill()
+    p2.kill()
+    p3.kill()
+    p4.kill()
+    # Prevent flakiness since fatesharing takes some time.
+    subprocess.check_output("ray stop --force", shell=True)
+
+    # Since there's a cluster started with `ray start --head`
+    # we should connect to it instead.
+    subprocess.check_output("ray start --head", shell=True)
+    # The assertion in the driver should cause the script to fail if we start
+    # a new cluster instead of connecting.
+    run_string_as_driver("""
+import ray
+ray.client().connect()
+assert len(ray._private.services.find_redis_address()) == 1
+    """)
+    # ray.client("local").connect() should always create a new cluster even if
+    # there's one running.
+    p1 = run_string_as_driver_nonblocking(blocking_local_script)
+    wait_for_condition(
+        lambda: len(ray._private.services.find_redis_address()) == 2,
+        retry_interval_ms=1000)
+    p1.kill()
+    subprocess.check_output("ray stop --force", shell=True)
