@@ -24,7 +24,15 @@ class FullyConnectedNetwork(TFModelV2):
         activation = model_config.get("fcnet_activation")
         if not model_config.get("fcnet_hiddens", []):
             activation = model_config.get("post_fcnet_activation")
-        activation = get_activation_fn(activation)
+        if activation is None or isinstance(activation, str):
+            activations = [get_activation_fn(activation)] * len(hiddens)
+        else:
+            assert isinstance(activation, list)
+            assert len(activation) == len(hiddens), (
+                f"The length of {hiddens} must be equal to the "
+                f"length of {activation} functions."
+            )
+            activations = [get_activation_fn(act) for act in activation]
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
         free_log_std = model_config.get("free_log_std")
@@ -48,11 +56,11 @@ class FullyConnectedNetwork(TFModelV2):
         i = 1
 
         # Create layers 0 to second-last.
-        for size in hiddens[:-1]:
+        for size, act in zip(hiddens[:-1], activations[:-1]):
             last_layer = tf.keras.layers.Dense(
                 size,
                 name="fc_{}".format(i),
-                activation=activation,
+                activation=act,
                 kernel_initializer=normc_initializer(1.0))(last_layer)
             i += 1
 
@@ -62,7 +70,7 @@ class FullyConnectedNetwork(TFModelV2):
             logits_out = tf.keras.layers.Dense(
                 num_outputs,
                 name="fc_out",
-                activation=activation,
+                activation=activations[-1],
                 kernel_initializer=normc_initializer(1.0))(last_layer)
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
@@ -71,7 +79,7 @@ class FullyConnectedNetwork(TFModelV2):
                 last_layer = tf.keras.layers.Dense(
                     hiddens[-1],
                     name="fc_{}".format(i),
-                    activation=activation,
+                    activation=activations[-1],
                     kernel_initializer=normc_initializer(1.0))(last_layer)
             if num_outputs:
                 logits_out = tf.keras.layers.Dense(
@@ -100,11 +108,11 @@ class FullyConnectedNetwork(TFModelV2):
             # Build a parallel set of hidden layers for the value net.
             last_vf_layer = inputs
             i = 1
-            for size in hiddens:
+            for size, act in zip(hiddens, activations):
                 last_vf_layer = tf.keras.layers.Dense(
                     size,
                     name="fc_value_{}".format(i),
-                    activation=activation,
+                    activation=act,
                     kernel_initializer=normc_initializer(1.0))(last_vf_layer)
                 i += 1
 
