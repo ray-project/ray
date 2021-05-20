@@ -1,4 +1,6 @@
 import pytest
+import sys
+
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -70,3 +72,7 @@ def test_xgboost_example(start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.xgboost_example import tune_xgboost
     tune_xgboost()
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
