@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Union
+from typing import Any, Callable
 import time
 
 import starlette.responses
