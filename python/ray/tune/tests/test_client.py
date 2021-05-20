@@ -73,6 +73,7 @@ def test_xgboost_example(start_client_server):
     from ray.tune.examples.xgboost_example import tune_xgboost
     tune_xgboost()
 
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
