@@ -1,5 +1,8 @@
 import ray
 import uuid
+import json
+
+from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
 
 
 class JobConfig:
@@ -103,8 +106,8 @@ class JobConfig:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._parsed_runtime_env.serialize()
 
-    def _get_proto_runtime(self):
-        from ray.core.generated.common_pb2 import RuntimeEnv
-        runtime_env = RuntimeEnv()
+    def _get_proto_runtime(self) -> RuntimeEnvPB:
+        runtime_env = RuntimeEnvPB()
         runtime_env.uris[:] = self.get_runtime_env_uris()
+        runtime_env.raw_json = json.dumps(self.runtime_env)
         return runtime_env
