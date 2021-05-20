@@ -43,7 +43,7 @@ def test_ddp_mnist_pytorch(start_client_server_2_cpus):
     run_ddp_tune(num_workers=2, num_gpus_per_worker=0, workers_per_node=None)
 
 
-def test_cifar10_pytorch(ray_start_2_cpus):
+def test_cifar10_pytorch(start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.cifar10_pytorch import main
     main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
