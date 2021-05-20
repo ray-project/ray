@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://github.com/ray-project/ray/dashboard/modules/snapshot/snapshot_schema.json",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": "boolean"
+    },
+    "msg": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "jobs": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "isDead": {
+                      "type": "boolean"
+                    },
+                    "startTime": {
+                      "type": "integer"
+                    },
+                    "endTime": {
+                      "type": "integer"
+                    },
+                    "config": {
+                      "type": "object",
+                      "properties": {
+                        "envVars": {
+                          "type": "object"
+                        },
+                        "namespace": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object"
+                        },
+                        "runtimeEnv": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "envVars",
+                        "namespace",
+                        "metadata",
+                        "runtimeEnv"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "isDead",
+                    "startTime",
+                    "endTime",
+                    "config"
+                  ]
+                }
+              }
+            },
+            "actors": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "jobId": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "runtimeEnv": {
+                    "type": "string"
+                  },
+                  "startTime": {
+                    "type": "integer"
+                  },
+                  "endTime": {
+                    "type": "integer"
+                  },
+                  "isDetached": {
+                    "type": "boolean"
+                  },
+                  "resources": {
+                    "type": "object",
+                    "properties": {
+                      ".*": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "actorClass": {
+                    "type": "string"
+                  },
+                  "ipAddress": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer"
+                  },
+                  "required": [
+                    "jobId",
+                    "state",
+                    "name",
+                    "namespace",
+                    "runtimeEnv",
+                    "startTime",
+                    "endTime",
+                    "isDetached",
+                    "resources",
+                    "actorClass",
+                    "ipAddress",
+                    "port"
+                  ]
+                }
+              }
+            }
+          },
+          "required": [
+            "jobs",
+            "actors"
+          ]
+        }
+      },
+      "required": [
+        "snapshot"
+      ]
+    }
+  },
+  "required": [
+    "result",
+    "msg",
+    "data"
+  ]
+}
