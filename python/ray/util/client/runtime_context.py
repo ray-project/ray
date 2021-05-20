@@ -39,5 +39,9 @@ class ClientWorkerPropertyAPI:
         return NodeID(self._fetch_runtime_context().node_id)
 
     @property
+    def namespace(self) -> str:
+        return self._fetch_runtime_context().namespace
+
+    @property
     def should_capture_child_tasks_in_placement_group(self) -> bool:
         return self._fetch_runtime_context().capture_client_tasks
