@@ -883,12 +883,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
             task_spec.SerializedRuntimeEnv();
         agent_manager_->CreateRuntimeEnvOrReuse(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, dynamic_options](
-                Status status, const rpc::CreateRuntimeEnvReply &reply) {
+            [start_worker_process_fn, &state, task_spec, dynamic_options](bool done) {
               state.tasks_to_pending_runtime_envs.erase(task_spec.TaskId());
-              if (!status.ok()) {
+              if (!done) {
+                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
+                // failed.
                 RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
-                                  "Wait for next time to retry.";
+                                  "Wait for next time to retry or reschedule.";
                 return;
               }
               start_worker_process_fn(task_spec, state, dynamic_options, true);
@@ -941,11 +942,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         create_runtime_env = true;
         agent_manager_->CreateRuntimeEnvOrReuse(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec](
-                Status status, const rpc::CreateRuntimeEnvReply &reply) {
-              if (!status.ok()) {
-                RAY_LOG(ERROR)
-                    << "Create runtime env rpc failed. Wait for next time to retry.";
+            [start_worker_process_fn, &state, task_spec](bool done) {
+              if (!done) {
+                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
+                // failed.
+                RAY_LOG(ERROR) << "Create runtime env rpc failed. Wait for next time to "
+                                  "retry or reschedule.";
                 return;
               }
               start_worker_process_fn(task_spec, state, {}, false);

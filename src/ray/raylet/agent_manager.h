@@ -35,10 +35,8 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClient>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-typedef std::function<void(Status status, const rpc::CreateRuntimeEnvReply &reply)>
-    CreateRuntimeEnvCallback;
-typedef std::function<void(Status status, const rpc::DeleteRuntimeEnvReply &reply)>
-    DeleteRuntimeEnvCallback;
+typedef std::function<void(bool done)> CreateRuntimeEnvCallback;
+typedef std::function<void(bool done)> DeleteRuntimeEnvCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:

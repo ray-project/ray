@@ -16,7 +16,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
     """A rpc server to create or delete runtime envs.
 
     Attributes:
-        dashboard_agent: The DashboardAgent object contains global config
+        dashboard_agent: The DashboardAgent object contains global config.
     """
 
     def __init__(self, dashboard_agent):
@@ -39,8 +39,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
 
     async def DeleteRuntimeEnv(self, request, context):
+        # TODO(guyang.sgy): Delete runtime env local files.
         return runtime_env_agent_pb2.DeleteRuntimeEnvReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+            status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+            error_message="Not implemented.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
