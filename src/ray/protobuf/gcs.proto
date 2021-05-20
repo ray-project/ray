@@ -161,6 +161,10 @@ message ActorTableData {
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
+  // The actor's serialized runtime environment. This is necessary because the
+  // task spec's lifetime is shorter than the ActorTableData.
+  string serialized_runtime_env = 24;
+
 }
 
 message ErrorTableData {

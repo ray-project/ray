@@ -572,6 +572,7 @@ ray.get(a.ping.remote())
             assert entry["endTime"] == 0, entry
         else:
             assert entry["endTime"] > 0, entry
+        assert "runtimeEnv" in entry
 
 
 def test_immutable_types():

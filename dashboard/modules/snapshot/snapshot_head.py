@@ -59,14 +59,14 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
+            runtime_env = json.loads(actor_table_entry.serialized_runtime_env)
             entry = {
                 "job_id": actor_table_entry.job_id.hex(),
                 "state": gcs_pb2.ActorTableData.ActorState.Name(
                     actor_table_entry.state),
                 "name": actor_table_entry.name,
                 "namespace": actor_table_entry.ray_namespace,
-                "runtime_env": actor_table_entry.task_spec.
-                serialized_runtime_env,
+                "runtime_env": runtime_env,
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
