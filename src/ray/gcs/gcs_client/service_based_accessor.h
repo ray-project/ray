@@ -92,9 +92,11 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+  Status AsyncSubscribe(const ActorID &actor_id, const WorkerID &worker_id,
+                        gcs::SubscribeCallback<ActorID, rpc::ActorTableData> subscribe,
                         const StatusCallback &done) override;
+
+  void OnWorkerShutdown(const WorkerID &worker_id) override;
 
   Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
@@ -103,6 +105,11 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   bool IsActorUnsubscribed(const ActorID &actor_id) override;
 
  private:
+  Status AsyncDoSubscribe(
+      const ActorID &actor_id,
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const StatusCallback &done) override;
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_all_operation_;
@@ -121,6 +128,16 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   /// Save the fetch data operation of actors.
   std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_
       GUARDED_BY(mutex_);
+
+  absl::Mutex sharing_mutex_;
+
+  std::unordered_map<
+      ActorID,
+      std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>>
+      id_to_callbacks_ GUARDED_BY(sharing_mutex_);
+
+  std::unordered_map<ActorID, rpc::ActorTableData> actor_infos_
+      GUARDED_BY(sharing_mutex_);
 
   ServiceBasedGcsClient *client_impl_;
 };

@@ -269,7 +269,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
+Status ServiceBasedActorInfoAccessor::AsyncDoSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
@@ -366,6 +366,55 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
 
 bool ServiceBasedActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
   return client_impl_->GetGcsPubSub().IsUnsubscribed(ACTOR_CHANNEL, actor_id.Hex());
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
+    const ActorID &actor_id, const WorkerID &worker_id,
+    gcs::SubscribeCallback<ActorID, rpc::ActorTableData> subscribe,
+    const StatusCallback &done) {
+  absl::ReleasableMutexLock lock(&sharing_mutex_);
+  auto &callbacks = id_to_callbacks_[actor_id];
+  if (callbacks.empty()) {
+    callbacks.emplace(worker_id, subscribe);
+    lock.Release();
+    auto gcs_callback = [this](const ActorID &actor_id,
+                               const rpc::ActorTableData &actor_data) {
+      std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+          callbacks;
+      {
+        absl::MutexLock lock(&sharing_mutex_);
+        actor_infos_[actor_id] = actor_data;
+        auto it = id_to_callbacks_.find(actor_id);
+        if (it != id_to_callbacks_.end()) {
+          // AsyncUnsubscribe maybe called in callbacks. Copy the callbacks to a local
+          // variable and iterate it later to avoid dead lock.
+          callbacks = it->second;
+        }
+      }
+      for (auto &callback : callbacks) {
+        callback.second(actor_id, actor_data);
+      }
+    };
+    return AsyncDoSubscribe(actor_id, gcs_callback, done);
+  } else {
+    callbacks.emplace(worker_id, subscribe);
+    // Invoke the callback with the last received actor update immediately, if available.
+    auto it = actor_infos_.find(actor_id);
+    if (it != actor_infos_.end()) {
+      // Copy the actor info before releasing the lock.
+      auto actor_info = it->second;
+      lock.Release();
+      subscribe(actor_id, actor_info);
+    }
+    return Status::OK();
+  }
+}
+
+void ServiceBasedActorInfoAccessor::OnWorkerShutdown(const WorkerID &worker_id) {
+  absl::ReleasableMutexLock lock(&sharing_mutex_);
+  for (auto &entry : id_to_callbacks_) {
+    entry.second.erase(worker_id);
+  }
 }
 
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(

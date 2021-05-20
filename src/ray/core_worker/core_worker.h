@@ -29,7 +29,6 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/shared_actor_info_accessor.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -349,9 +348,6 @@ class CoreWorkerProcess {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-
-  // The shared actor info accessor to avoid duplicate subscriptions.
-  std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -364,8 +360,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor);
+             std::shared_ptr<gcs::GcsClient> gcs_client);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1225,9 +1220,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-
-  // The shared actor info accessor to avoid duplicate subscriptions.
-  std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through

@@ -172,7 +172,6 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       });
 
   RAY_CHECK_OK(gcs_client_->Connect(shared_io_service_));
-  shared_actor_info_accessor_ = std::make_shared<SharedActorInfoAccessor>(gcs_client_);
 
   shared_io_thread_ = std::thread([this]() { RunIOService(); });
 
@@ -327,7 +326,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   auto worker = std::make_shared<CoreWorker>(
       options_,
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom(),
-      gcs_client_, shared_actor_info_accessor_);
+      gcs_client_);
   RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -391,10 +390,8 @@ void CoreWorkerProcess::RunIOService() {
   shared_io_service_.run();
 }
 
-CoreWorker::CoreWorker(
-    const CoreWorkerOptions &options, const WorkerID &worker_id,
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor)
+CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id,
+                       std::shared_ptr<gcs::GcsClient> gcs_client)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -404,7 +401,6 @@ CoreWorker::CoreWorker(
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
       gcs_client_(gcs_client),
-      shared_actor_info_accessor_(shared_actor_info_accessor),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -660,9 +656,8 @@ CoreWorker::CoreWorker(
                                 task_argument_waiter_);
   }
 
-  actor_manager_ =
-      std::make_unique<ActorManager>(worker_id, direct_actor_submitter_,
-                                     reference_counter_, shared_actor_info_accessor_);
+  actor_manager_ = std::make_unique<ActorManager>(
+      worker_id, gcs_client_, direct_actor_submitter_, reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
@@ -753,7 +748,7 @@ CoreWorker::CoreWorker(
 void CoreWorker::Shutdown() {
   // Cancel subscritions for this worker so that further actor notifications won't be
   // triggered, otherwise SIGSEGV would occur because CoreWorker has been destroyed.
-  shared_actor_info_accessor_->OnWorkerShutdown(GetWorkerID());
+  gcs_client_->Actors().OnWorkerShutdown(GetWorkerID());
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();

@@ -147,7 +147,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe,
+        actor_id, WorkerID::FromRandom(), subscribe,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }

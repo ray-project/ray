@@ -98,16 +98,23 @@ class ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) = 0;
 
-  /// Subscribe to any update operations of an actor.
+  /// Subscribe to any register or update operations of actors. Subscriptions of same
+  /// actor from multiple workers would share same client.
   ///
-  /// \param actor_id The ID of actor to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the actor is updated.
-  /// \param done Callback that will be called when subscription is complete.
+  /// \param actor_id actor id to be subscribed.
+  /// \param worker_id id of worker who subscribes.
+  /// \param subscribe Callback that will be called each time when an actor is registered
+  /// or updated.
   /// \return Status
   virtual Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const ActorID &actor_id, const WorkerID &worker_id,
+      gcs::SubscribeCallback<ActorID, rpc::ActorTableData> subscribe,
       const StatusCallback &done) = 0;
+
+  /// Remove callback of worker once it shuts down.
+  ///
+  /// \param worker_id id of existed worker.
+  virtual void OnWorkerShutdown(const WorkerID &worker_id) = 0;
 
   /// Cancel subscription to an actor.
   ///
@@ -132,6 +139,17 @@ class ActorInfoAccessor {
 
  protected:
   ActorInfoAccessor() = default;
+
+  /// Subscribe to any update operations of an actor.
+  ///
+  /// \param actor_id The ID of actor to be subscribed to.
+  /// \param subscribe Callback that will be called each time when the actor is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncDoSubscribe(
+      const ActorID &actor_id,
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const StatusCallback &done) = 0;
 };
 
 /// \class JobInfoAccessor

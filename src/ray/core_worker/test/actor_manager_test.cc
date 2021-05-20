@@ -125,11 +125,9 @@ class ActorManagerTest : public ::testing::Test {
   ~ActorManagerTest() {}
 
   void SetUp() {
-    auto shared_actor_info_accessor =
-        std::make_shared<SharedActorInfoAccessor>(gcs_client_mock_);
     actor_manager_ =
-        std::make_shared<ActorManager>(WorkerID::FromRandom(), direct_actor_submitter_,
-                                       reference_counter_, shared_actor_info_accessor);
+        std::make_shared<ActorManager>(WorkerID::FromRandom(), gcs_client_mock_,
+                                       direct_actor_submitter_, reference_counter_);
   }
 
   void TearDown() { actor_manager_.reset(); }
