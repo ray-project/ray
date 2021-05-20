@@ -115,8 +115,7 @@ class RuntimeContext(object):
 
     @property
     def namespace(self):
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
-        return job_config.ray_namespace
+        return self.worker.namespace
 
     @property
     def was_current_actor_reconstructed(self):
