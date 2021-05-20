@@ -34,6 +34,8 @@ class HandleOptions:
     http_method: str = "GET"
     http_headers: Dict[str, str] = field(default_factory=dict)
 
+    http_arg_is_pickled: bool = False
+
 
 # Use a global singleton enum to emulate default options. We cannot use None
 # for those option because None is a valid new value.
@@ -105,12 +107,15 @@ class RayServeHandle:
             asyncio.get_event_loop(),
         )
 
-    def options(self,
-                *,
-                method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-                shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
-                http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
-                http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE):
+    def options(
+            self,
+            *,
+            method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+            shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
+            http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
+            http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE,
+            http_arg_is_pickled: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ):
         """Set options for this handle.
 
         Args:
@@ -122,10 +127,13 @@ class RayServeHandle:
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
-            for key, value in
-            zip(["method_name", "shard_key", "http_method", "http_headers"],
-                [method_name, shard_key, http_method, http_headers])
-            if value != DEFAULT.VALUE
+            for key, value in zip([
+                "method_name", "shard_key", "http_method", "http_headers",
+                "http_arg_is_pickled"
+            ], [
+                method_name, shard_key, http_method, http_headers,
+                http_arg_is_pickled
+            ]) if value != DEFAULT.VALUE
         }
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
@@ -147,6 +155,7 @@ class RayServeHandle:
             http_method=handle_options.http_method,
             http_headers=handle_options.http_headers,
             use_serve_request=self._use_serve_request,
+            http_arg_is_pickled=handle_options.http_arg_is_pickled,
         )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro

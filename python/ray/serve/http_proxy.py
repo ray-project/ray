@@ -31,7 +31,9 @@ async def _send_request_to_handle(handle, scope, receive, send):
         method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
         shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
         http_method=scope["method"].upper(),
-        http_headers=headers)
+        http_headers=headers,
+        http_arg_is_pickled=True,
+    )
 
     # scope["router"] and scope["endpoint"] contain references to a router
     # and endpoint object, respectively, which each in turn contain a

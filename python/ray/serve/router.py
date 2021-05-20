@@ -40,7 +40,7 @@ class RequestMetadata:
 
     # This flag will be set to true if the input argument is manually pickled
     # and it needs to be deserialized by the backend worker.
-    is_pickled_http_request: bool = False
+    http_arg_is_pickled: bool = False
 
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)

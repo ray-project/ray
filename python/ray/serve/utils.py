@@ -94,7 +94,7 @@ def parse_request_item(request_item):
             return (arg, ), {}
         elif isinstance(arg, HTTPRequestWrapper):
             return (build_starlette_request(arg.scope, arg.body), ), {}
-        elif request_item.metadata.is_pickled_http_request:
+        elif request_item.metadata.http_arg_is_pickled:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
