@@ -984,7 +984,7 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
       }
 
       run_delayed_(
-          [this, non_detached_actors{std::move(non_detached_actors)}]() {
+          [this, non_detached_actors = std::move(non_detached_actors)]() {
             RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors,
                                                                       nullptr));
           },
