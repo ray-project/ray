@@ -382,6 +382,48 @@ that partition sizes are uniform.
    # be transferred across nodes
    ray_params = RayDMatrix(existing_modin_df)
 
+
+Data sources
+^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+
+   * - Type
+     - Centralized loading
+     - Distributed loading
+   * - Numpy array
+     - Yes
+     - No
+   * - Pandas dataframe
+     - Yes
+     - No
+   * - Single CSV
+     - Yes
+     - No
+   * - Multi CSV
+     - Yes
+     - Yes
+   * - Single Parquet
+     - Yes
+     - No
+   * - Multi Parquet
+     - Yes
+     - Yes
+   * - `Petastorm <https://github.com/uber/petastorm>`__
+     - Yes
+     - Yes
+   * - `Ray MLDataset <https://docs.ray.io/en/master/iter.html>`__
+     - Yes
+     - Yes
+   * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`__
+     - Yes
+     - Yes
+   * - `Modin dataframe <https://modin.readthedocs.io/en/latest/>`__
+     - Yes
+     - Yes
+
+
 Memory usage
 ------------
 
