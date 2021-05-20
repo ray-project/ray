@@ -7,7 +7,7 @@ from enum import Enum
 
 from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
-from ray.serve.utils import SERVE_DEBUG_ON, get_random_letters
+from ray.serve.utils import get_random_letters
 from ray.serve.router import EndpointRouter, RequestMetadata
 from ray.util import metrics
 
@@ -140,8 +140,7 @@ class RayServeHandle:
     def _remote(self, endpoint_name, handle_options, args,
                 kwargs) -> Coroutine:
         request_metadata = RequestMetadata(
-            # get_random_letters(10)  # Used for debugging.
-            "",
+            get_random_letters(10),  # Used for debugging.
             endpoint_name,
             call_method=handle_options.method_name,
             shard_key=handle_options.shard_key,

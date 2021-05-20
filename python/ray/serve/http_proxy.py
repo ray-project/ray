@@ -47,6 +47,8 @@ async def _send_request_to_handle(handle, scope, receive, send):
     # request until it reaches the backend replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
+    # Perform a pickle here to improve latency. Stdlib pickle for simple
+    # dataclasses are 10-100x faster than cloudpickle.
     request = pickle.dumps(request)
 
     retries = 0

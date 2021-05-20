@@ -94,7 +94,8 @@ def parse_request_item(request_item):
             return (arg, ), {}
         elif isinstance(arg, HTTPRequestWrapper):
             return (build_starlette_request(arg.scope, arg.body), ), {}
-        elif isinstance(arg, bytes):
+        elif request_item.metadata.is_pickled_http_request:
+            assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
         elif request_item.metadata.use_serve_request:
@@ -108,13 +109,10 @@ def parse_request_item(request_item):
     return request_item.args, request_item.kwargs
 
 
-SERVE_DEBUG_ON = os.environ.get("SERVE_LOG_DEBUG")
-
-
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    log_level = SERVE_DEBUG_ON
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
     if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:

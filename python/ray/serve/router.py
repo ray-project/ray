@@ -38,6 +38,10 @@ class RequestMetadata:
     # future.
     use_serve_request: bool = True
 
+    # This flag will be set to true if the input argument is manually pickled
+    # and it needs to be deserialized by the backend worker.
+    is_pickled_http_request: bool = False
+
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
         self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
