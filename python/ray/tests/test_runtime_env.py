@@ -642,5 +642,4 @@ def test_init(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    print(__file__)
     sys.exit(pytest.main(["-sv", __file__]))

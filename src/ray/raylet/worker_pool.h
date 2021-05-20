@@ -470,8 +470,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// The last size at which a warning about the number of registered workers
     /// was generated.
     int64_t last_warning_multiple;
-    /// A map between hex_id and worker.
-    std::unordered_map<std::string, std::shared_ptr<WorkerInterface>> id_to_worker_;
   };
 
   /// Pool states per language.
