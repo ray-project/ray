@@ -162,6 +162,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def namespace(self):
+        return self.core_worker.get_job_config().ray_namespace
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
