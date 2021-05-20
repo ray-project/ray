@@ -141,7 +141,8 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return current_time_ms_; }),
+            [this]() { return current_time_ms_; },
+            ""),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -167,7 +168,8 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
-                       const ProcessEnvironment &env) override {
+                       const ProcessEnvironment &env,
+                       const std::string &std_streams_redirect_file_prefix) override {
     // Use a bogus process ID that won't conflict with those in the system
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);

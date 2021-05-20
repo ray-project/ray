@@ -80,6 +80,24 @@ bool EnvironmentVariableLess::operator()(const std::string &a,
   return result;
 }
 
+void Redirect(const std::string &redirect_file, int id) {
+#ifdef _WIN32
+#else
+  mode_t pmode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+  auto fdout = open(redirect_file.data(), O_RDWR | O_CREAT, pmode);
+  if (fdout < 0) {
+    RAY_LOG(WARNING) << "Create redirect file " << redirect_file << " failed.";
+  }
+
+  bool r = dup2(fdout, id);
+  if (!r) {
+    RAY_LOG(WARNING) << "Redirect file " << redirect_file << " failed.";
+  }
+
+  close(fdout);
+#endif
+}
+
 class ProcessFD {
   pid_t pid_;
   intptr_t fd_;
@@ -101,7 +119,8 @@ class ProcessFD {
   static ProcessFD spawnvpe(const char *argv[],
                             std::error_code &ec,
                             bool decouple,
-                            const ProcessEnvironment &env) {
+                            const ProcessEnvironment &env,
+                            const std::string &std_streams_redirect_file_prefix) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -176,6 +195,12 @@ class ProcessFD {
     }
     pid = pipefds[1] != -1 ? fork() : -1;
     if (pid <= 0 && pipefds[0] != -1) {
+      if (!std_streams_redirect_file_prefix.empty()) {
+        std::string prefix = std_streams_redirect_file_prefix + std::to_string(getpid());
+        Redirect(prefix + ".out", STDOUT_FILENO);
+        Redirect(prefix + ".err", STDERR_FILENO);
+      }
+
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
       pipefds[0] = -1;
     }
@@ -349,9 +374,10 @@ Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
                  bool decouple,
-                 const ProcessEnvironment &env) {
+                 const ProcessEnvironment &env,
+                 const std::string &std_streams_redirect_file_prefix) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, std_streams_redirect_file_prefix);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }

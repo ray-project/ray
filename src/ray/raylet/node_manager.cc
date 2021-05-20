@@ -199,7 +199,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+          config.log_dir),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(

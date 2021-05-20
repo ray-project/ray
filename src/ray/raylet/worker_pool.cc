@@ -81,7 +81,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const std::string &native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       const std::function<double()> get_time)
+                       const std::function<double()> get_time,
+                       const std::string &log_dir)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -97,7 +98,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time) {
+      get_time_(get_time),
+      log_dir_(log_dir) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -434,10 +436,17 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     // Make sure only the main thread is running in Python workers.
     env.insert({"RAY_start_python_importer_thread", "0"});
   }
-
+  std::string std_streams_redirect_file_prefix = log_dir_;
+  std_streams_redirect_file_prefix.append("/")
+      .append(ray::LanguageString(language))
+      .append("-")
+      .append(ray::WorkerTypeString(worker_type))
+      .append("-")
+      .append(job_id.Hex())
+      .append("-");
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = StartProcess(worker_command_args, env, std_streams_redirect_file_prefix);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
@@ -544,7 +553,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const ProcessEnvironment &env) {
+                                 const ProcessEnvironment &env, const std::string &std_streams_redirect_file_prefix) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
@@ -575,7 +584,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
   argv.push_back(NULL);
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env, std_streams_redirect_file_prefix);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {

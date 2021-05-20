@@ -195,7 +195,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::string &native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<double()> get_time);
+             const std::function<double()> get_time,
+             const std::string &log_dir);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -444,7 +445,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env);
+                               const ProcessEnvironment &env,
+                               const std::string &std_streams_redirect_file_prefix);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -761,6 +763,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+  
+  std::string log_dir_;
 
   friend class WorkerPoolTest;
 };

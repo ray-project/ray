@@ -16,6 +16,42 @@ def enable_export_loglevel(func):
     return func
 
 
+@pytest.fixture
+def enable_test_worker_log_redirected():
+    os.environ["WORKER_LOG_REDIRECTED_TEST"] = "true"
+    yield
+    os.environ.pop("WORKER_LOG_REDIRECTED_TEST", None)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_worker_log_redirected(enable_test_worker_log_redirected,
+                               ray_start_regular):
+    session_dir = ray.worker._global_node.get_session_dir_path()
+    assert os.path.exists(session_dir), "Session dir not found."
+
+    @ray.remote
+    def f():
+        return os.getpid()
+
+    def check_log(file, expected):
+        ok = False
+        for filename in glob.glob(file):
+            with open(filename, "r") as f:
+                for line in f:
+                    if line.strip() == expected:
+                        ok = True
+                        break
+        assert (ok)
+
+    futures = f.remote()
+    pid = ray.get(futures)
+    print(pid)
+    worker_out_file = "{}/logs/python-worker-*-{}.out".format(session_dir, pid)
+    check_log(worker_out_file, "stdout test")
+    worker_err_file = "{}/logs/python-worker-*-{}.err".format(session_dir, pid)
+    check_log(worker_err_file, "stderr test")
+
+
 @enable_export_loglevel
 def test_ray_log_redirected(ray_start_regular):
     session_dir = ray._private.worker._global_node.get_session_dir_path()

@@ -204,6 +204,13 @@ def get_worker_log_file_name(worker_type, job_id=None):
 
 
 def configure_log_file(out_file, err_file):
+    # ANT-INTERNAL: test before python redirect.
+    if os.environ.get("WORKER_LOG_REDIRECTED_TEST"):
+        sys.stdout.write("stdout test")
+        sys.stderr.write("stderr test")
+        sys.stdout.flush()
+        sys.stderr.flush()
+
     # If either of the file handles are None, there are no log files to
     # configure since we're redirecting all output to stdout and stderr.
     if out_file is None or err_file is None:

@@ -77,7 +77,8 @@ class Process {
                    void *io_service,
                    std::error_code &ec,
                    bool decouple = false,
-                   const ProcessEnvironment &env = {});
+                   const ProcessEnvironment &env = {},
+                   const std::string &std_streams_redirect_file_prefix = "");
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
