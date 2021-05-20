@@ -99,16 +99,14 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnvOrReuse(const std::string &serialized_runtime_env,
-                                           CreateRuntimeEnvCallback callback) {
+void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
+                                    CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO) << "No available agent connection. Retry to create runtime env "
                   << serialized_runtime_env << " later.";
-    delay_executor_(
-        [this, serialized_runtime_env, callback] {
-          CreateRuntimeEnvOrReuse(serialized_runtime_env, callback);
-        },
-        RayConfig::instance().agent_retry_interval_ms());
+    delay_executor_([this, serialized_runtime_env,
+                     callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
+                    RayConfig::instance().agent_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
@@ -132,7 +130,7 @@ void AgentManager::CreateRuntimeEnvOrReuse(const std::string &serialized_runtime
           runtime_env_agent_client_.reset();
           delay_executor_(
               [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnvOrReuse(serialized_runtime_env, callback);
+                CreateRuntimeEnv(serialized_runtime_env, callback);
               },
               RayConfig::instance().agent_retry_interval_ms());
         }
@@ -170,7 +168,7 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
           runtime_env_agent_client_.reset();
           delay_executor_(
               [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnvOrReuse(serialized_runtime_env, callback);
+                CreateRuntimeEnv(serialized_runtime_env, callback);
               },
               RayConfig::instance().agent_retry_interval_ms());
         }

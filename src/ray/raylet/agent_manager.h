@@ -59,8 +59,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to create runtime env.
   /// \param[in] runtime_env The runtime env.
-  void CreateRuntimeEnvOrReuse(const std::string &serialized_runtime_env,
-                               CreateRuntimeEnvCallback callback);
+  void CreateRuntimeEnv(const std::string &serialized_runtime_env,
+                        CreateRuntimeEnvCallback callback);
 
   /// Request agent to delete runtime env.
   /// \param[in] runtime_env The runtime env.
