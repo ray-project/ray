@@ -323,24 +323,27 @@ def test_conda_create_ray_client(call_ray_start):
             ]
         }
     }
-    ray.client("localhost:24001").env(runtime_env).connect()
+    try:
+        ray.client("localhost:24001").env(runtime_env).connect()
 
-    @ray.remote
-    def f():
-        import pip_install_test  # noqa
-        return True
+        @ray.remote
+        def f():
+            import pip_install_test  # noqa
+            return True
 
-    with pytest.raises(ModuleNotFoundError):
-        # Ensure pip-install-test is not installed on the test machine
-        import pip_install_test  # noqa
-    assert ray.get(f.remote())
-    ray.util.disconnect()
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed on the test machine
+            import pip_install_test  # noqa
+        assert ray.get(f.remote())
 
-    ray.client("localhost:24001").connect()
-    with pytest.raises(ModuleNotFoundError):
-        # Ensure pip-install-test is not installed in a client that doesn't
-        # use the runtime_env
-        ray.get(f.remote())
+        ray.util.disconnect()
+        ray.client("localhost:24001").connect()
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+    finally:
+        ray.util.disconnect()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
