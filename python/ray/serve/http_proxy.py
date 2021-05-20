@@ -144,7 +144,11 @@ class LongestPrefixRouter:
                 existing_handles.remove(endpoint)
             else:
                 self.handles[endpoint] = serve.get_handle(
-                    endpoint, sync=False, missing_ok=True)
+                    endpoint,
+                    sync=False,
+                    missing_ok=True,
+                    _internal_pickled_http_request=True,
+                )
 
         # Clean up any handles that are no longer used.
         for endpoint in existing_handles:

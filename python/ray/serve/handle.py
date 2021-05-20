@@ -186,7 +186,8 @@ class RayServeHandle:
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods,
-            "_internal_use_serve_request": self._use_serve_request
+            "_internal_use_serve_request": self._use_serve_request,
+            "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
 
@@ -243,6 +244,7 @@ class RayServeSyncHandle(RayServeHandle):
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods,
-            "_internal_use_serve_request": self._use_serve_request
+            "_internal_use_serve_request": self._use_serve_request,
+            "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )
