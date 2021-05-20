@@ -971,6 +971,7 @@ class LearningRateSchedule:
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
+                self._optimizer.learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)
     def optimizer(self):
