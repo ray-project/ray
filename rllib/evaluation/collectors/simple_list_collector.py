@@ -280,25 +280,8 @@ class _AgentCollector:
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                 "env_id", "t"
             ] else 0)
-            # Python primitive or dict (e.g. INFOs).
-            if isinstance(data, (int, float, bool, str, dict)):
-                self.buffers[col] = [data for _ in range(shift)]
-            # np.ndarray, torch.Tensor, or tf.Tensor.
-            else:
-                shape = data.shape
-                dtype = data.dtype
-                if torch and isinstance(data, torch.Tensor):
-                    self.buffers[col] = \
-                        [torch.zeros(shape, dtype=dtype, device=data.device)
-                         for _ in range(shift)]
-                elif tf and isinstance(data, tf.Tensor):
-                    self.buffers[col] = \
-                        [tf.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
-                else:
-                    self.buffers[col] = \
-                        [np.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
+            # Python primitive, tensor, or dict (e.g. INFOs).
+            self.buffers[col] = [data for _ in range(shift)]
 
 
 class _PolicyCollector:

@@ -230,10 +230,10 @@ class ServeController:
             for endpoint, info in self.endpoint_state.get_endpoints().items():
                 if (backend_tag in info["traffic"]
                         or backend_tag in info["shadows"]):
-                    raise ValueError("Backend '{}' is used by endpoint '{}' "
-                                     "and cannot be deleted. Please remove "
-                                     "the backend from all endpoints and try "
-                                     "again.".format(backend_tag, endpoint))
+                    raise ValueError(f"Backend '{backend_tag}' is used by "
+                                     f"endpoint '{endpoint}' and cannot be "
+                                     "deleted. Please remove the backend "
+                                     "from all endpoints and try again.")
             return self.backend_state.delete_backend(backend_tag, force_kill)
 
     async def update_backend_config(self, backend_tag: BackendTag,
@@ -271,14 +271,28 @@ class ServeController:
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
-    async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, python_methods: List[str],
-                     version: Optional[str], route_prefix: Optional[str]
-                     ) -> Tuple[Optional[GoalId], bool]:
+    async def deploy(
+            self, name: str, backend_config: BackendConfig,
+            replica_config: ReplicaConfig, python_methods: List[str],
+            version: Optional[str], prev_version: Optional[str],
+            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
         async with self.write_lock:
+            if prev_version is not None:
+                existing_backend_info = self.backend_state.get_backend(name)
+                if (existing_backend_info is None
+                        or not existing_backend_info.version):
+                    raise ValueError(
+                        f"prev_version '{prev_version}' is specified but "
+                        "there is no existing deployment.")
+                if existing_backend_info.version != prev_version:
+                    raise ValueError(
+                        f"prev_version '{prev_version}' "
+                        "does not match with the existing "
+                        f"version '{existing_backend_info.version}'.")
+
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(
