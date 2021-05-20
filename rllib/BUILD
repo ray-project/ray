@@ -10,8 +10,7 @@
 
 # Currently we have the following categories:
 
-# a) Learning tests/regression, tagged:
-#    "learning_tests_[tf|torch]" AND "learning_tests_[cartpole|pendulum]"
+# a) Learning tests/regression, tagged: "learning_tests"
 # b) Quick agent compilation/tune-train tests, tagged "quick_train"
 # c-e) Utils, Models, Agents, tagged "utils", "models", and "agents_dir".
 # f) Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
@@ -81,31 +80,6 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
     args = ["--yaml-dir=tuned_examples/a3c", "--framework=torch"]
-)
-
-# APEX-DQN
-py_test(
-    name = "run_regression_tests_cartpole_apex_tf",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-apex.yaml",
-    ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
-)
-
-py_test(
-    name = "run_regression_tests_cartpole_apex_torch",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-apex.yaml",
-    ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
 # APPO
@@ -188,7 +162,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
-# DQN
+# DQN/R2D2
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
