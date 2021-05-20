@@ -230,14 +230,17 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     std::vector<ObjectID> objects_to_evict;
     int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
     EvictObjects(objects_to_evict);
-    // More space is still needed. Try to spill objects to external storage to
-    // make room.
+    // More space is still needed.
     if (space_needed > 0) {
-      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need " << space_needed << " num bytes unsealed: " << num_bytes_unsealed_;
+      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need " << space_needed
+                     << " num bytes unsealed: " << num_bytes_unsealed_;
       space_needed -= num_bytes_unsealed_;
       if (space_needed > 0) {
+        // Even after all unsealed objects are sealed, there would not be
+        // enough space.
         *error = PlasmaError::OutOfMemory;
       } else {
+        // There will be enough space once there are no more unsealed objects.
         *error = PlasmaError::TransientOutOfMemory;
       }
       break;
@@ -293,7 +296,8 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
                                       int64_t metadata_size, int device_num,
                                       const std::shared_ptr<Client> &client,
                                       PlasmaObject *result) {
-  RAY_LOG(DEBUG) << "attempting to create object " << object_id.Hex() << " size " << data_size;
+  RAY_LOG(DEBUG) << "attempting to create object " << object_id.Hex() << " size "
+                 << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -930,8 +934,6 @@ void PlasmaStore::ProcessCreateRequests() {
     // Try to process requests later, after space has been made.
     create_timer_ = execute_after(io_context_,
                                   [this]() {
-                                    //RAY_LOG(DEBUG)
-                                    //    << "OOM timer finished, retrying create requests";
                                     create_timer_ = nullptr;
                                     ProcessCreateRequests();
                                   },

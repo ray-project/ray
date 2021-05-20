@@ -110,7 +110,7 @@ Status CreateRequestQueue::ProcessRequests() {
       }
       if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
-        return Status::TransientObjectStoreFull("Waiting for spilling.");
+        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
       } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
