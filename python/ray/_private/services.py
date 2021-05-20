@@ -1877,7 +1877,8 @@ def start_ray_client_server(redis_address,
                             stdout_file=None,
                             stderr_file=None,
                             redis_password=None,
-                            fate_share=None):
+                            fate_share=None,
+                            server_type="proxy"):
     """Run the server process of the Ray client.
 
     Args:
@@ -1887,6 +1888,7 @@ def start_ray_client_server(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        server_type (str): Whether to start the proxy version of Ray Client.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1894,7 +1896,7 @@ def start_ray_client_server(redis_address,
     command = [
         sys.executable, "-m", "ray.util.client.server",
         "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port)
+        "--port=" + str(ray_client_server_port), "--mode=" + server_type
     ]
     if redis_password:
         command.append("--redis-password=" + redis_password)
