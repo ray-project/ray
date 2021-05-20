@@ -20,7 +20,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
@@ -908,30 +908,30 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = entropy_coeff
-
+        self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
                     framework=None)
             else:
                 # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
                     framework=None)
+            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff = self.entropy_coeff_schedule.value(
-            global_vars["timestep"])
+        if self._entropy_coeff_schedule is not None:
+            self.entropy_coeff = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])
 
 
 @DeveloperAPI
