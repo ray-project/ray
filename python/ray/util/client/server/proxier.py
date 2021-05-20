@@ -5,10 +5,11 @@ import logging
 import json
 from queue import Queue
 import socket
-from threading import Thread, Lock
+from threading import Thread, RLock
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+import ray
 from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -43,14 +44,24 @@ def _get_client_id_from_context(context: Any) -> str:
 @dataclass
 class SpecificServer:
     port: int
-    process_handle: ProcessInfo
+    process_handle_future: futures.Future
     channel: "grpc._channel.Channel"
+
+    def wait_ready(self) -> None:
+        """
+        Wait for the server to actually start up.
+        """
+        self.process_handle_future.result()
+        return
+
+    def process_handle(self) -> ProcessInfo:
+        return self.process_handle_future.result()
 
 
 class ProxyManager():
-    def __init__(self, redis_address):
+    def __init__(self, redis_address: str, session_dir: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
-        self.server_lock = Lock()
+        self.server_lock = RLock()
         self.redis_address = redis_address
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
@@ -59,6 +70,7 @@ class ProxyManager():
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
+        self._session_dir: str = session_dir or ""
 
     def _get_unused_port(self) -> int:
         """
@@ -79,43 +91,67 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
+    def _get_session_dir(self) -> str:
+        """
+        Gets the session_dir of this running Ray session. This usually
+        looks like /tmp/ray/session_<timestamp>.
+        """
+        if self._session_dir:
+            return self._session_dir
+        connection_tuple = ray.init(address=self.redis_address)
+        ray.shutdown()
+        self._session_dir = connection_tuple["session_dir"]
+        return self._session_dir
+
     def start_specific_server(self, client_id: str,
                               job_config: JobConfig) -> None:
         """
         Start up a RayClient Server for an incoming client to
         communicate with.
         """
-        port = self._get_unused_port()
+        with self.server_lock:
+            port = self._get_unused_port()
+            handle_ready = futures.Future()
+            specific_server = SpecificServer(
+                port=port,
+                process_handle_future=handle_ready,
+                channel=grpc.insecure_channel(
+                    f"localhost:{port}", options=GRPC_OPTIONS))
+            self.servers[client_id] = specific_server
+
         serialized_runtime_env = job_config.get_serialized_runtime_env()
+
         proc = start_ray_client_server(
             self.redis_address,
             port,
             fate_share=self.fate_share,
             server_type="specific-server",
-            serialized_runtime_env=serialized_runtime_env)
+            serialized_runtime_env=serialized_runtime_env,
+            session_dir=self._get_session_dir())
 
-        specific_server = SpecificServer(
-            port=port,
-            process_handle=proc,
-            channel=grpc.insecure_channel(
-                f"localhost:{port}", options=GRPC_OPTIONS))
-        with self.server_lock:
-            self.servers[client_id] = specific_server
+        handle_ready.set_result(proc)
 
-    def get_channel(self, client_id: str) -> Optional["grpc._channel.Channel"]:
-        """
-        Find the gRPC Channel for the given client_id
-        """
-        client = None
+    def _get_server_for_client(self,
+                               client_id: str) -> Optional[SpecificServer]:
         with self.server_lock:
             client = self.servers.get(client_id)
             if client is None:
                 logger.error(f"Unable to find channel for client: {client_id}")
-                return None
+            return client
+
+    def get_channel(self, client_id: str) -> Optional["grpc._channel.Channel"]:
+        """
+        Find the gRPC Channel for the given client_id. This will block until
+        the server process has started.
+        """
+        server = self._get_server_for_client(client_id)
+        if server is None:
+            return None
+        server.wait_ready()
         try:
             grpc.channel_ready_future(
-                client.channel).result(timeout=CHECK_CHANNEL_TIMEOUT_S)
-            return client.channel
+                server.channel).result(timeout=CHECK_CHANNEL_TIMEOUT_S)
+            return server.channel
         except grpc.FutureTimeoutError:
             return None
 
@@ -126,7 +162,8 @@ class ProxyManager():
         while True:
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
-                    poll_result = specific_server.process_handle.process.poll()
+                    poll_result = specific_server.process_handle(
+                    ).process.poll()
                     if poll_result is not None:
                         del self.servers[client_id]
                         # Port is available to use again.
@@ -293,16 +330,14 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         logger.debug(f"New data connection from client {client_id}: ")
 
         channel = None
-        for i in range(10):
-            # TODO(ilr) Ensure LogClient starts after startup has happened.
-            # This will remove the need for retries here.
+        for i in range(5):
             channel = self.proxy_manager.get_channel(client_id)
 
             if channel is not None:
                 break
             logger.warning(
                 f"Retrying Logstream connection. {i+1} attempts failed.")
-            time.sleep(5)
+            time.sleep(2)
 
         if channel is None:
             context.set_code(grpc.StatusCode.NOT_FOUND)

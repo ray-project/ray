@@ -1880,7 +1880,8 @@ def start_ray_client_server(redis_address,
                             redis_password=None,
                             fate_share=None,
                             server_type: str = "proxy",
-                            serialized_runtime_env: Optional[str] = None):
+                            serialized_runtime_env: Optional[str] = None,
+                            session_dir: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1908,6 +1909,7 @@ def start_ray_client_server(redis_address,
         sys.executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
+        f"--session-dir={session_dir}" if session_dir else None,
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),
@@ -1917,6 +1919,7 @@ def start_ray_client_server(redis_address,
     if redis_password:
         command.append("--redis-password=" + redis_password)
 
+    command = [c for c in command if c is not None]
     if serialized_runtime_env:
         command.append("--serialized-runtime-env=" + serialized_runtime_env)
     process_info = start_ray_process(
