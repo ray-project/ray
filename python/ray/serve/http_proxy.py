@@ -32,7 +32,6 @@ async def _send_request_to_handle(handle, scope, receive, send):
         shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
         http_method=scope["method"].upper(),
         http_headers=headers,
-        http_arg_is_pickled=True,
     )
 
     # scope["router"] and scope["endpoint"] contain references to a router
@@ -95,7 +94,11 @@ class ServeStarletteEndpoint:
         self.endpoint_tag = endpoint_tag
         self.path_prefix = path_prefix
         self.handle = serve.get_handle(
-            self.endpoint_tag, sync=False, missing_ok=True)
+            self.endpoint_tag,
+            sync=False,
+            missing_ok=True,
+            _internal_pickled_http_request=True,
+        )
 
     async def __call__(self, scope, receive, send):
         # Modify the path and root path so that reverse lookups and redirection
