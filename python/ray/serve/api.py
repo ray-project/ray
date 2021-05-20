@@ -360,6 +360,7 @@ class Client:
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
@@ -399,9 +400,9 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, python_methods,
-                                           version, route_prefix))
+            self._controller.deploy.remote(
+                name, backend_config, replica_config, python_methods, version,
+                prev_version, route_prefix))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -1065,10 +1066,11 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
 class Deployment:
     def __init__(self,
-                 backend_def: Callable,
+                 func_or_class: Callable,
                  name: str,
                  config: BackendConfig,
                  version: Optional[str] = None,
+                 prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
                  route_prefix: Optional[str] = None,
                  ray_actor_options: Optional[Dict] = None,
@@ -1084,13 +1086,15 @@ class Deployment:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead.")
-        if not callable(backend_def):
+        if not callable(func_or_class):
             raise TypeError(
                 "@serve.deployment must be called on a class or function.")
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
+        if not (prev_version is None or isinstance(prev_version, str)):
+            raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
             raise TypeError("init_args must be a tuple.")
         if route_prefix is not None:
@@ -1110,43 +1114,102 @@ class Deployment:
         if init_args is None:
             init_args = ()
 
-        self.backend_def = backend_def
-        self.name = name
-        self.version = version
-        self.config = config
-        self.init_args = init_args
-        self.route_prefix = route_prefix
-        self.ray_actor_options = ray_actor_options
+        self._func_or_class = func_or_class
+        self._name = name
+        self._version = version
+        self._prev_version = prev_version
+        self._config = config
+        self._init_args = init_args
+        self._route_prefix = route_prefix
+        self._ray_actor_options = ray_actor_options
+
+    @property
+    def name(self) -> str:
+        """Unique name of this deployment."""
+        return self._name
+
+    @property
+    def version(self) -> Optional[str]:
+        """Version of this deployment.
+
+        If None, will be redeployed every time `.deploy()` is called.
+        """
+        return self._version
+
+    @property
+    def prev_version(self) -> Optional[str]:
+        """Existing version of deployment to target.
+
+        If prev_version does not match with existing deployment
+        version, the deployment will fail to be deployed.
+        """
+        return self._prev_version
+
+    @property
+    def func_or_class(self) -> Callable:
+        """Underlying class or function that this deployment wraps."""
+        return self._func_or_class
+
+    @property
+    def num_replicas(self) -> int:
+        """Current target number of replicas."""
+        return self._config.num_replicas
+
+    @property
+    def user_config(self) -> Any:
+        """Current dynamic user-provided config options."""
+        return self._config.user_config
+
+    @property
+    def max_concurrent_queries(self) -> int:
+        """Current max outstanding queries from each handle."""
+        return self._config.max_concurrent_queries
+
+    @property
+    def route_prefix(self) -> Optional[str]:
+        """HTTP route prefix that this deploymet is exposed under."""
+        return self._route_prefix
+
+    @property
+    def ray_actor_options(self) -> Optional[Dict]:
+        """Actor options such as resources required for each replica."""
+        return self._ray_actor_options
+
+    @property
+    def init_args(self) -> Tuple[Any]:
+        """Arguments passed to the underlying class' constructor."""
+        return self._init_args
 
     def __call__(self):
         raise RuntimeError("Deployments cannot be constructed directly. "
                            "Use `deployment.deploy() instead.`")
 
     def deploy(self, *init_args, _blocking=True):
-        """Deploy this deployment.
+        """Deploy or update this deployment.
 
         Args:
             *init_args (optional): args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        if len(init_args) == 0 and self.init_args is not None:
-            init_args = self.init_args
+        if len(init_args) == 0 and self._init_args is not None:
+            init_args = self._init_args
 
         return _get_global_client().deploy(
-            self.name,
-            self.backend_def,
+            self._name,
+            self._func_or_class,
             *init_args,
-            ray_actor_options=self.ray_actor_options,
-            config=self.config,
-            version=self.version,
-            route_prefix=self.route_prefix,
+            ray_actor_options=self._ray_actor_options,
+            config=self._config,
+            version=self._version,
+            prev_version=self._prev_version,
+            route_prefix=self._route_prefix,
             _blocking=_blocking,
             _internal=True)
 
     def delete(self):
         """Delete this deployment."""
         return _get_global_client().delete_deployment(
-            self.name, _internal=True)
+            self._name, _internal=True)
 
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
@@ -1162,7 +1225,7 @@ class Deployment:
             ServeHandle
         """
         return _get_global_client().get_handle(
-            self.name,
+            self._name,
             missing_ok=True,
             sync=sync,
             _internal_use_serve_request=False,
@@ -1170,9 +1233,10 @@ class Deployment:
 
     def options(
             self,
-            backend_def: Optional[Callable] = None,
+            func_or_class: Optional[Callable] = None,
             name: Optional[str] = None,
             version: Optional[str] = None,
+            prev_version: Optional[str] = None,
             init_args: Optional[Tuple[Any]] = None,
             route_prefix: Optional[str] = None,
             num_replicas: Optional[int] = None,
@@ -1185,7 +1249,7 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
         """
-        new_config = self.config.copy()
+        new_config = self._config.copy()
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
         if user_config is not None:
@@ -1193,32 +1257,33 @@ class Deployment:
         if max_concurrent_queries is not None:
             new_config.max_concurrent_queries = max_concurrent_queries
 
-        if backend_def is None:
-            backend_def = self.backend_def
+        if func_or_class is None:
+            func_or_class = self._func_or_class
 
         if name is None:
-            name = self.name
+            name = self._name
 
         if version is None:
-            version = self.version
+            version = self._version
 
         if init_args is None:
-            init_args = self.init_args
+            init_args = self._init_args
 
         if route_prefix is None:
-            if self.route_prefix == f"/{self.name}":
+            if self._route_prefix == f"/{self._name}":
                 route_prefix = None
             else:
-                route_prefix = self.route_prefix
+                route_prefix = self._route_prefix
 
         if ray_actor_options is None:
-            ray_actor_options = self.ray_actor_options
+            ray_actor_options = self._ray_actor_options
 
         return Deployment(
-            backend_def,
+            func_or_class,
             name,
             new_config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
@@ -1227,21 +1292,21 @@ class Deployment:
 
     def __eq__(self, other):
         return all([
-            self.name == other.name,
-            self.version == other.version,
-            self.config == other.config,
-            self.init_args == other.init_args,
-            self.route_prefix == other.route_prefix,
-            self.ray_actor_options == self.ray_actor_options,
+            self._name == other._name,
+            self._version == other._version,
+            self._config == other._config,
+            self._init_args == other._init_args,
+            self._route_prefix == other._route_prefix,
+            self._ray_actor_options == self._ray_actor_options,
         ])
 
     def __str__(self):
-        if self.route_prefix is None:
-            route_prefix = f"/{self.name}"
+        if self._route_prefix is None:
+            route_prefix = f"/{self._name}"
         else:
-            route_prefix = self.route_prefix
-        return (f"Deployment(name={self.name},"
-                f"version={self.version},"
+            route_prefix = self._route_prefix
+        return (f"Deployment(name={self._name},"
+                f"version={self._version},"
                 f"route_prefix={route_prefix})")
 
     def __repr__(self):
@@ -1249,13 +1314,14 @@ class Deployment:
 
 
 @overload
-def deployment(backend_def: Callable) -> Deployment:
+def deployment(func_or_class: Callable) -> Deployment:
     pass
 
 
 @overload
 def deployment(name: Optional[str] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                num_replicas: Optional[int] = None,
                init_args: Optional[Tuple[Any]] = None,
                ray_actor_options: Optional[Dict] = None,
@@ -1266,9 +1332,10 @@ def deployment(name: Optional[str] = None,
 
 
 def deployment(
-        _backend_def: Optional[Callable] = None,
+        _func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
         version: Optional[str] = None,
+        prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
         route_prefix: Optional[str] = None,
@@ -1286,6 +1353,11 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
+        prev_version (Optional[str]): Version of the existing deployment which
+            is used as a precondition for the next deployment. If prev_version
+            does not match with the existing deployment's version, the
+            deployment will fail. If not provided, deployment procedure will
+            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.
         init_args (Optional[Tuple]): Arguments to be passed to the class
@@ -1331,12 +1403,13 @@ def deployment(
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
 
-    def decorator(_backend_def):
+    def decorator(_func_or_class):
         return Deployment(
-            _backend_def,
-            name if name is not None else _backend_def.__name__,
+            _func_or_class,
+            name if name is not None else _func_or_class.__name__,
             config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
@@ -1345,7 +1418,7 @@ def deployment(
 
     # This handles both parametrized and non-parametrized usage of the
     # decorator. See the @serve.batch code for more details.
-    return decorator(_backend_def) if callable(_backend_def) else decorator
+    return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
 def get_deployment(name: str) -> Deployment:

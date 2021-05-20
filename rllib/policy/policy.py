@@ -789,9 +789,17 @@ class Policy(metaclass=ABCMeta):
                 obj.get_initial_state = lambda: []
                 if "state_in_0" in view_reqs:
                     self.is_recurrent = lambda: True
+
         for i, state in enumerate(init_state):
-            space = Box(-1.0, 1.0, shape=state.shape) if \
-                hasattr(state, "shape") else state
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
+            fw = np if isinstance(state, np.ndarray) else torch if \
+                torch and torch.is_tensor(state) else None
+            if fw:
+                space = Box(-1.0, 1.0, shape=state.shape) if \
+                    fw.all(state == 0.0) else state
+            else:
+                space = state
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,

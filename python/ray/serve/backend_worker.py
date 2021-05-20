@@ -310,5 +310,3 @@ class RayServeReplica:
                     f"Waiting for an additional {sleep_time}s to shut down "
                     f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
-
-        ray.actor.exit_actor()

@@ -162,6 +162,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def namespace(self):
+        return self.core_worker.get_job_config().ray_namespace
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
@@ -175,6 +179,12 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env in json format"""
+        return json.loads(
+            self.core_worker.get_job_config().runtime_env.raw_json)
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
