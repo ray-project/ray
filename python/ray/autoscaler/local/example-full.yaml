@@ -33,6 +33,12 @@ docker:
     pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
 
+# If desired, you can toggle off Docker support and run Ray directly on your cluster's machines.
+# In this situation, you'd want to make sure Ray is installed on the machines beforehand, or you
+# can add the installation steps to setup_commands:
+# docker: {}
+# setup_commmands: ["pip install -U ray[default]"]
+
 # Local specific configuration.
 provider:
     type: local
@@ -49,11 +55,9 @@ auth:
     # Optional if an ssh private key is necessary to ssh to the cluster.
     # ssh_private_key: ~/.ssh/id_rsa
 
-# Leave this empty.
-head_node: {}
-
-# Leave this empty.
-worker_nodes: {}
+#
+min_workers: X
+max_workers: Y
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
