@@ -349,7 +349,8 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
-async def test_spill_during_get(object_spilling_config, shutdown_only, is_async):
+async def test_spill_during_get(object_spilling_config, shutdown_only,
+                                is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
         num_cpus=4,
@@ -364,11 +365,13 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     )
 
     if is_async:
+
         @ray.remote
         class Actor:
             async def f(self):
                 return np.zeros(10 * 1024 * 1024)
     else:
+
         @ray.remote
         def f():
             return np.zeros(10 * 1024 * 1024)
