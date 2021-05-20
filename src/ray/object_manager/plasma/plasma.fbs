@@ -65,6 +65,8 @@ enum PlasmaError:int {
   ObjectNonexistent,
   // Trying to create an object but there isn't enough space in the store.
   OutOfMemory,
+  // Trying to create an object but there isn't enough space in the store.
+  TransientOutOfMemory,
   // Trying to delete an object but it's not sealed.
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
