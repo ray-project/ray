@@ -707,7 +707,8 @@ def main():
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
-                logger.error("Failed to put health check.")
+                logger.error(f"[{args.mode}] Failed to put health check "
+                             f"on {args.redis_address}")
                 logger.exception(e)
 
             time.sleep(1)
