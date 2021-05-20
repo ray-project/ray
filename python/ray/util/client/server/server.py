@@ -3,7 +3,6 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
-from dataclasses import dataclass
 import os
 import queue
 
@@ -22,7 +21,9 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import (GRPC_OPTIONS, CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
+                                    CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
@@ -33,6 +34,8 @@ from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
+
+TIMEOUT_FOR_SPECIFIC_SERVER_S = 30
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -171,6 +174,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             data = ray.is_initialized()
         elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
             data = ray.timeline()
+        elif request.type == ray_client_pb2.ClusterInfoType.PING:
+            data = {}
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
@@ -561,20 +566,6 @@ def decode_options(
     return opts
 
 
-@dataclass
-class ClientServerHandle:
-    """Holds the handles to the registered gRPC servicers and their server."""
-    task_servicer: RayletServicer
-    data_servicer: DataServicer
-    logs_servicer: LogstreamServicer
-    grpc_server: grpc.Server
-
-    # Add a hook for all the cases that previously
-    # expected simply a gRPC server
-    def __getattr__(self, attr):
-        return getattr(self.grpc_server, attr)
-
-
 def serve(connection_str, ray_connect_handler=None):
     def default_connect_handler(job_config: JobConfig = None):
         with disable_client_hook():
@@ -668,6 +659,11 @@ def main():
     parser.add_argument(
         "-p", "--port", type=int, default=50051, help="Port to bind to")
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["proxy", "legacy", "specific-server"],
+        default="proxy")
+    parser.add_argument(
         "--redis-address",
         required=False,
         type=str,
@@ -690,8 +686,13 @@ def main():
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport, ray_connect_handler)
+    if args.mode == "proxy":
+        server = serve_proxier(hostport, args.redis_address)
+    else:
+        server = serve(hostport, ray_connect_handler)
+
     try:
+        idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
         while True:
             health_report = {
                 "time": time.time(),
@@ -707,6 +708,18 @@ def main():
                 logger.exception(e)
 
             time.sleep(1)
+            if args.mode == "specific-server":
+                if server.data_servicer.num_clients > 0:
+                    idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
+                else:
+                    idle_checks_remaining -= 1
+                if idle_checks_remaining == 0:
+                    raise KeyboardInterrupt()
+                if (idle_checks_remaining % 5 == 0 and idle_checks_remaining !=
+                        TIMEOUT_FOR_SPECIFIC_SERVER_S):
+                    logger.info(
+                        f"{idle_checks_remaining} idle checks before shutdown."
+                    )
 
     except KeyboardInterrupt:
         server.stop(0)
