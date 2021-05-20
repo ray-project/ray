@@ -13,6 +13,7 @@ import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
+from ray.autoscaler._private.local import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -143,14 +144,19 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Has a valid Docker configuration if provided.
     - Has max_worker set for each node type.
     """
-    with_defaults = fillout_defaults(config)
+    is_local = config["provider"]["type"] == "local"
+    if is_local:
+        config = prepare_local(config)
+    with_defaults = fillout_defaults(config, is_local)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
     fill_node_type_max_workers(with_defaults)
     return with_defaults
 
 
-def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+def fillout_defaults(config: Dict[str, Any],
+                     is_local: bool = False) -> Dict[str, Any]:
+    provider_type = config["provider"]["type"]
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
 
@@ -169,7 +175,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
                         ("head_node" in config or "worker_nodes" in config))
     # Do merging logic for legacy configs.
     if is_legacy_config:
-        merged_config = merge_legacy_yaml_with_defaults(merged_config)
+        merged_config = merge_legacy_yaml_with_defaults(merged_config,
+                                                        is_local)
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
     merged_config.pop("min_workers", None)
@@ -178,16 +185,19 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def merge_legacy_yaml_with_defaults(
-        merged_config: Dict[str, Any]) -> Dict[str, Any]:
+        merged_config: Dict[str, Any],
+        is_local: bool) -> Dict[str, Any]:
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
-    cli_logger.warning(
+    warning_message = (
         "Converting legacy cluster config to a multi node type cluster "
         "config. Multi-node-type cluster configs are the recommended "
         "format for configuring Ray clusters. "
         "See the docs for more information:\n"
         "https://docs.ray.io/en/master/cluster/config.html#full-configuration")
+    if not is_local:
+        cli_logger.warning(warning_message)
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
