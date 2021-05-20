@@ -248,13 +248,13 @@ class AcsClient:
     def delete_instance(self, instance_id):
         request = DeleteInstanceRequest()
         request.set_InstanceId(instance_id)
-        request.set_ForceStop(True)
+        request.set_Force(True)
         logging.info("Delete %s command submit successfully", instance_id)
         self._send_request(request)
 
     def delete_instances(self, instance_ids):
         request = DeleteInstancesRequest()
-        request.set_ForceStop(True)
+        request.set_Force(True)
         request.set_InstanceIds(instance_ids)
         self._send_request(request)
 
