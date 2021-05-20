@@ -172,6 +172,8 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
+        If you encounters error: 403 Error:InvalidAccountStatus.NotEnoughBalance, make sure account balance is not less than 100 RMB.
+
     .. group-tab:: Custom
 
         Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
