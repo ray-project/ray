@@ -277,6 +277,8 @@ def test_pip_task(shutdown_only):
     requirements_txt = f"""
     {ray_wheel_path}
     pip-install-test==0.5
+    opentelemetry-api==1.0.0rc1
+    opentelemetry-sdk==1.0.0rc1
     """
     runtime_env = {"pip": requirements_txt}
 
@@ -306,6 +308,8 @@ def test_pip_job_config(shutdown_only):
     requirements_txt = f"""
     {ray_wheel_path}
     pip-install-test==0.5
+    opentelemetry-api==1.0.0rc1
+    opentelemetry-sdk==1.0.0rc1
     """
     runtime_env = {"pip": requirements_txt}
 
