@@ -38,7 +38,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.server_address:

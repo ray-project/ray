@@ -81,8 +81,11 @@ def get_data_loaders():
             batch_size=64,
             shuffle=True)
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST("~/data", train=False,
-                           download=True, transform=mnist_transforms),
+            datasets.MNIST(
+                "~/data",
+                train=False,
+                download=True,
+                transform=mnist_transforms),
             batch_size=64,
             shuffle=True)
     return train_loader, test_loader
@@ -122,7 +125,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.server_address:

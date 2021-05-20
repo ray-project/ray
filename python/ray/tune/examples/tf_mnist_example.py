@@ -21,6 +21,7 @@ from ray import tune
 
 MAX_TRAIN_BATCH = 10
 
+
 class MyModel(Model):
     def __init__(self, hiddens=128):
         super(MyModel, self).__init__()
@@ -123,7 +124,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.server_address and not args.smoke_test:

@@ -9,6 +9,7 @@ from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCallback
 
+
 def train_mnist(config):
     # https://github.com/tensorflow/tensorflow/issues/32159
     import tensorflow as tf
@@ -42,6 +43,7 @@ def train_mnist(config):
         callbacks=[TuneReportCallback({
             "mean_accuracy": "accuracy"
         })])
+
 
 def tune_mnist(num_training_iterations):
     sched = AsyncHyperBandScheduler(
@@ -81,7 +83,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
     if args.smoke_test:
         ray.init(num_cpus=4)

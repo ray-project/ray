@@ -82,6 +82,7 @@ def train(config):
     total = time.time() - start
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
+
 def tune_horovod(hosts_per_trial, slots_per_host, num_samples, use_gpu):
     horovod_trainable = DistributedTrainableCreator(
         train,
@@ -120,7 +121,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
@@ -131,6 +132,8 @@ if __name__ == "__main__":
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
 
-    tune_horovod(hosts_per_trial=args.hosts_per_trial,
-                 slots_per_host=args.slots_per_host, num_samples=2 if
-        args.smoke_test else 10, use_gpu=args.gpu)
+    tune_horovod(
+        hosts_per_trial=args.hosts_per_trial,
+        slots_per_host=args.slots_per_host,
+        num_samples=2 if args.smoke_test else 10,
+        use_gpu=args.gpu)

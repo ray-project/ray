@@ -6,7 +6,6 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from torchvision import datasets
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
     get_data_loaders
 
@@ -59,9 +58,9 @@ def train_convnet(config, checkpoint_dir=None):
 
 # __train_end__
 
+
 def test_best_model(analysis):
     """Test the best model given output of tune.run"""
-    best_trial = analysis.best_trial
     best_checkpoint_path = analysis.best_checkpoint
     best_model = ConvNet()
     best_checkpoint = torch.load(
@@ -71,6 +70,7 @@ def test_best_model(analysis):
     # accuracy may be different from metrics shown in tuning process.
     test_acc = test(best_model, get_data_loaders()[1])
     print("best model accuracy: ", test_acc)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.server_address:

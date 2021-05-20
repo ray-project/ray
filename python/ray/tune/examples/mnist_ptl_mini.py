@@ -88,9 +88,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     trainable = tune.with_parameters(
-        train_mnist_tune,
-        num_epochs=num_epochs,
-        num_gpus=gpus_per_trial)
+        train_mnist_tune, num_epochs=num_epochs, num_gpus=gpus_per_trial)
     analysis = tune.run(
         trainable,
         resources_per_trial={
@@ -118,7 +116,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:

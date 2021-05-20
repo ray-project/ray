@@ -27,6 +27,7 @@ def train_breast_cancer(config: dict):
         verbose_eval=False,
         callbacks=[TuneReportCheckpointCallback(filename="model.xgb")])
 
+
 def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
     best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
@@ -34,6 +35,7 @@ def get_best_model_checkpoint(analysis):
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
+
 
 def tune_xgboost():
     search_space = {
@@ -61,7 +63,7 @@ def tune_xgboost():
         num_samples=10,
         scheduler=scheduler)
 
-
+    return analysis
 
 
 if __name__ == "__main__":
@@ -73,7 +75,7 @@ if __name__ == "__main__":
         default=None,
         required=False,
         help="The address of server to connect to if using "
-             "Ray Client.")
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -86,8 +88,8 @@ if __name__ == "__main__":
     if args.server_address:
         # If connecting to a remote server with Ray Client, checkpoint loading
         # should be wrapped in a task so it will execute on the server.
-        best_bst = ray.get(ray.remote(get_best_model_checkpoint.remote(
-            analysis)))
+        best_bst = ray.get(
+            ray.remote(get_best_model_checkpoint.remote(analysis)))
     else:
         best_bst = get_best_model_checkpoint(analysis)
 
