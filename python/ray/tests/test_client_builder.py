@@ -10,6 +10,7 @@ from ray.test_utils import run_string_as_driver_nonblocking,\
 
 from ray.cluster_utils import Cluster
 
+
 @pytest.mark.parametrize("address", [
     "localhost:1234", "localhost:1234/url?params",
     "1.2.3.4/cluster-1?test_param=param1?"
