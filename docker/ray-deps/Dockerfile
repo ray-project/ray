@@ -14,6 +14,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install $(basename $WHEEL_PATH)[all] 
         "google-api-python-client==1.7.8" \
         "google-oauth" \
         "kubernetes" \
+        "kopf" \
         "azure-cli-core==2.22.0" \
         "azure-mgmt-compute==14.0.0" \
         "azure-mgmt-msi==1.0.0" \
