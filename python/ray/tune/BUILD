@@ -38,7 +38,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client/py"],
     deps = [":tune_lib"],
-    tags = ["client"]
+    tags = ["client", "py37", "exclusive"]
 )
 
 py_test(

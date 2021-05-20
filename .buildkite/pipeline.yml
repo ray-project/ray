@@ -229,7 +229,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example,-flaky,-py37 python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples {2/2}"
@@ -255,16 +255,16 @@
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky,-client python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
-- label: ":tropical_fish: ML Libraries w/ Ray Client Examples."
+- label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build-tests_only --test_tag_filters=client,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
 
 - label: ":book: Doc tests and examples"
   conditions:
