@@ -9,6 +9,7 @@ unsupported_field_message = ("The field {} is not supported "
 
 
 def prepare_local(config: Dict[str, Any]):
+    config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
         if config.get("head_node"):
             err_msg = unsupported_field_message.format(field)
@@ -17,19 +18,26 @@ def prepare_local(config: Dict[str, Any]):
         config = prepare_coordinator(config)
     else:
         config = prepare_manual(config)
-    # Signal to further steps in
+    # Presence of a head node field triggers legacy config processing later in
+    # the bootstrap process.
     config["head_node"] = {}
+    return config
 
 
 def prepare_coordinator(config):
-    if not "max_workers" in config:
-        cli_logger.error()
+    config = copy.deepcopy(config)
+    if "max_workers" not in config:
+        cli_logger.error("The field `max_workers` is required when using an "
+                         "automatically managed on-premise cluster.")
+    config.setdefault("min_workers", 0)
+    return config
 
 
 def prepare_manual(config):
+    config = copy.deepcopy(config)
     if "worker_ips" not in config["provider"]:
         cli_logger.error("Please supply a list of `worker_ips` "
-                                   "or a `coordinator_address`.")
+                         "or a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
     max_specified = "max_workers" in config
     min_specified = "min_workers" in config
@@ -46,6 +54,7 @@ def prepare_manual(config):
                            "according to workload.")
     elif not max_specified and min_specified:
         config["max_workers"] = num_ips
+    return config
 
 
 def bootstrap_local(config: Dict[str, Any]):

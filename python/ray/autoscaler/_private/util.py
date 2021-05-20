@@ -196,6 +196,7 @@ def merge_legacy_yaml_with_defaults(
         "format for configuring Ray clusters. "
         "See the docs for more information:\n"
         "https://docs.ray.io/en/master/cluster/config.html#full-configuration")
+    # Legacy format is expected for local clusters.
     if not is_local:
         cli_logger.warning(warning_message)
 
