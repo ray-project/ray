@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+
+import ray
 from ray import tune
 from ray.tune.integration.horovod import DistributedTrainableCreator
 import time
@@ -80,6 +82,22 @@ def train(config):
     total = time.time() - start
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
+def tune_horovod(hosts_per_trial, slots_per_host, num_samples, use_gpu):
+    horovod_trainable = DistributedTrainableCreator(
+        train,
+        use_gpu=use_gpu,
+        num_hosts=hosts_per_trial,
+        num_slots=slots_per_host,
+        replicate_pem=False)
+    analysis = tune.run(
+        horovod_trainable,
+        metric="loss",
+        mode="min",
+        config={"lr": tune.uniform(0.1, 1)},
+        num_samples=num_samples,
+        fail_fast=True)
+    print("Best hyperparameters found were: ", analysis.best_config)
+
 
 if __name__ == "__main__":
     import argparse
@@ -96,25 +114,23 @@ if __name__ == "__main__":
         help=("Finish quickly for testing."))
     parser.add_argument("--hosts-per-trial", type=int, default=1)
     parser.add_argument("--slots-per-host", type=int, default=2)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
+    args, _ = parser.parse_known_args()
+
     if args.smoke_test:
-        import ray
         ray.init(num_cpus=2)
+    elif args.server_address:
+        ray.util.connect(args.server_address)
 
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
 
-    horovod_trainable = DistributedTrainableCreator(
-        train,
-        use_gpu=args.gpu,
-        num_hosts=args.hosts_per_trial,
-        num_slots=args.slots_per_host,
-        replicate_pem=False)
-    analysis = tune.run(
-        horovod_trainable,
-        metric="loss",
-        mode="min",
-        config={"lr": tune.uniform(0.1, 1)},
-        num_samples=2 if args.smoke_test else 10,
-        fail_fast=True)
-    print("Best hyperparameters found were: ", analysis.best_config)
+    tune_horovod(hosts_per_trial=args.hosts_per_trial,
+                 slots_per_host=args.slots_per_host, num_samples=2 if
+        args.smoke_test else 10, use_gpu=args.gpu)

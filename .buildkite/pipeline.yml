@@ -258,6 +258,14 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
+- label: ":tropical_fish: ML Libraries w/ Ray Client Examples."
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 .ci/travis/install-dependencies.sh
+    - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build-tests_only --test_tag_filters=client,-flaky python/ray/tune/...
+
 - label: ":book: Doc tests and examples"
   conditions:
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]

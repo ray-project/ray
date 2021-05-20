@@ -29,7 +29,7 @@ def load_data(data_dir="./data"):
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
-    with FileLock(os.path.expanduser("~/data.lock")):
+    with FileLock(os.path.expanduser("~/.data.lock")):
         trainset = torchvision.datasets.CIFAR10(
             root=data_dir, train=True, download=True, transform=transform)
 
@@ -63,7 +63,7 @@ class Net(nn.Module):
 
 
 # __train_begin__
-def train_cifar(config, checkpoint_dir=None, data_dir=None):
+def train_cifar(config, checkpoint_dir=None):
     net = Net(config["l1"], config["l2"])
 
     device = "cpu"
@@ -84,6 +84,7 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
 
+    data_dir = os.path.abspath("./data")
     trainset, testset = load_data(data_dir)
 
     test_abs = int(len(trainset) * 0.8)
@@ -194,8 +195,6 @@ def test_best_model(best_trial):
 
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-    data_dir = os.path.abspath("./data")
-
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -207,7 +206,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         grace_period=1,
         reduction_factor=2)
     result = tune.run(
-        tune.with_parameters(train_cifar, data_dir=data_dir),
+        tune.with_parameters(train_cifar),
         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
         config=config,
         metric="loss",
