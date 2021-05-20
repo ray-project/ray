@@ -1,6 +1,7 @@
 import os
 import pickle
 import pytest
+import sys
 import time
 
 import grpc
@@ -10,6 +11,9 @@ from ray.job_config import JobConfig
 import ray.util.client.server.proxier as proxier
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
 def test_proxy_manager_lifecycle(shutdown_only):
     """
     Creates a ProxyManager and tests basic handling of the lifetime of a
@@ -34,7 +38,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     proc = pm._get_server_for_client(client)
     assert proc.port == 45000
 
-    proc.process_handle().process.wait(5)
+    proc.process_handle().process.wait(10)
     # Wait for reconcile loop
     time.sleep(2)
 
@@ -42,6 +46,9 @@ def test_proxy_manager_lifecycle(shutdown_only):
     assert pm._get_unused_port() == 45001
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
