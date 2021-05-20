@@ -70,7 +70,8 @@ def wait_for_pods(n, namespace=NAMESPACE):
     pods = client.list_namespaced_pod(namespace=namespace).items
     # Double-check that the correct image is use.
     for pod in pods:
-        assert pod.spec.containers[0].image == IMAGE
+        assert pod.spec.containers[0].image == IMAGE,\
+            pod.spec.containers[0].image
     return len(pods) == n
 
 
@@ -133,7 +134,7 @@ def wait_for_status(cluster_name, status):
 
 
 def kubernetes_configs_directory():
-    relative_path = "python/ray/autoscaler/kubernetes"
+    relative_path = "deploy"
     return os.path.join(RAY_PATH, relative_path)
 
 
@@ -141,9 +142,13 @@ def get_kubernetes_config_path(name):
     return os.path.join(kubernetes_configs_directory(), name)
 
 
-def get_operator_config_path(file_name):
-    operator_configs = get_kubernetes_config_path("operator_configs")
+def get_component_config_path(file_name):
+    operator_configs = get_kubernetes_config_path("components")
     return os.path.join(operator_configs, file_name)
+
+
+def get_crd_path():
+    return get_kubernetes_config_path("charts/ray/crds/cluster_crd.yaml")
 
 
 def pods():
@@ -178,11 +183,9 @@ class KubernetesOperatorTest(unittest.TestCase):
                 tempfile.NamedTemporaryFile("w+") as job_file:
 
             # Get paths to operator configs
-            example_cluster_config_path = get_operator_config_path(
+            example_cluster_config_path = get_component_config_path(
                 "example_cluster.yaml")
-            example_cluster2_config_path = get_operator_config_path(
-                "example_cluster2.yaml")
-            operator_config_path = get_operator_config_path(
+            operator_config_path = get_component_config_path(
                 "operator_namespaced.yaml")
             job_path = os.path.join(RAY_PATH,
                                     "doc/kubernetes/job-example.yaml")
@@ -190,8 +193,10 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Load operator configs
             example_cluster_config = yaml.safe_load(
                 open(example_cluster_config_path).read())
-            example_cluster2_config = yaml.safe_load(
-                open(example_cluster2_config_path).read())
+            example_cluster2_config = copy.deepcopy(example_cluster_config)
+            # One worker for the second config
+            example_cluster2_config["spec"]["podTypes"][1]["minWorkers"] = 1
+            example_cluster2_config["metadata"]["name"] = "example-cluster2"
             operator_config = list(
                 yaml.safe_load_all(open(operator_config_path).read()))
             job_config = yaml.safe_load(open(job_path).read())

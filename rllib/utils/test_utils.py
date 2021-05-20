@@ -34,6 +34,8 @@ def framework_iterator(config=None,
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session (bool): If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
+            Also sets a seed (42) on the session to make the test
+            deterministic.
 
     Yields:
         str: If enter_session is False:
@@ -77,6 +79,7 @@ def framework_iterator(config=None,
         if fw == "tf" and session is True:
             sess = tf1.Session()
             sess.__enter__()
+            tf1.set_random_seed(42)
 
         print("framework={}".format(fw))
 

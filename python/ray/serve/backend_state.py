@@ -3,6 +3,7 @@ import time
 from abc import ABC
 from collections import defaultdict
 from enum import Enum
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
@@ -33,6 +34,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
+USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "0") == "1"
 
 
 class ActorReplicaWrapper:
@@ -82,24 +84,28 @@ class ActorReplicaWrapper:
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
 
-        try:
-            self._placement_group = ray.util.get_placement_group(
-                self._placement_group_name)
-        except ValueError:
-            logger.debug(
-                "Creating placement group '{}' for backend '{}'".format(
-                    self._placement_group_name, self._backend_tag))
-            self._placement_group = ray.util.placement_group(
-                [self._actor_resources],
-                lifetime="detached",
-                name=self._placement_group_name)
+        # Feature flagging because of placement groups doesn't handle
+        # newly added nodes.
+        # https://github.com/ray-project/ray/issues/15801
+        if USE_PLACEMENT_GROUP:
+            try:
+                self._placement_group = ray.util.get_placement_group(
+                    self._placement_group_name)
+            except ValueError:
+                logger.debug(
+                    "Creating placement group '{}' for backend '{}'".format(
+                        self._placement_group_name, self._backend_tag))
+                self._placement_group = ray.util.placement_group(
+                    [self._actor_resources],
+                    lifetime="detached" if self._detached else None,
+                    name=self._placement_group_name)
 
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
             logger.debug("Starting replica '{}' for backend '{}'.".format(
                 self._replica_tag, self._backend_tag))
-            self._actor_handle = ray.remote(backend_info.worker_class).options(
+            self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
                 placement_group=self._placement_group,
@@ -114,20 +120,9 @@ class ActorReplicaWrapper:
         ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
         return len(ready) == 1
 
-    def resource_requirements(
-            self) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """Returns required and currently available resources.
-
-        Only resources with nonzero requirements will be included in the
-        required dict and only resources in the required dict will be
-        included in the available dict (filtered for relevance).
-        """
-        required = {k: v for k, v in self._actor_resources.items() if v > 0}
-        available = {
-            k: v
-            for k, v in ray.available_resources().items() if k in required
-        }
-        return required, available
+    @property
+    def actor_resources(self) -> Dict[str, float]:
+        return self._actor_resources
 
     def graceful_stop(self) -> None:
         """Request the actor to exit gracefully."""
@@ -148,9 +143,11 @@ class ActorReplicaWrapper:
             return True
 
         try:
-            ray.get_actor(self._actor_name)
+            handle = ray.get_actor(self._actor_name)
             ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
             self._stopped = len(ready) == 1
+            if self._stopped:
+                ray.kill(handle, no_restart=True)
         except ValueError:
             self._stopped = True
 
@@ -176,6 +173,9 @@ class ActorReplicaWrapper:
 
         Currently, this just removes the placement group.
         """
+        if not USE_PLACEMENT_GROUP:
+            return
+
         try:
             ray.util.remove_placement_group(
                 ray.util.get_placement_group(self._placement_group_name))
@@ -254,35 +254,25 @@ class BackendReplica(VersionedReplica):
         self._prev_slow_startup_warning_time = time.time()
         self._state = ReplicaState.STARTING
 
-    def check_started(self) -> bool:
+    def check_started(self) -> Tuple[bool, bool]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
+
+        Returns:
+            (ready, past_slow_startup_threshold)
         """
         if self._state == ReplicaState.RUNNING:
-            return True
+            return True, False
         assert self._state == ReplicaState.STARTING, (
             f"State must be {ReplicaState.STARTING}, *not* {self._state}")
 
         if self._actor.check_ready():
             self._state = ReplicaState.RUNNING
-            return True
+            return True, False
 
         time_since_start = time.time() - self._start_time
-        if (time_since_start > SLOW_STARTUP_WARNING_S
-                and time.time() - self._prev_slow_startup_warning_time >
-                SLOW_STARTUP_WARNING_PERIOD_S):
-            required, available = self._actor.resource_requirements()
-            logger.warning(
-                f"Replica '{self._replica_tag}' for backend "
-                f"'{self._backend_tag}' has taken more than "
-                f"{time_since_start:.0f}s to start up. This may be "
-                "caused by waiting for the cluster to auto-scale or "
-                "because the backend constructor is slow. Resources required: "
-                f"{required}, resources available: {available}.")
-            self._prev_slow_startup_warning_time = time.time()
-
-        return False
+        return False, time_since_start > SLOW_STARTUP_WARNING_S
 
     def set_should_stop(self, graceful_shutdown_timeout_s: Duration) -> None:
         """Mark the replica to be stopped in the future.
@@ -347,6 +337,24 @@ class BackendReplica(VersionedReplica):
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def resource_requirements(
+            self) -> Tuple[Dict[str, float], Dict[str, float]]:
+        """Returns required and currently available resources.
+
+        Only resources with nonzero requirements will be included in the
+        required dict and only resources in the required dict will be
+        included in the available dict (filtered for relevance).
+        """
+        required = {
+            k: v
+            for k, v in self._actor.actor_resources.items() if v > 0
+        }
+        available = {
+            k: v
+            for k, v in ray.available_resources().items() if k in required
+        }
+        return required, available
 
 
 class ReplicaStateContainer:
@@ -490,6 +498,8 @@ class BackendState:
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._backend_goals: Dict[BackendTag, GoalId] = dict()
         self._target_versions: Dict[BackendTag, str] = dict()
+        self._prev_startup_warnings: Dict[BackendTag, float] = defaultdict(
+            float)
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
@@ -867,14 +877,34 @@ class BackendState:
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
+            slow_start_replicas = []
             for replica in replicas.pop(states=[ReplicaState.STARTING]):
-                if replica.check_started():
+                ready, slow_start = replica.check_started()
+                if ready:
                     # This replica should be now be added to handle's replica
                     # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
                 else:
                     replicas.add(ReplicaState.STARTING, replica)
+                    if slow_start:
+                        slow_start_replicas.append(replica)
+
+            if (len(slow_start_replicas)
+                    and time.time() - self._prev_startup_warnings[backend_tag]
+                    > SLOW_STARTUP_WARNING_PERIOD_S):
+                required, available = slow_start_replicas[
+                    0].resource_requirements()
+                logger.warning(
+                    f"Backend '{backend_tag}' has {len(slow_start_replicas)} "
+                    "replicas that have taken more than "
+                    f"{SLOW_STARTUP_WARNING_S}s to start up. This may be "
+                    "caused by waiting for the cluster to auto-scale or "
+                    "because the constructor is slow. Resources required "
+                    f"for each replica: {required}, resources available: "
+                    f"{available}.")
+
+                self._prev_startup_warnings[backend_tag] = time.time()
 
             for replica in replicas.pop(states=[ReplicaState.STOPPING]):
                 if not replica.check_stopped():

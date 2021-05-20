@@ -101,7 +101,6 @@ void AgentManager::StartAgent() {
 
 void AgentManager::CreateRuntimeEnvOrReuse(const std::string &serialized_runtime_env,
                                            CreateRuntimeEnvCallback callback) {
-  std::cout << "CreateRuntimeEnvOrReuse" << std::endl;
   rpc::CreateRuntimeEnvRequest request;
   request.set_serialized_runtime_env(serialized_runtime_env);
   runtime_env_agent_client_->CreateRuntimeEnv(request, callback);

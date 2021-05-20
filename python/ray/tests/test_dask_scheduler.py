@@ -4,6 +4,7 @@ import pytest
 import sys
 import unittest
 import ray
+from ray.util.client.common import ClientObjectRef
 
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
@@ -39,7 +40,8 @@ def test_ray_dask_persist(ray_start_regular_shared):
     from ray.util.dask import ray_dask_get
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
-    assert isinstance(next(iter(result.dask.values())), ray.ObjectRef)
+    assert isinstance(
+        next(iter(result.dask.values())), (ray.ObjectRef, ClientObjectRef))
 
 
 if __name__ == "__main__":

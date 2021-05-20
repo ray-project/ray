@@ -28,7 +28,7 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
 
 torch, nn = try_import_torch()
 
@@ -472,37 +472,34 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
+        # For multi-GPU, split the batch into n slices (n=#GPUs).
+        if len(self.devices) == 1:
+            batches = [postprocessed_batch]
+        else:
+            from ray.rllib.utils.sgd import minibatches
+            batches = list(
+                minibatches(
+                    postprocessed_batch,
+                    len(postprocessed_batch) // len(self.devices),
+                    shuffle=False))
+
         if not isinstance(postprocessed_batch, SampleBatch) or \
                 not postprocessed_batch.zero_padded:
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                max_seq_len=self.max_seq_len,
-                shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req,
-                view_requirements=self.view_requirements,
-            )
+            for b in batches:
+                pad_batch_to_sequences_of_same_size(
+                    b,
+                    max_seq_len=self.max_seq_len,
+                    shuffle=False,
+                    batch_divisibility_req=self.batch_divisibility_req,
+                    view_requirements=self.view_requirements,
+                )
 
-        # Mark the batch as "is_training" so the Model can use this
-        # information.
-        postprocessed_batch.is_training = True
+        for b, d in zip(batches, self.devices):
+            b.is_training = True
+            self._lazy_tensor_dict(b, device=d)
 
-        # Single device case: Use batch as-is (no slicing).
-        if len(self.devices) == 1:
-            batches = [self._lazy_tensor_dict(postprocessed_batch)]
         # Multi-GPU case: Slice inputs into n (roughly) equal batches.
-        else:
-            len_ = len(postprocessed_batch)
-            batches = []
-            start = 0
-            for i, device in enumerate(self.devices):
-                shard_len = len_ // (len(self.devices) - i)
-                batch = self._lazy_tensor_dict(
-                    postprocessed_batch.slice(start, start + shard_len),
-                    device=device)
-                batches.append(batch)
-                len_ -= shard_len
-                start += shard_len
-
+        if len(self.devices) > 1:
             # Copy weights of main model to all towers.
             state_dict = self.model.state_dict()
             for tower in self.model_gpu_towers:
@@ -844,12 +841,16 @@ class TorchPolicy(Policy):
                         e.args[0] + "\n" +
                         "In tower {} on device {}".format(shard_idx, device))
 
-        # Single device (GPU) case.
-        if len(self.devices) == 1:
-            _worker(0, self.model, sample_batches[0], self.device)
-            if isinstance(results[0], ValueError):
-                raise (results[0])
-            return [results[0]]
+        # Single device (GPU) or fake-GPU case (serialize for better
+        # debugging).
+        if len(self.devices) == 1 or self.config["_fake_gpus"]:
+            for shard_idx, (model, sample_batch, device) in enumerate(
+                    zip(self.model_gpu_towers, sample_batches, self.devices)):
+                _worker(shard_idx, model, sample_batch, device)
+                # Raise errors right away for better debugging.
+                last_result = results[len(results) - 1]
+                if isinstance(last_result, ValueError):
+                    raise last_result
         # Multi device (GPU) case: Parallelize via threads.
         else:
             threads = [
