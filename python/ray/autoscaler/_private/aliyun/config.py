@@ -1,3 +1,4 @@
+import logging
 import os
 import stat
 
@@ -10,6 +11,7 @@ STARTING = "Starting"
 STOPPING = "Stopping"
 STOPPED = "Stopped"
 
+logger = logging.getLogger(__name__)
 
 def bootstrap_aliyun(config):
     # print(config["provider"])
@@ -92,6 +94,9 @@ def _get_or_import_key_pair(config):
 
     if keypairs is not None and len(keypairs) > 0:
         if "ssh_private_key" not in config["auth"]:
+            logger.info(
+                "{} keypair exists, use {} as local ssh key"
+                .format(key_name,key_path))
             config["auth"]["ssh_private_key"] = key_path
     else:
         if "ssh_private_key" not in config["auth"]:
