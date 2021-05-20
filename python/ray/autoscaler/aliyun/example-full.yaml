@@ -140,8 +140,8 @@ setup_commands:
     - wget https://repo.continuum.io/archive/Anaconda3-2020.11-Linux-x86_64.sh || true
     - bash Anaconda3-2020.11-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
-    - rm -rf Anaconda3-2020.11-Linux-x86_64.sh
     # Install Ray
+    - pip install pytest-runner
     - pip install -U ray
     # Install Aliyun skd
     - pip install aliyun-python-sdk-core
