@@ -563,7 +563,8 @@ def get_wheel_filename(
         The wheel file name.  Examples:
             ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38"]
+    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
+                                              " '37', or '38'")
 
     os_strings = {
         "darwin": "macosx_10_13_x86_64"
@@ -572,7 +573,8 @@ def get_wheel_filename(
         "win32": "win_amd64"
     }
 
-    assert sys_platform in os_strings
+    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
+                                        " 'linux', or 'win32'")
 
     wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
                       f"cp{py_version}{'m' if py_version != '38' else ''}"
