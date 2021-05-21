@@ -15,7 +15,7 @@ in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
 timeline`` from the command line or by using the following command.
 
 To use the timeline, Ray profiling must be enabled by setting the
-``RAY_PROFILING=1`` environment variable prior to starting Ray.
+``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
 
 .. code-block:: python
 
