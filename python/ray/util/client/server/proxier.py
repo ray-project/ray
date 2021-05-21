@@ -7,6 +7,7 @@ import json
 import psutil
 from queue import Queue
 import socket
+import sys
 from threading import Thread, RLock
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -135,8 +136,13 @@ class ProxyManager():
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
-        psutil_proc = psutil.Process(proc.process.pid)
-        while True:
+        pid = proc.process.pid
+        if sys.platform != "win32":
+            psutil_proc = psutil.Process(pid)
+        else:
+            psutil_proc = None
+        # Don't use `psutil` on Win32
+        while psutil_proc is not None:
             if proc.process.poll() is not None:
                 logger.error(
                     f"SpecificServer startup failed for client: {client_id}")
@@ -148,6 +154,8 @@ class ProxyManager():
                 "Waiting for Process to reach the actual client server.")
             time.sleep(0.5)
         handle_ready.set_result(proc)
+        logger.info(f"SpecificServer started on port: {port} with PID: {pid} "
+                    f"for client: {client_id}")
         return proc.process.poll() is None
 
     def _get_server_for_client(self,

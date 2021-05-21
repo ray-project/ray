@@ -66,6 +66,7 @@ def get_tf_version():
     return tf.__version__
 
 assert ray.get(get_tf_version.remote()) == "{tf_version}"
+ray.util.disconnect()
 """
 
 
@@ -106,6 +107,7 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
                 check_remote_client_conda.format(tf_version=other_tf_version))
         finally:
             ray.util.disconnect()
+            ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -364,6 +366,7 @@ def test_conda_create_ray_client(call_ray_start):
             ray.get(f.remote())
     finally:
         ray.util.disconnect()
+        ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -380,15 +383,14 @@ def test_experimental_package(shutdown_only):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_lazy(shutdown_only):
-    import ray as real_ray
-    pkg = real_ray.experimental.load_package(
+    pkg = ray.experimental.load_package(
         os.path.join(
             os.path.dirname(__file__),
             "../experimental/packaging/example_pkg/ray_pkg.yaml"))
-    real_ray.init(num_cpus=2)
+    ray.init(num_cpus=2)
     a = pkg.MyActor.remote()
-    assert real_ray.get(a.f.remote()) == "hello world"
-    assert real_ray.get(pkg.my_func.remote()) == "hello world"
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
