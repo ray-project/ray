@@ -73,6 +73,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
                 "resources": dict(
                     actor_table_entry.task_spec.required_resources),
                 "actor_class": actor_table_entry.class_name,
+                "current_worker_id": actor_table_entry.address.worker_id.hex(),
+                "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
                 "port": actor_table_entry.address.port,
             }
