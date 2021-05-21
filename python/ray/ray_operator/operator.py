@@ -30,7 +30,7 @@ cluster_status_q = queue.Queue(
 )  # type: queue.Queue[Union[None, Tuple[str, str, str]]]
 
 
-class RayCluster(object):
+class RayCluster:
     """Manages an autoscaling Ray cluster.
 
     Attributes:
@@ -265,10 +265,6 @@ def update_fn(body, old, new, name, namespace, **kwargs):
             ray_clusters[cluster_identifier] = ray_cluster
 
         cluster_status_q.put((name, namespace, STATUS_UPDATING))
-
-        # Clean up the previous cluster monitor processes to prevent running
-        # multiple overlapping background threads
-        ray_cluster.clean_up_subprocess()
 
         # Update the config and restart the Ray processes if there's been a
         # failure.
