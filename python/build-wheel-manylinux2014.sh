@@ -95,7 +95,10 @@ done
 # hack, we should use auditwheel instead.
 for path in .whl/*.whl; do
   if [ -f "${path}" ]; then
+    # We might have "linux" here or "manylinux2014" here.  We need the
+    # output to always be "manylinux2014".
     mv "${path}" "${path//linux/manylinux2014}"
+    mv "${path}" "${path//manymanylinux20142014/manylinux2014}"
   fi
 done
 
