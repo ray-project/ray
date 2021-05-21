@@ -437,6 +437,21 @@ cache/
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
+def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = """
+print(ray.get_runtime_context().runtime_env["working_dir"])
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == working_dir
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -523,11 +538,11 @@ sleep(600)
     # waiting it to be up
     sleep(5)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the second one which should trigger an error
+    # Execute the second one which should work because Ray Client servers.
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "ERROR"
+    assert out.strip().split()[-1] == "1000"
     proc.kill()
     proc.wait()
 
@@ -573,14 +588,14 @@ sleep(600)
     sleep(5)
     runtime_env = f"""
 {{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
-    # Execute the following cmd in the second one which should
-    # fail
+    # Execute the following cmd in the second one and ensure that
+    # it is able to run.
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     proc.kill()
     proc.wait()
-    assert out.strip().split()[-1] == "ERROR"
+    assert out.strip().split()[-1] == "OK"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

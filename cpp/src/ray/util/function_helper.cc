@@ -5,7 +5,6 @@
 #include <string.h>
 #include <boost/filesystem.hpp>
 #include <memory>
-#include "address_helper.h"
 #include "ray/core.h"
 
 namespace ray {

@@ -1,3 +1,5 @@
+from typing import Optional, Type
+
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
@@ -7,6 +9,10 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.util.iter import LocalIterator
+from ray.rllib.policy.policy import Policy
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -46,14 +52,36 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+    MARWIL/BC have both TF and Torch policy support.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.marwil.marwil_torch_policy import \
             MARWILTorchPolicy
         return MARWILTorchPolicy
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
+    dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
     replay_buffer = SimpleReplayBuffer(config["replay_buffer_size"])
 
@@ -74,7 +102,11 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
