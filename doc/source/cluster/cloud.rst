@@ -13,13 +13,8 @@ To learn about deploying Ray on an existing Kubernetes cluster, refer to the gui
 
 .. _ref-cloud-setup:
 
-<<<<<<< HEAD
 Ray with cloud providers
 ------------------------
-=======
-AWS/GCP/Azure/Aliyun
---------------------
->>>>>>> update
 
 .. toctree::
     :hidden:
@@ -120,7 +115,6 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-<<<<<<< HEAD
     .. group-tab:: Staroid Kubernetes Engine (contributed)
 
         The Ray Cluster Launcher can be used to start Ray clusters on an existing Staroid Kubernetes Engine (SKE) cluster.
@@ -152,8 +146,6 @@ AWS/GCP/Azure/Aliyun
             # Tear down the cluster
             $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
 
-=======
->>>>>>> add note in doc
     .. group-tab:: Aliyun
 
         First, you need to configure your aliyun account. You need to set access key and access key secret in yaml config file.
