@@ -179,12 +179,6 @@ class RayCluster:
                 f"{log_prefix}: config path does not exist {self.config_path}")
 
 
-# Maps ray cluster (name, namespace) pairs to RayCluster python objects.
-# TODO: decouple monitoring background thread into a kopf.daemon and move this
-# into the memo state.
-ray_clusters = {}  # type: Dict[Tuple[str, str], RayCluster]
-
-
 @kopf.on.startup()
 def start_background_worker(memo: kopf.Memo, **_):
     memo.status_handler = threading.Thread(
@@ -214,7 +208,7 @@ def status_handling_loop(queue: queue.Queue):
 
 @kopf.on.resume("rayclusters")
 @kopf.on.create("rayclusters")
-def create_fn(body, name, namespace, logger, **kwargs):
+def create_fn(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
     log_prefix = ",".join(cluster_identifier)
@@ -223,7 +217,7 @@ def create_fn(body, name, namespace, logger, **kwargs):
                                                       cluster_identifier)
 
     ray_cluster = RayCluster(cluster_config)
-    ray_clusters[cluster_identifier] = ray_cluster
+    memo.ray_cluster = ray_cluster
     cluster_status_q.put((name, namespace, STATUS_UPDATING))
 
     # Launch a the Ray cluster by SSHing into the pod and running
@@ -235,9 +229,8 @@ def create_fn(body, name, namespace, logger, **kwargs):
 
 
 @kopf.on.update("rayclusters")
-def update_fn(body, old, new, name, namespace, **kwargs):
+def update_fn(body, old, new, name, namespace, memo: kopf.Memo, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
-    cluster_identifier = (name, namespace)
 
     # Check metadata.generation to determine if there's a spec change.
     old_generation = old["metadata"]["generation"]
@@ -258,10 +251,10 @@ def update_fn(body, old, new, name, namespace, **kwargs):
     # Update if there's been a change to the spec or if we're attempting
     # recovery from autoscaler failure.
     if spec_changed or ray_restart_required:
-        ray_cluster = ray_clusters.get(cluster_identifier)
+        ray_cluster = memo.get('ray_cluster')
         if ray_cluster is None:
             ray_cluster = RayCluster(cluster_config)
-            ray_clusters[cluster_identifier] = ray_cluster
+            memo.ray_cluster = ray_cluster
 
         cluster_status_q.put((name, namespace, STATUS_UPDATING))
 
@@ -273,11 +266,9 @@ def update_fn(body, old, new, name, namespace, **kwargs):
 
 
 @kopf.on.delete("rayclusters")
-def delete_fn(name, namespace, **kwargs):
-    cluster_identifier = (name, namespace)
-    ray_cluster = ray_clusters.get(cluster_identifier)
+def delete_fn(memo: kopf.Memo, **kwargs):
+    ray_cluster = memo.get('ray_cluster')
     if ray_cluster is None:
         return
 
     ray_cluster.clean_up()
-    del ray_clusters[cluster_identifier]
