@@ -13,6 +13,7 @@ STOPPED = "Stopped"
 
 logger = logging.getLogger(__name__)
 
+
 def bootstrap_aliyun(config):
     # print(config["provider"])
     # create vpc
@@ -88,15 +89,14 @@ def _get_or_create_vswitch(config):
 
 def _get_or_import_key_pair(config):
     cli = _client(config)
-    key_name = config["provider"].get("key_name","ray")
+    key_name = config["provider"].get("key_name", "ray")
     key_path = os.path.expanduser("~/.ssh/{}".format(key_name))
     keypairs = cli.describe_key_pairs(key_pair_name=key_name)
 
     if keypairs is not None and len(keypairs) > 0:
         if "ssh_private_key" not in config["auth"]:
-            logger.info(
-                "{} keypair exists, use {} as local ssh key"
-                .format(key_name,key_path))
+            logger.info("{} keypair exists, use {} as local ssh key".format(
+                key_name, key_path))
             config["auth"]["ssh_private_key"] = key_path
     else:
         if "ssh_private_key" not in config["auth"]:
@@ -108,7 +108,7 @@ def _get_or_import_key_pair(config):
                 os.chmod(key_path, stat.S_IRUSR)
                 config["auth"]["ssh_private_key"] = key_path
         else:
-            public_key_file = config["auth"]["ssh_private_key"]+".pub"
+            public_key_file = config["auth"]["ssh_private_key"] + ".pub"
             # create new keypair, from local file
             with open(public_key_file) as f:
                 public_key = f.readline().strip("\n")

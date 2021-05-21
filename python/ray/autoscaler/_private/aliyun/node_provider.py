@@ -210,7 +210,8 @@ class AliyunNodeProvider(NodeProvider):
 
         reused_nodes_dict = {}
         if self.cache_stopped_nodes:
-            reuse_nodes_candidate = self.acs.describe_instances(tags=filter_tags)
+            reuse_nodes_candidate = self.acs.describe_instances(
+                tags=filter_tags)
             if reuse_nodes_candidate:
                 with cli_logger.group("Stopping instances to reuse"):
                     reuse_node_ids = []
@@ -264,9 +265,11 @@ class AliyunNodeProvider(NodeProvider):
     def terminate_node(self, node_id: str) -> None:
         logger.info("terminate node: %s" % node_id)
         if self.cache_stopped_nodes:
-            logger.info("Stopping instance {} (to terminate instead, "
+            logger.info(
+                "Stopping instance {} (to terminate instead, "
                 "set `cache_stopped_nodes: False` "
-                "under `provider` in the cluster configuration)").format(node_id)
+                "under `provider` in the cluster configuration)").format(
+                    node_id)
             self.acs.stop_instance(node_id)
         else:
             self.acs.delete_instance(node_id)
@@ -276,9 +279,10 @@ class AliyunNodeProvider(NodeProvider):
             return
         if self.cache_stopped_nodes:
             logger.info(
-                    "Stopping instances {} (to terminate instead, "
-                        "set `cache_stopped_nodes: False` "
-                        "under `provider` in the cluster configuration)".format(node_ids))
+                "Stopping instances {} (to terminate instead, "
+                "set `cache_stopped_nodes: False` "
+                "under `provider` in the cluster configuration)".format(
+                    node_ids))
 
             self.acs.stop_instances(node_ids)
         else:
