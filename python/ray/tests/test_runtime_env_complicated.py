@@ -186,10 +186,23 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
+"""
+Note(architkulkarni): For runtime_env tests that involve conda or pip installs,
+"opentelemetry-api==1.0.0rc1" and "opentelemetry-sdk==1.0.0rc1" must be
+included as dependencies, because they are installed in the CI's conda env but
+are not included in the Ray dependencies, so they cause an unpickling issue.
+
+Also, these tests only run on Buildkite in a special job that runs
+after the wheel is built, because the tests pass in the wheel as a dependency
+in the runtime env.  Buildkite only supports Linux for now.
+"""
+
+
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
-    sys.platform != "linux", reason="This test is only run for Linux.")
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
     ray.init()
@@ -197,7 +210,6 @@ def test_conda_create_task(shutdown_only):
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
     ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
-    print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
             "dependencies": [
@@ -227,9 +239,10 @@ def test_conda_create_task(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
-    sys.platform != "linux", reason="This test is only run for Linux.")
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
 
@@ -302,6 +315,86 @@ def test_inject_ray_and_python():
     for i in range(num_tests):
         assert (inject_ray_and_python(conda_dicts[i], "ray==1.2.3",
                                       "7.8") == outputs[i])
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_task(shutdown_only, pip_as_str):
+    """Tests pip installs in the runtime env specified in the job config."""
+
+    ray.init()
+    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
+    if pip_as_str:
+        requirements_txt = f"""
+        {ray_wheel_path}
+        pip-install-test==0.5
+        opentelemetry-api==1.0.0rc1
+        opentelemetry-sdk==1.0.0rc1
+        """
+        runtime_env = {"pip": requirements_txt}
+    else:
+        runtime_env = {
+            "pip": [
+                ray_wheel_path, "pip-install-test==0.5",
+                "opentelemetry-api==1.0.0rc1", "opentelemetry-sdk==1.0.0rc1"
+            ]
+        }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_job_config(shutdown_only, pip_as_str):
+    """Tests dynamic installation of pip packages in a task's runtime env."""
+
+    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
+    if pip_as_str:
+        requirements_txt = f"""
+        {ray_wheel_path}
+        pip-install-test==0.5
+        opentelemetry-api==1.0.0rc1
+        opentelemetry-sdk==1.0.0rc1
+        """
+        runtime_env = {"pip": requirements_txt}
+    else:
+        runtime_env = {
+            "pip": [
+                ray_wheel_path, "pip-install-test==0.5",
+                "opentelemetry-api==1.0.0rc1", "opentelemetry-sdk==1.0.0rc1"
+            ]
+        }
+
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
