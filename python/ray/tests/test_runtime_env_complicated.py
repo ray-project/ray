@@ -355,8 +355,12 @@ def test_inject_ray_and_python():
     }
 
     for i in range(num_tests):
-        assert (inject_ray_and_python(conda_dicts[i], "ray==1.2.3",
-                                      "7.8") == outputs[i])
+        output = inject_ray_and_python(conda_dicts[i], "ray==1.2.3", "7.8")
+        error_msg = (f"failed on input {i}."
+                     f"Input: {conda_dicts[i]} \n"
+                     f"Output: {output} \n"
+                     f"Expected output: {outputs[i]}")
+        assert (output == outputs[i]), error_msg
 
 
 @pytest.mark.skipif(

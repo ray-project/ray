@@ -117,14 +117,15 @@ def setup(input_args):
 def current_ray_pip_specifier() -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
 
-    Returns a string which can be passed to `pip install` to install the
-    currently running Ray version.  Returns None if running on a version
-    built from source locally (likely if you are developing Ray).
+    Returns:
+        A string which can be passed to `pip install` to install the
+        currently running Ray version, or None if running on a version
+        built from source locally (likely if you are developing Ray).
 
     Examples:
-        "1.4.0" if running the stable release
-        "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[...].whl" if
-            running the nightly or a specific commit
+        Returns "ray[all]==1.4.0" if running the stable release
+        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[..].whl"
+            if running the nightly or a specific commit
     """
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
         # Running in Buildkite CI after the wheel has been built.
