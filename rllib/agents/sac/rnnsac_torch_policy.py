@@ -384,7 +384,12 @@ def actor_critic_loss(
     policy.q_t = q_t
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
-    policy.td_error = td_error
+
+    # Store td-error in model, such that for multi-GPU, we do not override
+    # them during the parallel loss phase. TD-error tensor in final stats
+    # can then be concatenated and retrieved for each individual batch item.
+    model.td_error = td_error
+
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
