@@ -51,12 +51,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     config["replay_sequence_length"] = \
         config["burn_in"] + config["model"]["max_seq_len"]
 
-    if config.get("prioritized_replay"):
-        raise ValueError("Prioritized replay is not supported for RNNSAC yet!")
-
-    if config.get("batch_mode") != "complete_episodes":
-        raise ValueError("`batch_mode` must be 'complete_episodes'!")
-
     if config["n_step"] > 1:
         raise ValueError("`n_step` > 1 not yet supported by RNNSAC!")
 
