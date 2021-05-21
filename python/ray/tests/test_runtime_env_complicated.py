@@ -382,7 +382,6 @@ def test_conda_create_ray_client(call_ray_start):
         ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
-
 @pytest.mark.skipif(
     os.environ.get("CI") is None,
     reason="This test is only run on CI because it uses the built Ray wheel.")
