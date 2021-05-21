@@ -8,7 +8,6 @@ from typing import Callable
 from typing import Dict
 from typing import Tuple
 from typing import Optional
-from typing import Union
 
 import kopf
 import yaml
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Queue to process cluster status updates.
 cluster_status_q = queue.Queue(
-)  # type: queue.Queue[Union[None, Tuple[str, str, str]]]
+)  # type: queue.Queue[Optional[Tuple[str, str, str]]]
 
 
 class RayCluster:
