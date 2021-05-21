@@ -21,7 +21,6 @@
     "@types/react-window": "^1.8.2",
     "axios": "^0.21.1",
     "classnames": "^2.2.6",
-    "copy-to-clipboard": "^3.3.1",
     "dayjs": "^1.9.4",
     "lodash": "^4.17.20",
     "lowlight": "^1.14.0",
@@ -48,8 +47,8 @@
     "eject": "react-scripts eject",
     "lint": "npm run eslint && npm run prettier",
     "lint-fix": "npm run prettier -- --write && npm run eslint -- --fix",
-    "prettier": "./node_modules/.bin/prettier -c src/",
-    "eslint": "./node_modules/.bin/eslint \"src/**\""
+    "prettier": "prettier -c src",
+    "eslint": "eslint \"src/**\""
   },
   "eslintConfig": {
     "ignorePatterns": [
