@@ -105,4 +105,4 @@ if __name__ == "__main__":
     run_ddp_tune(
         num_workers=args.num_workers,
         num_gpus_per_worker=args.num_gpus_per_worker,
-        workers_per_node=args.num_workers_per_node)
+        workers_per_node=args.workers_per_node)

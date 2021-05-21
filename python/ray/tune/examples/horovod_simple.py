@@ -65,9 +65,10 @@ def train(config):
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     start = time.time()
+    x_max = config["x_max"]
     for step in range(1, num_steps + 1):
         features = torch.Tensor(
-            np.random.rand(1) * 2 * args.x_max - args.x_max).to(device)
+            np.random.rand(1) * 2 * x_max - x_max).to(device)
         if mode == "square":
             labels = sq(features)
         else:
