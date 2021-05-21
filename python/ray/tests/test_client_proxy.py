@@ -31,7 +31,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     pm._free_ports = [45000, 45001]
     client = "client1"
 
-    pm.start_specific_server(client, JobConfig())
+    assert pm.start_specific_server(client, JobConfig())
     # Channel should be ready and corresponding to an existing server
     grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
 
@@ -44,6 +44,33 @@ def test_proxy_manager_lifecycle(shutdown_only):
 
     assert len(pm._free_ports) == 2
     assert pm._get_unused_port() == 45001
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+def test_proxy_manager_bad_startup(shutdown_only):
+    """
+    Test that when a SpecificServer fails to start (because of a bad JobConfig)
+    that it is properly GC'd
+    """
+    ray_instance = ray.init()
+    proxier.CHECK_PROCESS_INTERVAL_S = 1
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 1
+    pm = proxier.ProxyManager(ray_instance["redis_address"],
+                              ray_instance["session_dir"])
+    pm._free_ports = [46000, 46001]
+    client = "client1"
+
+    assert not pm.start_specific_server(
+        client,
+        JobConfig(
+            runtime_env={"conda": "conda-env-that-sadly-does-not-exist"}))
+    # Wait for reconcile loop
+    time.sleep(2)
+    assert pm.get_channel(client) is None
+
+    assert len(pm._free_ports) == 2
 
 
 @pytest.mark.skipif(
