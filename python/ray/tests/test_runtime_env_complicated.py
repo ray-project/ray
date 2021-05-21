@@ -10,7 +10,6 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
-from ray.test_utils import get_wheel_filename
 
 
 @pytest.fixture(scope="session")
@@ -206,17 +205,12 @@ in the runtime env.  Buildkite only supports Linux for now.
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
     ray.init()
-    ray_wheel_filename = get_wheel_filename()
-    # E.g. 3.6.13
-    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
     runtime_env = {
         "conda": {
             "dependencies": [
-                f"python={python_micro_version_dots}", "pip", {
+                "pip", {
                     "pip": [
-                        ray_wheel_path, "pip-install-test==0.5",
-                        "opentelemetry-api==1.0.0rc1",
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
                 }
@@ -246,18 +240,12 @@ def test_conda_create_task(shutdown_only):
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
 
-    ray_wheel_filename = get_wheel_filename()
-    # E.g. 3.6.13
-    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
-
     runtime_env = {
         "conda": {
             "dependencies": [
-                f"python={python_micro_version_dots}", "pip", {
+                "pip", {
                     "pip": [
-                        ray_wheel_path, "pip-install-test==0.5",
-                        "opentelemetry-api==1.0.0rc1",
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
                 }
@@ -327,10 +315,8 @@ def test_pip_task(shutdown_only, pip_as_str):
     """Tests pip installs in the runtime env specified in the job config."""
 
     ray.init()
-    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
     if pip_as_str:
-        requirements_txt = f"""
-        {ray_wheel_path}
+        requirements_txt = """
         pip-install-test==0.5
         opentelemetry-api==1.0.0rc1
         opentelemetry-sdk==1.0.0rc1
@@ -339,8 +325,8 @@ def test_pip_task(shutdown_only, pip_as_str):
     else:
         runtime_env = {
             "pip": [
-                ray_wheel_path, "pip-install-test==0.5",
-                "opentelemetry-api==1.0.0rc1", "opentelemetry-sdk==1.0.0rc1"
+                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                "opentelemetry-sdk==1.0.0rc1"
             ]
         }
 
@@ -367,10 +353,8 @@ def test_pip_task(shutdown_only, pip_as_str):
 def test_pip_job_config(shutdown_only, pip_as_str):
     """Tests dynamic installation of pip packages in a task's runtime env."""
 
-    ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
     if pip_as_str:
-        requirements_txt = f"""
-        {ray_wheel_path}
+        requirements_txt = """
         pip-install-test==0.5
         opentelemetry-api==1.0.0rc1
         opentelemetry-sdk==1.0.0rc1
@@ -379,8 +363,8 @@ def test_pip_job_config(shutdown_only, pip_as_str):
     else:
         runtime_env = {
             "pip": [
-                ray_wheel_path, "pip-install-test==0.5",
-                "opentelemetry-api==1.0.0rc1", "opentelemetry-sdk==1.0.0rc1"
+                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                "opentelemetry-sdk==1.0.0rc1"
             ]
         }
 

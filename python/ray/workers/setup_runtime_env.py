@@ -82,12 +82,14 @@ def setup(input_args):
         py_version = ".".join(map(str, sys.version_info[:3]))  # E.g. 3.6.13
         conda_dict = {
             "name": pip_hash_str,
-            "dependencies": [
-                f"python={py_version}", "pip", {
-                    "pip": [f"-r {requirements_txt_path}"]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": [f"-r {requirements_txt_path}"]
+            }]
         }
+
+        conda_dict = inject_ray_and_python(conda_dict,
+                                           current_ray_pip_specifier(),
+                                           py_version)
 
         file_lock_name = f"ray-{pip_hash_str}.lock"
         with FileLock(os.path.join(args.session_dir, file_lock_name)):
