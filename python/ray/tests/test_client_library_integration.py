@@ -30,7 +30,7 @@ async def test_serve_handle(ray_start_regular_shared):
         serve.start()
 
         @serve.deployment
-        def hello(request):
+        def hello():
             return "hello"
 
         hello.deploy()
