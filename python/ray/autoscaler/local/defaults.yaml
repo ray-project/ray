@@ -1,7 +1,8 @@
 # This configuration file is used internally
-# to fill default settings for on-prem Ray clusters bootstrapped by the Ray autoscaler.
+# to fill default settings for on-prem Ray clusters
+# bootstrapped by the Ray autoscaler.
+# For annotated examples, see the example yamls in this directory.
 
-# For annotated examples, see local/example-minimal.yaml...
 cluster_name: default
 
 auth: {}
