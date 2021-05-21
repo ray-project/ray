@@ -211,7 +211,7 @@ cc_grpc_library(
     deps = [
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:runtime_env_agent_cc_proto"
+        "//src/ray/protobuf:runtime_env_agent_cc_proto",
     ],
 )
 
@@ -223,9 +223,9 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":runtime_env_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
+        ":runtime_env_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
