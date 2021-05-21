@@ -48,7 +48,8 @@ def train(config):
     import horovod.torch as hvd
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = Net(args.mode).to(device)
+    mode = config["mode"]
+    net = Net(mode).to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],
@@ -67,7 +68,7 @@ def train(config):
     for step in range(1, num_steps + 1):
         features = torch.Tensor(
             np.random.rand(1) * 2 * args.x_max - args.x_max).to(device)
-        if args.mode == "square":
+        if mode == "square":
             labels = sq(features)
         else:
             labels = qu(features)
@@ -83,7 +84,12 @@ def train(config):
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
-def tune_horovod(hosts_per_trial, slots_per_host, num_samples, use_gpu):
+def tune_horovod(hosts_per_trial,
+                 slots_per_host,
+                 num_samples,
+                 use_gpu,
+                 mode="square",
+                 x_max=1.):
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=use_gpu,
@@ -94,7 +100,11 @@ def tune_horovod(hosts_per_trial, slots_per_host, num_samples, use_gpu):
         horovod_trainable,
         metric="loss",
         mode="min",
-        config={"lr": tune.uniform(0.1, 1)},
+        config={
+            "lr": tune.uniform(0.1, 1),
+            "mode": mode,
+            "x_max": x_max
+        },
         num_samples=num_samples,
         fail_fast=True)
     print("Best hyperparameters found were: ", analysis.best_config)
@@ -136,4 +146,6 @@ if __name__ == "__main__":
         hosts_per_trial=args.hosts_per_trial,
         slots_per_host=args.slots_per_host,
         num_samples=2 if args.smoke_test else 10,
-        use_gpu=args.gpu)
+        use_gpu=args.gpu,
+        mode=args.mode,
+        x_max=args.x_max)
