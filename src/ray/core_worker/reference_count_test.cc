@@ -164,13 +164,13 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         subscription_callback_map_(subscription_callback_map),
         subscription_failure_callback_map_(subscription_failure_callback_map),
         publisher_id_(publisher_id) {}
-
   ~MockDistributedPublisher() = default;
 
-  void RegisterSubscription(const rpc::ChannelType channel_type,
+  bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
                             const std::string &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
+    return false;
   }
 
   void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
