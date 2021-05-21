@@ -3,6 +3,7 @@ import atexit
 import collections
 import inspect
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
+
+_UUID_RE = re.compile(
+    "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
 
 
 def _get_global_client():
@@ -502,12 +506,14 @@ class Client:
                                                    proportion))
 
     @_ensure_connected
-    def get_handle(self,
-                   endpoint_name: str,
-                   missing_ok: Optional[bool] = False,
-                   sync: bool = True,
-                   _internal_use_serve_request: Optional[bool] = True
-                   ) -> Union[RayServeHandle, RayServeSyncHandle]:
+    def get_handle(
+            self,
+            endpoint_name: str,
+            missing_ok: Optional[bool] = False,
+            sync: bool = True,
+            _internal_use_serve_request: Optional[bool] = True,
+            _internal_pickled_http_request: bool = False,
+    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
@@ -558,13 +564,17 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request)
+                _internal_use_serve_request=_internal_use_serve_request,
+                _internal_pickled_http_request=_internal_pickled_http_request,
+            )
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request)
+                _internal_use_serve_request=_internal_use_serve_request,
+                _internal_pickled_http_request=_internal_pickled_http_request,
+            )
 
         self.handle_cache[cache_key] = handle
         return handle
@@ -588,7 +598,10 @@ def start(
 
     Args:
         detached (bool): Whether not the instance should be detached from this
-          script.
+          script. If set, the instance will live on the Ray cluster until it is
+          explicitly stopped with serve.shutdown(). This should *not* be set in
+          an anonymous Ray namespace because you will not be able to reconnect
+          to the instance after the script exits.
         http_host (Optional[str]): Deprecated, use http_options instead.
         http_port (int): Deprecated, use http_options instead.
         http_middlewares (list): Deprecated, use http_options instead.
@@ -634,6 +647,18 @@ def start(
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
+
+    if detached:
+        current_namespace = ray.get_runtime_context().namespace
+        if _UUID_RE.fullmatch(current_namespace) is not None:
+            raise RuntimeError(
+                "serve.start(detached=True) should not be called in anonymous "
+                "Ray namespaces because you won't be able to reconnect to the "
+                "Serve instance after the script exits. If you want to start "
+                "a long-lived Serve instance, provide a namespace when "
+                "connecting to Ray. See the documentation for more details: "
+                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
+            )
 
     try:
         _get_global_client()
@@ -937,11 +962,13 @@ def shadow_traffic(endpoint_name: str, backend_tag: str,
         endpoint_name, backend_tag, proportion, _internal=True)
 
 
-def get_handle(endpoint_name: str,
-               missing_ok: Optional[bool] = False,
-               sync: Optional[bool] = True,
-               _internal_use_serve_request: Optional[bool] = True
-               ) -> Union[RayServeHandle, RayServeSyncHandle]:
+def get_handle(
+        endpoint_name: str,
+        missing_ok: bool = False,
+        sync: bool = True,
+        _internal_use_serve_request: bool = True,
+        _internal_pickled_http_request: bool = False,
+) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     DEPRECATED. Will be removed in Ray 1.5. See docs for details.
@@ -962,6 +989,7 @@ def get_handle(endpoint_name: str,
         missing_ok=missing_ok,
         sync=sync,
         _internal_use_serve_request=_internal_use_serve_request,
+        _internal_pickled_http_request=_internal_pickled_http_request,
         _internal=True)
 
 
