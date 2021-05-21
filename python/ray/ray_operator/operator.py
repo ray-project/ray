@@ -1,6 +1,5 @@
 import logging
 import multiprocessing as mp
-import queue
 import os
 import threading
 from typing import Any
@@ -25,8 +24,8 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 # Queue to process cluster status updates.
-cluster_status_q = queue.Queue(
-)  # type: queue.Queue[Optional[Tuple[str, str, str]]]
+cluster_status_q = mp.Queue(
+)  # type: mp.Queue[Optional[Tuple[str, str, str]]]
 
 
 class RayCluster:
