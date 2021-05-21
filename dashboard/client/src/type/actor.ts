@@ -36,6 +36,18 @@ export type TaskSpec = {
     workerId: string;
   };
   callerId: string;
+  functionDescriptor: {
+    javaFunctionDescriptor: {
+      className: string;
+      functionName: string;
+      signature: string;
+    };
+    pythonFunctionDescriptor: {
+      className: string;
+      functionName: string;
+      signature: string;
+    };
+  };
   jobId: string;
   language: string;
   maxRetries: number;
@@ -79,16 +91,4 @@ export type Actor = {
   isDetached: false;
   name: string;
   numRestarts: string;
-  functionDescriptor: {
-    javaFunctionDescriptor: {
-      className: string;
-      functionName: string;
-      signature: string;
-    };
-    pythonFunctionDescriptor: {
-      className: string;
-      functionName: string;
-      signature: string;
-    };
-  };
 };
