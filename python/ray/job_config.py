@@ -47,7 +47,8 @@ class JobConfig:
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
-        self.set_runtime_env(runtime_env)
+        self.runtime_env = runtime_env
+        self.set_runtime_env()
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -57,9 +58,12 @@ class JobConfig:
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
-    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+    def set_runtime_env(self,
+                        runtime_env: Optional[Dict[str, Any]] = None) -> None:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
+        if runtime_env is None:
+            runtime_env = self.runtime_env
         if runtime_env:
             # Remove working_dir from the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
