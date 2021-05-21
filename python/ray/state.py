@@ -520,7 +520,7 @@ class GlobalState:
                 all_events.append(new_event)
 
         if not all_events:
-            raise RuntimeError(
+            logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
                 "by setting RAY_PROFILING=1.")
 
