@@ -87,7 +87,7 @@ def test_detached_deployment(ray_cluster):
     head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address, namespace="")
+    ray.init(head_node.address, namespace="serve")
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
@@ -102,7 +102,7 @@ def test_detached_deployment(ray_cluster):
     ray.shutdown()
 
     # Create the second job, make sure we can still create new backends.
-    ray.init(head_node.address, namespace="")
+    ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
     @serve.deployment
@@ -118,7 +118,7 @@ def test_detached_deployment(ray_cluster):
 def test_connect(detached, ray_shutdown):
     # Check that you can make API calls from within a deployment for both
     # detached and non-detached instances.
-    ray.init(num_cpus=16)
+    ray.init(num_cpus=16, namespace="serve")
     serve.start(detached=detached)
 
     @serve.deployment
@@ -341,6 +341,7 @@ def test_http_head_only(ray_cluster):
 
 
 def test_serve_shutdown(ray_shutdown):
+    ray.init(namespace="serve")
     serve.start(detached=True)
 
     @serve.deployment
@@ -360,6 +361,24 @@ def test_serve_shutdown(ray_shutdown):
     A.deploy()
 
     assert len(serve.list_deployments()) == 1
+
+
+def test_detached_namespace_warning(ray_shutdown):
+    ray.init()
+
+    # Can't start detached instance in anonymous namespace.
+    with pytest.raises(RuntimeError, match="anonymous Ray namespace"):
+        serve.start(detached=True)
+
+    # Can start non-detached instance in anonymous namespace.
+    serve.start()
+    ray.shutdown()
+
+
+def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start detached instance in non-anonymous namespace.
+    ray.init(namespace="foo")
+    serve.start(detached=True)
 
 
 if __name__ == "__main__":
