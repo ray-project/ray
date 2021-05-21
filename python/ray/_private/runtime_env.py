@@ -117,6 +117,13 @@ class RuntimeEnvDict:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
         else:
             self._dict["working_dir"] = None
+
+        if "uris" in runtime_env_json:
+            self._dict["uris"] = runtime_env_json["uris"]
+
+        if "_ray_release" in runtime_env_json:
+            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support env_vars, docker

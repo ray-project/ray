@@ -1260,6 +1260,10 @@ void NodeManager::DisconnectClient(
 }
 
 void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  // TODO: Add caching layer for performance
+  if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+    return cb(true);
+  }
   auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
   // Format of URI must be: scheme://path
   std::string sep = "://";
