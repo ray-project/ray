@@ -112,7 +112,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     GetTimeoutError,
-    TaskCancelledError
+    TaskCancelledError,
+    AsyncioActorExit,
 )
 from ray._private.utils import decode
 from ray._private.client_mode_hook import (
@@ -512,8 +513,9 @@ cdef execute_task(
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
-                except KeyboardInterrupt as e:
+                except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
+                except KeyboardInterrupt as e:
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
@@ -521,7 +523,6 @@ cdef execute_task(
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
-                exit_current_actor_if_asyncio()
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
