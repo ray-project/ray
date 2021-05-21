@@ -24,8 +24,7 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 # Queue to process cluster status updates.
-cluster_status_q = mp.Queue(
-)  # type: mp.Queue[Optional[Tuple[str, str, str]]]
+cluster_status_q = mp.Queue()  # type: mp.Queue[Optional[Tuple[str, str, str]]]
 
 
 class RayCluster:
@@ -191,7 +190,7 @@ def stop_background_worker(memo: kopf.Memo, **_):
     memo.status_handler.join()
 
 
-def status_handling_loop(queue: queue.Queue):
+def status_handling_loop(queue: mp.Queue):
     while True:
         item = queue.get()
         if item is None:
@@ -250,7 +249,7 @@ def update_fn(body, old, new, name, namespace, memo: kopf.Memo, **kwargs):
     # Update if there's been a change to the spec or if we're attempting
     # recovery from autoscaler failure.
     if spec_changed or ray_restart_required:
-        ray_cluster = memo.get('ray_cluster')
+        ray_cluster = memo.get("ray_cluster")
         if ray_cluster is None:
             ray_cluster = RayCluster(cluster_config)
             memo.ray_cluster = ray_cluster
@@ -266,7 +265,7 @@ def update_fn(body, old, new, name, namespace, memo: kopf.Memo, **kwargs):
 
 @kopf.on.delete("rayclusters")
 def delete_fn(memo: kopf.Memo, **kwargs):
-    ray_cluster = memo.get('ray_cluster')
+    ray_cluster = memo.get("ray_cluster")
     if ray_cluster is None:
         return
 
