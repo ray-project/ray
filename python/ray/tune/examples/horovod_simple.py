@@ -67,8 +67,8 @@ def train(config):
     start = time.time()
     x_max = config["x_max"]
     for step in range(1, num_steps + 1):
-        features = torch.Tensor(
-            np.random.rand(1) * 2 * x_max - x_max).to(device)
+        features = torch.Tensor(np.random.rand(1) * 2 * x_max -
+                                x_max).to(device)
         if mode == "square":
             labels = sq(features)
         else:
