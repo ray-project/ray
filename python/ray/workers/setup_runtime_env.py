@@ -8,6 +8,7 @@ import hashlib
 
 from filelock import FileLock
 from typing import Optional
+from pathlib import Path
 
 import ray
 from ray._private.conda import (get_conda_activate_commands,
@@ -127,7 +128,13 @@ def current_ray_pip_specifier() -> Optional[str]:
     """
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
         # Running in Buildkite CI after the wheel has been built.
-        return os.path.join("/ray/.whl", get_wheel_filename())
+        # Wheels are at in the ray/.whl directory, and the present file is
+        # at ray/python/ray/workers.  Use relative paths to allow for
+        # testing locally if needed.
+        return print(
+            os.path.join(
+                Path(__file__).resolve().parents[3], ".whl",
+                get_wheel_filename()))
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
         return None
