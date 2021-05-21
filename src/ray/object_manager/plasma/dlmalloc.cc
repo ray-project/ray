@@ -136,7 +136,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 
 void *fake_mmap(size_t size) {
   if (allocated_once) {
-    RAY_LOG(INFO) << "fake_mmap called once already, refusing to allocate more";
+    RAY_LOG(INFO) << "fake_mmap called once already, refusing to allocate: " << size;
     return MFAIL;
   }
   allocated_once = true;
@@ -164,7 +164,6 @@ void *fake_mmap(size_t size) {
 }
 
 int fake_munmap(void *addr, int64_t size) {
-  RAY_LOG(INFO) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
 
@@ -175,6 +174,7 @@ int fake_munmap(void *addr, int64_t size) {
     // calls to mmap, to prevent dlmalloc from trimming.
     return -1;
   }
+  RAY_LOG(INFO) << "fake_munmap(" << addr << ", " << size << ")";
 
   int r;
 #ifdef _WIN32
