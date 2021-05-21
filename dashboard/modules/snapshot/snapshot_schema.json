@@ -102,6 +102,12 @@
                   "actorClass": {
                     "type": "string"
                   },
+                  "currentWorkerId": {
+                    "type": "string"
+                  },
+                  "currentRayletId": {
+                    "type": "string"
+                  },
                   "ipAddress": {
                     "type": "string"
                   },
@@ -118,6 +124,8 @@
                     "endTime",
                     "isDetached",
                     "resources",
+                    "currentWorkerId",
+                    "currentRayletId",
                     "actorClass",
                     "ipAddress",
                     "port"
