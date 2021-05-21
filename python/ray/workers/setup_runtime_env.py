@@ -13,7 +13,7 @@ import ray
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
-from ray.test_utils import get_wheel_filename
+from ray.test_utils import get_wheel_filename, get_master_wheel_url
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -133,8 +133,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
-        return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
-                f"{ray.__commit__}/{get_wheel_filename()}")
+        return get_master_wheel_url()
     else:
         return f"ray=={ray.__version__}"
 
