@@ -10,6 +10,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.fixture(scope="session")
@@ -55,6 +56,59 @@ def conda_envs():
     ray.get([remove_tf_env.remote(version) for version in tf_versions])
     subprocess.run([f"{init_cmd} && conda deactivate"], shell=True)
     ray.shutdown()
+
+
+check_remote_client_conda = """
+import ray
+ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).connect()
+@ray.remote
+def get_tf_version():
+    import tensorflow as tf
+    return tf.__version__
+
+assert ray.get(get_tf_version.remote()) == "{tf_version}"
+ray.util.disconnect()
+"""
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
+                                                     call_ray_start):
+    @ray.remote
+    def get_tf_version():
+        import tensorflow as tf
+        return tf.__version__
+
+    @ray.remote
+    class TfVersionActor:
+        def get_tf_version(self):
+            import tensorflow as tf
+            return tf.__version__
+
+    tf_versions = ["2.2.0", "2.3.0"]
+    for i, tf_version in enumerate(tf_versions):
+        try:
+            runtime_env = {"conda": f"tf-{tf_version}"}
+            ray.client("localhost:24001").env(runtime_env).connect()
+            assert ray.get(get_tf_version.remote()) == tf_version
+            actor_handle = TfVersionActor.remote()
+            assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
+
+            # Ensure that we can have a second client connect using the other
+            # conda environment.
+            other_tf_version = tf_versions[(i + 1) % 2]
+            run_string_as_driver(
+                check_remote_client_conda.format(tf_version=other_tf_version))
+        finally:
+            ray.util.disconnect()
+            ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -303,6 +357,53 @@ def test_inject_ray_and_python():
     for i in range(num_tests):
         assert (inject_ray_and_python(conda_dicts[i], "ray==1.2.3",
                                       "7.8") == outputs[i])
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_conda_create_ray_client(call_ray_start):
+    """Tests dynamic conda env creation in RayClient."""
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                "pip", {
+                    "pip": [
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    }
+    try:
+        ray.client("localhost:24001").env(runtime_env).connect()
+
+        @ray.remote
+        def f():
+            import pip_install_test  # noqa
+            return True
+
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed on the test machine
+            import pip_install_test  # noqa
+        assert ray.get(f.remote())
+
+        ray.util.disconnect()
+        ray.client("localhost:24001").connect()
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+    finally:
+        ray.util.disconnect()
+        ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(

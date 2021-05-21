@@ -27,15 +27,14 @@ async def test_serve_handle(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         from ray import serve
         _explicitly_enable_client_mode()
-        serve.start(detached=True)
+        serve.start()
 
-        def hello(request):
+        @serve.deployment
+        def hello():
             return "hello"
 
-        serve.create_backend("my_backend", hello, config={"num_replicas": 1})
-        serve.create_endpoint(
-            "my_endpoint", backend="my_backend", route="/hello")
-        handle = serve.get_handle("my_endpoint")
+        hello.deploy()
+        handle = hello.get_handle()
         assert ray.get(handle.remote()) == "hello"
         assert await handle.remote() == "hello"
 
