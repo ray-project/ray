@@ -12,6 +12,26 @@ def _mock_objective(config):
     tune.report(**config)
 
 
+def assertDictAlmostEqual(a, b):
+    for k, v in a.items():
+        assert k in b, f"Key {k} not found in {b}"
+        w = b[k]
+
+        assert type(v) == type(w), f"Type {type(v)} is not {type(w)}"
+
+        if isinstance(v, dict):
+            assert assertDictAlmostEqual(v, w), f"Subdict {v} != {w}"
+        elif isinstance(v, (int, float)):
+            assert np.isclose(v, w)
+        elif isinstance(v, (list, tuple)):
+            # Does not work for nested dicts or lists
+            assert all(x == y for x, y in zip(v, w))
+        else:
+            assert v == w
+
+    return True
+
+
 class SearchSpaceTest(unittest.TestCase):
     def setUp(self):
         self.config = {
@@ -912,7 +932,7 @@ class SearchSpaceTest(unittest.TestCase):
         np.random.seed(1234)
         config2 = searcher2.suggest("0")
 
-        self.assertEqual(config1, config2)
+        assertDictAlmostEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])
@@ -1238,7 +1258,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
-    def _testPointsToEvaluate(self, cls, config, **kwargs):
+    def _testPointsToEvaluate(self, cls, config, exact=True, **kwargs):
         points_to_evaluate = [{k: v.sample()
                                for k, v in config.items()} for _ in range(2)]
         print(f"Points to evaluate: {points_to_evaluate}")
@@ -1260,7 +1280,12 @@ class SearchSpaceTest(unittest.TestCase):
                 "b": trial_config["b"],
                 "c": trial_config["c"]
             }
-            self.assertDictEqual(trial_config_dict, points_to_evaluate[i])
+            if not exact:
+                for k, v in trial_config_dict.items():
+                    self.assertAlmostEqual(
+                        v, points_to_evaluate[i][k], places=10)
+            else:
+                self.assertDictEqual(trial_config_dict, points_to_evaluate[i])
 
     def testPointsToEvaluateAx(self):
         config = {
@@ -1329,7 +1354,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
         return self._testPointsToEvaluate(
-            NevergradSearch, config, optimizer=ng.optimizers.OnePlusOne)
+            NevergradSearch,
+            config,
+            exact=False,
+            optimizer=ng.optimizers.OnePlusOne)
 
     def testPointsToEvaluateOptuna(self):
         config = {

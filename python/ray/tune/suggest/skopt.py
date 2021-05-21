@@ -125,7 +125,7 @@ class SkOptSearch(Searcher):
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
-                 convert_to_python: bool = False,
+                 convert_to_python: bool = True,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
         assert sko is not None, ("skopt must be installed! "
