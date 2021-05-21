@@ -169,7 +169,7 @@ py_test(
 
 py_test(
     name = "test_router",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "flaky"],
     deps = [":serve_lib"],
