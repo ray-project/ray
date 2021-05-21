@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+I// Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1260,6 +1260,7 @@ void NodeManager::DisconnectClient(
 }
 
 void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  // TODO: Add caching layer for performance
   if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
     return cb(true);
   }
