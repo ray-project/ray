@@ -5,16 +5,17 @@ import ray
 from ray import tune
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 
 config = {
     "name": "RNNSAC_example",
-    "local_dir": str(Path(__file__).parent / "out"),
+    "local_dir": str(Path(__file__).parent / "example_out"),
     "checkpoint_freq": 1,
     "keep_checkpoints_num": 1,
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
-            "episode_reward_mean": 100,
-            "timesteps_total": 500000,
+            "episode_reward_mean": 150,
+            "timesteps_total": 150000,
     },
     "metric": "episode_reward_mean",
     "mode": "max",
@@ -27,10 +28,14 @@ config = {
         "log_level": "INFO",
 
         "env": StatelessCartPole,
+        # "env": RepeatAfterMeEnv,
         "horizon": 1000,
 
         "gamma": 0.95,
-        "batch_mode": "complete_episodes",
+        # "batch_mode": "complete_episodes",
+        "batch_mode": "truncate_episodes",
+        "rollout_fragment_length": 128,
+        "prioritized_replay": True,
         "buffer_size": 100000,
         "learning_starts": 1000,
         "train_batch_size": 480,
@@ -95,7 +100,10 @@ if __name__ == '__main__':
         prev_action = action
         prev_reward = reward
         ep_reward += reward
-        env.render()
+        try:
+            env.render()
+        except NotImplementedError:
+            pass
         if done:
             eps += 1
             print('Episode {}: {}'.format(eps, ep_reward))
