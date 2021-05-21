@@ -1,7 +1,6 @@
 import inspect
 import logging
 import weakref
-import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -22,6 +21,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
@@ -1076,10 +1076,9 @@ def exit_actor():
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise an interrupt signal to the main thread to tell it to exit.
+        # raise a custom error to the main thread to tell it to exit.
         if worker.core_worker.current_actor_is_asyncio():
-            _thread.interrupt_main()
-            return
+            raise AsyncioActorExit()
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
