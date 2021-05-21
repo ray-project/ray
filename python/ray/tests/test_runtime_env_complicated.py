@@ -1,4 +1,5 @@
 import os
+from ray.workers.setup_runtime_env import inject_ray_and_python
 import pytest
 import sys
 import unittest
@@ -261,6 +262,46 @@ def test_conda_create_job_config(shutdown_only):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
     assert ray.get(f.remote())
+
+
+def test_inject_ray_and_python():
+    num_tests = 4
+    conda_dicts = [None] * num_tests
+    outputs = [None] * num_tests
+
+    conda_dicts[0] = {}
+    outputs[0] = {
+        "dependencies": ["python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[1] = {"dependencies": ["blah"]}
+    outputs[1] = {
+        "dependencies": ["blah", "python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[2] = {"dependencies": ["blah", "pip"]}
+    outputs[2] = {
+        "dependencies": ["blah", "pip", "python=7.8", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[3] = {"dependencies": ["blah", "pip", {"pip": ["some_pkg"]}]}
+    outputs[3] = {
+        "dependencies": [
+            "blah", "pip", {
+                "pip": ["some_pkg", "ray==1.2.3"]
+            }, "python=7.8"
+        ]
+    }
+
+    for i in range(num_tests):
+        assert (inject_ray_and_python(conda_dicts[i], "ray==1.2.3",
+                                      "7.8") == outputs[i])
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
