@@ -108,10 +108,10 @@ class ProxyManager():
         return self._session_dir
 
     def start_specific_server(self, client_id: str,
-                              job_config: JobConfig) -> None:
+                              job_config: JobConfig) -> bool:
         """
         Start up a RayClient Server for an incoming client to
-        communicate with.
+        communicate with. Returns whether creation was successful.
         """
         with self.server_lock:
             port = self._get_unused_port()
@@ -137,14 +137,18 @@ class ProxyManager():
         # to the actual RayClient Server.
         psutil_proc = psutil.Process(proc.process.pid)
         while True:
+            if proc.process.poll() is not None:
+                logger.error(
+                    f"SpecificServer startup failed for client: {client_id}")
+                break
             cmd = psutil_proc.cmdline()
             if len(cmd) > 3 and cmd[2] == "ray.util.client.server":
                 break
-            logger.error(
+            logger.debug(
                 "Waiting for Process to reach the actual client server.")
             time.sleep(0.5)
-        logger.error(f"PID {proc.process.pid}")
         handle_ready.set_result(proc)
+        return proc.process.poll() is None
 
     def _get_server_for_client(self,
                                client_id: str) -> Optional[SpecificServer]:
@@ -332,7 +336,11 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
         queue = Queue()
         queue.put(modified_init_req)
-        self.proxy_manager.start_specific_server(client_id, job_config)
+        if not self.proxy_manager.start_specific_server(client_id, job_config):
+            logger.error(f"Server startup failed for client: {client_id}, "
+                         f"using JobConfig: {job_config}!")
+            context.set_code(grpc.StatusCode.ABORTED)
+            return None
 
         channel = self.proxy_manager.get_channel(client_id)
         if channel is None:
