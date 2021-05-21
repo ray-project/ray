@@ -99,7 +99,7 @@ from ray.client_builder import client, ClientBuilder  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "2.0.0.dev0"
+__version__ = "1.4.0"
 
 __all__ = [
     "__version__",
