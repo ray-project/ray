@@ -1375,6 +1375,8 @@ def disconnect(exiting_interpreter=False):
         worker.threads_stopped.clear()
         worker._session_index += 1
 
+        global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
+
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
