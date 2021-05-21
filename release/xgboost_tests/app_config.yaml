@@ -20,3 +20,7 @@ post_build_cmds:
   - rm -rf /data/classification.parquet || true
   - curl -so create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
   - python create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/tune/utils/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/f0bf365943314dae4664e7226e52afbede94bcf3/python/ray/tune/tests/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/f0bf365943314dae4664e7226e52afbede94bcf3/python/ray/util/xgboost/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/f0bf365943314dae4664e7226e52afbede94bcf3/python/ray/util/xgboost/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/
