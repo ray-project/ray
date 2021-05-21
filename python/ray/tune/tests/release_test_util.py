@@ -142,10 +142,7 @@ def timed_tune_run(name: str,
         **run_kwargs)
     time_taken = time.monotonic() - start_time
 
-    result = {
-        "time_taken": time_taken,
-        "last_update": time.time()
-    }
+    result = {"time_taken": time_taken, "last_update": time.time()}
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/tune_test.json")
     with open(test_output_json, "wt") as f:

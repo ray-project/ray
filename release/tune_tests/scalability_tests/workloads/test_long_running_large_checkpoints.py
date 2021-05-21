@@ -19,7 +19,7 @@ import time
 import ray
 from ray import tune
 
-from _trainable import timed_tune_run
+from ray.tune.tests.release_test_util import timed_tune_run
 
 
 class _ProgressCallback(ray.tune.callback.Callback):
