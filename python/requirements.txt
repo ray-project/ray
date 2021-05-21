@@ -5,41 +5,49 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp==3.7
+aiohttp
+aiohttp_cors
 aioredis
 click >= 7.0
 cloudpickle
 colorama
-colorful
+dataclasses; python_version < '3.7'
 filelock
 gpustat
 grpcio >= 1.28.1
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
-opencensus
-prometheus_client >= 0.7.1
-protobuf >= 3.8.0
+protobuf >= 3.15.3
 py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
-redis >= 3.5.0
 requests
+redis >= 3.5.0
+opencensus
+prometheus_client >= 0.7.1
 
 ## setup.py extras
-atari_py
-dm_tree
-flask
-gym[atari]
-lz4
-opencv-python-headless==4.3.0.36
-pandas==1.0.5
-scipy==1.4.1
+
+### default
+colorful
+
+### serve
+uvicorn
+starlette
+fastapi
+
+### tune
+pandas
 tabulate
 tensorboardX
-uvicorn
-dataclasses; python_version < '3.7'
-starlette
+
+### rllib
+dm_tree
+gym
+lz4
+opencv-python-headless<=4.3.0.36
+scipy
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -48,11 +56,9 @@ azure-mgmt-resource
 msrestazure
 boto3
 cython==0.29.0
-dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
 google-api-python-client
-gym
 gym-minigrid
 kubernetes
 lxml
@@ -75,13 +81,9 @@ pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
 pytest-timeout
-scikit-learn==0.22.2
-tensorflow
 testfixtures
 werkzeug
 xlrd
-starlette
-fastapi
 smart_open[s3]
 tqdm
 async-exit-stack

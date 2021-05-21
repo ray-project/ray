@@ -95,7 +95,7 @@ ray_files += [
 # in this directory
 extras = {
     "default": ["colorful"],
-    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+    "serve": ["uvicorn", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
@@ -105,7 +105,6 @@ extras["rllib"] = extras["tune"] + [
     "gym",
     "lz4",
     "opencv-python-headless<=4.3.0.36",
-    "pyyaml",
     "scipy",
 ]
 
