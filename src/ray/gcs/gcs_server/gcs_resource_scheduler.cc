@@ -146,7 +146,7 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
   }
 
   if (result_nodes.size() != required_resources_list.size()) {
-    // Unable to meet the resources required for scheduling temporarily.
+    // Can't meet the scheduling requirements temporarily.
     return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
                           std::vector<NodeID>());
   }
@@ -187,7 +187,7 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
   ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
 
   if (result_nodes.size() != required_resources_list.size()) {
-    // Unable to meet the resources required for scheduling temporarily.
+    // Can't meet the scheduling requirements temporarily.
     return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
                           std::vector<NodeID>());
   }
@@ -207,7 +207,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
 
   const auto &right_node_it = std::find_if(
       cluster_resource.begin(), cluster_resource.end(),
-      [required_resources](const std::pair<NodeID, SchedulingResources> &node_resource) {
+      [required_resources](const auto &node_resource) {
         return required_resources.IsSubset(node_resource.second.GetTotalResources());
       });
 
@@ -231,6 +231,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
     }
   }
   if (result_nodes.empty()) {
+    // Can't meet the scheduling requirements temporarily.
     return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
                           std::vector<NodeID>());
   }
@@ -283,7 +284,7 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
   ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
 
   if (!required_resources_list_copy.empty()) {
-    // Unable to meet the resources required for scheduling temporarily.
+    // Can't meet the scheduling requirements temporarily.
     return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
                           std::vector<NodeID>());
   }
