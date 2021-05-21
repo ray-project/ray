@@ -13,7 +13,7 @@ import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
-from ray.autoscaler._private.local import prepare_local
+from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.cli_logger import cli_logger

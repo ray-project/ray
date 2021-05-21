@@ -12,7 +12,7 @@ idle_timeout_minutes: 5
 
 # For reproducibility, Ray will run in a docker image by default.
 docker:
-    image: "rayproject/ray:latest"
+    image: "rayproject/ray-ml:latest-gpu"
     container_name: "ray_container"
     pull_before_run: True
 

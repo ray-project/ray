@@ -12,13 +12,13 @@ docker:
     # if no cached version is present.
     pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
-# By default, the image "rayproject/ray:latest-cpu" is used.
+# By default, the image "rayproject/ray-ml:latest-gpu" is used.
 
 # If desired, you can toggle off Docker support and run Ray directly on your cluster's machines.
 # In this situation, you'd want to make sure Ray is installed on the machines beforehand, or you
 # can add the installation steps to the setup_commands:
 # docker: {}
-# setup_commmands: ["pip install -U ray[default]"]
+# setup_commmands: ["which ray || pip install -U ray[default]"]
 
 provider:
     type: local
