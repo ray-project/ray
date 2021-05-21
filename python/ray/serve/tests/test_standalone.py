@@ -374,6 +374,8 @@ def test_detached_namespace_warning(ray_shutdown):
     serve.start()
     ray.shutdown()
 
+
+def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
