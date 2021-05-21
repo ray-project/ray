@@ -135,7 +135,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Running on a nightly wheel.
         return get_master_wheel_url()
     else:
-        return f"ray=={ray.__version__}"
+        return f"ray[all]=={ray.__version__}"
 
 
 def inject_ray_and_python(conda_dict, ray_pip_specifier: Optional[str],
