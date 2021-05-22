@@ -73,6 +73,7 @@ py_test_module_list(
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
@@ -87,11 +88,11 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_object_spilling.py",
     "test_object_spilling_2.py",
     "test_object_manager.py",
     "test_reference_counting_2.py",
     "test_multi_tenancy.py",
-    "test_scheduling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -105,7 +106,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build"],
+  tags = ["exclusive", "post_wheel_build", "flaky"],
   deps = ["//:ray_lib"],
 )
 
