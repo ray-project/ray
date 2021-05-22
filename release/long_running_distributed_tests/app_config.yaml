@@ -1,0 +1,6 @@
+base_image: "anyscale/ray-ml:nightly-gpu"
+env_vars: {}
+
+post_build_cmds:
+  - pip uninstall ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
