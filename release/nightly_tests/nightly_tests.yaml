@@ -5,11 +5,28 @@
 
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
 
   run:
     timeout: 600
-    script: python shuffle/shuffle_10gb.py
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+- name: shuffle_100gb
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_multi.yaml
+
+  run:
+    timeout: 600
+    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=200e6
 
   smoke_test:
     cluster:
