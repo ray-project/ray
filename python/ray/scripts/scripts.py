@@ -581,7 +581,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
         with open(
-                os.path.join(ray._private.utils.get_ray_temp_dir(),
+                os.path.join(ray._private.utils.get_user_temp_dir(),
                              "current_cluster"), "w") as f:
             # with open("/tmp/ray/current_cluster", "w") as f:
             print(redis_address, file=f)
@@ -807,7 +807,7 @@ def stop(force, verbose, log_style, log_color):
 
     try:
         os.remove(
-            os.path.join(ray._private.utils.get_ray_temp_dir(),
+            os.path.join(ray._private.utils.get_user_temp_dir(),
                          "current_cluster"))
         # os.remove("/tmp/ray/current_cluster")
     except OSError:
