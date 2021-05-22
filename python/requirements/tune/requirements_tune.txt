@@ -23,7 +23,7 @@ mxnet==1.8.0.post0
 nevergrad==0.4.2.post5
 optuna==2.6.0
 pytest-remotedata==0.3.2
-pytorch-lightning-bolts==0.2.5
+pytorch-lightning-bolts==0.3.2
 pytorch-lightning==1.0.3
 scikit-learn==0.24.2
 scikit-optimize==0.8.1
