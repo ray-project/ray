@@ -88,7 +88,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_object_spilling.py",
     "test_object_spilling_2.py",
     "test_object_manager.py",
     "test_reference_counting_2.py",
