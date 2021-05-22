@@ -1,14 +1,19 @@
+import atexit
 from concurrent import futures
 from dataclasses import dataclass
 import grpc
 import logging
 import json
+import psutil
 from queue import Queue
 import socket
-from threading import Thread, Lock
+import sys
+from threading import Thread, RLock
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+import ray
+from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -24,7 +29,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 5
+CHECK_CHANNEL_TIMEOUT_S = 10
 
 
 def _get_client_id_from_context(context: Any) -> str:
@@ -43,14 +48,24 @@ def _get_client_id_from_context(context: Any) -> str:
 @dataclass
 class SpecificServer:
     port: int
-    process_handle: ProcessInfo
+    process_handle_future: futures.Future
     channel: "grpc._channel.Channel"
+
+    def wait_ready(self, timeout: Optional[float] = None) -> None:
+        """
+        Wait for the server to actually start up.
+        """
+        self.process_handle_future.result(timeout=timeout)
+        return
+
+    def process_handle(self) -> ProcessInfo:
+        return self.process_handle_future.result()
 
 
 class ProxyManager():
-    def __init__(self, redis_address):
+    def __init__(self, redis_address: str, session_dir: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
-        self.server_lock = Lock()
+        self.server_lock = RLock()
         self.redis_address = redis_address
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
@@ -59,6 +74,8 @@ class ProxyManager():
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
+        self._session_dir: str = session_dir or ""
+        atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
         """
@@ -79,39 +96,94 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
-    def start_specific_server(self, client_id) -> None:
+    def _get_session_dir(self) -> str:
+        """
+        Gets the session_dir of this running Ray session. This usually
+        looks like /tmp/ray/session_<timestamp>.
+        """
+        if self._session_dir:
+            return self._session_dir
+        connection_tuple = ray.init(address=self.redis_address)
+        ray.shutdown()
+        self._session_dir = connection_tuple["session_dir"]
+        return self._session_dir
+
+    def start_specific_server(self, client_id: str,
+                              job_config: JobConfig) -> bool:
         """
         Start up a RayClient Server for an incoming client to
-        communicate with.
+        communicate with. Returns whether creation was successful.
         """
-        port = self._get_unused_port()
-        specific_server = SpecificServer(
-            port=port,
-            process_handle=start_ray_client_server(
-                self.redis_address,
-                port,
-                fate_share=self.fate_share,
-                server_type="specific-server"),
-            channel=grpc.insecure_channel(
-                f"localhost:{port}", options=GRPC_OPTIONS))
         with self.server_lock:
+            port = self._get_unused_port()
+            handle_ready = futures.Future()
+            specific_server = SpecificServer(
+                port=port,
+                process_handle_future=handle_ready,
+                channel=grpc.insecure_channel(
+                    f"localhost:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = specific_server
 
-    def get_channel(self, client_id: str) -> Optional["grpc._channel.Channel"]:
-        """
-        Find the gRPC Channel for the given client_id
-        """
-        client = None
+        serialized_runtime_env = job_config.get_serialized_runtime_env()
+
+        proc = start_ray_client_server(
+            self.redis_address,
+            port,
+            fate_share=self.fate_share,
+            server_type="specific-server",
+            serialized_runtime_env=serialized_runtime_env,
+            session_dir=self._get_session_dir())
+
+        # Wait for the process being run transitions from the shim process
+        # to the actual RayClient Server.
+        pid = proc.process.pid
+        if sys.platform != "win32":
+            psutil_proc = psutil.Process(pid)
+        else:
+            psutil_proc = None
+        # Don't use `psutil` on Win32
+        while psutil_proc is not None:
+            if proc.process.poll() is not None:
+                logger.error(
+                    f"SpecificServer startup failed for client: {client_id}")
+                break
+            cmd = psutil_proc.cmdline()
+            if len(cmd) > 3 and cmd[2] == "ray.util.client.server":
+                break
+            logger.debug(
+                "Waiting for Process to reach the actual client server.")
+            time.sleep(0.5)
+        handle_ready.set_result(proc)
+        logger.info(f"SpecificServer started on port: {port} with PID: {pid} "
+                    f"for client: {client_id}")
+        return proc.process.poll() is None
+
+    def _get_server_for_client(self,
+                               client_id: str) -> Optional[SpecificServer]:
         with self.server_lock:
             client = self.servers.get(client_id)
             if client is None:
                 logger.error(f"Unable to find channel for client: {client_id}")
-                return None
+            return client
+
+    def get_channel(
+            self,
+            client_id: str,
+    ) -> Optional["grpc._channel.Channel"]:
+        """
+        Find the gRPC Channel for the given client_id. This will block until
+        the server process has started.
+        """
+        server = self._get_server_for_client(client_id)
+        if server is None:
+            return None
+        server.wait_ready()
         try:
             grpc.channel_ready_future(
-                client.channel).result(timeout=CHECK_CHANNEL_TIMEOUT_S)
-            return client.channel
+                server.channel).result(timeout=CHECK_CHANNEL_TIMEOUT_S)
+            return server.channel
         except grpc.FutureTimeoutError:
+            logger.exception(f"Timeout waiting for channel for {client_id}")
             return None
 
     def _check_processes(self):
@@ -121,13 +193,27 @@ class ProxyManager():
         while True:
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
-                    poll_result = specific_server.process_handle.process.poll()
+                    poll_result = specific_server.process_handle(
+                    ).process.poll()
                     if poll_result is not None:
                         del self.servers[client_id]
                         # Port is available to use again.
                         self._free_ports.append(specific_server.port)
 
             time.sleep(CHECK_PROCESS_INTERVAL_S)
+
+    def _cleanup(self) -> None:
+        """
+        Forcibly kill all spawned RayClient Servers. This ensures cleanup
+        for platforms where fate sharing is not supported.
+        """
+        for server in self.servers.values():
+            try:
+                server.wait_ready(0.1)
+                server.process_handle().process.kill()
+            except TimeoutError:
+                # Server has not been started yet.
+                pass
 
 
 class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
@@ -217,18 +303,30 @@ def forward_streaming_requests(grpc_input_generator: Iterator[Any],
         output_queue.put(None)
 
 
-def prepare_runtime_init_req(req: ray_client_pb2.InitRequest
-                             ) -> Tuple[ray_client_pb2.InitRequest, JobConfig]:
+def ray_client_server_env_prep(job_config: JobConfig) -> JobConfig:
+    return job_config
+
+
+def prepare_runtime_init_req(iterator: Iterator[ray_client_pb2.DataRequest]
+                             ) -> Tuple[ray_client_pb2.DataRequest, JobConfig]:
     """
     Extract JobConfig and possibly mutate InitRequest before it is passed to
     the specific RayClient Server.
     """
+    init_req = next(iterator)
+    init_type = init_req.WhichOneof("type")
+    assert init_type == "init", ("Received initial message of type "
+                                 f"{init_type}, not 'init'.")
+    req = init_req.init
     job_config = JobConfig()
     if req.job_config:
-        import pickle
         job_config = pickle.loads(req.job_config)
+    new_job_config = ray_client_server_env_prep(job_config)
+    modified_init_req = ray_client_pb2.InitRequest(
+        job_config=pickle.dumps(new_job_config))
 
-    return (req, job_config)
+    init_req.init.CopyFrom(modified_init_req)
+    return (init_req, new_job_config)
 
 
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
@@ -239,22 +337,22 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
-        logger.debug(f"New data connection from client {client_id}: ")
 
-        init_req = next(request_iterator)
-        init_type = init_req.WhichOneof("type")
-        assert init_type == "init", ("Received initial message of type "
-                                     f"{init_type}, not 'init'.")
+        logger.info(f"New data connection from client {client_id}: ")
+        modified_init_req, job_config = prepare_runtime_init_req(
+            request_iterator)
 
-        modified_init_req, job_config = prepare_runtime_init_req(init_req.init)
-        init_req.init.CopyFrom(modified_init_req)
         queue = Queue()
-        queue.put(init_req)
-
-        self.proxy_manager.start_specific_server(client_id)
+        queue.put(modified_init_req)
+        if not self.proxy_manager.start_specific_server(client_id, job_config):
+            logger.error(f"Server startup failed for client: {client_id}, "
+                         f"using JobConfig: {job_config}!")
+            context.set_code(grpc.StatusCode.ABORTED)
+            return None
 
         channel = self.proxy_manager.get_channel(client_id)
         if channel is None:
+            logger.error(f"Channel not found for {client_id}")
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return None
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
@@ -263,11 +361,13 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             args=(request_iterator, queue),
             daemon=True)
         thread.start()
-
-        resp_stream = stub.Datapath(
-            iter(queue.get, None), metadata=[("client_id", client_id)])
-        for resp in resp_stream:
-            yield resp
+        try:
+            resp_stream = stub.Datapath(
+                iter(queue.get, None), metadata=[("client_id", client_id)])
+            for resp in resp_stream:
+                yield resp
+        finally:
+            thread.join(1)
 
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
@@ -282,16 +382,16 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         logger.debug(f"New data connection from client {client_id}: ")
 
         channel = None
-        for i in range(10):
-            # TODO(ilr) Ensure LogClient starts after startup has happened.
-            # This will remove the need for retries here.
+        # We need to retry a few times because the LogClient *may* connect
+        # Before the DataClient has finished connecting.
+        for i in range(5):
             channel = self.proxy_manager.get_channel(client_id)
 
             if channel is not None:
                 break
             logger.warning(
                 f"Retrying Logstream connection. {i+1} attempts failed.")
-            time.sleep(5)
+            time.sleep(2)
 
         if channel is None:
             context.set_code(grpc.StatusCode.NOT_FOUND)
@@ -304,11 +404,13 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             args=(request_iterator, queue),
             daemon=True)
         thread.start()
-
-        resp_stream = stub.Logstream(
-            iter(queue.get, None), metadata=[("client_id", client_id)])
-        for resp in resp_stream:
-            yield resp
+        try:
+            resp_stream = stub.Logstream(
+                iter(queue.get, None), metadata=[("client_id", client_id)])
+            for resp in resp_stream:
+                yield resp
+        finally:
+            thread.join(1)
 
 
 def serve_proxier(connection_str: str, redis_address: str):
