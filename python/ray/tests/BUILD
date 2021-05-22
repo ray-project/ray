@@ -90,7 +90,6 @@ py_test_module_list(
   files = [
     "test_object_spilling_2.py",
     "test_object_manager.py",
-    "test_reference_counting_2.py",
     "test_multi_tenancy.py",
   ],
   size = "medium",
@@ -163,6 +162,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_2.py",
+    "test_reference_counting_2.py",
     "test_object_spilling.py",
   ],
   size = "large",
