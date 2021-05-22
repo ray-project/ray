@@ -169,7 +169,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] was_error Whether the last task failed to be submitted to the worker.
   /// \param[in] scheduling_key The scheduling class of the worker.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
-  void StealTasksIfNeeded(
+  void StealTasksOrReturnWorker(
       const rpc::WorkerAddress &thief_addr, bool was_error,
       const SchedulingKey &scheduling_key,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
@@ -321,6 +321,12 @@ class CoreWorkerDirectTaskSubmitter {
     inline bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
       return total_tasks_in_flight ==
              (active_workers.size() * max_tasks_in_flight_per_worker);
+    }
+
+    // Check whether there exists at least one task that can be stolen
+    inline bool StealableTasks() const {
+      // If any worker has more than one task in flight, then that task can be stolen.
+      return total_tasks_in_flight <= active_workers.size();
     }
   };
 

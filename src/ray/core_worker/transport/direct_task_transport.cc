@@ -162,46 +162,50 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   // Check that there is at least one worker (other than the thief) with the current
-  // SchedulingKey
-  if (scheduling_key_entry.active_workers.size() <= 1) {
+  // SchedulingKey and that there are stealable tasks
+  if (scheduling_key_entry.active_workers.size() <= 1 ||
+      !scheduling_key_entry.StealableTasks()) {
     return false;
   }
   RAY_CHECK(scheduling_key_entry.active_workers.size() > 1);
+  RAY_CHECK(scheduling_key_entry.StealableTasks());
 
   // Iterate through the active workers with the relevant SchedulingKey, and select the
-  // best one for stealing by updating the victim_it iterator (pointing to the designated
+  // best one for stealing by updating the victim_raw_addr (pointing to the designated
   // victim) every time we find a candidate that is better than the incumbent. A candidate
   // is better if: (1) the incumbent victim is the thief -- because this choice would be
   // illegal (thief cannot steal from itself), so any alternative choice is better (2) the
   // candidate is not the thief (otherwise, again, it cannot be designated as the victim),
   // and it has more stealable tasks than the incumbent victim
-  auto victim_it = scheduling_key_entry.active_workers.begin();
+  *victim_raw_addr = scheduling_key_entry.active_workers.begin()->ToProto();
 
   for (auto candidate_it = scheduling_key_entry.active_workers.begin();
        candidate_it != scheduling_key_entry.active_workers.end(); candidate_it++) {
-    *victim_raw_addr = victim_it->ToProto();
-    rpc::WorkerAddress victim_addr = rpc::WorkerAddress(*victim_raw_addr);
-    rpc::WorkerAddress candidate_addr = *candidate_it;
+    const rpc::WorkerAddress &candidate_addr = *candidate_it;
+    const auto &candidate_entry = worker_to_lease_entry_[candidate_addr];
+
+    const rpc::WorkerAddress victim_addr = rpc::WorkerAddress(*victim_raw_addr);
     RAY_CHECK(worker_to_lease_entry_.find(victim_addr) != worker_to_lease_entry_.end());
-    auto &victim_entry = worker_to_lease_entry_[victim_addr];
-    auto &candidate_entry = worker_to_lease_entry_[candidate_addr];
+    const auto &victim_entry = worker_to_lease_entry_[victim_addr];
 
     // Update the designated victim if the alternative candidate is a better choice than
     // the incumbent victim
     if (victim_addr.worker_id == thief_addr.worker_id ||
         ((candidate_entry.tasks_in_flight > victim_entry.tasks_in_flight) &&
          candidate_addr.worker_id != thief_addr.worker_id)) {
-      victim_it = candidate_it;
+      // We copy the candidate's rpc::Address (instead of its rpc::WorkerAddress) because
+      // objects of type 'ray::rpc::WorkerAddress' cannot be assigned as their copy
+      // assignment operator is implicitly deleted
+      *victim_raw_addr = candidate_addr.ToProto();
     }
   }
-  *victim_raw_addr = victim_it->ToProto();
-  rpc::WorkerAddress victim_addr = rpc::WorkerAddress(*victim_raw_addr);
 
+  const rpc::WorkerAddress victim_addr = rpc::WorkerAddress(*victim_raw_addr);
   // Double check to make sure that we didn't pick the thief as the designated victim
   RAY_CHECK(!(victim_addr == thief_addr) &&
             victim_addr.worker_id != thief_addr.worker_id);
 
-  auto &victim_entry = worker_to_lease_entry_[victim_addr];
+  const auto &victim_entry = worker_to_lease_entry_[victim_addr];
   // Double check that the victim has the correct SchedulingKey
   RAY_CHECK(victim_entry.scheduling_key == scheduling_key);
 
@@ -219,10 +223,25 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   return true;
 }
 
-void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
+void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
     const rpc::WorkerAddress &thief_addr, bool was_error,
     const SchedulingKey &scheduling_key,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  auto &thief_entry = worker_to_lease_entry_[thief_addr];
+  // Check that the thief still retains its lease_client, and it has no tasks in flights
+  RAY_CHECK(thief_entry.lease_client);
+  RAY_CHECK(thief_entry.tasks_in_flight == 0);
+  RAY_CHECK(thief_entry.WorkerIsStealing() == false);
+
+  // Return the worker if there was an error or the lease has expired.
+  if ((was_error || current_time_ms() > thief_entry.lease_expiration_time)) {
+    RAY_LOG(DEBUG) << "Returning worker " << thief_addr.worker_id
+                   << " due to error or lease expiration";
+    ReturnWorker(thief_addr, was_error, scheduling_key);
+    return;
+  }
+  RAY_CHECK(!was_error);
+
   // Check if work stealing is enabled
   if (max_tasks_in_flight_per_worker_ == 1 || !work_stealing_) {
     RAY_LOG(DEBUG) << "Work stealing is not enabled, so we return the worker "
@@ -233,12 +252,6 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
 
   RAY_LOG(DEBUG) << "Beginning to steal work now! Thief is worker: "
                  << thief_addr.worker_id;
-
-  auto &thief_entry = worker_to_lease_entry_[thief_addr];
-  // Check that the thief still retains its lease_client, and it has no tasks in flights
-  RAY_CHECK(thief_entry.lease_client);
-  RAY_CHECK(thief_entry.tasks_in_flight == 0);
-  RAY_CHECK(thief_entry.WorkerIsStealing() == false);
 
   // Search for a suitable victim
   rpc::Address victim_raw_addr;
@@ -262,8 +275,8 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
   auto victim_wid = victim_addr.worker_id;
 
   RAY_UNUSED(victim_client.StealTasks(
-      std::move(request), [this, scheduling_key, victim_wid, victim_addr, thief_addr,
-                           was_error](Status status, const rpc::StealTasksReply &reply) {
+      std::move(request), [this, scheduling_key, victim_wid, victim_addr, thief_addr](
+                              Status status, const rpc::StealTasksReply &reply) {
         absl::MutexLock lock(&mu_);
 
         // Obtain the thief's lease entry (after ensuring that it still exists)
@@ -274,47 +287,34 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
         RAY_CHECK(thief_entry.WorkerIsStealing());
 
         // Compute number of tasks stolen
-        int number_of_tasks_stolen = reply.stolen_tasks_ids_size();
+        size_t number_of_tasks_stolen = reply.stolen_tasks_ids_size();
         RAY_LOG(DEBUG) << "We stole " << number_of_tasks_stolen << " tasks "
                        << "from worker: " << victim_wid;
 
         thief_entry.SetWorkerDoneStealing();
 
-        // If we didn't steal anything, we can return the worker to the Raylet
-        if (number_of_tasks_stolen == 0) {
-          RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: "
-                         << victim_addr.worker_id;
+        // push all tasks to the front of the queue
+        for (size_t i = 0; i < number_of_tasks_stolen; i++) {
+          // Get the task_id of the stolen task, and obtain the corresponding task_spec
+          // from the TaskManager
+          TaskID stolen_task_id = TaskID::FromBinary(reply.stolen_tasks_ids(i));
+          RAY_CHECK(task_finisher_->GetTaskSpec(stolen_task_id));
+          auto stolen_task_spec = *(task_finisher_->GetTaskSpec(stolen_task_id));
 
-          if (thief_entry.tasks_in_flight == 0) {
-            RAY_LOG(DEBUG)
-                << "Thief " << thief_addr.worker_id
-                << " has no tasks in flight now, so we return it to the Raylet!";
-            ReturnWorker(thief_addr, was_error, scheduling_key);
-          }
-        } else {
-          // push all tasks to the front of the queue
-          for (int64_t i = 0; i < number_of_tasks_stolen; i++) {
-            // Get the task_id of the stolen task, and obtain the corresponding task_spec
-            // from the TaskManager
-            TaskID stolen_task_id = TaskID::FromBinary(reply.stolen_tasks_ids(i));
-            RAY_CHECK(task_finisher_->GetTaskSpec(stolen_task_id));
-            auto stolen_task_spec = *(task_finisher_->GetTaskSpec(stolen_task_id));
+          // delete the stolen task from the executing_tasks map if it is still there.
+          executing_tasks_.erase(stolen_task_id);
 
-            // delete the stolen task from the executing_tasks map if it is still there.
-            executing_tasks_.erase(stolen_task_id);
+          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-
-            // Add the task to the queue
-            RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
-                           << " back to the queue (of current size="
-                           << scheduling_key_entry.task_queue.size() << ")!";
-            scheduling_key_entry.task_queue.push_front(stolen_task_spec);
-          }
-          // call OnWorkerIdle to ship the task to the thief
-          OnWorkerIdle(thief_addr, scheduling_key, /*error=*/false,
-                       thief_entry.assigned_resources);
+          // Add the task to the queue
+          RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
+                         << " back to the queue (of current size="
+                         << scheduling_key_entry.task_queue.size() << ")!";
+          scheduling_key_entry.task_queue.push_front(stolen_task_spec);
         }
+        // call OnWorkerIdle to ship the task to the thief
+        OnWorkerIdle(thief_addr, scheduling_key, /*error=*/!status.ok(),
+                     thief_entry.assigned_resources);
       }));
 }
 
@@ -329,17 +329,17 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
-  // the previous task is an actor creation task,
-  // there are no more applicable queued tasks, or the lease is expired.
-  if (!lease_entry.WorkerIsStealing() &&
-      (was_error || current_queue.empty() ||
-       current_time_ms() > lease_entry.lease_expiration_time)) {
+  // the lease is expired; Steal or return the worker if there are no more applicable
+  // queued tasks and the worker is not stealing.
+  if ((was_error || current_time_ms() > lease_entry.lease_expiration_time) ||
+      (current_queue.empty() && !lease_entry.WorkerIsStealing())) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight == 0) {
-      RAY_LOG(DEBUG) << "Number of tasks in flight == 0, calling StealTasksIfNeeded!";
-      StealTasksIfNeeded(addr, was_error, scheduling_key, assigned_resources);
+      RAY_LOG(DEBUG)
+          << "Number of tasks in flight == 0, calling StealTasksOrReturnWorker!";
+      StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
@@ -458,8 +458,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // have any tasks to execute on that worker.
   if (task_queue.empty()) {
     // If any worker has more than one task in flight, then that task can be stolen.
-    bool stealable_tasks = scheduling_key_entry.total_tasks_in_flight <=
-                           scheduling_key_entry.active_workers.size();
+    bool stealable_tasks = scheduling_key_entry.StealableTasks();
     if (!work_stealing_ || stealable_tasks) {
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
@@ -594,15 +593,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               // scheduling_key_entries_ hashmap.
               scheduling_key_entries_.erase(scheduling_key);
             }
-          } else if (!reply.task_stolen() && (!status.ok() || !is_actor_creation)) {
+          } else if (reply.task_stolen()) {
+            // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
+            // in the StealTasks callback within StealTasksOrReturnWorker. So we don't
+            // need to do anything here.
+            return;
+          } else if (!status.ok() || !is_actor_creation) {
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
-          } else if (reply.task_stolen()) {
-            // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
-            // in the StealTasks callback within StealTasksIfNeeded. So we don't need to
-            // do anything here.
-            return;
           }
         }
         if (!status.ok()) {
