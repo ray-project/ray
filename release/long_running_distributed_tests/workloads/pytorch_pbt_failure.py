@@ -1,4 +1,5 @@
 import argparse
+
 import numpy as np
 import os
 import torch
@@ -16,6 +17,8 @@ from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
+from release.long_running_distributed_tests.utils import JsonCallback
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--smoke-test",
@@ -31,8 +34,8 @@ def initialization_hook():
     os.environ["NCCL_LL_THRESHOLD"] = "0"
 
     # set the below if needed
-    # print("NCCL DEBUG SET")
-    # os.environ["NCCL_DEBUG"] = "INFO"
+    print("NCCL DEBUG SET")
+    os.environ["NCCL_DEBUG"] = "INFO"
 
 
 def cifar_creator(config):
@@ -91,7 +94,6 @@ TorchTrainable = TorchTrainer.as_trainable(
         BATCH_SIZE: 128 * num_training_workers,
     },
     use_gpu=not args.smoke_test,
-    backend="gloo",  # This should also work with NCCL
 )
 
 pbt_scheduler = PopulationBasedTraining(
@@ -110,6 +112,11 @@ reporter = CLIReporter()
 reporter.add_metric_column("val_loss", "loss")
 reporter.add_metric_column("val_accuracy", "acc")
 
+callbacks = [FailureInjectorCallback(time_between_checks=90)]
+if not args.smoke_test:
+    callbacks.append(JsonCallback(output_json_file=os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/pytorch_pbt_failure.json")))
+
 analysis = tune.run(
     TorchTrainable,
     num_samples=4,
@@ -123,7 +130,7 @@ analysis = tune.run(
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    callbacks=[FailureInjectorCallback(time_between_checks=90)],
+    callbacks=[callbacks],
     queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 
