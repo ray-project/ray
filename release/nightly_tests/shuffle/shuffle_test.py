@@ -19,8 +19,9 @@ if __name__ == "__main__":
     success = True
     try:
         subprocess.check_call([
-            "python", "-m", "ray.experimental.shuffle", "--ray-address={}".format(
-                os.environ["RAY_ADDRESS"]), f"--num-partitions={args.num_partitions}",
+            "python", "-m", "ray.experimental.shuffle",
+            "--ray-address={}".format(os.environ["RAY_ADDRESS"]),
+            f"--num-partitions={args.num_partitions}",
             f"--partition-size={args.partition_size}"
         ])
     except Exception as e:
@@ -28,7 +29,4 @@ if __name__ == "__main__":
         success = False
     delta = time.time() - start
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({
-            "shuffle_time": delta,
-            "success": success
-        }))
+        f.write(json.dumps({"shuffle_time": delta, "success": success}))
