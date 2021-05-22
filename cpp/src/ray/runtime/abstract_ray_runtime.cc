@@ -121,5 +121,19 @@ const std::unique_ptr<WorkerContext> &AbstractRayRuntime::GetWorkerContext() {
   return worker_;
 }
 
+void AddLocalReference(const ObjectID &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.AddLocalReference(id);
+  }
+}
+
+void RemoveLocalReference(const ObjectID &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.RemoveLocalReference(id);
+  }
+}
+
 }  // namespace api
 }  // namespace ray

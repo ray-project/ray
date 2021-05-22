@@ -51,5 +51,9 @@ class RayRuntime {
                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
 };
 
+void AddLocalReference(const ObjectID &id);
+
+void RemoveLocalReference(const ObjectID &id);
+
 }  // namespace api
 }  // namespace ray
