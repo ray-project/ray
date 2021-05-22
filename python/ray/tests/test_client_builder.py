@@ -136,7 +136,6 @@ while True:
     time.sleep(30)
 
 """
-    # no_address_script = driver_template.format(address="")
     blocking_local_script = driver_template.format(
         address="'local'", blocking=True)
     blocking_noaddr_script = driver_template.format(address="", blocking=True)
