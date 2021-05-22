@@ -85,6 +85,7 @@ print(ray.get_runtime_context().namespace)
         run_string_as_driver(run_in_namespace)
 
     assert script_namespace.strip() == "namespace"
+    subprocess.check_output("ray stop --force", shell=True)
 
 
 def test_connect_to_cluster(ray_start_regular_shared):
@@ -100,9 +101,24 @@ def test_connect_to_cluster(ray_start_regular_shared):
     assert client_info.protocol_version == protocol_version
 
     server.stop(0)
+    subprocess.check_output("ray stop --force", shell=True)
 
 
 def test_local_clusters():
+    """
+    This tests the various behaviors of connecting to local clusters:
+
+    * Using `ray.client("local").connect() ` should always create a new
+      cluster.
+    * Using `ray.cleint().connectIO` should create a new cluster if it doesn't
+      connect to an existing one.
+    * Using `ray.client().connect()` should only connect to a cluster if it
+      was created with `ray start --head`, not from a python program.
+
+    It does tests if two calls are in the same cluster by trying to create an
+    actor with the same name in the same namespace, which will error and cause
+    the script have a non-zero exit, which throws an exception.
+    """
     driver_template = """
 import ray
 info = ray.client({address}).namespace("").connect()
@@ -115,10 +131,9 @@ class Foo:
 a = Foo.options(name="abc", lifetime="detached").remote()
 ray.get(a.ping.remote())
 
-if {blocking}:
-    import time
-    while True:
-        time.sleep(30)
+import time
+while True:
+    time.sleep(30)
 
 """
     # no_address_script = driver_template.format(address="")
