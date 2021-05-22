@@ -80,7 +80,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
 }
 
 Status TaskExecutor::ExecuteTask(
-    TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+    ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     const std::vector<ObjectID> &arg_reference_ids,
@@ -88,7 +88,7 @@ Status TaskExecutor::ExecuteTask(
     std::vector<std::shared_ptr<RayObject>> *results,
     std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
-  RAY_CHECK(ray_function.GetLanguage() == Language::CPP);
+  RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
   RAY_CHECK(function_descriptor->Type() ==
             ray::FunctionDescriptorType::kCppFunctionDescriptor);
@@ -98,10 +98,10 @@ Status TaskExecutor::ExecuteTask(
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
-  if (task_type == TaskType::ACTOR_CREATION_TASK) {
+  if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
     std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
     current_actor_ = data;
-  } else if (task_type == TaskType::ACTOR_TASK) {
+  } else if (task_type == ray::TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
         GetExecuteResult(lib_name, func_name, args_buffer, current_actor_.get());
@@ -114,7 +114,7 @@ Status TaskExecutor::ExecuteTask(
   }
 
   results->resize(return_ids.size(), nullptr);
-  if (task_type != TaskType::ACTOR_CREATION_TASK) {
+  if (task_type != ray::TaskType::ACTOR_CREATION_TASK) {
     size_t data_size = data->size();
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];

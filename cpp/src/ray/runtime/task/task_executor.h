@@ -47,7 +47,8 @@ class TaskExecutor {
       absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
-      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+      ray::TaskType task_type, const std::string task_name,
+      const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <ray/api/common_types.h>
 #include <ray/api/serializer.h>
 
 #include <boost/callable_traits.hpp>
@@ -49,7 +50,7 @@ inline static msgpack::sbuffer PackError(std::string error_msg) {
   msgpack::sbuffer sbuffer;
   msgpack::packer<msgpack::sbuffer> packer(sbuffer);
   packer.pack(msgpack::type::nil_t());
-  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+  packer.pack(std::make_tuple((int)ray::api::ErrorType::TASK_EXECUTION_EXCEPTION,
                               std::move(error_msg)));
 
   return sbuffer;
