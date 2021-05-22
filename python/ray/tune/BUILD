@@ -806,7 +806,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "horovod_test",
+    name = "horovod_cifar_pbt_example",
     size = "medium",
     srcs = ["examples/horovod_cifar_pbt_example.py"],
     tags = ["exlusive", "pytorch", "release", "py37"],
