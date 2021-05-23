@@ -71,9 +71,32 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_ob
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
+std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
+    std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
+  std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
+  for (auto &arg : args) {
+    std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
+    if (arg->GetArgType() == ArgType::ArgByValue) {
+      ray_arg = absl::make_unique<::ray::TaskArgByValue>(arg->Getvalue());
+    } else {
+      ray::rpc::Address ray_addr{};
+      auto addr = arg->GetAddress();
+      ray_addr.set_raylet_id(std::move(addr.raylet_id));
+      ray_addr.set_ip_address(std::move(addr.ip_address));
+      ray_addr.set_port(addr.port);
+      ray_addr.set_worker_id(std::move(addr.worker_id));
+      ray_arg = absl::make_unique<::ray::TaskArgByReference>(arg->GetObjectID(),
+                                                             std::move(ray_addr));
+    }
+    ray_args.push_back(std::move(ray_arg));
+  }
+
+  return ray_args;
+}
+
 InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
                                    const RemoteFunctionHolder &remote_function_holder,
-                                   std::vector<std::unique_ptr<::ray::TaskArg>> &args,
+                                   std::vector<std::unique_ptr<ray::api::TaskArg>> &args,
                                    const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
@@ -82,12 +105,12 @@ InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
   invocation_spec.lib_name = lib_name;
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
-  invocation_spec.args = std::move(args);
+  invocation_spec.args = TransformArgs(args);
   return invocation_spec;
 }
 
 ObjectID AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+                                  std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
   auto invocation_spec =
       BuildInvocationSpec(TaskType::NORMAL_TASK, this->config_->lib_name,
                           remote_function_holder, args, ActorID::Nil());
@@ -96,7 +119,8 @@ ObjectID AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_ho
 
 ActorID AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+    std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
+  std::vector<std::unique_ptr<ray::api::TaskArg>> args1;
   auto invocation_spec =
       BuildInvocationSpec(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name,
                           remote_function_holder, args, ActorID::Nil());
@@ -105,7 +129,7 @@ ActorID AbstractRayRuntime::CreateActor(
 
 ObjectID AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const ActorID &actor,
-    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+    std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
   auto invocation_spec = BuildInvocationSpec(
       TaskType::ACTOR_TASK, this->config_->lib_name, remote_function_holder, args, actor);
   return task_submitter_->SubmitActorTask(invocation_spec);

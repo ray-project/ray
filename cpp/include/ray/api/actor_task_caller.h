@@ -26,7 +26,7 @@ class ActorTaskCaller {
   RayRuntime *runtime_;
   ActorID id_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<std::unique_ptr<::ray::TaskArg>> args_;
+  std::vector<std::unique_ptr<ray::api::TaskArg>> args_;
 };
 
 // ---------- implementation ----------

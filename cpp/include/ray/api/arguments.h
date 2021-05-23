@@ -21,7 +21,7 @@ struct is_object_ref<ObjectRef<T>> : std::true_type {};
 class Arguments {
  public:
   template <typename ArgType>
-  static void WrapArgsImpl(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+  static void WrapArgsImpl(std::vector<std::unique_ptr<ray::api::TaskArg>> *task_args,
                            ArgType &arg) {
     static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
 
@@ -35,15 +35,15 @@ class Arguments {
   }
 
   template <typename ArgType>
-  static void WrapArgsImpl(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+  static void WrapArgsImpl(std::vector<std::unique_ptr<ray::api::TaskArg>> *task_args,
                            ObjectRef<ArgType> &arg) {
     /// Pass by reference.
-    auto task_arg = new TaskArgByReference(arg.ID(), rpc::Address());
+    auto task_arg = new TaskArgByReference(arg.ID(), Address{});
     task_args->emplace_back(task_arg);
   }
 
   template <typename... OtherArgTypes>
-  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+  static void WrapArgs(std::vector<std::unique_ptr<ray::api::TaskArg>> *task_args,
                        OtherArgTypes &... args) {
     (void)std::initializer_list<int>{(WrapArgsImpl(task_args, args), 0)...};
     /// Silence gcc warning error.

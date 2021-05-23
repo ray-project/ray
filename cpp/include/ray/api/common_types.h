@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #pragma once
+#include <memory>
+#include <string>
+#include "ray/core.h"
 
 namespace ray {
 namespace api {
@@ -45,6 +48,69 @@ enum TaskType : int {
   ACTOR_CREATION_TASK = 1,
   ACTOR_TASK = 2,
   DRIVER_TASK = 3,
+};
+
+struct Address {
+  std::string raylet_id;
+  std::string ip_address;
+  int32_t port;
+  // Optional unique id for the worker.
+  std::string worker_id;
+};
+
+enum class ArgType { ArgByRef, ArgByValue };
+
+/// Argument of a task.
+class TaskArg {
+ public:
+  TaskArg() = default;
+  TaskArg(ArgType arg_type) : arg_type_(arg_type) {}
+  virtual ~TaskArg(){};
+  ArgType GetArgType() { return arg_type_; }
+
+  virtual const ObjectID GetObjectID() { return {}; }
+  virtual const Address GetAddress() { return {}; }
+  virtual std::shared_ptr<RayObject> Getvalue() { return nullptr; }
+
+ protected:
+  ArgType arg_type_;
+};
+
+class TaskArgByReference : public TaskArg {
+ public:
+  /// Create a pass-by-reference task argument.
+  ///
+  /// \param[in] object_id Id of the argument.
+  /// \return The task argument.
+  TaskArgByReference(const ObjectID &object_id, const Address &owner_address)
+      : id_(object_id), owner_address_(owner_address) {
+    arg_type_ = ArgType::ArgByRef;
+  }
+  const ObjectID GetObjectID() { return id_; }
+  const Address GetAddress() { return owner_address_; }
+
+ private:
+  /// Id of the argument if passed by reference, otherwise nullptr.
+  const ObjectID id_;
+  const Address owner_address_;
+};
+
+class TaskArgByValue : public TaskArg {
+ public:
+  /// Create a pass-by-value task argument.
+  ///
+  /// \param[in] value Value of the argument.
+  /// \return The task argument.
+  explicit TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+    // RAY_CHECK(value) << "Value can't be null.";
+    arg_type_ = ArgType::ArgByValue;
+  }
+
+  std::shared_ptr<RayObject> Getvalue() { return value_; }
+
+ private:
+  /// Value of the argument.
+  const std::shared_ptr<RayObject> value_;
 };
 
 }  // namespace api
