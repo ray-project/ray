@@ -317,7 +317,7 @@ py_test(
 )
 
 # Disable the deployment tutorial test because it requires
-# ray start --head in the background.
+# ray start --head in the background
 # py_test(
     #name = "tutorial_deploy",
     #size = "small",
