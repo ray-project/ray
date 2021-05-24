@@ -1,6 +1,7 @@
 
 #include "task_executor.h"
 
+#include <ray/api/common_types.h>
 #include <ray/api/exec_funcs.h>
 
 #include <memory>
@@ -14,7 +15,7 @@ namespace internal {
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(
     const std::string &func_name,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     return PackError("Task function name is empty");
@@ -65,7 +66,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &lib_name, const std::string &func_name,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
   if (entry_func == nullptr) {
@@ -79,14 +80,25 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
                         std::make_shared<msgpack::sbuffer>(std::move(result)));
 }
 
+std::shared_ptr<ray::api::RayObject> ToRayObject(
+    const std::shared_ptr<ray::RayObject> &ray_object) {
+  auto buf = std::make_shared<ray::api::LocalMemoryBuffer>(ray_object->GetData()->Data(),
+                                                           ray_object->GetData()->Size());
+  auto meta_buf = ray_object->GetMetadata();
+  auto meta = meta_buf ? std::make_shared<ray::api::LocalMemoryBuffer>(meta_buf->Data(),
+                                                                       meta_buf->Size())
+                       : nullptr;
+  return std::make_shared<ray::api::RayObject>(buf, meta, ray_object->GetNestedIds());
+}
+
 Status TaskExecutor::ExecuteTask(
     ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<ObjectID> &arg_reference_ids,
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-    std::vector<std::shared_ptr<RayObject>> *results,
-    std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+    std::vector<std::shared_ptr<ray::RayObject>> *results,
+    std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
@@ -98,15 +110,21 @@ Status TaskExecutor::ExecuteTask(
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
+  std::vector<std::shared_ptr<ray::api::RayObject>> ray_args_buffer;
+  for (auto &arg : args_buffer) {
+    ray_args_buffer.push_back(ToRayObject(arg));
+  }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
-    std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
+    std::tie(status, data) =
+        GetExecuteResult(lib_name, func_name, ray_args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == ray::TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
-        GetExecuteResult(lib_name, func_name, args_buffer, current_actor_.get());
+        GetExecuteResult(lib_name, func_name, ray_args_buffer, current_actor_.get());
   } else {  // NORMAL_TASK
-    std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
+    std::tie(status, data) =
+        GetExecuteResult(lib_name, func_name, ray_args_buffer, nullptr);
   }
 
   if (!status.ok()) {
@@ -139,19 +157,19 @@ void TaskExecutor::Invoke(
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
-  std::vector<std::shared_ptr<RayObject>> args_buffer;
+  std::vector<std::shared_ptr<ray::api::RayObject>> args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    std::shared_ptr<::ray::LocalMemoryBuffer> memory_buffer = nullptr;
+    std::shared_ptr<ray::api::LocalMemoryBuffer> memory_buffer = nullptr;
     if (task_spec.ArgByRef(i)) {
       auto arg = runtime->Get(task_spec.ArgId(i));
-      memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      memory_buffer = std::make_shared<ray::api::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(arg->data()), arg->size(), true);
     } else {
-      memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      memory_buffer = std::make_shared<ray::api::LocalMemoryBuffer>(
           const_cast<uint8_t *>(task_spec.ArgData(i)), task_spec.ArgDataSize(i), true);
     }
-    args_buffer.emplace_back(
-        std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+    args_buffer.emplace_back(std::make_shared<ray::api::RayObject>(
+        memory_buffer, nullptr, std::vector<ObjectID>()));
   }
 
   auto function_descriptor = task_spec.FunctionDescriptor();

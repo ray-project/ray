@@ -71,22 +71,38 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_ob
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
+std::unique_ptr<::ray::TaskArg> ToTaskArgValue(std::unique_ptr<ray::api::TaskArg> &arg) {
+  auto value = arg->GetValue()->GetData();
+  auto buf = std::make_shared<::ray::LocalMemoryBuffer>(value->Data(), value->Size());
+  auto meta_value = arg->GetValue()->GetMetadata();
+  auto meta_buf = meta_value ? std::make_shared<::ray::LocalMemoryBuffer>(
+                                   meta_value->Data(), meta_value->Size())
+                             : nullptr;
+  auto ray_object =
+      std::make_shared<::ray::RayObject>(buf, meta_buf, arg->GetValue()->GetNestedIds());
+  return absl::make_unique<::ray::TaskArgByValue>(ray_object);
+}
+
+std::unique_ptr<::ray::TaskArg> ToTaskArgRef(std::unique_ptr<ray::api::TaskArg> &arg) {
+  ray::rpc::Address ray_addr{};
+  auto addr = arg->GetAddress();
+  ray_addr.set_raylet_id(std::move(addr.raylet_id));
+  ray_addr.set_ip_address(std::move(addr.ip_address));
+  ray_addr.set_port(addr.port);
+  ray_addr.set_worker_id(std::move(addr.worker_id));
+  return absl::make_unique<::ray::TaskArgByReference>(arg->GetObjectID(),
+                                                      std::move(ray_addr));
+}
+
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
     if (arg->GetArgType() == ArgType::ArgByValue) {
-      ray_arg = absl::make_unique<::ray::TaskArgByValue>(arg->Getvalue());
+      ray_arg = ToTaskArgValue(arg);
     } else {
-      ray::rpc::Address ray_addr{};
-      auto addr = arg->GetAddress();
-      ray_addr.set_raylet_id(std::move(addr.raylet_id));
-      ray_addr.set_ip_address(std::move(addr.ip_address));
-      ray_addr.set_port(addr.port);
-      ray_addr.set_worker_id(std::move(addr.worker_id));
-      ray_arg = absl::make_unique<::ray::TaskArgByReference>(arg->GetObjectID(),
-                                                             std::move(ray_addr));
+      ray_arg = ToTaskArgRef(arg);
     }
     ray_args.push_back(std::move(ray_arg));
   }

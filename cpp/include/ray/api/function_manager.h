@@ -74,7 +74,8 @@ struct Invoker {
   /// Invoke functions by networking stream, at first deserialize the binary data to a
   /// tuple, then call function with tuple.
   static inline msgpack::sbuffer Apply(
-      const Function &func, const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+      const Function &func,
+      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer) {
     using ArgsTuple = boost::callable_traits::args_t<Function>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
       return PackError("Arguments number not match");
@@ -103,7 +104,7 @@ struct Invoker {
 
   static inline msgpack::sbuffer ApplyMember(
       const Function &func, msgpack::sbuffer *ptr,
-      const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer) {
     using ArgsTuple = RemoveFirst_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
       return PackError("Arguments number not match");
@@ -139,14 +140,16 @@ struct Invoker {
   }
 
   static inline bool GetArgsTuple(
-      std::tuple<> &tup, const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+      std::tuple<> &tup,
+      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
       absl::index_sequence<>) {
     return true;
   }
 
   template <size_t... I, typename... Args>
   static inline bool GetArgsTuple(
-      std::tuple<Args...> &tp, const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+      std::tuple<Args...> &tp,
+      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
       absl::index_sequence<I...>) {
     bool is_ok = true;
     (void)std::initializer_list<int>{
@@ -221,7 +224,8 @@ class FunctionManager {
     return instance;
   }
 
-  std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<RayObject>> &)>
+  std::function<
+      msgpack::sbuffer(const std::vector<std::shared_ptr<ray::api::RayObject>> &)>
       *GetFunction(const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
@@ -273,8 +277,8 @@ class FunctionManager {
     return it->second;
   }
 
-  std::function<msgpack::sbuffer(msgpack::sbuffer *,
-                                 const std::vector<std::shared_ptr<RayObject>> &)>
+  std::function<msgpack::sbuffer(
+      msgpack::sbuffer *, const std::vector<std::shared_ptr<ray::api::RayObject>> &)>
       *GetMemberFunction(const std::string &func_name) {
     auto it = map_mem_func_invokers_.find(func_name);
     if (it == map_mem_func_invokers_.end()) {
@@ -322,12 +326,14 @@ class FunctionManager {
     return std::string(arr.data(), arr.size());
   }
 
-  std::unordered_map<std::string, std::function<msgpack::sbuffer(
-                                      const std::vector<std::shared_ptr<RayObject>> &)>>
+  std::unordered_map<std::string,
+                     std::function<msgpack::sbuffer(
+                         const std::vector<std::shared_ptr<ray::api::RayObject>> &)>>
       map_invokers_;
-  std::unordered_map<std::string, std::function<msgpack::sbuffer(
-                                      msgpack::sbuffer *,
-                                      const std::vector<std::shared_ptr<RayObject>> &)>>
+  std::unordered_map<
+      std::string,
+      std::function<msgpack::sbuffer(
+          msgpack::sbuffer *, const std::vector<std::shared_ptr<ray::api::RayObject>> &)>>
       map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
 };
