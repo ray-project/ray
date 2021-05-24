@@ -102,8 +102,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         return _LocalClientBuilder(None)
     if address is None:
         try:
-            cluster_file = os.path.join(ray._private.utils.get_ray_temp_dir(),
-                                        "current_cluster")
+            cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
+                                        "ray_current_cluster")
             with open(cluster_file, "r") as f:
                 address = f.read()
                 print(address)
