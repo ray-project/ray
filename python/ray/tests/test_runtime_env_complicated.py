@@ -67,7 +67,7 @@ def get_tf_version():
     return tf.__version__
 
 assert ray.get(get_tf_version.remote()) == "{tf_version}"
-ray.util.disconnect()
+ray.client().disconnect()
 """
 
 
@@ -107,7 +107,7 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
             run_string_as_driver(
                 check_remote_client_conda.format(tf_version=other_tf_version))
         finally:
-            ray.util.disconnect()
+            ray.client().disconnect()
             ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
@@ -399,14 +399,14 @@ def test_conda_create_ray_client(call_ray_start):
             import pip_install_test  # noqa
         assert ray.get(f.remote())
 
-        ray.util.disconnect()
+        ray.client().disconnect()
         ray.client("localhost:24001").connect()
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
             ray.get(f.remote())
     finally:
-        ray.util.disconnect()
+        ray.client().disconnect()
         ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 

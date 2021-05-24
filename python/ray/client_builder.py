@@ -61,6 +61,12 @@ class ClientBuilder:
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
 
+    def disconnect(self) -> None:
+        """
+        Disconnect from ray.client(...).
+        """
+        ray.util.client_connect.disconnect()
+
 
 class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientInfo:

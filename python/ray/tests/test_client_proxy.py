@@ -88,11 +88,11 @@ def test_multiple_clients_use_different_drivers(call_ray_start):
     ray.client("localhost:25001").connect()
     job_id_one = ray.get_runtime_context().job_id
     namespace_one = ray.get_runtime_context().namespace
-    ray.util.disconnect()
+    ray.client().disconnect()
     ray.client("localhost:25001").connect()
     job_id_two = ray.get_runtime_context().job_id
     namespace_two = ray.get_runtime_context().namespace
-    ray.util.disconnect()
+    ray.client().disconnect()
 
     assert job_id_one != job_id_two
     assert namespace_one != namespace_two

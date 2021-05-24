@@ -29,7 +29,7 @@ Named actors are only accessible within their namespaces.
     ray.client().namespace("colors").connect()
     Actor.options(name="orange", lifetime="detached")
     Actor.options(name="purple", lifetime="detached")
-    ray.util.disconnect()
+    ray.client().disconnect()
 
     # Job 2 is now connecting to a different namespace.
     ray.client().namespace("fruits").connect()
@@ -38,7 +38,7 @@ Named actors are only accessible within their namespaces.
     # This succceeds because the name "orange" is unused in this namespace.
     Actor.options(name="orange", lifetime="detached")
     Actor.options(name="watermelon", lifetime="detached")
-    ray.util.disconnect()
+    ray.client().disconnect()
 
     # Job 3 connects to the original "colors" namespace
     ray.client().namespace("colors").connect()
@@ -46,7 +46,7 @@ Named actors are only accessible within their namespaces.
     ray.get_actor("watermelon")
     # This returns the "orange" actor we created in the first job, not the second.
     ray.get_actor("orange")
-    ray.util.disconnect()
+    ray.client().disconnect()
          
 
 Anonymous namespaces
@@ -67,13 +67,13 @@ will not have access to actors in other namespaces.
     # Job 1 connects to an anonymous namespace by default
     ray.client().connect()
     Actor.options(name="my_actor", lifetime="detached")
-    ray.util.disconnect()
+    ray.client().disconnect()
 
     # Job 2 connects to an _different_ anonymous namespace by default
     ray.client().connect()
     # This succeeds because the second job is in its own namespace.
     Actor.options(name="my_actor", lifetime="detached")
-    ray.util.disconnect()
+    ray.client().disconnect()
 
 .. note::
 
