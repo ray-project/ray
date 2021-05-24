@@ -114,8 +114,10 @@ reporter.add_metric_column("val_accuracy", "acc")
 
 callbacks = [FailureInjectorCallback(time_between_checks=90)]
 if not args.smoke_test:
-    callbacks.append(JsonCallback(output_json_file=os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/pytorch_pbt_failure.json")))
+    callbacks.append(
+        JsonCallback(
+            output_json_file=os.environ.get("TEST_OUTPUT_JSON",
+                                            "/tmp/pytorch_pbt_failure.json")))
 
 analysis = tune.run(
     TorchTrainable,

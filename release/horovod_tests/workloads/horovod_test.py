@@ -149,11 +149,14 @@ if __name__ == "__main__":
 
     result_str = "Best hyperparameters found were: ", analysis.best_config
 
-    json_output_file = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/pytorch_pbt_failure.json")
+    json_output_file = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/pytorch_pbt_failure.json")
 
     with open(json_output_file, "at") as f:
-        json.dump({"result": result_str, "time_taken": end_time-start_time}, f)
+        json.dump({
+            "result": result_str,
+            "time_taken": end_time - start_time
+        }, f)
 
     print("PASSED")
     print(result_str)

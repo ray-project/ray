@@ -1,6 +1,5 @@
 import json
 import time
-from typing import List
 
 from ray.tune import Callback
 
@@ -11,15 +10,16 @@ class JsonCallback(Callback):
     def __init__(self, output_json_file):
         self.output_file = output_json_file
 
-    def on_step_end(self, iteration: int, trials: List["Trial"], **info):
+    def on_step_end(self, iteration: int, trials, **info):
         """Write output every 6 tuning loop step."""
         if iteration % 3 == 0:
             current_time = time.time()
             trial_ids = [trial.trial_id for trial in trials]
             trial_names = [str(trial) for trial in trials]
-            training_iterations = [trial.last_result.get(
-                "training_iteration", None)
-                for trial in trials]
+            training_iterations = [
+                trial.last_result.get("training_iteration", None)
+                for trial in trials
+            ]
             trial_statuses = [trial.status for trial in trials]
 
             output = {
