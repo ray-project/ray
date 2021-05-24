@@ -36,7 +36,7 @@ opencv-python-headless==4.3.0.36
 pandas==1.0.5
 scipy==1.4.1
 tabulate
-tensorboardX
+tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
 starlette
