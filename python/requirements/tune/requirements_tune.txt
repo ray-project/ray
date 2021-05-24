@@ -14,7 +14,7 @@ HEBO==0.1.0
 hyperopt==0.2.5
 jupyter==1.0.0
 keras==2.4.3
-kubernetes==12.0.1
+kubernetes==17.17.0
 lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
 matplotlib==3.4.2; python_version >= '3.7'
