@@ -102,6 +102,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         return _LocalClientBuilder(None)
     if address is None:
         try:
+			# NOTE: This is not scoped to the `Node::get_temp_dir_path`, because
+			# this file is accessed before the `Node` object is not yet created.
             cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
                                         "ray_current_cluster")
             with open(cluster_file, "r") as f:
