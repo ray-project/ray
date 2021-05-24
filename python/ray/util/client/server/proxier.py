@@ -63,7 +63,9 @@ class SpecificServer:
 
 
 class ProxyManager():
-    def __init__(self, redis_address: str, session_dir: Optional[str] = None):
+    def __init__(self,
+                 redis_address: Optional[str],
+                 session_dir: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self.redis_address = redis_address
@@ -96,6 +98,17 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
+    def _get_redis_address(self) -> str:
+        """
+        Returns the provided Ray Redis address, or creates a new session.
+        """
+        if self.redis_address:
+            return self.redis_address
+        connection_tuple = ray.init(address=self.redis_address)
+        self.redis_address = connection_tuple["redis_address"]
+        self._session_dir = connection_tuple["session_dir"]
+        return self.redis_address
+
     def _get_session_dir(self) -> str:
         """
         Gets the session_dir of this running Ray session. This usually
@@ -103,7 +116,7 @@ class ProxyManager():
         """
         if self._session_dir:
             return self._session_dir
-        connection_tuple = ray.init(address=self.redis_address)
+        connection_tuple = ray.init(address=self._get_redis_address())
         ray.shutdown()
         self._session_dir = connection_tuple["session_dir"]
         return self._session_dir
@@ -127,7 +140,7 @@ class ProxyManager():
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
         proc = start_ray_client_server(
-            self.redis_address,
+            self._get_redis_address(),
             port,
             fate_share=self.fate_share,
             server_type="specific-server",
