@@ -34,6 +34,14 @@ py_test(
 )
 
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    deps = [":tune_lib"],
+    tags = ["client", "py37", "exclusive"]
+)
+
+py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],

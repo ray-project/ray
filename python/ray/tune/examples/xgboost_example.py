@@ -28,7 +28,16 @@ def train_breast_cancer(config: dict):
         callbacks=[TuneReportCheckpointCallback(filename="model.xgb")])
 
 
-if __name__ == "__main__":
+def get_best_model_checkpoint(analysis):
+    best_bst = xgb.Booster()
+    best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
+    accuracy = 1. - analysis.best_result["eval-error"]
+    print(f"Best model parameters: {analysis.best_config}")
+    print(f"Best model total accuracy: {accuracy:.4f}")
+    return best_bst
+
+
+def tune_xgboost():
     search_space = {
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
@@ -54,12 +63,35 @@ if __name__ == "__main__":
         num_samples=10,
         scheduler=scheduler)
 
-    # Load the best model checkpoint
-    best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
-    accuracy = 1. - analysis.best_result["eval-error"]
-    print(f"Best model parameters: {analysis.best_config}")
-    print(f"Best model total accuracy: {accuracy:.4f}")
+    return analysis
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        import ray
+        ray.util.connect(args.server_address)
+
+    analysis = tune_xgboost()
+
+    # Load the best model checkpoint.
+    if args.server_address:
+        # If connecting to a remote server with Ray Client, checkpoint loading
+        # should be wrapped in a task so it will execute on the server.
+        best_bst = ray.get(
+            ray.remote(get_best_model_checkpoint.remote(analysis)))
+    else:
+        best_bst = get_best_model_checkpoint(analysis)
 
     # You could now do further predictions with
     # best_bst.predict(...)
