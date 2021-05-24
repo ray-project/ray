@@ -77,13 +77,6 @@ enum class CppRayLogLevel {
 
 #ifdef NDEBUG
 
-#define CPP_CHECK(condition)                                                       \
-  (condition)                                                                      \
-      ? CPP_IGNORE_EXPR(0)                                                         \
-      : ray::api::Voidify() & CppRayLog(__FILE__, __LINE__, CppRayLogLevel::ERROR) \
-                                  << " Debug check failed: " #condition " "
-#else
-
 #define CPP_DCHECK(condition) CPP_CHECK(condition)
 
 #endif  // NDEBUG
