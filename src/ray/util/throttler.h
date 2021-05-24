@@ -21,7 +21,7 @@ namespace ray {
 
 class Throttler {
  public:
-  explicit Throttler(int64_t interval_ns, std::function<int()> now = nullptr)
+  explicit Throttler(int64_t interval_ns, std::function<int64_t()> now = nullptr)
       : last_run_ns_(0), interval_ns_(interval_ns), now_(now) {}
 
   bool AbleToRun() {
@@ -46,7 +46,7 @@ class Throttler {
 
   uint64_t last_run_ns_;
   uint64_t interval_ns_;
-  std::function<int()> now_;
+  std::function<int64_t()> now_;
 };
 
 }  // namespace ray
