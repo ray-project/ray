@@ -70,7 +70,7 @@ int fake_munmap(void *, int64_t);
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
 // Ray allocates all plasma memory up-front at once to avoid runtime allocations.
-// Combined with MAP_PREPOPULATE, this can guarantee we never run into SIGBUS errors.
+// Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
 static bool allocated_once = false;
 
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
