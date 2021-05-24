@@ -1,4 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
+from python.ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -6,6 +7,7 @@ import logging
 import math
 import operator
 import os
+import prometheus_client
 import subprocess
 import threading
 import time
@@ -37,6 +39,8 @@ from ray.autoscaler._private.constants import \
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
+
+prometheus_client.start_http_server(AUTOSCALER_METRIC_PORT)
 
 # Tuple of modified fields for the given node_id returned by should_update
 # that will be passed into a NodeUpdaterThread.
