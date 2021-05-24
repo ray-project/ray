@@ -19,7 +19,7 @@ Named actors are only accessible within their namespaces.
 
 .. code-block:: python
 
-    import
+    import ray
 
     @ray.remote
     class Actor:
@@ -58,7 +58,7 @@ will not have access to actors in other namespaces.
 
 .. code-block:: python
 
-    import
+    import ray
 
     @ray.remote
     class Actor:
