@@ -161,7 +161,7 @@ analysis = tune.run(
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    callbacks=[callbacks],
+    callbacks=callbacks,
     queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 

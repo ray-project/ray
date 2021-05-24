@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     horovod_trainable = DistributedTrainableCreator(
         train,
-        use_gpu=True,
+        use_gpu=False if args.smoke_test else True,
         num_hosts=1 if args.smoke_test else 2,
         num_slots=1 if args.smoke_test else 2,
         replicate_pem=False)
