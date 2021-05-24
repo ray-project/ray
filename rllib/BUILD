@@ -1915,7 +1915,7 @@ py_test(
     name = "examples/custom_env_torch",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C", "flaky"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test", "--framework=torch"]
 )

@@ -256,7 +256,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Darwin", "Windows"],
+    reason="Failing on Windows, very flaky on OSX.")
 def test_unstable_spill_objects_automatically(unstable_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -275,6 +276,9 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
     solution_buffer = []
     buffer_length = 100
 
+    # TODO: we shouldn't need to produce so many objects. This test should
+    # just create one or two objects only!!!
+
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
         ref = None
@@ -287,6 +291,45 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
     print("spill done.")
     # randomly sample objects
     for _ in range(1000):
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, solution)
+    assert_no_thrashing(address["redis_address"])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    object_spilling_config, _ = slow_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
+        })
+    replay_buffer = []
+    solution_buffer = []
+    buffer_length = 10
+
+    # Create objects of more than 800 MiB.
+    for _ in range(buffer_length):
+        ref = None
+        while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+            solution_buffer.append(arr)
+    print("spill done.")
+    # randomly sample objects
+    for _ in range(buffer_length):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]

@@ -1,4 +1,5 @@
 import os
+from ray.workers.setup_runtime_env import inject_ray_and_python
 import pytest
 import sys
 import unittest
@@ -9,7 +10,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
-from ray.test_utils import get_wheel_filename
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.fixture(scope="session")
@@ -55,6 +56,59 @@ def conda_envs():
     ray.get([remove_tf_env.remote(version) for version in tf_versions])
     subprocess.run([f"{init_cmd} && conda deactivate"], shell=True)
     ray.shutdown()
+
+
+check_remote_client_conda = """
+import ray
+ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).connect()
+@ray.remote
+def get_tf_version():
+    import tensorflow as tf
+    return tf.__version__
+
+assert ray.get(get_tf_version.remote()) == "{tf_version}"
+ray.util.disconnect()
+"""
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
+                                                     call_ray_start):
+    @ray.remote
+    def get_tf_version():
+        import tensorflow as tf
+        return tf.__version__
+
+    @ray.remote
+    class TfVersionActor:
+        def get_tf_version(self):
+            import tensorflow as tf
+            return tf.__version__
+
+    tf_versions = ["2.2.0", "2.3.0"]
+    for i, tf_version in enumerate(tf_versions):
+        try:
+            runtime_env = {"conda": f"tf-{tf_version}"}
+            ray.client("localhost:24001").env(runtime_env).connect()
+            assert ray.get(get_tf_version.remote()) == tf_version
+            actor_handle = TfVersionActor.remote()
+            assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
+
+            # Ensure that we can have a second client connect using the other
+            # conda environment.
+            other_tf_version = tf_versions[(i + 1) % 2]
+            run_string_as_driver(
+                check_remote_client_conda.format(tf_version=other_tf_version))
+        finally:
+            ray.util.disconnect()
+            ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -185,25 +239,32 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
+"""
+Note(architkulkarni): For runtime_env tests that involve conda or pip installs,
+"opentelemetry-api==1.0.0rc1" and "opentelemetry-sdk==1.0.0rc1" must be
+included as dependencies, because they are installed in the CI's conda env but
+are not included in the Ray dependencies, so they cause an unpickling issue.
+
+Also, these tests only run on Buildkite in a special job that runs
+after the wheel is built, because the tests pass in the wheel as a dependency
+in the runtime env.  Buildkite only supports Linux for now.
+"""
+
+
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
-    sys.platform != "linux", reason="This test is only run for Linux.")
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
     ray.init()
-    ray_wheel_filename = get_wheel_filename()
-    # E.g. 3.6.13
-    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
-    print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
             "dependencies": [
-                f"python={python_micro_version_dots}", "pip", {
+                "pip", {
                     "pip": [
-                        ray_wheel_path, "pip-install-test==0.5",
-                        "opentelemetry-api==1.0.0rc1",
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
                 }
@@ -226,30 +287,192 @@ def test_conda_create_task(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
-    sys.platform != "linux", reason="This test is only run for Linux.")
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
-
-    ray_wheel_filename = get_wheel_filename()
-    # E.g. 3.6.13
-    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
 
     runtime_env = {
         "conda": {
             "dependencies": [
-                f"python={python_micro_version_dots}", "pip", {
+                "pip", {
                     "pip": [
-                        ray_wheel_path, "pip-install-test==0.5",
-                        "opentelemetry-api==1.0.0rc1",
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
                 }
             ]
         }
     }
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
+
+
+def test_inject_ray_and_python():
+    num_tests = 4
+    conda_dicts = [None] * num_tests
+    outputs = [None] * num_tests
+
+    conda_dicts[0] = {}
+    outputs[0] = {
+        "dependencies": ["python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[1] = {"dependencies": ["blah"]}
+    outputs[1] = {
+        "dependencies": ["blah", "python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[2] = {"dependencies": ["blah", "pip"]}
+    outputs[2] = {
+        "dependencies": ["blah", "pip", "python=7.8", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[3] = {"dependencies": ["blah", "pip", {"pip": ["some_pkg"]}]}
+    outputs[3] = {
+        "dependencies": [
+            "blah", "pip", {
+                "pip": ["some_pkg", "ray==1.2.3"]
+            }, "python=7.8"
+        ]
+    }
+
+    for i in range(num_tests):
+        output = inject_ray_and_python(conda_dicts[i], "ray==1.2.3", "7.8")
+        error_msg = (f"failed on input {i}."
+                     f"Input: {conda_dicts[i]} \n"
+                     f"Output: {output} \n"
+                     f"Expected output: {outputs[i]}")
+        assert (output == outputs[i]), error_msg
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_conda_create_ray_client(call_ray_start):
+    """Tests dynamic conda env creation in RayClient."""
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                "pip", {
+                    "pip": [
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    }
+    try:
+        ray.client("localhost:24001").env(runtime_env).connect()
+
+        @ray.remote
+        def f():
+            import pip_install_test  # noqa
+            return True
+
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed on the test machine
+            import pip_install_test  # noqa
+        assert ray.get(f.remote())
+
+        ray.util.disconnect()
+        ray.client("localhost:24001").connect()
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+    finally:
+        ray.util.disconnect()
+        ray._private.client_mode_hook._explicitly_disable_client_mode()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_task(shutdown_only, pip_as_str):
+    """Tests pip installs in the runtime env specified in the job config."""
+
+    ray.init()
+    if pip_as_str:
+        requirements_txt = """
+        pip-install-test==0.5
+        opentelemetry-api==1.0.0rc1
+        opentelemetry-sdk==1.0.0rc1
+        """
+        runtime_env = {"pip": requirements_txt}
+    else:
+        runtime_env = {
+            "pip": [
+                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                "opentelemetry-sdk==1.0.0rc1"
+            ]
+        }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_job_config(shutdown_only, pip_as_str):
+    """Tests dynamic installation of pip packages in a task's runtime env."""
+
+    if pip_as_str:
+        requirements_txt = """
+        pip-install-test==0.5
+        opentelemetry-api==1.0.0rc1
+        opentelemetry-sdk==1.0.0rc1
+        """
+        runtime_env = {"pip": requirements_txt}
+    else:
+        runtime_env = {
+            "pip": [
+                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                "opentelemetry-sdk==1.0.0rc1"
+            ]
+        }
+
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
 
     @ray.remote
