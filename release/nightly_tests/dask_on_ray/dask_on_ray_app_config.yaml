@@ -7,5 +7,7 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip install -U "ray[default]@https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
-  # - echo {{env["DATESTAMP"]}}
+  - pip3 uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}"
+  - pip3 install -U ray[default]
+  - echo {{env["DATESTAMP"]}}

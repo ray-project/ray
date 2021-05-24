@@ -1,4 +1,4 @@
-# Test basic single node 10GB shuffle.
+# Test basic single node 10GB shuffle with a small number of partitions.
 - name: shuffle_10gb
   owner:
     mail: "ekl@anyscale.com"
@@ -16,7 +16,7 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
-# Test single node 10GB shuffle with large partitions.
+# Test single node 10GB shuffle with a large number of partitions.
 - name: shuffle_10gb_large_partition
   owner:
     mail: "sangcho@anyscale.com"
@@ -34,7 +34,7 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
-# Test multi nodes 100GB shuffle with small partitions
+# Test multi nodes 100GB shuffle with a small number of partitions.
 - name: shuffle_100gb
   owner:
     mail: "sangcho@anyscale.com"
@@ -53,7 +53,7 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
-# Test multi nodes 100GB shuffle with large partitions
+# Test multi nodes 100GB shuffle with a large number of partitions.
 - name: shuffle_100gb_large_partition
   owner:
     mail: "sangcho@anyscale.com"
