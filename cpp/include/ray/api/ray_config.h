@@ -1,5 +1,6 @@
 
 #pragma once
+#include <ray/api/logging.h>
 #include <memory>
 #include <string>
 #include "ray/core.h"
@@ -36,7 +37,7 @@ class RayConfig {
 
   void SetRedisAddress(const std::string address) {
     auto pos = address.find(':');
-    RAY_CHECK(pos != std::string::npos);
+    CPP_CHECK(pos != std::string::npos);
     redis_ip = address.substr(0, pos);
     redis_port = std::stoi(address.substr(pos + 1, address.length()));
   }

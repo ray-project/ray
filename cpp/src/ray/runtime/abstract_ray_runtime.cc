@@ -25,7 +25,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime(config));
   }
   runtime->config_ = config;
-  RAY_CHECK(runtime);
+  CPP_CHECK(runtime);
   abstract_ray_runtime_ = runtime;
   return runtime;
 }

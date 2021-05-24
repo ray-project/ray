@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <ray/api/logging.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime_holder.h>
 #include <ray/api/serializer.h>
@@ -24,7 +25,7 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
     auto tp = Serializer::Deserialize<std::tuple<int, std::string>>(
         packed_object->data(), packed_object->size(), 1);
     std::string err_msg = std::get<1>(tp);
-    RAY_LOG(WARNING) << "Exception code: " << std::get<0>(tp)
+    CPP_LOG(WARNING) << "Exception code: " << std::get<0>(tp)
                      << ", Exception message: " << err_msg;
     throw RayException(err_msg);
   }

@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
   const std::string dynamic_library_path = FLAGS_dynamic_library_path;
   const std::string redis_address = FLAGS_redis_address;
   gflags::ShutDownCommandLineFlags();
-  RAY_CHECK(!dynamic_library_path.empty())
+  CPP_CHECK(!dynamic_library_path.empty())
       << "Please add a local dynamic library by '--dynamic-library-path'";
   ray::api::RayConfig::GetInstance()->lib_name = dynamic_library_path;
   if (!redis_address.empty()) {

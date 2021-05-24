@@ -46,7 +46,7 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
   std::vector<ObjectID> object_ids;
   object_ids.push_back(object_id);
   auto buffers = GetRaw(object_ids, timeout_ms);
-  RAY_CHECK(buffers.size() == 1);
+  CPP_CHECK(buffers.size() == 1);
   return buffers[0];
 }
 
@@ -58,7 +58,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
   }
-  RAY_CHECK(results.size() == ids.size());
+  CPP_CHECK(results.size() == ids.size());
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
   result_sbuffers.reserve(results.size());
   for (size_t i = 0; i < results.size(); i++) {

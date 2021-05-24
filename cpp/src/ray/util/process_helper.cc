@@ -1,4 +1,5 @@
 #include "process_helper.h"
+#include <ray/api/logging.h>
 #include "hiredis/hiredis.h"
 #include "ray/core.h"
 #include "ray/util/process.h"
@@ -9,14 +10,14 @@ namespace api {
 
 static std::string GetSessionDir(std::string redis_ip, int port, std::string password) {
   redisContext *context = redisConnect(redis_ip.c_str(), port);
-  RAY_CHECK(context != nullptr && !context->err);
+  CPP_CHECK(context != nullptr && !context->err);
   if (!password.empty()) {
     auto auth_reply = (redisReply *)redisCommand(context, "AUTH %s", password.c_str());
-    RAY_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
+    CPP_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
     freeReplyObject(auth_reply);
   }
   auto reply = (redisReply *)redisCommand(context, "GET session_dir");
-  RAY_CHECK(reply->type != REDIS_REPLY_ERROR);
+  CPP_CHECK(reply->type != REDIS_REPLY_ERROR);
   std::string session_dir(reply->str);
   freeReplyObject(reply);
   redisFree(context);
@@ -29,16 +30,16 @@ static void StartRayNode(int redis_port, std::string redis_password,
       {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
        redis_password, "--node-manager-port", std::to_string(node_manager_port),
        "--include-dashboard", "false"});
-  RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  CPP_LOG(INFO) << CreateCommandLine(cmdargs);
+  CPP_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
   return;
 }
 
 static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
-  RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  CPP_LOG(INFO) << CreateCommandLine(cmdargs);
+  CPP_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(3);
   return;
 }
