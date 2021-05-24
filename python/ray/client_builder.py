@@ -70,8 +70,9 @@ class ClientBuilder:
             # This is only a client connected to a server.
             ray.util.client_connect.disconnect()
         elif ray.worker.global_worker.node.is_head():
-            logger.warning("The current Ray Cluster is scoped to this process. "
-            "Disconnecting will shutdown the cluster.")
+            logger.warning(
+                "The current Ray Cluster is scoped to this process. "
+                "Disconnecting will shutdown the cluster.")
         else:
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
@@ -102,8 +103,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         return _LocalClientBuilder(None)
     if address is None:
         try:
-			# NOTE: This is not scoped to the `Node::get_temp_dir_path`, because
-			# this file is accessed before the `Node` object is not yet created.
+            # NOTE: This is not placed in `Node::get_temp_dir_path`, because
+            # this file is accessed before the `Node` object is created.
             cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
                                         "ray_current_cluster")
             with open(cluster_file, "r") as f:
