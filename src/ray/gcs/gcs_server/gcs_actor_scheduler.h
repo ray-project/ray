@@ -308,6 +308,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
+/// RayletBasedActorScheduler randomly selects a node from the node pool for the new
+/// actor. If the worker leasing fails at the selected node, it is the corresponding
+/// Raylet's responsibility to select the next candidate node.
 class RayletBasedActorScheduler : public GcsActorScheduler {
  public:
   using GcsActorScheduler::GcsActorScheduler;
