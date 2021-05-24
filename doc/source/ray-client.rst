@@ -23,7 +23,7 @@ From here, another Ray script can access that server from a networked machine wi
    import ray
    import ray.util
 
-   ray.util.connect("<head_node_host>:10001")  # replace with the appropriate host and port
+   ray.client("<head_node_host>:10001").connect()  # replace with the appropriate host and port
 
    # Normal Ray code follows
    @ray.remote
@@ -34,6 +34,14 @@ From here, another Ray script can access that server from a networked machine wi
    #....
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
+
+
+==============
+Client Builder
+==============
+
+
+
 
 =======================
 Versioning requirements
