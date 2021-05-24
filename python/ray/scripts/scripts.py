@@ -581,8 +581,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
         with open(
-                os.path.join(ray._private.utils.get_user_temp_dir(),
-                             "ray_current_cluster"), "w") as f:
+                os.path.join(ray._private.utils.get_ray_temp_dir(),
+                             "current_cluster"), "w") as f:
             print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
@@ -806,8 +806,8 @@ def stop(force, verbose, log_style, log_color):
 
     try:
         os.remove(
-            os.path.join(ray._private.utils.get_user_temp_dir(),
-                         "ray_current_cluster"))
+            os.path.join(ray._private.utils.get_ray_temp_dir(),
+                         "current_cluster"))
     except OSError:
         # This just means the file doesn't exist.
         pass

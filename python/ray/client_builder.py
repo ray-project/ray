@@ -63,9 +63,18 @@ class ClientBuilder:
 
     def disconnect(self) -> None:
         """
-        Disconnect from ray.client(...).
+        Disconnect Ray. This either disconnects from the remote Client Server
+        or shuts the current driver down.
         """
-        ray.util.client_connect.disconnect()
+        if ray.util.client.ray.is_connected():
+            # This is only a client connected to a server.
+            ray.util.client_connect.disconnect()
+        elif ray.worker.global_worker.node.is_head():
+            logger.warning("The current Ray Cluster is scoped to this process. "
+            "Disconnecting will shutdown the cluster.")
+        else:
+            # This is only a driver connected to an existing cluster.
+            ray.shutdown()
 
 
 class _LocalClientBuilder(ClientBuilder):
@@ -93,7 +102,9 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         return _LocalClientBuilder(None)
     if address is None:
         try:
-            with open("/tmp/ray/current_cluster", "r") as f:
+            cluster_file = os.path.join(ray._private.utils.get_ray_temp_dir(),
+                                        "current_cluster")
+            with open(cluster_file, "r") as f:
                 address = f.read()
                 print(address)
         except FileNotFoundError:
