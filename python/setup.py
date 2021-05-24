@@ -96,7 +96,7 @@ ray_files += [
 extras = {
     "default": ["colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX"],
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"]
 }
 
