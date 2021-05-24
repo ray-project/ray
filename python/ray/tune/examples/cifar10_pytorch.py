@@ -224,7 +224,12 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     if ray.util.client.ray.is_connected():
         # If using Ray Client, we want to make sure checkpoint access
         # happens on the server. So we wrap `test_best_model` in a Ray task.
-        ray.get(ray.remote(test_best_model).remote(best_trial))
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.tune.utils.util import get_current_node_resource_key
+        server_node_resource = get_current_node_resource_key()
+        ray.get(ray.remote(resources={server_node_resource: 0.01})(
+            test_best_model).remote(best_trial))
     else:
         test_best_model(best_trial)
 

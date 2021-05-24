@@ -88,8 +88,14 @@ if __name__ == "__main__":
     if args.server_address:
         # If connecting to a remote server with Ray Client, checkpoint loading
         # should be wrapped in a task so it will execute on the server.
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.tune.utils.util import get_current_node_resource_key
+
+        server_node_resource = get_current_node_resource_key()
         best_bst = ray.get(
-            ray.remote(get_best_model_checkpoint.remote(analysis)))
+            ray.remote(resources={server_node_resource: 0.01})(
+                get_best_model_checkpoint.remote(analysis)))
     else:
         best_bst = get_best_model_checkpoint(analysis)
 
