@@ -210,6 +210,64 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
   AssertNoLeaks();
 }
 
+TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
+  int spill_object_callback_ret = true;
+  CreateRequestQueue queue(
+      /*oom_grace_period_s=*/oom_grace_period_s_,
+      /*spill_object_callback=*/
+      [&]() { return spill_object_callback_ret; },
+      /*on_global_gc=*/[&]() { num_global_gc_++; },
+      /*get_time=*/[&]() { return current_time_ns_; });
+
+  auto return_status = PlasmaError::OutOfMemory;
+  auto oom_request = [&](PlasmaObject *result) {
+    if (return_status == PlasmaError::OK) {
+      result->data_size = 1234;
+    }
+    return return_status;
+  };
+  auto blocked_request = [&](PlasmaObject *result) {
+    result->data_size = 1234;
+    return PlasmaError::OK;
+  };
+
+  auto client = std::make_shared<MockClient>();
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
+
+  // Transient OOM should happen while spilling is in progress.
+  for (int i = 0; i < 10; i++) {
+    // Advance 0.1 seconds. OOM grace period is 1 second.
+    current_time_ns_ += 1e8;
+    ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
+    ASSERT_REQUEST_UNFINISHED(queue, req_id1);
+    ASSERT_REQUEST_UNFINISHED(queue, req_id2);
+    ASSERT_EQ(num_global_gc_, i + 1);
+  }
+
+  // Now spilling is done.
+  spill_object_callback_ret = false;
+
+  // ObjectStoreFull errors should happen until the grace period.
+  for (int i = 0; i < 10; i++) {
+    // Advance 0.1 seconds. OOM grace period is 1 second.
+    current_time_ns_ += 1e8;
+    ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+    ASSERT_REQUEST_UNFINISHED(queue, req_id1);
+    ASSERT_REQUEST_UNFINISHED(queue, req_id2);
+  }
+
+  // Grace period is done. The first request should reply with OOM and the second
+  // request should also be served.
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
+
+  ASSERT_TRUE(queue.ProcessRequests().ok());
+  ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfMemory);
+  ASSERT_REQUEST_FINISHED(queue, req_id2, PlasmaError::OK);
+
+  AssertNoLeaks();
+}
+
 TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   bool is_spilling_possible = true;
   CreateRequestQueue queue(

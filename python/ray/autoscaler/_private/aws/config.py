@@ -5,7 +5,7 @@ import itertools
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 
 import boto3
@@ -13,7 +13,8 @@ from botocore.config import Config
 import botocore
 
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
-from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
+from ray.autoscaler._private.util import check_legacy_fields
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
@@ -27,13 +28,6 @@ RAY = "ray-autoscaler"
 DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
-
-# Mapping from the node type tag to the section of the autoscaler yaml that
-# contains the config for the node type.
-NODE_KIND_CONFIG_KEYS = {
-    NODE_KIND_WORKER: "worker_nodes",
-    NODE_KIND_HEAD: "head_node",
-}
 
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
 
@@ -101,95 +95,119 @@ def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
 
-def log_to_cli(config):
+def log_to_cli(config: Dict[str, Any]) -> None:
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
                         "Could not find a pretty name for the AWS provider.")
 
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
+
     with cli_logger.group("{} config", provider_name):
 
-        def same_everywhere(key):
-            return config["head_node"][key] == config["worker_nodes"][key]
-
-        def print_info(resource_string,
-                       key,
-                       head_src_key,
-                       workers_src_key,
-                       allowed_tags=None,
-                       list_value=False):
+        def print_info(resource_string: str,
+                       key: str,
+                       src_key: str,
+                       allowed_tags: Optional[List[str]] = None,
+                       list_value: bool = False) -> None:
             if allowed_tags is None:
                 allowed_tags = ["default"]
 
-            head_tags = {}
-            workers_tags = {}
+            node_tags = {}
 
-            if _log_info[head_src_key] in allowed_tags:
-                head_tags[_log_info[head_src_key]] = True
-            if _log_info[workers_src_key] in allowed_tags:
-                workers_tags[_log_info[workers_src_key]] = True
+            # set of configurations corresponding to `key`
+            unique_settings = set()
 
-            head_value_str = config["head_node"][key]
+            for node_type_key, node_type in config[
+                    "available_node_types"].items():
+                node_tags[node_type_key] = {}
+                tag = _log_info[src_key][node_type_key]
+                if tag in allowed_tags:
+                    node_tags[node_type_key][tag] = True
+                setting = node_type["node_config"].get(key)
+
+                if list_value:
+                    unique_settings.add(tuple(setting))
+                else:
+                    unique_settings.add(setting)
+
+            head_value_str = head_node_config[key]
             if list_value:
                 head_value_str = cli_logger.render_list(head_value_str)
 
-            if same_everywhere(key):
-                cli_logger.labeled_value(  # todo: handle plural vs singular?
-                    resource_string + " (head & workers)",
+            if len(unique_settings) == 1:
+                # all node types are configured the same, condense
+                # log output
+                cli_logger.labeled_value(
+                    resource_string + " (all available node types)",
                     "{}",
                     head_value_str,
-                    _tags=head_tags)
+                    _tags=node_tags[config["head_node_type"]])
             else:
-                workers_value_str = config["worker_nodes"][key]
-                if list_value:
-                    workers_value_str = cli_logger.render_list(
-                        workers_value_str)
-
+                # do head node type first
                 cli_logger.labeled_value(
-                    resource_string + " (head)",
+                    resource_string + f" ({head_node_type})",
                     "{}",
                     head_value_str,
-                    _tags=head_tags)
-                cli_logger.labeled_value(
-                    resource_string + " (workers)",
-                    "{}",
-                    workers_value_str,
-                    _tags=workers_tags)
+                    _tags=node_tags[head_node_type])
+
+                # go through remaining types
+                for node_type_key, node_type in config[
+                        "available_node_types"].items():
+                    if node_type_key == head_node_type:
+                        continue
+                    workers_value_str = node_type["node_config"][key]
+                    if list_value:
+                        workers_value_str = cli_logger.render_list(
+                            workers_value_str)
+                    cli_logger.labeled_value(
+                        resource_string + f" ({node_type_key})",
+                        "{}",
+                        workers_value_str,
+                        _tags=node_tags[node_type_key])
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        profile_arn = config["head_node"]["IamInstanceProfile"].get("Arn")
+        # head_node_config is the head_node_type's config,
+        # config["head_node"] is a field that gets applied only to the actual
+        # head node (and not workers of the head's node_type)
+        assert ("IamInstanceProfile" in head_node_config
+                or "IamInstanceProfile" in config["head_node"])
+        if "IamInstanceProfile" in head_node_config:
+            # If the user manually configured the role we're here.
+            IamProfile = head_node_config["IamInstanceProfile"]
+        elif "IamInstanceProfile" in config["head_node"]:
+            # If we filled the default IAM role, we're here.
+            IamProfile = config["head_node"]["IamInstanceProfile"]
+        profile_arn = IamProfile.get("Arn")
         profile_name = _arn_to_name(profile_arn) \
             if profile_arn \
-            else config["head_node"]["IamInstanceProfile"]["Name"]
+            else IamProfile["Name"]
         cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
-        if ("KeyName" in config["head_node"]
-                and "KeyName" in config["worker_nodes"]):
-            print_info("EC2 Key pair", "KeyName", "keypair_src", "keypair_src")
+        if all("KeyName" in node_type["node_config"]
+               for node_type in config["available_node_types"].values()):
+            print_info("EC2 Key pair", "KeyName", "keypair_src")
 
-        print_info(
-            "VPC Subnets",
-            "SubnetIds",
-            "head_subnet_src",
-            "workers_subnet_src",
-            list_value=True)
+        print_info("VPC Subnets", "SubnetIds", "subnet_src", list_value=True)
         print_info(
             "EC2 Security groups",
             "SecurityGroupIds",
-            "head_security_group_src",
-            "workers_security_group_src",
+            "security_group_src",
             list_value=True)
-        print_info(
-            "EC2 AMI",
-            "ImageId",
-            "head_ami_src",
-            "workers_ami_src",
-            allowed_tags=["dlami"])
+        print_info("EC2 AMI", "ImageId", "ami_src", allowed_tags=["dlami"])
 
     cli_logger.newline()
 
 
 def bootstrap_aws(config):
+    # Log warnings if user included deprecated `head_node` or `worker_nodes`
+    # fields. Raise error if no `available_node_types`
+    check_legacy_fields(config)
+    # Used internally to store head IAM role.
+    config["head_node"] = {}
+
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
     config = _configure_iam_role(config)
@@ -214,7 +232,10 @@ def bootstrap_aws(config):
 
 
 def _configure_iam_role(config):
-    if "IamInstanceProfile" in config["head_node"]:
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
+    if "IamInstanceProfile" in head_node_config:
         _set_config_info(head_instance_profile_src="config")
         return config
     _set_config_info(head_instance_profile_src="default")
@@ -267,36 +288,41 @@ def _configure_iam_role(config):
             PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
-
+    # Add IAM role to "head_node" field so that it is applied only to
+    # the head node -- not to workers with the same node type as the head.
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
 
 def _configure_key_pair(config):
+    node_types = config["available_node_types"]
+
+    # map from node type key -> source of KeyName field
+    key_pair_src_info = {}
+    _set_config_info(keypair_src=key_pair_src_info)
+
     if "ssh_private_key" in config["auth"]:
-        _set_config_info(keypair_src="config")
+        for node_type_key in node_types:
+            # keypairs should be provided in the config
+            key_pair_src_info[node_type_key] = "config"
 
         # If the key is not configured via the cloudinit
         # UserData, it should be configured via KeyName or
         # else we will risk starting a node that we cannot
         # SSH into:
 
-        if "UserData" not in config["head_node"]:
-            cli_logger.doassert(  # todo: verify schema beforehand?
-                "KeyName" in config["head_node"],
-                "`KeyName` missing for head node.")  # todo: err msg
-            assert "KeyName" in config["head_node"]
-
-        if "UserData" not in config["worker_nodes"]:
-            cli_logger.doassert(
-                "KeyName" in config["worker_nodes"],
-                "`KeyName` missing for worker nodes.")  # todo: err msg
-            assert "KeyName" in config["worker_nodes"]
+        for node_type in node_types:
+            node_config = node_types[node_type]["node_config"]
+            if "UserData" not in node_config:
+                cli_logger.doassert("KeyName" in node_config,
+                                    _key_assert_msg(node_type))
+                assert "KeyName" in node_config
 
         return config
 
-    _set_config_info(keypair_src="default")
+    for node_type_key in node_types:
+        key_pair_src_info[node_type_key] = "default"
 
     ec2 = _resource("ec2", config)
 
@@ -346,10 +372,21 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path
-    config["head_node"]["KeyName"] = key_name
-    config["worker_nodes"]["KeyName"] = key_name
+    for node_type in node_types.values():
+        node_config = node_type["node_config"]
+        node_config["KeyName"] = key_name
 
     return config
+
+
+def _key_assert_msg(node_type: str) -> str:
+    if node_type == NODE_TYPE_LEGACY_WORKER:
+        return "`KeyName` missing for worker nodes."
+    elif node_type == NODE_TYPE_LEGACY_HEAD:
+        return "`KeyName` missing for head node."
+    else:
+        return ("`KeyName` missing from the `node_config` of"
+                f" node type `{node_type}`.")
 
 
 def _configure_subnet(config):
@@ -358,8 +395,10 @@ def _configure_subnet(config):
 
     # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
-    sg_ids = (config["head_node"].get("SecurityGroupIds", []) +
-              config["worker_nodes"].get("SecurityGroupIds", []))
+    sg_ids = []
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        sg_ids.extend(node_config.get("SecurityGroupIds", []))
     if sg_ids:
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
     else:
@@ -408,17 +447,16 @@ def _configure_subnet(config):
     subnet_ids = [
         s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
     ]
-    if "SubnetIds" not in config["head_node"]:
-        _set_config_info(head_subnet_src="default")
-        config["head_node"]["SubnetIds"] = subnet_ids
-    else:
-        _set_config_info(head_subnet_src="config")
-
-    if "SubnetIds" not in config["worker_nodes"]:
-        _set_config_info(workers_subnet_src="default")
-        config["worker_nodes"]["SubnetIds"] = subnet_ids
-    else:
-        _set_config_info(workers_subnet_src="config")
+    # map from node type key -> source of SubnetIds field
+    subnet_src_info = {}
+    _set_config_info(subnet_src=subnet_src_info)
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        if "SubnetIds" not in node_config:
+            subnet_src_info[key] = "default"
+            node_config["SubnetIds"] = subnet_ids
+        else:
+            subnet_src_info[key] = "config"
 
     return config
 
@@ -452,29 +490,34 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
 
 
 def _configure_security_group(config):
-    _set_config_info(
-        head_security_group_src="config", workers_security_group_src="config")
+    # map from node type key -> source of SecurityGroupIds field
+    security_group_info_src = {}
+    _set_config_info(security_group_src=security_group_info_src)
+
+    for node_type_key in config["available_node_types"]:
+        security_group_info_src[node_type_key] = "config"
 
     node_types_to_configure = [
-        node_type for node_type, config_key in NODE_KIND_CONFIG_KEYS.items()
-        if "SecurityGroupIds" not in config[NODE_KIND_CONFIG_KEYS[node_type]]
+        node_type_key
+        for node_type_key, node_type in config["available_node_types"].items()
+        if "SecurityGroupIds" not in node_type["node_config"]
     ]
     if not node_types_to_configure:
         return config  # have user-defined groups
-
+    head_node_type = config["head_node_type"]
+    if config["head_node_type"] in node_types_to_configure:
+        # configure head node security group last for determinism
+        # in tests
+        node_types_to_configure.remove(head_node_type)
+        node_types_to_configure.append(head_node_type)
     security_groups = _upsert_security_groups(config, node_types_to_configure)
 
-    if NODE_KIND_HEAD in node_types_to_configure:
-        head_sg = security_groups[NODE_KIND_HEAD]
-
-        _set_config_info(head_security_group_src="default")
-        config["head_node"]["SecurityGroupIds"] = [head_sg.id]
-
-    if NODE_KIND_WORKER in node_types_to_configure:
-        workers_sg = security_groups[NODE_KIND_WORKER]
-
-        _set_config_info(workers_security_group_src="default")
-        config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
+    for node_type_key in node_types_to_configure:
+        node_config = config["available_node_types"][node_type_key][
+            "node_config"]
+        sg = security_groups[node_type_key]
+        node_config["SecurityGroupIds"] = [sg.id]
+        security_group_info_src[node_type_key] = "default"
 
     return config
 
@@ -482,7 +525,9 @@ def _configure_security_group(config):
 def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
-    _set_config_info(head_ami_src="config", workers_ami_src="config")
+    # map from node type key -> source of ImageId field
+    ami_src_info = {key: "config" for key in config["available_node_types"]}
+    _set_config_info(ami_src=ami_src_info)
 
     region = config["provider"]["region"]
     default_ami = DEFAULT_AMI.get(region)
@@ -490,15 +535,12 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    head_ami = config["head_node"].get("ImageId", "").lower()
-    if head_ami in ["", "latest_dlami"]:
-        config["head_node"]["ImageId"] = default_ami
-        _set_config_info(head_ami_src="dlami")
-
-    worker_ami = config["worker_nodes"].get("ImageId", "").lower()
-    if worker_ami in ["", "latest_dlami"]:
-        config["worker_nodes"]["ImageId"] = default_ami
-        _set_config_info(workers_ami_src="dlami")
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        node_ami = node_config.get("ImageId", "").lower()
+        if node_ami in ["", "latest_dlami"]:
+            node_config["ImageId"] = default_ami
+            ami_src_info[key] = "dlami"
 
 
 def _upsert_security_groups(config, node_types):
@@ -514,7 +556,8 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     node_type_to_vpc = {
         node_type: _get_vpc_id_or_die(
             ec2,
-            conf[NODE_KIND_CONFIG_KEYS[node_type]]["SubnetIds"][0],
+            conf["available_node_types"][node_type]["node_config"]["SubnetIds"]
+            [0],
         )
         for node_type in node_types
     }
@@ -609,8 +652,9 @@ def _upsert_security_group_rules(conf, security_groups):
     # Update sgids to include user-specified security groups.
     # This is necessary if the user specifies the head node type's security
     # groups but not the worker's, or vice-versa.
-    for node_type in NODE_KIND_CONFIG_KEYS.values():
-        sgids.update(conf[node_type].get("SecurityGroupIds", []))
+    for node_type in conf["available_node_types"]:
+        sgids.update(conf["available_node_types"][node_type].get(
+            "SecurityGroupIds", []))
 
     # sort security group items for deterministic inbound rule config order
     # (mainly supports more precise stub-based boto3 unit testing)

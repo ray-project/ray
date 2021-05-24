@@ -158,6 +158,12 @@ message ActorTableData {
   uint64 start_time = 21;
   // The unix ms timestamp the actor was ended at.
   uint64 end_time = 22;
+  // The actor's class name. This is necessary because the task spec's lifetime
+  // is shorter than the ActorTableData.
+  string class_name = 23;
+  // The actor's serialized runtime environment. This is necessary because the
+  // task spec's lifetime is shorter than the ActorTableData.
+  string serialized_runtime_env = 24;
 }
 
 message ErrorTableData {

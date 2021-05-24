@@ -78,6 +78,7 @@ class RayServeHandle:
             known_python_methods: List[str] = [],
             _router: Optional[EndpointRouter] = None,
             _internal_use_serve_request: Optional[bool] = True,
+            _internal_pickled_http_request: bool = False,
     ):
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
@@ -85,6 +86,7 @@ class RayServeHandle:
         self.known_python_methods = known_python_methods
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
         self._use_serve_request = _internal_use_serve_request
+        self._pickled_http_request = _internal_pickled_http_request
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -105,12 +107,14 @@ class RayServeHandle:
             asyncio.get_event_loop(),
         )
 
-    def options(self,
-                *,
-                method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-                shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
-                http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
-                http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE):
+    def options(
+            self,
+            *,
+            method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+            shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
+            http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
+            http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE,
+    ):
         """Set options for this handle.
 
         Args:
@@ -135,7 +139,9 @@ class RayServeHandle:
             self.endpoint_name,
             new_options,
             _router=self.router,
-            _internal_use_serve_request=self._use_serve_request)
+            _internal_use_serve_request=self._use_serve_request,
+            _internal_pickled_http_request=self._pickled_http_request,
+        )
 
     def _remote(self, endpoint_name, handle_options, args,
                 kwargs) -> Coroutine:
@@ -147,6 +153,7 @@ class RayServeHandle:
             http_method=handle_options.http_method,
             http_headers=handle_options.http_headers,
             use_serve_request=self._use_serve_request,
+            http_arg_is_pickled=self._pickled_http_request,
         )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
@@ -179,7 +186,8 @@ class RayServeHandle:
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods,
-            "_internal_use_serve_request": self._use_serve_request
+            "_internal_use_serve_request": self._use_serve_request,
+            "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
 
@@ -236,6 +244,7 @@ class RayServeSyncHandle(RayServeHandle):
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods,
-            "_internal_use_serve_request": self._use_serve_request
+            "_internal_use_serve_request": self._use_serve_request,
+            "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )
