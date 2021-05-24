@@ -47,6 +47,7 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
         # Value loss.
         policy.v_loss = 0.5 * adv_squared
     else:
+        policy.explained_variance = 0.0
         # Policy loss (simple BC loss term).
         policy.p_loss = -1.0 * torch.mean(logprobs)
         # Value loss.
