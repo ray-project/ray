@@ -7,5 +7,6 @@ python:
   conda_packages: []
 
 post_build_cmds:
+  - pip uninstall -y ray
   - pip install -U "ray[default]@https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
   # - echo {{env["DATESTAMP"]}}
