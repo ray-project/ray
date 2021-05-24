@@ -95,8 +95,7 @@ def postprocess_advantages(
 class MARWILLoss:
     def __init__(self, policy: Policy, value_estimates: TensorType,
                  action_dist: ActionDistribution, train_batch: SampleBatch,
-                 vf_loss_coeff: float,
-                 beta: float):
+                 vf_loss_coeff: float, beta: float):
 
         # L = - A * log\pi_\theta(a|s)
         logprobs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
