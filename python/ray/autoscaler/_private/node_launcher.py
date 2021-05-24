@@ -2,6 +2,7 @@ from typing import Any, Optional, Dict
 import copy
 import logging
 import threading
+import time
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
@@ -19,6 +20,7 @@ class NodeLauncher(threading.Thread):
                  provider,
                  queue,
                  pending,
+                 startup_histogram=None,
                  node_types=None,
                  index=None,
                  *args,
@@ -26,6 +28,7 @@ class NodeLauncher(threading.Thread):
         self.queue = queue
         self.pending = pending
         self.provider = provider
+        self.startup_histogram = startup_histogram
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
@@ -57,7 +60,12 @@ class NodeLauncher(threading.Thread):
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
+        launch_start_time = time.time()
         self.provider.create_node(node_config, node_tags, count)
+        startup_time = time.time() - launch_start_time
+        if self.startup_histogram:
+            for _ in range(count):
+                self.startup_histogram.observe(startup_time)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")

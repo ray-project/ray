@@ -1,5 +1,4 @@
 from collections import defaultdict, namedtuple, Counter
-from python.ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -34,13 +33,11 @@ from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     format_info_string
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_METRIC_PORT, \
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
-
-prometheus_client.start_http_server(AUTOSCALER_METRIC_PORT)
 
 # Tuple of modified fields for the given node_id returned by should_update
 # that will be passed into a NodeUpdaterThread.
@@ -51,6 +48,41 @@ UpdateInstructions = namedtuple(
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
+
+# Metrics
+AUTOSCALER_METRIC_REGISTRY = prometheus_client.CollectorRegistry()
+prometheus_client.start_http_server(
+    AUTOSCALER_METRIC_PORT, registry=AUTOSCALER_METRIC_REGISTRY)
+WORKER_STARTUP_TIME_HISTOGRAM = prometheus_client.Histogram(
+    "worker_startup_time_seconds",
+    "Worker startup time",
+    unit="seconds",
+    namespace="autoscaler",
+    registry=AUTOSCALER_METRIC_REGISTRY)
+NODES_STARTED_COUNTER = prometheus_client.Counter(
+    "started_nodes",
+    "Number of nodes started",
+    unit="nodes",
+    namespace="autoscaler",
+    registry=AUTOSCALER_METRIC_REGISTRY)
+NODES_STOPPED_COUNTER = prometheus_client.Counter(
+    "stopped_nodes",
+    "Number of nodes stopped",
+    unit="nodes",
+    namespace="autoscaler",
+    registry=AUTOSCALER_METRIC_REGISTRY)
+NUM_EXCEPTIONS_COUNTER = prometheus_client.Counter(
+    "exceptions",
+    "Number of exceptions",
+    unit="exceptions",
+    namespace="autoscaler",
+    registry=AUTOSCALER_METRIC_REGISTRY)
+NODES_RUNNING_GAUGE = prometheus_client.Gauge(
+    "running_nodes",
+    "Number of nodes running",
+    unit="nodes",
+    namespace="autoscaler",
+    registry=AUTOSCALER_METRIC_REGISTRY)
 
 
 class StandardAutoscaler:
@@ -116,6 +148,7 @@ class StandardAutoscaler:
                 queue=self.launch_queue,
                 index=i,
                 pending=self.pending_launches,
+                startup_histogram=WORKER_STARTUP_TIME_HISTOGRAM,
                 node_types=self.available_node_types,
             )
             node_launcher.daemon = True
@@ -166,6 +199,7 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
+        NODES_RUNNING_GAUGE.set(len(nodes))
 
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
@@ -221,7 +255,9 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
+                NODES_STOPPED_COUNTER.inc()
             nodes = self.workers()
+            NODES_RUNNING_GAUGE.set(len(nodes))
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -241,7 +277,9 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
+                NODES_STOPPED_COUNTER.inc()
             nodes = self.workers()
+            NODES_RUNNING_GAUGE.set(len(nodes))
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
@@ -253,9 +291,11 @@ class StandardAutoscaler:
             ensure_min_cluster_size=self.load_metrics.get_resource_requests())
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
+            NODES_STARTED_COUNTER.inc()
 
         if to_launch:
             nodes = self.workers()
+            NODES_RUNNING_GAUGE.set(len(nodes))
 
         # Process any completed updates
         completed_nodes = []
@@ -740,8 +780,9 @@ class StandardAutoscaler:
         return self.workers() + self.unmanaged_workers()
 
     def workers(self):
-        return self.provider.non_terminated_nodes(
+        nodes = self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        return nodes
 
     def unmanaged_workers(self):
         return self.provider.non_terminated_nodes(
