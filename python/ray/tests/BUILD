@@ -162,12 +162,13 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_2.py",
+    "test_failure_3.py",
     "test_reference_counting_2.py",
     "test_object_spilling.py",
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 
