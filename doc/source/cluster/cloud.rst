@@ -150,7 +150,7 @@ Ray with cloud providers
 
         First, you need to configure your aliyun account. You need to set access key and access key secret in yaml config file.
 
-        Once above done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ecs.n4.large head node (on-demand) configured to autoscale up to two ecs.n4.2xlarge.
+        Once the above is done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an `ecs.n4.large` head node (on-demand) configured to autoscale up to two `ecs.n4.2xlarge` nodes.
 
         Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
 
