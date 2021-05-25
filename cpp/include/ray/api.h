@@ -3,8 +3,6 @@
 
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
-#include <ray/api/actor_task_caller.h>
-#include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>

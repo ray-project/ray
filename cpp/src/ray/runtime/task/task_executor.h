@@ -12,10 +12,9 @@ namespace ray {
 
 namespace internal {
 /// Execute remote functions by networking stream.
-msgpack::sbuffer TaskExecutionHandler(
-    const std::string &func_name,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-    msgpack::sbuffer *actor_ptr);
+msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
+                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      msgpack::sbuffer *actor_ptr);
 
 BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
 }  // namespace internal
@@ -47,13 +46,14 @@ class TaskExecutor {
       absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
-      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+      ray::TaskType task_type, const std::string task_name,
+      const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<std::shared_ptr<ray::RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      std::vector<std::shared_ptr<ray::RayObject>> *results,
+      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   virtual ~TaskExecutor(){};
 
