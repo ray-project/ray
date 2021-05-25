@@ -1,3 +1,5 @@
+# Test basic single node 10GB shuffle with a small number of partitions.
+# This doesn't require object spilling.
 - name: shuffle_10gb
   owner:
     mail: "ekl@anyscale.com"
@@ -5,12 +7,87 @@
 
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
 
   run:
-    timeout: 600
-    script: python shuffle/shuffle_10gb.py
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
   smoke_test:
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test single node 50GB shuffle with a large number of partitions.
+- name: shuffle_50gb
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test single node 50GB shuffle with a large number of partitions.
+- name: shuffle_50gb_large_partition
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test multi nodes 100GB shuffle with a small number of partitions.
+- name: shuffle_100gb
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_multi.yaml
+
+  run:
+    timeout: 3000
+    prepare: python wait_cluster.py 4 600
+    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test multi nodes 100GB shuffle with a large number of partitions.
+# TODO(sang): Not working due to a bug https://github.com/ray-project/ray/issues/16025.
+# - name: shuffle_100gb_large_partition
+#   owner:
+#     mail: "sangcho@anyscale.com"
+#     slack: "@proj-data-processing"
+
+#   cluster:
+#     app_config: shuffle/shuffle_app_config.yaml
+#     compute_template: shuffle/shuffle_compute_multi.yaml
+
+#   run:
+#     timeout: 3000
+#     prepare: python wait_cluster.py 4 600
+#     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=100e6
+
+#   smoke_test:
+#     cluster:
+#       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet

@@ -256,7 +256,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Darwin", "Windows"],
+    reason="Failing on Windows, very flaky on OSX.")
 def test_unstable_spill_objects_automatically(unstable_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -274,6 +275,9 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
     replay_buffer = []
     solution_buffer = []
     buffer_length = 100
+
+    # TODO: we shouldn't need to produce so many objects. This test should
+    # just create one or two objects only!!!
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
