@@ -148,7 +148,7 @@ void TaskExecutor::Invoke(
   std::vector<msgpack::sbuffer> args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
-      auto arg = runtime->Get(task_spec.ArgId(i));
+      auto arg = runtime->Get(task_spec.ArgId(i).Binary());
       args_buffer.push_back(std::move(*arg));
     } else {
       msgpack::sbuffer sbuf;

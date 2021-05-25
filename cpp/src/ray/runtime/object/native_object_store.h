@@ -17,6 +17,10 @@ class NativeObjectStore : public ObjectStore {
   std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
                          int timeout_ms);
 
+  void AddLocalReference(const std::string &id);
+
+  void RemoveLocalReference(const std::string &id);
+
  private:
   void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
 
