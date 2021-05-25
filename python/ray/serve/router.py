@@ -185,7 +185,8 @@ class ReplicaSet:
         tracker_refs: Set[ray.ObjectRef] = self.in_flight_queries.get(
             replica_handle, {})
         tracker_refs.discard(tracker_ref)
-        self._try_send_pending_queries()
+        if len(self.pending_requests):
+            self._try_send_pending_queries()
 
     def assign_replica(self, query: Query) -> concurrent.futures.Future:
         pending_query = PendingQuery(query)
