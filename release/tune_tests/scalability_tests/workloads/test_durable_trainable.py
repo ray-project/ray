@@ -12,13 +12,15 @@ Acceptance criteria: Should run faster than 500 seconds.
 
 Theoretical minimum time: 300 seconds
 """
+import argparse
+
 import ray
 from ray import tune
 
 from ray.tune.utils.release_test_util import timed_tune_run
 
 
-def main():
+def main(bucket):
     ray.init(address="auto")
 
     num_samples = 16
@@ -39,9 +41,14 @@ def main():
         resources_per_trial={"cpu": 2},
         sync_config=tune.SyncConfig(
             sync_to_driver=False,
-            upload_dir="s3://ray-tune-scalability-test/durable/",
+            upload_dir=f"s3://{bucket}/durable/",
         ))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--bucket", type=str, help="Bucket name")
+    args, _ = parser.parse_known_args()
+
+    main(args.bucket or "ray-tune-scalability-test")

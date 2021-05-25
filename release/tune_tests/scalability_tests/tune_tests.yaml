@@ -24,7 +24,7 @@
   run:
     timeout: 900
     prepare: python wait_cluster.py 16 600
-    script: python workloads/test_durable_trainable.py
+    script: python workloads/test_durable_trainable.py --bucket data-test-ilr
 
 - name: long_running_large_checkpoints
   owner:

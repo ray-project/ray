@@ -125,10 +125,13 @@ def timed_tune_run(name: str,
             AWS_SESSION_TOKEN = aws_session
 
             def setup_env(self):
-                os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
-                os.environ[
-                    "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
-                os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
+                if self.AWS_ACCESS_KEY_ID:
+                    os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
+                if self.AWS_SECRET_ACCESS_KEY:
+                    os.environ[
+                        "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
+                if self.AWS_SESSION_TOKEN:
+                    os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
 
         _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
