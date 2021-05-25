@@ -61,7 +61,6 @@ class CoreWorkerDirectTaskSubmitter {
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-      bool work_stealing = RayConfig::instance().work_stealing(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -74,7 +73,6 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(std::move(actor_creator)),
         client_cache_(core_worker_client_pool),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
-        work_stealing_(work_stealing),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -227,9 +225,6 @@ class CoreWorkerDirectTaskSubmitter {
   // worker using a single lease.
   const uint32_t max_tasks_in_flight_per_worker_;
 
-  // work_stealing_ indicates whether the work stealing mode is enabled
-  const bool work_stealing_;
-
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
@@ -326,7 +321,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether there exists at least one task that can be stolen
     inline bool StealableTasks() const {
       // If any worker has more than one task in flight, then that task can be stolen.
-      return total_tasks_in_flight <= active_workers.size();
+      return total_tasks_in_flight > active_workers.size();
     }
   };
 

@@ -30,6 +30,8 @@ namespace ray {
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
                                 const ray::FunctionDescriptor &function_descriptor);
+// Calls BuildTaskSpec with empty resources map and empty function descriptor
+TaskSpecification BuildEmptyTaskSpec();
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -92,10 +94,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
-    std::unordered_map<std::string, double> empty_resources;
-    ray::FunctionDescriptor empty_descriptor =
-        ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-    TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+    TaskSpecification task = BuildEmptyTaskSpec();
     return task;
   }
 
@@ -368,6 +367,13 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   return builder.Build();
 }
 
+TaskSpecification BuildEmptyTaskSpec() {
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  return BuildTaskSpec(empty_resources, empty_descriptor);
+}
+
 TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
@@ -382,10 +388,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
 
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
@@ -424,10 +427,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
@@ -459,12 +459,10 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -519,12 +517,10 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -584,12 +580,9 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -645,12 +638,9 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -703,11 +693,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -752,10 +739,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -800,10 +784,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, lease_client_factory, lease_policy, store,
       task_finisher, NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
@@ -867,10 +848,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, lease_client_factory, lease_policy, store,
       task_finisher, local_raylet_id, kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -1059,12 +1037,9 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(),
                                           /*lease_timeout_ms=*/5, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
-  TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -1119,10 +1094,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
@@ -1172,10 +1144,7 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
@@ -1209,10 +1178,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           lease_policy, store, task_finisher,
                                           NodeID::Nil(), kLongTimeout, actor_creator);
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
-  TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+  TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1252,12 +1218,9 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
       NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // Prepare 20 tasks and save them in a vector.
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
   for (int i = 1; i <= 20; i++) {
-    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+    tasks.push_back(BuildEmptyTaskSpec());
   }
   ASSERT_EQ(tasks.size(), 20);
 
@@ -1272,10 +1235,11 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
-  // Last 10 tasks are pushed; no more workers are requested.
+  // Last 10 tasks are pushed; one more worker is requested due to the Eager Worker
+  // Requesting Mode.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 20);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   for (int i = 1; i <= 20; i++) {
     ASSERT_FALSE(worker_client->callbacks.empty());
@@ -1293,14 +1257,15 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
     }
   }
 
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 20);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-
-  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("nil", 0, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1327,12 +1292,9 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
       NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // prepare 30 tasks and save them in a vector
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 30; i++) {
-    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+    tasks.push_back(BuildEmptyTaskSpec());
   }
   ASSERT_EQ(tasks.size(), 30);
 
@@ -1363,14 +1325,17 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   }
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // Tasks 21-30 finish, and the worker is finally returned.
   for (int i = 21; i <= 30; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 30);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
@@ -1407,12 +1372,9 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
       NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // prepare 30 tasks and save them in a vector
-  std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 30; i++) {
-    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+    tasks.push_back(BuildEmptyTaskSpec());
   }
   ASSERT_EQ(tasks.size(), 30);
 
@@ -1429,9 +1391,10 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  // Grant a worker lease, and check that still only 1 worker was requested.
+  // Grant a worker lease, and check that one more worker was requested due to the Eager
+  // Worker Requesting Mode.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
-  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
@@ -1439,14 +1402,14 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 4);
 
-  // Submit 6 more tasks, and check that still only 1 worker was requested.
+  // Submit 6 more tasks, and check that still only 2 worker were requested.
   for (int i = 1; i <= 6; i++) {
     auto task = tasks.front();
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
     tasks.erase(tasks.begin());
   }
   ASSERT_EQ(tasks.size(), 20);
-  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
@@ -1454,7 +1417,8 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 10);
 
-  // Submit 1 more task, and check that one more worker is requested, for a total of 2.
+  // Submit 1 more task, and check that no additional worker is requested, because a
+  // request is already pending (due to the Eager Worker Requesting mode)
   auto task = tasks.front();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   tasks.erase(tasks.begin());
@@ -1467,9 +1431,10 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 10);
 
-  // Grant a worker lease, and check that still only 2 workers were requested.
+  // Grant a worker lease, and check that one more worker is requested because there are
+  // stealable tasks.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
@@ -1485,7 +1450,7 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
     tasks.erase(tasks.begin());
   }
   ASSERT_EQ(tasks.size(), 10);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
@@ -1494,11 +1459,11 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(worker_client->callbacks.size(), 20);
 
   // Call ReplyPushTask on a quarter of the submitted tasks (5), and check that the
-  // total number of workers requested remains equal to 2.
+  // total number of workers requested remains equal to 3.
   for (int i = 1; i <= 5; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 5);
@@ -1513,7 +1478,7 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
     tasks.erase(tasks.begin());
   }
   ASSERT_EQ(tasks.size(), 5);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 5);
@@ -1522,11 +1487,11 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(worker_client->callbacks.size(), 20);
 
   // Call ReplyPushTask on a quarter of the submitted tasks (5), and check that the
-  // total number of workers requested remains equal to 2.
+  // total number of workers requested remains equal to 3.
   for (int i = 1; i <= 5; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 10);
@@ -1535,14 +1500,14 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(worker_client->callbacks.size(), 15);
 
   // Submit last 5 tasks, and check that the total number of workers requested is still
-  // 2
+  // 3
   for (int i = 1; i <= 5; i++) {
     auto task = tasks.front();
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
     tasks.erase(tasks.begin());
   }
   ASSERT_EQ(tasks.size(), 0);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 10);
@@ -1555,13 +1520,17 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   for (int i = 1; i <= 20; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 30);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("nil", 0, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.

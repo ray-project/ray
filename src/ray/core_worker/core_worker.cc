@@ -595,7 +595,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
       RayConfig::instance().max_tasks_in_flight_per_worker(),
-      RayConfig::instance().work_stealing(), boost::asio::steady_timer(io_service_));
+      boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
              uint64_t object_size) {

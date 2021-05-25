@@ -163,7 +163,8 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
 
   // Check that there is at least one worker (other than the thief) with the current
   // SchedulingKey and that there are stealable tasks
-  if (scheduling_key_entry.active_workers.size() <= 1 ||
+  if (max_tasks_in_flight_per_worker_ == 1 ||
+      scheduling_key_entry.active_workers.size() <= 1 ||
       !scheduling_key_entry.StealableTasks()) {
     return false;
   }
@@ -201,9 +202,13 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   }
 
   const rpc::WorkerAddress victim_addr = rpc::WorkerAddress(*victim_raw_addr);
-  // Double check to make sure that we didn't pick the thief as the designated victim
-  RAY_CHECK(!(victim_addr == thief_addr) &&
-            victim_addr.worker_id != thief_addr.worker_id);
+  // We can't steal unless we can find a thief and a victim with distinct addresses/worker
+  // ids. In fact, if we allow stealing among workers with the same address/worker id, we
+  // will also necessarily enable self-stealing.
+  if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    return false;
+  }
 
   const auto &victim_entry = worker_to_lease_entry_[victim_addr];
   // Double check that the victim has the correct SchedulingKey
@@ -242,14 +247,6 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
   }
   RAY_CHECK(!was_error);
 
-  // Check if work stealing is enabled
-  if (max_tasks_in_flight_per_worker_ == 1 || !work_stealing_) {
-    RAY_LOG(DEBUG) << "Work stealing is not enabled, so we return the worker "
-                   << thief_addr.worker_id << " without stealing";
-    ReturnWorker(thief_addr, was_error, scheduling_key);
-    return;
-  }
-
   RAY_LOG(DEBUG) << "Beginning to steal work now! Thief is worker: "
                  << thief_addr.worker_id;
 
@@ -258,9 +255,16 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
   if (!FindOptimalVictimForStealing(scheduling_key, thief_addr, &victim_raw_addr)) {
     RAY_LOG(DEBUG) << "Could not find a suitable victim for stealing! Returning worker "
                    << thief_addr.worker_id;
+    // If stealing was enabled, we can now cancel any pending new workeer lease request,
+    // because stealing is now possible this time.
+    if (max_tasks_in_flight_per_worker_ > 1) {
+      CancelWorkerLeaseIfNeeded(scheduling_key);
+    }
     ReturnWorker(thief_addr, was_error, scheduling_key);
     return;
   }
+  // If we get here, stealing must be enabled.
+  RAY_CHECK(max_tasks_in_flight_per_worker_ > 1);
   rpc::WorkerAddress victim_addr = rpc::WorkerAddress(victim_raw_addr);
   RAY_CHECK(worker_to_lease_entry_.find(victim_addr) != worker_to_lease_entry_.end());
 
@@ -360,11 +364,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
       current_queue.pop_front();
     }
-
-    // Delete the queue if it's now empty. Note that the queue cannot already be empty
-    // because this is the only place tasks are removed from it.
-    if (current_queue.empty()) {
-      RAY_LOG(INFO) << "Task queue empty, canceling lease request";
+    // If stealing is not an option, we can cancel the request for new worker leases
+    if (max_tasks_in_flight_per_worker_ == 1) {
       CancelWorkerLeaseIfNeeded(scheduling_key);
     }
   }
@@ -375,10 +376,15 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
-  if (!task_queue.empty()) {
-    // There are still pending tasks, so let the worker lease request succeed.
+  if (!task_queue.empty() ||
+      (max_tasks_in_flight_per_worker_ > 1 && scheduling_key_entry.StealableTasks())) {
+    // There are still pending tasks, or there are tasks that can be stolen by a new
+    // worker, so let the worker lease request succeed.
     return;
   }
+
+  RAY_LOG(DEBUG)
+      << "Task queue is empty, and there are no stealable tasks; canceling lease request";
 
   auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
   if (pending_lease_request.first) {
@@ -444,7 +450,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // are not full, we do not request a new worker (unless work stealing is enabled, in
   // which case we can request a worker under the Eager Worker Requesting mode)
   if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_) &&
-      !work_stealing_) {
+      max_tasks_in_flight_per_worker_ == 1) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
     return;
@@ -459,7 +465,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (task_queue.empty()) {
     // If any worker has more than one task in flight, then that task can be stolen.
     bool stealable_tasks = scheduling_key_entry.StealableTasks();
-    if (!work_stealing_ || stealable_tasks) {
+    if (max_tasks_in_flight_per_worker_ == 1 || !stealable_tasks) {
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.

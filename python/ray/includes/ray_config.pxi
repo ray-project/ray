@@ -97,10 +97,6 @@ cdef class Config:
         return RayConfig.instance().max_tasks_in_flight_per_worker()
 
     @staticmethod
-    def work_stealing():
-        return RayConfig.instance().work_stealing()
-
-    @staticmethod
     def metrics_report_interval_ms():
         return RayConfig.instance().metrics_report_interval_ms()
 
