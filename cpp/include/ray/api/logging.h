@@ -15,6 +15,7 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <string>
 
 #if defined(_WIN32)
@@ -44,11 +45,6 @@ enum { ERROR = 0 };
 
 namespace ray {
 namespace api {
-/// In order to use the get stacktrace method in other non-glog scenarios, we
-/// have added a patch to allow glog to return the current call stack information
-/// through the internal interface. This function `GetCallTrace` is a wrapper
-/// providing a new detection function for debug or something like that.
-std::string GetCallTrace();
 
 enum class CppRayLogLevel {
   TRACE = -2,
@@ -59,27 +55,9 @@ enum class CppRayLogLevel {
   FATAL = 3
 };
 
-#define CPP_LOG_INTERNAL(level) CppRayLog(__FILE__, __LINE__, level)
-
-#define CPP_LOG_ENABLED(level) CppRayLog::IsLevelEnabled(CppRayLogLevel::level)
-
-#define CPP_LOG(level)                                  \
-  if (CppRayLog::IsLevelEnabled(CppRayLogLevel::level)) \
-  CPP_LOG_INTERNAL(CppRayLogLevel::level)
-
-#define CPP_IGNORE_EXPR(expr) ((void)(expr))
-
-#define CPP_CHECK(condition)                                                       \
-  (condition)                                                                      \
-      ? CPP_IGNORE_EXPR(0)                                                         \
-      : ray::api::Voidify() & CppRayLog(__FILE__, __LINE__, CppRayLogLevel::FATAL) \
-                                  << " Check failed: " #condition " "
-
-#ifdef NDEBUG
-
-#define CPP_DCHECK(condition) CPP_CHECK(condition)
-
-#endif  // NDEBUG
+#define CPP_LOG_INTERNAL(level) *CreateCppLog(__FILE__, __LINE__, level)
+#define CPP_LOG(level) \
+  if (IsLevelEnabled(CppRayLogLevel::level)) CPP_LOG_INTERNAL(CppRayLogLevel::level)
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, CppRayLog is only a declaration
@@ -92,7 +70,9 @@ class CppLogBase {
   virtual ~CppLogBase(){};
 
   // By default, this class is a null log because it return false here.
-  virtual bool IsEnabled() const { return false; };
+  virtual bool IsEnabled() const = 0;
+
+  // virtual bool IsLevelEnabled(CppRayLogLevel log_level) = 0;
 
   template <typename T>
   CppLogBase &operator<<(const T &t) {
@@ -106,90 +86,9 @@ class CppLogBase {
   virtual std::ostream &Stream() { return std::cerr; };
 };
 
-class CppRayLog : public CppLogBase {
- public:
-  CppRayLog(const char *file_name, int line_number, CppRayLogLevel severity);
-
-  virtual ~CppRayLog();
-
-  /// Return whether or not current logging instance is enabled.
-  ///
-  /// \return True if logging is enabled and false otherwise.
-  virtual bool IsEnabled() const;
-
-  /// The init function of ray log for a program which should be called only once.
-  ///
-  /// \parem appName The app name which starts the log.
-  /// \param severity_threshold Logging threshold for the program.
-  /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName,
-                          CppRayLogLevel severity_threshold = CppRayLogLevel::INFO,
-                          const std::string &logDir = "");
-
-  /// The shutdown function of ray log which should be used with StartRayLog as a pair.
-  static void ShutDownRayLog();
-
-  /// Uninstall the signal actions installed by InstallFailureSignalHandler.
-  static void UninstallSignalAction();
-
-  /// Return whether or not the log level is enabled in current setting.
-  ///
-  /// \param log_level The input log level to test.
-  /// \return True if input log level is not lower than the threshold.
-  static bool IsLevelEnabled(CppRayLogLevel log_level);
-
-  /// Install the failure signal handler to output call stack when crash.
-  /// If glog is not installed, this function won't do anything.
-  static void InstallFailureSignalHandler();
-  // Get the log level from environment variable.
-
-  // To check failure signal handler enabled or not.
-  static bool IsFailureSignalHandlerEnabled();
-
-  static CppRayLogLevel GetLogLevelFromEnv();
-
-  static std::string GetLogFormatPattern();
-
-  static std::string GetLoggerName();
-
- private:
-  // Hide the implementation of log provider by void *.
-  // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
-  /// True if log messages should be logged and false if they should be ignored.
-  bool is_enabled_;
-  static CppRayLogLevel severity_threshold_;
-  // In InitGoogleLogging, it simply keeps the pointer.
-  // We need to make sure the app name passed to InitGoogleLogging exist.
-  static std::string app_name_;
-  /// The directory where the log files are stored.
-  /// If this is empty, logs are printed to stdout.
-  static std::string log_dir_;
-  /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
-  /// InstallFailureSignalHandler was not called.
-  static bool is_failure_signal_handler_installed_;
-  // Log format content.
-  static std::string log_format_pattern_;
-  // Log rotation file size limitation.
-  static long log_rotation_max_size_;
-  // Log rotation file number.
-  static long log_rotation_file_num_;
-  // Ray default logger name.
-  static std::string logger_name_;
-
- protected:
-  virtual std::ostream &Stream();
-};
-
-// This class make CPP_CHECK compilation pass to change the << operator to void.
-// This class is copied from glog.
-class Voidify {
- public:
-  Voidify() {}
-  // This has to be an operator with a precedence lower than << but
-  // higher than ?:
-  void operator&(CppLogBase &) {}
-};
+std::unique_ptr<CppLogBase> CreateCppLog(const char *file_name, int line_number,
+                                         CppRayLogLevel severity);
+bool IsLevelEnabled(CppRayLogLevel log_level);
 
 }  // namespace api
 }  // namespace ray

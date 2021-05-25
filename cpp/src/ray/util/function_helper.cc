@@ -49,7 +49,7 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   }
 
   CPP_LOG(INFO) << "Loaded library: " << lib_name << " successfully.";
-  CPP_CHECK(libraries_.emplace(lib_name, lib).second);
+  RAY_CHECK(libraries_.emplace(lib_name, lib).second);
   return lib;
 }
 
@@ -90,7 +90,7 @@ uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
   CPP_LOG(INFO) << "Start load library " << lib_name;
   void *handle = dlopen(lib_name.c_str(), RTLD_LAZY);
   uintptr_t base_addr = BaseAddressForHandle(handle);
-  CPP_CHECK(base_addr > 0);
+  RAY_CHECK(base_addr > 0);
   CPP_LOG(INFO) << "Loaded library " << lib_name << " to base address " << base_addr;
   loaded_library_.emplace(lib_name, base_addr);
   return base_addr;

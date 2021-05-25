@@ -159,7 +159,7 @@ TEST(RayClusterModeTest, FullTest) {
 }
 
 int main(int argc, char **argv) {
-  CPP_CHECK(argc == 2 || argc == 3);
+  RAY_CHECK(argc == 2 || argc == 3);
   lib_name = std::string(argv[1]);
   if (argc == 3) {
     redis_ip = std::string(argv[2]);

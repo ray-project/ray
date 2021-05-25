@@ -10,14 +10,14 @@ namespace api {
 
 static std::string GetSessionDir(std::string redis_ip, int port, std::string password) {
   redisContext *context = redisConnect(redis_ip.c_str(), port);
-  CPP_CHECK(context != nullptr && !context->err);
+  RAY_CHECK(context != nullptr && !context->err);
   if (!password.empty()) {
     auto auth_reply = (redisReply *)redisCommand(context, "AUTH %s", password.c_str());
-    CPP_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
+    RAY_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
     freeReplyObject(auth_reply);
   }
   auto reply = (redisReply *)redisCommand(context, "GET session_dir");
-  CPP_CHECK(reply->type != REDIS_REPLY_ERROR);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR);
   std::string session_dir(reply->str);
   freeReplyObject(reply);
   redisFree(context);
@@ -31,7 +31,7 @@ static void StartRayNode(int redis_port, std::string redis_password,
        redis_password, "--node-manager-port", std::to_string(node_manager_port),
        "--include-dashboard", "false"});
   CPP_LOG(INFO) << CreateCommandLine(cmdargs);
-  CPP_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
   return;
 }
@@ -39,7 +39,7 @@ static void StartRayNode(int redis_port, std::string redis_password,
 static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   CPP_LOG(INFO) << CreateCommandLine(cmdargs);
-  CPP_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(3);
   return;
 }

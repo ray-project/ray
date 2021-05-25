@@ -88,9 +88,9 @@ Status TaskExecutor::ExecuteTask(
     std::vector<std::shared_ptr<RayObject>> *results,
     std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   CPP_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
-  CPP_CHECK(ray_function.GetLanguage() == Language::CPP);
+  RAY_CHECK(ray_function.GetLanguage() == Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
-  CPP_CHECK(function_descriptor->Type() ==
+  RAY_CHECK(function_descriptor->Type() ==
             ray::FunctionDescriptorType::kCppFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string lib_name = typed_descriptor->LibName();
@@ -102,7 +102,7 @@ Status TaskExecutor::ExecuteTask(
     std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == TaskType::ACTOR_TASK) {
-    CPP_CHECK(current_actor_ != nullptr);
+    RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
         GetExecuteResult(lib_name, func_name, args_buffer, current_actor_.get());
   } else {  // NORMAL_TASK

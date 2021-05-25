@@ -1,6 +1,7 @@
 
 #pragma once
 #include <ray/api/logging.h>
+#include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
 #include "ray/core.h"
@@ -37,7 +38,10 @@ class RayConfig {
 
   void SetRedisAddress(const std::string address) {
     auto pos = address.find(':');
-    CPP_CHECK(pos != std::string::npos);
+    if (pos == std::string::npos) {
+      throw RayException("The address has no char ':'");
+    }
+
     redis_ip = address.substr(0, pos);
     redis_port = std::stoi(address.substr(pos + 1, address.length()));
   }
