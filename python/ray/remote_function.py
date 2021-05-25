@@ -2,7 +2,7 @@ import logging
 import inspect
 from functools import wraps
 
-from ray import cloudpickle as pickle
+from ray import cloudpickle as pickle, ray_constants
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
@@ -128,7 +128,7 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                placement_group=ray_constants.PLACEMENT_GROUP_DEFAULT_VAL,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -188,7 +188,7 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                placement_group=ray_constants.PLACEMENT_GROUP_DEFAULT_VAL,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -253,9 +253,11 @@ class RemoteFunction:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == ray_constants.PLACEMENT_GROUP_DEFAULT_VAL:
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()

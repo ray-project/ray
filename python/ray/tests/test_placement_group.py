@@ -958,8 +958,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         # Since all node id should be identical, set should be equal to 1.
         assert len(node_id_set) == 1
@@ -982,8 +983,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         assert len(node_id_set) == 2
 
@@ -1004,8 +1006,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         assert len(node_id_set) == 2
 

@@ -256,3 +256,7 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# The default value of the placement group. -1 is used so that None
+# argument can be used for a different purpose.
+PLACEMENT_GROUP_DEFAULT_VAL = -1
