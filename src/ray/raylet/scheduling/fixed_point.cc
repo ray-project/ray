@@ -10,6 +10,8 @@ FixedPoint::FixedPoint(double d) {
 
 FixedPoint::FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }
 
+FixedPoint::FixedPoint(size_t i) { i_ = (i * RESOURCE_UNIT_SCALING); }
+
 FixedPoint::FixedPoint(int64_t i) : FixedPoint((double)i) {}
 
 FixedPoint::FixedPoint(uint64_t i) : FixedPoint((double)i) {}
