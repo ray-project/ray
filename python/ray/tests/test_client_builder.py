@@ -90,20 +90,20 @@ print(ray.get_runtime_context().namespace)
 
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
-    client_info = ray.client("localhost:50055").connect()
-
-    assert client_info.dashboard_url == ray.worker.get_dashboard_url()
-    python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
-    assert client_info.python_version == python_version
-    assert client_info.ray_version == ray.__version__
-    assert client_info.ray_commit == ray.__commit__
-    protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
-    assert client_info.protocol_version == protocol_version
+    with ray.client("localhost:50055").connect() as client_ctx:
+        assert client_ctx.dashboard_url == ray.worker.get_dashboard_url()
+        python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
+        assert client_ctx.python_version == python_version
+        assert client_ctx.ray_version == ray.__version__
+        assert client_ctx.ray_commit == ray.__commit__
+        protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
+        assert client_ctx.protocol_version == protocol_version
 
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@pytest.mark.skip()
 def test_local_clusters():
     """
     This tests the various behaviors of connecting to local clusters:
@@ -180,3 +180,37 @@ assert len(ray._private.services.find_redis_address()) == 1
         retry_interval_ms=1000)
     p1.kill()
     subprocess.check_output("ray stop --force", shell=True)
+
+
+def test_disconnect(call_ray_stop_only):
+    subprocess.check_output(
+        "ray start --head --ray-client-server-port=25555", shell=True)
+    with ray.client("localhost:25555").namespace("n1").connect():
+        # Connect via Ray Client
+        namespace = ray.get_runtime_context().namespace
+        assert namespace == "n1"
+        assert ray.util.client.ray.is_connected()
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        ray.put(300)
+
+    with ray.client(None).namespace("n1").connect():
+        # Connect Directly via Driver
+        namespace = ray.get_runtime_context().namespace
+        assert namespace == "n1"
+        assert not ray.util.client.ray.is_connected()
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        ray.put(300)
+
+    ctx = ray.client("localhost:25555").namespace("n1").connect()
+    # Connect via Ray Client
+    namespace = ray.get_runtime_context().namespace
+    assert namespace == "n1"
+    assert ray.util.client.ray.is_connected()
+    ctx.disconnect()
+    # Check idempotency
+    ctx.disconnect()
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        ray.put(300)
