@@ -52,10 +52,9 @@ class ObjectStore {
   /// \param[in] ids The object id array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
-  /// \return WaitResult Two arrays, one containing locally available objects, one
-  /// containing the rest.
-  virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                          int timeout_ms) = 0;
+  /// \return A vector that indicates each object has appeared or not.
+  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                 int timeout_ms) = 0;
 
  private:
   virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;
