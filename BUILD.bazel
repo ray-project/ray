@@ -330,12 +330,20 @@ cc_library(
         exclude = [
             "src/ray/common/**/*_test.cc",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.cc",
+        "src/ray/raylet/scheduling/fixed_point.cc",
+        "src/ray/raylet/scheduling/scheduling_ids.cc",
+    ],
     hdrs = glob(
         [
             "src/ray/common/**/*.h",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.h",
+        "src/ray/raylet/scheduling/fixed_point.h",
+        "src/ray/raylet/scheduling/scheduling_ids.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],

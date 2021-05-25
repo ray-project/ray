@@ -10,7 +10,11 @@ FixedPoint::FixedPoint(double d) {
 
 FixedPoint::FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }
 
-FixedPoint FixedPoint::operator+(FixedPoint const &ru) {
+FixedPoint::FixedPoint(int64_t i) : FixedPoint((double)i) {}
+
+FixedPoint::FixedPoint(uint64_t i) : FixedPoint((double)i) {}
+
+FixedPoint FixedPoint::operator+(FixedPoint const &ru) const {
   FixedPoint res;
   res.i_ = i_ + ru.i_;
   return res;
@@ -21,7 +25,7 @@ FixedPoint FixedPoint::operator+=(FixedPoint const &ru) {
   return *this;
 }
 
-FixedPoint FixedPoint::operator-(FixedPoint const &ru) {
+FixedPoint FixedPoint::operator-(FixedPoint const &ru) const {
   FixedPoint res;
   res.i_ = i_ - ru.i_;
   return res;
@@ -38,13 +42,13 @@ FixedPoint FixedPoint::operator-() const {
   return res;
 }
 
-FixedPoint FixedPoint::operator+(double const d) {
+FixedPoint FixedPoint::operator+(double const d) const {
   FixedPoint res;
   res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
   return res;
 }
 
-FixedPoint FixedPoint::operator-(double const d) {
+FixedPoint FixedPoint::operator-(double const d) const {
   FixedPoint res;
   res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
   return res;
@@ -52,6 +56,11 @@ FixedPoint FixedPoint::operator-(double const d) {
 
 FixedPoint FixedPoint::operator=(double const d) {
   i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
+  return *this;
+}
+
+FixedPoint FixedPoint::operator+=(int64_t const ru) {
+  *this += (double)ru;
   return *this;
 }
 
