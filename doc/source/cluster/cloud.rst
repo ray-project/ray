@@ -152,7 +152,7 @@ Ray with cloud providers
 
         Once above done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ecs.n4.large head node (on-demand) configured to autoscale up to two ecs.n4.2xlarge.
 
-        Make sure account balance is not less than 100 RMB, otherwise you will got InvalidAccountStatus.NotEnoughBalance error.
+        Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
 
         Test that it works by running the following commands from your local machine:
 
