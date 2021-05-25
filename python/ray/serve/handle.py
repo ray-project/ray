@@ -139,7 +139,7 @@ class RayServeHandle:
             use_serve_request=self._use_serve_request,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        future = self.router.assign_request(request_metadata, *args, **kwargs)
+        future = self.router.enqueue_request(request_metadata, *args, **kwargs)
         return future
 
     async def remote(self, *args, **kwargs):

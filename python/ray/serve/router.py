@@ -246,7 +246,7 @@ class EndpointRouter:
         if not self._pending_endpoint_registered.is_set():
             self._pending_endpoint_registered.set()
 
-    def assign_request(
+    def enqueue_request(
             self,
             request_meta: RequestMetadata,
             *request_args,

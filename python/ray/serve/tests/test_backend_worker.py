@@ -64,12 +64,12 @@ async def add_servable_to_router(
     await controller_actor.add_new_replica.remote(
         "backend", worker, kwargs.get("backend_config", BackendConfig()))
 
-    # A simple adapter so we can use `await router.assign_request`
+    # A simple adapter so we can use `await router.enqueue_request`
     class AsyncEndpointRouter(EndpointRouter):
-        def assign_request(self, request_meta: RequestMetadata, *request_args,
-                           **request_kwargs) -> asyncio.futures.Future:
-            future = super().assign_request(request_meta, *request_args,
-                                            **request_kwargs)
+        def enqueue_request(self, request_meta: RequestMetadata, *request_args,
+                            **request_kwargs) -> asyncio.futures.Future:
+            future = super().enqueue_request(request_meta, *request_args,
+                                             **request_kwargs)
             return asyncio.wrap_future(future)
 
     router = AsyncEndpointRouter(
@@ -98,7 +98,7 @@ async def test_servable_function(serve_instance, mock_controller_with_name):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await (await router.assign_request(query_param, i=query))
+        result = await (await router.enqueue_request(query_param, i=query))
         assert result == query
 
 
@@ -115,7 +115,7 @@ async def test_servable_class(serve_instance, mock_controller_with_name):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await (await router.assign_request(query_param, i=query))
+        result = await (await router.enqueue_request(query_param, i=query))
         assert result == query + 3
 
 
@@ -132,16 +132,16 @@ async def test_task_runner_custom_method_single(serve_instance,
                                                   *mock_controller_with_name)
 
     query_param = make_request_param("a")
-    a_result = await (await router.assign_request(query_param))
+    a_result = await (await router.enqueue_request(query_param))
     assert a_result == "a"
 
     query_param = make_request_param("b")
-    b_result = await (await router.assign_request(query_param))
+    b_result = await (await router.enqueue_request(query_param))
     assert b_result == "b"
 
     query_param = make_request_param("non_exist")
     with pytest.raises(ray.exceptions.RayTaskError):
-        await (await router.assign_request(query_param))
+        await (await router.enqueue_request(query_param))
 
 
 async def test_task_runner_perform_async(serve_instance,
@@ -174,7 +174,7 @@ async def test_task_runner_perform_async(serve_instance,
     query_param = make_request_param()
 
     done, not_done = await asyncio.wait(
-        [(await router.assign_request(query_param)) for _ in range(10)],
+        [(await router.enqueue_request(query_param)) for _ in range(10)],
         timeout=10)
     assert len(done) == 10
     for item in done:
@@ -202,7 +202,7 @@ async def test_user_config_update(serve_instance, mock_controller_with_name):
 
     query_param = make_request_param()
 
-    done = [(await router.assign_request(query_param)) for _ in range(10)]
+    done = [(await router.enqueue_request(query_param)) for _ in range(10)]
     for i in done:
         assert await i == "original"
 
@@ -211,7 +211,7 @@ async def test_user_config_update(serve_instance, mock_controller_with_name):
     await mock_controller_with_name[1].update_backend.remote("backend", config)
 
     async def new_val_returned():
-        result = await (await router.assign_request(query_param))
+        result = await (await router.enqueue_request(query_param))
         assert "new_val" == result
 
     for _ in range(10):
@@ -245,7 +245,7 @@ async def test_graceful_shutdown(serve_instance, mock_controller_with_name):
 
     query_param = make_request_param()
 
-    refs = [(await router.assign_request(query_param)) for _ in range(6)]
+    refs = [(await router.enqueue_request(query_param)) for _ in range(6)]
 
     shutdown_ref = backend_worker.drain_pending_queries.remote()
 

@@ -77,7 +77,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                                  task_runner_mock_actor)
 
     # Make sure we get the request result back
-    fut = q.assign_request(RequestMetadata(get_random_letters(10), "svc"), 1)
+    fut = q.enqueue_request(RequestMetadata(get_random_letters(10), "svc"), 1)
     ref = fut.result()
     result = await ref
     assert result == "DONE"
@@ -99,8 +99,8 @@ async def test_changing_backend(ray_instance, mock_controller,
     await mock_controller.add_new_replica.remote("backend-alter",
                                                  task_runner_mock_actor)
 
-    await q.assign_request(RequestMetadata(get_random_letters(10), "svc"),
-                           1).result()
+    await q.enqueue_request(RequestMetadata(get_random_letters(10), "svc"),
+                            1).result()
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 1
 
@@ -110,8 +110,8 @@ async def test_changing_backend(ray_instance, mock_controller,
         }))
     await mock_controller.add_new_replica.remote("backend-alter-2",
                                                  task_runner_mock_actor)
-    await q.assign_request(RequestMetadata(get_random_letters(10), "svc"),
-                           2).result()
+    await q.enqueue_request(RequestMetadata(get_random_letters(10), "svc"),
+                            2).result()
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 2
 
@@ -133,7 +133,7 @@ async def test_split_traffic_random(ray_instance, mock_controller,
     # single queue is 0.5^20 ~ 1-6
     object_refs = []
     for _ in range(20):
-        ref = q.assign_request(
+        ref = q.enqueue_request(
             RequestMetadata(get_random_letters(10), "svc"), 1).result()
         object_refs.append(ref)
     ray.get(object_refs)
@@ -162,7 +162,7 @@ async def test_shard_key(ray_instance, mock_controller,
     # Generate random shard keys and send one request for each.
     shard_keys = [get_random_letters() for _ in range(100)]
     for shard_key in shard_keys:
-        await q.assign_request(
+        await q.enqueue_request(
             RequestMetadata(
                 get_random_letters(10), "svc", shard_key=shard_key),
             shard_key).result()
@@ -177,7 +177,7 @@ async def test_shard_key(ray_instance, mock_controller,
 
     # Send queries with the same shard keys a second time.
     for shard_key in shard_keys:
-        await q.assign_request(
+        await q.enqueue_request(
             RequestMetadata(
                 get_random_letters(10), "svc", shard_key=shard_key),
             shard_key).result()
