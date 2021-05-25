@@ -56,7 +56,8 @@ class AcsClient:
         access_key: The AccessKey ID of your aliyun account.
         access_key_secret: The AccessKey secret of your aliyun account.
         region_id: A region is a geographic area where a data center resides.
-                   Region_id is the ID of region (e.g., cn-hangzhou, us-west-1, etc.)
+                   Region_id is the ID of region (e.g., cn-hangzhou,
+                   us-west-1, etc.)
         max_retries: The maximum number of retries each connection.
     """
 
@@ -103,13 +104,18 @@ class AcsClient:
         :param instance_type: The instance type of the ECS.
         :param image_id: The ID of the image used to create the instance.
         :param tags: The tags of the instance.
-        :param key_pair_name: The name of the key pair to be bound to the instance.
+        :param key_pair_name: The name of the key pair to be bound to
+                              the instance.
         :param optimized: Specifies whether the instance is I/O optimized
-        :param instance_charge_type: The billing method of the instance. Default value: PostPaid.
-        :param spot_strategy: The preemption policy for the pay-as-you-go instance.
-        :param internet_charge_type: The billing method for network usage. Default value: PayByTraffic.
-        :param internet_max_bandwidth_out: The maximum inbound public bandwidth. Unit: Mbit/s.
-        :return:
+        :param instance_charge_type: The billing method of the instance.
+                                     Default value: PostPaid.
+        :param spot_strategy: The preemption policy for the pay-as-you-go
+                              instance.
+        :param internet_charge_type: The billing method for network usage.
+                                     Default value: PayByTraffic.
+        :param internet_max_bandwidth_out: The maximum inbound public
+                                           bandwidth. Unit: Mbit/s.
+        :return: The created instance ID.
         """
         request = CreateInstanceRequest()
         request.set_InstanceType(instance_type)
@@ -146,22 +152,31 @@ class AcsClient:
             internet_charge_type="PayByTraffic",
             internet_max_bandwidth_out=1,
     ):
-        """ Create/Start one or more pay-as-you-go or subscription Elastic Compute Service (ECS) instances
+        """ Create one or more pay-as-you-go or subscription
+            Elastic Compute Service (ECS) instances
 
         :param instance_type: The instance type of the ECS.
         :param image_id: The ID of the image used to create the instance.
         :param tags: The tags of the instance.
-        :param security_group_id: The ID of the security group to which to assign the instance.
-                                  Instances in the same security group can communicate with each other.
-        :param vswitch_id: The ID of the vSwitch to which to connect the instance.
-        :param key_pair_name: The name of the key pair to be bound to the instance.
+        :param security_group_id: The ID of the security group to which to
+                                  assign the instance. Instances in the same
+                                  security group can communicate with
+                                  each other.
+        :param vswitch_id: The ID of the vSwitch to which to connect
+                           the instance.
+        :param key_pair_name: The name of the key pair to be bound to
+                              the instance.
         :param amount: The number of instances that you want to create.
         :param optimized: Specifies whether the instance is I/O optimized
-        :param instance_charge_type: The billing method of the instance. Default value: PostPaid.
-        :param spot_strategy: The preemption policy for the pay-as-you-go instance.
-        :param internet_charge_type: The billing method for network usage. Default value: PayByTraffic.
-        :param internet_max_bandwidth_out: The maximum inbound public bandwidth. Unit: Mbit/s.
-        :return:
+        :param instance_charge_type: The billing method of the instance.
+                                     Default value: PostPaid.
+        :param spot_strategy: The preemption policy for the pay-as-you-go
+                              instance.
+        :param internet_charge_type: The billing method for network usage.
+                                     Default value: PayByTraffic.
+        :param internet_max_bandwidth_out: The maximum inbound public
+                                           bandwidth. Unit: Mbit/s.
+        :return: The created instance IDs.
         """
         request = RunInstancesRequest()
         request.set_InstanceType(instance_type)
@@ -187,7 +202,8 @@ class AcsClient:
     def create_security_group(self, vpc_id):
         """ Create a security group
 
-        :param vpc_id: The ID of the VPC in which to create the security group.
+        :param vpc_id: The ID of the VPC in which to create
+                       the security group.
         :return: The created security group ID.
         """
         request = CreateSecurityGroupRequest()
@@ -223,9 +239,11 @@ class AcsClient:
         """ Create an inbound security group rule.
 
         :param ip_protocol: The transport layer protocol.
-        :param port_range: The range of destination ports relevant to the transport layer protocol.
+        :param port_range: The range of destination ports relevant to
+                           the transport layer protocol.
         :param security_group_id: The ID of the destination security group.
-        :param source_cidr_ip: The range of source IPv4 addresses. CIDR blocks and IPv4 addresses are supported.
+        :param source_cidr_ip: The range of source IPv4 addresses.
+                               CIDR blocks and IPv4 addresses are supported.
         """
         request = AuthorizeSecurityGroupRequest()
         request.set_IpProtocol(ip_protocol)
@@ -238,7 +256,8 @@ class AcsClient:
         """ Create vSwitches to divide the VPC into one or more subnets
 
         :param vpc_id: The ID of the VPC to which the VSwitch belongs.
-        :param zone_id: The ID of the zone to which the target VSwitch belongs.
+        :param zone_id: The ID of the zone to which
+                        the target VSwitch belongs.
         :param cidr_block: The CIDR block of the VSwitch.
         :return:
         """
@@ -323,7 +342,8 @@ class AcsClient:
         """  Stop one or more ECS instances that are in the Running state.
 
         :param instance_ids: The IDs of instances.
-        :param stopped_mode: Specifies whether billing for the instance continues after the instance is stopped.
+        :param stopped_mode: Specifies whether billing for the instance
+                             continues after the instance is stopped.
         """
         request = StopInstancesRequest()
         request.set_InstanceIds(instance_ids)
@@ -333,7 +353,8 @@ class AcsClient:
             logging.error("stop_instances failed")
 
     def delete_instance(self, instance_id):
-        """ Release a pay-as-you-go instance or an expired subscription instance.
+        """ Release a pay-as-you-go instance or
+            an expired subscription instance.
 
         :param instance_id: The ID of the instance that you want to release.
         """
@@ -344,7 +365,8 @@ class AcsClient:
         self._send_request(request)
 
     def delete_instances(self, instance_ids):
-        """ Release one or more pay-as-you-go instances or expired subscription instances.
+        """ Release one or more pay-as-you-go instances or
+            expired subscription instances.
 
         :param instance_ids: The IDs of instances that you want to release.
         """
@@ -356,7 +378,8 @@ class AcsClient:
     def allocate_public_address(self, instance_id):
         """ Assign a public IP address to an ECS instance.
 
-        :param instance_id: The ID of the instance to which you want to assign a public IP address.
+        :param instance_id: The ID of the instance to which you want to
+                            assign a public IP address.
         :return: The assigned ip.
         """
         request = AllocatePublicIpAddressRequest()
@@ -383,7 +406,8 @@ class AcsClient:
             return None
 
     def import_key_pair(self, key_pair_name, public_key_body):
-        """ Import the public key of an RSA-encrypted key pair that is generated by a third-party tool.
+        """ Import the public key of an RSA-encrypted key pair
+            that is generated by a third-party tool.
 
         :param key_pair_name: The name of the key pair.
         :param public_key_body: The public key of the key pair.
