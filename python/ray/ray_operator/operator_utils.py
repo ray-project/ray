@@ -30,10 +30,10 @@ AUTOSCALER_RETRIES_FIELD = "autoscalerRetries"
 MAX_STATUS_RETRIES = 3
 DELAY_BEFORE_STATUS_RETRY = .5
 
-OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
+OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE", "")
 # Operator is namespaced if the above environment variable is set,
 # cluster-scoped otherwise:
-NAMESPACED_OPERATOR = OPERATOR_NAMESPACE is not None
+NAMESPACED_OPERATOR = OPERATOR_NAMESPACE != ""
 
 RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or \
     os.path.expanduser("~/ray_cluster_configs")

@@ -1,7 +1,7 @@
 import subprocess
 
-from python.ray.ray_operator.operator_utils import NAMESPACED_OPERATOR
-from python.ray.ray_operator.operator_utils import OPERATOR_NAMESPACE
+from ray.ray_operator.operator_utils import NAMESPACED_OPERATOR
+from ray.ray_operator.operator_utils import OPERATOR_NAMESPACE
 
 
 def main() -> None:
