@@ -239,8 +239,9 @@ def _tracing_task_invocation(method):
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
+            # kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
-        assert "_ray_trace_ctx" not in kwargs
+        assert "_ray_trace_ctx" not in kwargs or kwargs["_ray_trace_ctx"] is None
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 _function_span_producer_name(self._function_name),
@@ -313,6 +314,7 @@ def _tracing_actor_creation(method):
             kwargs = {}
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
+            kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
@@ -464,8 +466,7 @@ def _inject_tracing_into_class(_cls):
         # Skip tracing for staticmethod or classmethod, because these method
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
-        if (is_static_method(_cls, name) or is_class_method(method)
-                or not is_tracing_enabled()):
+        if (is_static_method(_cls, name) or is_class_method(method)):
             continue
 
         # Add _ray_trace_ctx to method signature
