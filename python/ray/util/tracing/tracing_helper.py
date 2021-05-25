@@ -145,7 +145,7 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
     # We only get task ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
         task_id = (runtime_context["task_id"].hex()
-                   if runtime_context["task_id"] else None)
+                   if runtime_context.get("task_id") else None)
         if task_id:
             span_args["ray.task_id"] = task_id
 
@@ -195,7 +195,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     # We only get actor ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
         actor_id = (runtime_context["actor_id"].hex()
-                    if runtime_context["actor_id"] else None)
+                    if runtime_context.get("actor_id") else None)
 
         if actor_id:
             span_args["ray.actor_id"] = actor_id
