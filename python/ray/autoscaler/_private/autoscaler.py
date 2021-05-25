@@ -52,8 +52,8 @@ AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
 
-# Prevent multiple servers from starting if multiple autoscaler's
-# are instantiated for some reaso
+# Prevent multiple metric servers from starting if multiple autoscaler's
+# are instantiated
 _metric_server_started = False
 
 
