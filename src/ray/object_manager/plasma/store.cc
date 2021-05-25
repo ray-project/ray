@@ -949,7 +949,8 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
         << " GB. Pinned unevictable objects after spilling: "
         << num_bytes_in_use_ / 1024 / 1024
         << " MB. Unsealed objects: " << num_bytes_unsealed_ / 1024 / 1024
-        << " MB. Object size: " << (result.data_size + result.metadata_size) / 1024 / 1024 << " MB.";
+        << " MB. Object size: " << (result.data_size + result.metadata_size) / 1024 / 1024
+        << " MB.";
   }
   if (finished) {
     RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
