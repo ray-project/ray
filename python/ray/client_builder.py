@@ -118,9 +118,9 @@ def client(address: Optional[str] = None) -> ClientBuilder:
     of the following forms:
 
         * None: Connects to or creates a local cluster and connects to it.
-        * local:  Creates a new cluster locally and connects to it.
-        * IP:Port:  Connects to a Ray Client Server at the given address.
-        * module://inner_address: load module.ClientBuilder & pass
+        * ``"local"``: Creates a new cluster locally and connects to it.
+        * ``"IP:Port"``: Connects to a Ray Client Server at the given address.
+        * ``"module://inner_address"``: load module.ClientBuilder & pass
             inner_address
     """
     override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
