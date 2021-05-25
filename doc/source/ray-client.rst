@@ -16,7 +16,7 @@ To start the server manually, you can run:
 
 This runs ``ray.init()`` with default options and exposes the client gRPC port at ``host_ip:port`` (by default, ``0.0.0.0:10001``). Providing ``redis-address`` and ``redis-password`` will be passed into ``ray.init()`` when the server starts, allowing connection to an existing Ray cluster, as per the `cluster setup <cluster/index.html>`_ instructions.
 
-From here, another Ray script can access that server from a networked machine with ``ray.util.connect()``
+From here, another Ray script can access that server from a networked machine with ``ray.client().connect()``
 
 .. code-block:: python
 
@@ -34,14 +34,6 @@ From here, another Ray script can access that server from a networked machine wi
    #....
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
-
-
-==============
-Client Builder
-==============
-
-
-
 
 =======================
 Versioning requirements
