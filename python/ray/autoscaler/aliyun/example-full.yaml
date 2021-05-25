@@ -143,13 +143,12 @@ setup_commands:
     # Install Ray
     - pip install pytest-runner
     - pip install -U ray
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
     # Install Aliyun skd
     - pip install aliyun-python-sdk-core
     - pip install aliyun-python-sdk-ecs
-
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
