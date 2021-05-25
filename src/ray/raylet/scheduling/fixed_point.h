@@ -13,7 +13,7 @@ class FixedPoint {
  public:
   FixedPoint(double d = 0);
   FixedPoint(int i);
-  FixedPoint(size_t i);
+  FixedPoint(unsigned long i);
   FixedPoint(int64_t i);
   FixedPoint(uint64_t i);
 
