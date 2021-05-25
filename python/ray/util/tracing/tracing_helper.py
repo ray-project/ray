@@ -239,9 +239,8 @@ def _tracing_task_invocation(method):
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
-            # kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
-        assert "_ray_trace_ctx" not in kwargs or kwargs["_ray_trace_ctx"] is None
+        assert "_ray_trace_ctx" not in kwargs
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 _function_span_producer_name(self._function_name),
