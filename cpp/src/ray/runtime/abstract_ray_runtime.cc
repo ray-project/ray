@@ -12,6 +12,18 @@
 #include "native_ray_runtime.h"
 
 namespace ray {
+
+namespace internal {
+msgpack::sbuffer PackError(std::string error_msg) {
+  msgpack::sbuffer sbuffer;
+  msgpack::packer<msgpack::sbuffer> packer(sbuffer);
+  packer.pack(msgpack::type::nil_t());
+  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                              std::move(error_msg)));
+
+  return sbuffer;
+}
+}  // namespace internal
 namespace api {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
@@ -83,7 +95,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
           memory_buffer, nullptr, std::vector<ObjectID>()));
     } else {
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(arg.id, ray::rpc::Address{});
+      RAY_CHECK(arg.id);
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(*arg.id, ray::rpc::Address{});
     }
     ray_args.push_back(std::move(ray_arg));
   }

@@ -22,16 +22,6 @@
 namespace ray {
 namespace api {
 
-enum ErrorType : int {
-  WORKER_DIED = 0,
-  ACTOR_DIED = 1,
-  OBJECT_UNRECONSTRUCTABLE = 2,
-  TASK_EXECUTION_EXCEPTION = 3,
-  OBJECT_IN_PLASMA = 4,
-  TASK_CANCELLED = 5,
-  ACTOR_CREATION_FAILED = 6,
-};
-
 enum WorkerType : int {
   WORKER = 0,
   DRIVER = 1,
@@ -48,8 +38,10 @@ struct TaskArg {
   TaskArg &operator=(TaskArg const &) = delete;
   TaskArg &operator=(TaskArg &&) = delete;
 
+  /// If the buf is initialized shows it is a value argument.
   boost::optional<msgpack::sbuffer> buf;
-  ObjectID id;
+  /// If the id is initialized shows it is a reference argument.
+  boost::optional<ObjectID> id;
 };
 
 }  // namespace api
