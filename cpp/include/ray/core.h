@@ -3,7 +3,6 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
