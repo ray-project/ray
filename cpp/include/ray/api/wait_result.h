@@ -1,23 +1,26 @@
 
 #pragma once
 
-#include <vector>
+#include <list>
 
+#include <ray/api/object_ref.h>
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
 
+/// \param T The type of object.
+template <typename T>
 class WaitResult {
  public:
-  /// The object id array of ready objects
-  std::vector<ObjectID> ready;
-  /// The object id array of unready objects
-  std::vector<ObjectID> unready;
+  /// The object id list of ready objects
+  std::list<ObjectRef<T>> ready;
+  /// The object id list of unready objects
+  std::list<ObjectRef<T>> unready;
   WaitResult(){};
-  WaitResult(std::vector<ObjectID> &&ready_objects,
-             std::vector<ObjectID> &&unready_objects)
-      : ready(std::move(ready_objects)), unready(std::move(unready_objects)){};
+  WaitResult(std::list<ObjectRef<T>> &&ready_objects,
+             std::list<ObjectRef<T>> &&unready_objects)
+      : ready(ready_objects), unready(unready_objects){};
 };
 }  // namespace api
 }  // namespace ray

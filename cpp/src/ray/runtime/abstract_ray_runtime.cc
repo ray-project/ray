@@ -78,8 +78,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
   return object_store_->Get(ids, -1);
 }
 
-WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                    int timeout_ms) {
+std::vector<bool> AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids,
+                                           int num_objects, int timeout_ms) {
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 

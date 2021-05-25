@@ -29,7 +29,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID> &ids);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                         int timeout_ms);
 
   ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
                 std::vector<ray::api::TaskArg> &args);
