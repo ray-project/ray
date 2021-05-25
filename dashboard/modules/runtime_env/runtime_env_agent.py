@@ -6,7 +6,6 @@ from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.runtime_env as runtime_env
-from ray._private.runtime_env import RuntimeEnvDict
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +24,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         runtime_env.PKG_DIR = dashboard_agent.resource_dir
 
     async def CreateRuntimeEnv(self, request, context):
-        runtime_env_dict: RuntimeEnvDict = json.loads(
-            request.serialized_runtime_env or "{}")
+        runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
         uris = runtime_env_dict.get("uris")
         if uris:
             logger.info("Create runtime env with uris %s", repr(uris))

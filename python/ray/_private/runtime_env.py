@@ -114,7 +114,7 @@ class RuntimeEnvDict:
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
 
-    def setUris(self, uris):
+    def set_uris(self, uris):
         self._dict["uris"] = uris
 
 

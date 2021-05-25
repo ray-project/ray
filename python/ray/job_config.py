@@ -101,7 +101,7 @@ class JobConfig:
 
     def set_runtime_env_uris(self, uris):
         self.runtime_env["uris"] = uris
-        self._parsed_runtime_env.setUris(uris)
+        self._parsed_runtime_env.set_uris(uris)
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

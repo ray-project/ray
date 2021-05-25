@@ -321,7 +321,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   }
 
   auto options = AgentManager::Options({self_node_id, agent_command_line});
-  agent_manager_.reset(new AgentManager(
+  agent_manager_ = std::make_shared<AgentManager>(
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
@@ -335,7 +335,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         }
         return std::shared_ptr<rpc::RuntimeEnvAgentClient>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
-      }));
+      });
   worker_pool_.SetAgentManager(agent_manager_);
 }
 
