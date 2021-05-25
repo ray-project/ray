@@ -277,9 +277,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
    public:
-    using gcs::GcsActorScheduler::GcsActorScheduler;
+    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
