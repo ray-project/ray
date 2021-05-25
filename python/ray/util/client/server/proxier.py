@@ -161,7 +161,10 @@ class ProxyManager():
                     f"SpecificServer startup failed for client: {client_id}")
                 break
             cmd = psutil_proc.cmdline()
-            if len(cmd) > 3 and cmd[2] == "ray.util.client.server":
+            flattened = " ".join(cmd)
+            if "--session-dir" not in flattened:
+                # This flag is consumed by setup_runtime_env.py::setup, meaning
+                # that the internal process has been launched.
                 break
             logger.debug(
                 "Waiting for Process to reach the actual client server.")
