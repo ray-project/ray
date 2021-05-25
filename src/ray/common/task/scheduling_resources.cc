@@ -238,7 +238,9 @@ ResourceIds::ResourceIds(double resource_quantity) {
 }
 
 ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids)
-    : whole_ids_(whole_ids), total_capacity_((uint64_t)whole_ids.size()), decrement_backlog_(0) {}
+    : whole_ids_(whole_ids),
+      total_capacity_((uint64_t)whole_ids.size()),
+      decrement_backlog_(0) {}
 
 ResourceIds::ResourceIds(
     const std::vector<std::pair<int64_t, FixedPoint>> &fractional_ids)
