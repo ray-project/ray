@@ -64,10 +64,17 @@ async def add_servable_to_router(
     await controller_actor.add_new_replica.remote(
         "backend", worker, kwargs.get("backend_config", BackendConfig()))
 
-    router = EndpointRouter(
+    # A simple adapter so we can use `await router.assign_request`
+    class AsyncEndpointRouter(EndpointRouter):
+        def assign_request(self, request_meta: RequestMetadata, *request_args,
+                           **request_kwargs) -> asyncio.futures.Future:
+            future = super().assign_request(request_meta, *request_args,
+                                            **request_kwargs)
+            return asyncio.wrap_future(future)
+
+    router = AsyncEndpointRouter(
         controller_actor,
         "endpoint",
-        asyncio.get_event_loop(),
     )
     return worker, router
 
