@@ -55,9 +55,13 @@ enum class CppRayLogLevel {
   FATAL = 3
 };
 
-#define CPP_LOG_INTERNAL(level) *CreateCppLog(__FILE__, __LINE__, level)
-#define CPP_LOG(level) \
-  if (IsLevelEnabled(CppRayLogLevel::level)) CPP_LOG_INTERNAL(CppRayLogLevel::level)
+#ifdef RAY_LOG
+#undef RAY_LOG
+#undef RAY_LOG_INTERNAL
+#define RAY_LOG_INTERNAL(level) *CreateCppLog(__FILE__, __LINE__, level)
+#define RAY_LOG(level) \
+  if (IsLevelEnabled(CppRayLogLevel::level)) RAY_LOG_INTERNAL(CppRayLogLevel::level)
+#endif
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, CppRayLog is only a declaration

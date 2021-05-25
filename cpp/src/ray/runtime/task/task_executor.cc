@@ -72,9 +72,9 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     return std::make_pair(ray::Status::NotFound(lib_name + " not found"), nullptr);
   }
 
-  CPP_LOG(DEBUG) << "Get execute function" << func_name << " ok";
+  RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
   auto result = entry_func(func_name, args_buffer, actor_ptr);
-  CPP_LOG(DEBUG) << "Execute function" << func_name << " ok";
+  RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
   return std::make_pair(ray::Status::OK(),
                         std::make_shared<msgpack::sbuffer>(std::move(result)));
 }
@@ -87,7 +87,7 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<RayObject>> *results,
     std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  CPP_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
+  RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
   RAY_CHECK(function_descriptor->Type() ==

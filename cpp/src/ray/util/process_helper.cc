@@ -30,7 +30,7 @@ static void StartRayNode(int redis_port, std::string redis_password,
       {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
        redis_password, "--node-manager-port", std::to_string(node_manager_port),
        "--include-dashboard", "false"});
-  CPP_LOG(INFO) << CreateCommandLine(cmdargs);
+  RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
   return;
@@ -38,7 +38,7 @@ static void StartRayNode(int redis_port, std::string redis_password,
 
 static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
-  CPP_LOG(INFO) << CreateCommandLine(cmdargs);
+  RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(3);
   return;

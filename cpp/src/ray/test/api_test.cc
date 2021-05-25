@@ -49,9 +49,9 @@ TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
   ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
-  CPP_LOG(DEBUG) << str_arr[0];
-  CPP_LOG(INFO) << str_arr[1];
-  CPP_LOG(WARNING) << str_arr[2];
+  RAY_LOG(DEBUG) << str_arr[0];
+  RAY_LOG(INFO) << str_arr[1];
+  RAY_LOG(WARNING) << str_arr[2];
   RAY_CHECK(true);
 
   for (auto &it : boost::filesystem::directory_iterator(log_path)) {

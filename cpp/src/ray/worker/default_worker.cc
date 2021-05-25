@@ -6,7 +6,7 @@
 using namespace ::ray::api;
 
 int default_worker_main(int argc, char **argv) {
-  CPP_LOG(INFO) << "CPP default worker started";
+  RAY_LOG(INFO) << "CPP default worker started";
   RAY_CHECK(argc == 7);
 
   auto config = ray::api::RayConfig::GetInstance();
