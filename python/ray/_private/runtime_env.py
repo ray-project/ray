@@ -40,11 +40,18 @@ class RuntimeEnvDict:
             modules to add to the `sys.path`.
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
+        pip (List[str] | str): Either a list of pip packages, or a string
+            containing the contents of a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config or the name of a
             local conda env (e.g., "pytorch_p36"). The Ray dependency will be
             automatically injected into the conda env to ensure compatibility
             with the cluster Ray. The conda name may be mangled automatically
             to avoid conflicts between runtime envs.
+            This field cannot be specified at the same time as the 'pip' field.
+            To use pip with conda, please specify your pip dependencies within
+            the conda YAML config:
+            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
+            nvironments.html#create-env-file-manually
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
@@ -78,10 +85,45 @@ class RuntimeEnvDict:
             elif conda is not None:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
+
+        self._dict["pip"] = None
+        if "pip" in runtime_env_json:
+            if sys.platform == "win32":
+                raise NotImplementedError("The 'pip' field in runtime_env "
+                                          "is not currently supported on "
+                                          "Windows.")
+            if "conda" in runtime_env_json:
+                raise ValueError(
+                    "The 'pip' field and 'conda' field of "
+                    "runtime_env cannot both be specified.  To use "
+                    "pip with conda, please only set the 'conda' "
+                    "field, and specify your pip dependencies "
+                    "within the conda YAML config dict: see "
+                    "https://conda.io/projects/conda/en/latest/"
+                    "user-guide/tasks/manage-environments.html"
+                    "#create-env-file-manually")
+            pip = runtime_env_json["pip"]
+            if isinstance(pip, str):
+                self._dict["pip"] = pip
+            elif isinstance(pip, list) and all(
+                    isinstance(dep, str) for dep in pip):
+                # Construct valid pip requirements.txt from list of packages.
+                self._dict["pip"] = "\n".join(pip) + "\n"
+            else:
+                raise TypeError("runtime_env['pip'] must be of type str or "
+                                "List[str]")
+
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
         else:
             self._dict["working_dir"] = None
+
+        if "uris" in runtime_env_json:
+            self._dict["uris"] = runtime_env_json["uris"]
+
+        if "_ray_release" in runtime_env_json:
+            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support env_vars, docker

@@ -9,8 +9,6 @@
 #include <msgpack.hpp>
 #include <utility>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
@@ -32,18 +30,10 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
 
 inline void CopyAndAddRefrence(ObjectID &dest_id, const ObjectID &id) {
   dest_id = id;
-  if (CoreWorkerProcess::IsInitialized()) {
-    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-    core_worker.AddLocalReference(id);
-  }
+  AddLocalReference(id);
 }
 
-inline void SubRefrence(const ObjectID &id) {
-  if (CoreWorkerProcess::IsInitialized()) {
-    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-    core_worker.RemoveLocalReference(id);
-  }
-}
+inline void SubRefrence(const ObjectID &id) { RemoveLocalReference(id); }
 
 /// Represents an object in the object store..
 /// \param T The type of object.

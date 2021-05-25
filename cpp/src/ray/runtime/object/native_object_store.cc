@@ -71,10 +71,17 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   return result_sbuffers;
 }
 
-WaitResult NativeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                   int timeout_ms) {
-  native_ray_tuntime_.GetWorkerContext();
-  return WaitResult();
+std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
+                                          int num_objects, int timeout_ms) {
+  std::vector<bool> results;
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  // TODO(guyang.sgy): Support `fetch_local` option in API.
+  // Simply set `fetch_local` to be true.
+  ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
+  if (!status.ok()) {
+    throw RayException("Wait object error: " + status.ToString());
+  }
+  return results;
 }
 }  // namespace api
 }  // namespace ray
