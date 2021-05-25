@@ -309,8 +309,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
 };
 
 /// RayletBasedActorScheduler randomly selects a node from the node pool for the new
-/// actor. If the worker leasing fails at the selected node, it is the corresponding
-/// Raylet's responsibility to select the next candidate node.
+/// actor. If the worker leasing fails at the selected node, the corresponding Raylet
+/// would try to reply a spill-back node.
 class RayletBasedActorScheduler : public GcsActorScheduler {
  public:
   using GcsActorScheduler::GcsActorScheduler;
