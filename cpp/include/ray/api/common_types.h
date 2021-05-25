@@ -37,19 +37,6 @@ enum WorkerType : int {
   RESTORE_WORKER = 3,
 };
 
-enum Language : int {
-  PYTHON = 0,
-  JAVA = 1,
-  CPP = 2,
-};
-
-enum TaskType : int {
-  NORMAL_TASK = 0,
-  ACTOR_CREATION_TASK = 1,
-  ACTOR_TASK = 2,
-  DRIVER_TASK = 3,
-};
-
 class Buffer {
  public:
   /// Pointer to the data.

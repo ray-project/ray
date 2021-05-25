@@ -136,7 +136,6 @@ ObjectID AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_ho
 ActorID AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
     std::vector<std::unique_ptr<ray::api::TaskArg>> &args) {
-  std::vector<std::unique_ptr<ray::api::TaskArg>> args1;
   auto invocation_spec =
       BuildInvocationSpec(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name,
                           remote_function_holder, args, ActorID::Nil());
