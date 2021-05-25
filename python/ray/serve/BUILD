@@ -223,7 +223,7 @@ py_test(
 
 py_test(
     name = "test_fastapi",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
