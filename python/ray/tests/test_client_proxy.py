@@ -102,7 +102,6 @@ check_we_are_second = """
 import ray
 info = ray.client('localhost:25005').connect()
 assert info._num_clients == {num_clients}
-
 """
 
 
@@ -114,6 +113,10 @@ assert info._num_clients == {num_clients}
     ["ray start --head --ray-client-server-port 25005 --port 0"],
     indirect=True)
 def test_correct_num_clients(call_ray_start):
+    """
+    Checks that the returned value of `num_clients` correctly tracks clients
+    connecting and disconnecting.
+    """
     info = ray.client("localhost:25005").connect()
     assert info._num_clients == 1
     run_string_as_driver(check_we_are_second.format(num_clients=2))

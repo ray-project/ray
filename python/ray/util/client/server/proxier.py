@@ -321,6 +321,10 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def modify_connection_info_resp(self,
                                     init_resp: ray_client_pb2.DataResponse
                                     ) -> ray_client_pb2.DataResponse:
+        """
+        Modify the `num_clients` returned the ConnectionInfoResponse because
+        individual SpecificServers only have **one** client.
+        """
         init_type = init_resp.WhichOneof("type")
         if init_type != "connection_info":
             return init_resp
@@ -361,6 +365,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 yield self.modify_connection_info_resp(resp)
         finally:
             with self.clients_lock:
+                logger.debug(f"Client detached: {client_id}")
                 self.num_clients -= 1
 
 
