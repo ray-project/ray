@@ -718,7 +718,7 @@ cdef int64_t restore_spilled_objects_handler(
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
-            logger.exception(traceback.format_exc() + exception_str)
+            logger.exception(exception_str)
     return bytes_restored
 
 
