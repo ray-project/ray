@@ -327,7 +327,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         modified_resp = ray_client_pb2.DataResponse()
         modified_resp.CopyFrom(init_resp)
         with self.clients_lock:
-            modified_resp.num_clients = self.num_clients
+            modified_resp.connection_info.num_clients = self.num_clients
         return modified_resp
 
     def Datapath(self, request_iterator, context):
