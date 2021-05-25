@@ -352,6 +352,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return None
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
         try:
+            with self.clients_lock:
+                self.num_clients += 1
             new_iter = chain([modified_init_req], request_iterator)
             resp_stream = stub.Datapath(
                 new_iter, metadata=[("client_id", client_id)])
