@@ -2,7 +2,6 @@
 #include "task_executor.h"
 
 #include <ray/api/common_types.h>
-#include <ray/api/exec_funcs.h>
 
 #include <memory>
 
@@ -13,10 +12,9 @@ namespace ray {
 
 namespace internal {
 /// Execute remote functions by networking stream.
-msgpack::sbuffer TaskExecutionHandler(
-    const std::string &func_name,
-    const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
-    msgpack::sbuffer *actor_ptr) {
+msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
+                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     return PackError("Task function name is empty");
   }
@@ -66,8 +64,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &lib_name, const std::string &func_name,
-    const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
-    msgpack::sbuffer *actor_ptr) {
+    const std::vector<msgpack::sbuffer> &args_buffer, msgpack::sbuffer *actor_ptr) {
   auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
   if (entry_func == nullptr) {
     return std::make_pair(ray::Status::NotFound(lib_name + " not found"), nullptr);
@@ -78,17 +75,6 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
   RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
   return std::make_pair(ray::Status::OK(),
                         std::make_shared<msgpack::sbuffer>(std::move(result)));
-}
-
-std::shared_ptr<ray::api::RayObject> ToRayObject(
-    const std::shared_ptr<ray::RayObject> &ray_object) {
-  auto buf = std::make_shared<ray::api::LocalMemoryBuffer>(ray_object->GetData()->Data(),
-                                                           ray_object->GetData()->Size());
-  auto meta_buf = ray_object->GetMetadata();
-  auto meta = meta_buf ? std::make_shared<ray::api::LocalMemoryBuffer>(meta_buf->Data(),
-                                                                       meta_buf->Size())
-                       : nullptr;
-  return std::make_shared<ray::api::RayObject>(buf, meta, ray_object->GetNestedIds());
 }
 
 Status TaskExecutor::ExecuteTask(
@@ -110,9 +96,11 @@ Status TaskExecutor::ExecuteTask(
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
-  std::vector<std::shared_ptr<ray::api::RayObject>> ray_args_buffer;
+  std::vector<msgpack::sbuffer> ray_args_buffer;
   for (auto &arg : args_buffer) {
-    ray_args_buffer.push_back(ToRayObject(arg));
+    msgpack::sbuffer sbuf;
+    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
     std::tie(status, data) =
@@ -157,19 +145,16 @@ void TaskExecutor::Invoke(
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
-  std::vector<std::shared_ptr<ray::api::RayObject>> args_buffer;
+  std::vector<msgpack::sbuffer> args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    std::shared_ptr<ray::api::LocalMemoryBuffer> memory_buffer = nullptr;
     if (task_spec.ArgByRef(i)) {
       auto arg = runtime->Get(task_spec.ArgId(i));
-      memory_buffer = std::make_shared<ray::api::LocalMemoryBuffer>(
-          reinterpret_cast<uint8_t *>(arg->data()), arg->size(), true);
+      args_buffer.push_back(std::move(*arg));
     } else {
-      memory_buffer = std::make_shared<ray::api::LocalMemoryBuffer>(
-          const_cast<uint8_t *>(task_spec.ArgData(i)), task_spec.ArgDataSize(i), true);
+      msgpack::sbuffer sbuf;
+      sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));
+      args_buffer.push_back(std::move(sbuf));
     }
-    args_buffer.emplace_back(std::make_shared<ray::api::RayObject>(
-        memory_buffer, nullptr, std::vector<ObjectID>()));
   }
 
   auto function_descriptor = task_spec.FunctionDescriptor();

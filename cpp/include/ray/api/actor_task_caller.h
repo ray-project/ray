@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/arguments.h>
-#include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/static_check.h>
 #include "ray/core.h"
@@ -26,7 +25,7 @@ class ActorTaskCaller {
   RayRuntime *runtime_;
   ActorID id_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<std::unique_ptr<ray::api::TaskArg>> args_;
+  std::vector<ray::api::TaskArg> args_;
 };
 
 // ---------- implementation ----------

@@ -73,9 +73,8 @@ template <typename Function>
 struct Invoker {
   /// Invoke functions by networking stream, at first deserialize the binary data to a
   /// tuple, then call function with tuple.
-  static inline msgpack::sbuffer Apply(
-      const Function &func,
-      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer) {
+  static inline msgpack::sbuffer Apply(const Function &func,
+                                       const std::vector<msgpack::sbuffer> &args_buffer) {
     using ArgsTuple = boost::callable_traits::args_t<Function>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
       return PackError("Arguments number not match");
@@ -104,7 +103,7 @@ struct Invoker {
 
   static inline msgpack::sbuffer ApplyMember(
       const Function &func, msgpack::sbuffer *ptr,
-      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer) {
+      const std::vector<msgpack::sbuffer> &args_buffer) {
     using ArgsTuple = RemoveFirst_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
       return PackError("Arguments number not match");
@@ -139,22 +138,20 @@ struct Invoker {
     return pair.second;
   }
 
-  static inline bool GetArgsTuple(
-      std::tuple<> &tup,
-      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
-      absl::index_sequence<>) {
+  static inline bool GetArgsTuple(std::tuple<> &tup,
+                                  const std::vector<msgpack::sbuffer> &args_buffer,
+                                  absl::index_sequence<>) {
     return true;
   }
 
   template <size_t... I, typename... Args>
-  static inline bool GetArgsTuple(
-      std::tuple<Args...> &tp,
-      const std::vector<std::shared_ptr<ray::api::RayObject>> &args_buffer,
-      absl::index_sequence<I...>) {
+  static inline bool GetArgsTuple(std::tuple<Args...> &tp,
+                                  const std::vector<msgpack::sbuffer> &args_buffer,
+                                  absl::index_sequence<I...>) {
     bool is_ok = true;
     (void)std::initializer_list<int>{
-        (std::get<I>(tp) = ParseArg<Args>((char *)args_buffer.at(I)->GetData()->Data(),
-                                          args_buffer.at(I)->GetData()->Size(), is_ok),
+        (std::get<I>(tp) = ParseArg<Args>((char *)args_buffer.at(I).data(),
+                                          args_buffer.at(I).size(), is_ok),
          0)...};
     return is_ok;
   }
@@ -224,9 +221,8 @@ class FunctionManager {
     return instance;
   }
 
-  std::function<
-      msgpack::sbuffer(const std::vector<std::shared_ptr<ray::api::RayObject>> &)>
-      *GetFunction(const std::string &func_name) {
+  std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)> *GetFunction(
+      const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
       return nullptr;
@@ -277,8 +273,8 @@ class FunctionManager {
     return it->second;
   }
 
-  std::function<msgpack::sbuffer(
-      msgpack::sbuffer *, const std::vector<std::shared_ptr<ray::api::RayObject>> &)>
+  std::function<msgpack::sbuffer(msgpack::sbuffer *,
+                                 const std::vector<msgpack::sbuffer> &)>
       *GetMemberFunction(const std::string &func_name) {
     auto it = map_mem_func_invokers_.find(func_name);
     if (it == map_mem_func_invokers_.end()) {
@@ -326,14 +322,12 @@ class FunctionManager {
     return std::string(arr.data(), arr.size());
   }
 
+  std::unordered_map<
+      std::string, std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)>>
+      map_invokers_;
   std::unordered_map<std::string,
                      std::function<msgpack::sbuffer(
-                         const std::vector<std::shared_ptr<ray::api::RayObject>> &)>>
-      map_invokers_;
-  std::unordered_map<
-      std::string,
-      std::function<msgpack::sbuffer(
-          msgpack::sbuffer *, const std::vector<std::shared_ptr<ray::api::RayObject>> &)>>
+                         msgpack::sbuffer *, const std::vector<msgpack::sbuffer> &)>>
       map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
 };

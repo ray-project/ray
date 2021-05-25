@@ -43,12 +43,12 @@ class RayRuntime {
                           int timeout_ms) = 0;
 
   virtual ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
-                        std::vector<std::unique_ptr<ray::api::TaskArg>> &args) = 0;
+                        std::vector<ray::api::TaskArg> &args) = 0;
   virtual ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                              std::vector<std::unique_ptr<ray::api::TaskArg>> &args) = 0;
+                              std::vector<ray::api::TaskArg> &args) = 0;
   virtual ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
                              const ActorID &actor,
-                             std::vector<std::unique_ptr<ray::api::TaskArg>> &args) = 0;
+                             std::vector<ray::api::TaskArg> &args) = 0;
 };
 
 void AddLocalReference(const ObjectID &id);
