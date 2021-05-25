@@ -32,7 +32,7 @@ def _client(config):
     return AcsClient(
         access_key=config["provider"].get("access_key"),
         access_key_secret=config["provider"].get("access_key_secret"),
-        region=config["provider"]["region"],
+        region_id=config["provider"]["region"],
         max_retries=1,
     )
 

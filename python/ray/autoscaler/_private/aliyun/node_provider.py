@@ -32,7 +32,7 @@ class AliyunNodeProvider(NodeProvider):
         self.acs = AcsClient(
             access_key=provider_config["access_key"],
             access_key_secret=provider_config["access_key_secret"],
-            region=provider_config["region"],
+            region_id=provider_config["region"],
             max_retries=BOTO_MAX_RETRIES,
         )
 
