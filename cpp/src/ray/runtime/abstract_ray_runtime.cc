@@ -12,6 +12,18 @@
 #include "native_ray_runtime.h"
 
 namespace ray {
+
+namespace internal {
+msgpack::sbuffer PackError(std::string error_msg) {
+  msgpack::sbuffer sbuffer;
+  msgpack::packer<msgpack::sbuffer> packer(sbuffer);
+  packer.pack(msgpack::type::nil_t());
+  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                              std::move(error_msg)));
+
+  return sbuffer;
+}
+}  // namespace internal
 namespace api {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
@@ -66,15 +78,36 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
   return object_store_->Get(ids, -1);
 }
 
-WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                    int timeout_ms) {
+std::vector<bool> AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids,
+                                           int num_objects, int timeout_ms) {
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
-InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
-                                   const RemoteFunctionHolder &remote_function_holder,
-                                   std::vector<std::unique_ptr<::ray::TaskArg>> &args,
-                                   const ActorID &actor) {
+std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
+    std::vector<ray::api::TaskArg> &args) {
+  std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
+  for (auto &arg : args) {
+    std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
+    if (arg.buf) {
+      auto &buffer = *arg.buf;
+      auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+          reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
+      ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
+          memory_buffer, nullptr, std::vector<ObjectID>()));
+    } else {
+      RAY_CHECK(arg.id);
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(*arg.id, ray::rpc::Address{});
+    }
+    ray_args.push_back(std::move(ray_arg));
+  }
+
+  return ray_args;
+}
+
+InvocationSpec BuildInvocationSpec1(TaskType task_type, std::string lib_name,
+                                    const RemoteFunctionHolder &remote_function_holder,
+                                    std::vector<ray::api::TaskArg> &args,
+                                    const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
   invocation_spec.task_id =
@@ -82,31 +115,31 @@ InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
   invocation_spec.lib_name = lib_name;
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
-  invocation_spec.args = std::move(args);
+  invocation_spec.args = TransformArgs(args);
   return invocation_spec;
 }
 
 ObjectID AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+                                  std::vector<ray::api::TaskArg> &args) {
   auto invocation_spec =
-      BuildInvocationSpec(TaskType::NORMAL_TASK, this->config_->lib_name,
-                          remote_function_holder, args, ActorID::Nil());
+      BuildInvocationSpec1(TaskType::NORMAL_TASK, this->config_->lib_name,
+                           remote_function_holder, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec);
 }
 
 ActorID AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+    std::vector<ray::api::TaskArg> &args) {
   auto invocation_spec =
-      BuildInvocationSpec(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name,
-                          remote_function_holder, args, ActorID::Nil());
+      BuildInvocationSpec1(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name,
+                           remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec);
 }
 
-ObjectID AbstractRayRuntime::CallActor(
-    const RemoteFunctionHolder &remote_function_holder, const ActorID &actor,
-    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
-  auto invocation_spec = BuildInvocationSpec(
+ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionHolder &remote_function_holder,
+                                       const ActorID &actor,
+                                       std::vector<ray::api::TaskArg> &args) {
+  auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_TASK, this->config_->lib_name, remote_function_holder, args, actor);
   return task_submitter_->SubmitActorTask(invocation_spec);
 }
@@ -119,6 +152,20 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() { return worker_->GetCurrentJ
 
 const std::unique_ptr<WorkerContext> &AbstractRayRuntime::GetWorkerContext() {
   return worker_;
+}
+
+void AddLocalReference(const ObjectID &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.AddLocalReference(id);
+  }
+}
+
+void RemoveLocalReference(const ObjectID &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.RemoveLocalReference(id);
+  }
 }
 
 }  // namespace api

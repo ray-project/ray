@@ -3,8 +3,6 @@
 
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
-#include <ray/api/actor_task_caller.h>
-#include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
@@ -45,29 +43,22 @@ class Ray {
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
   ///
-  /// \param[in] ids The object id array which should be got.
-  /// \return shared pointer array of the result.
-  template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
-
-  /// Get a list of objects from the object store.
-  /// This method will be blocked until all the objects are ready.
-  ///
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &objects);
 
   /// Wait for a list of objects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
-  /// \param[in] ids The object id array which should be waited.
+  /// \param[in] objects The object array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return Two arrays, one containing locally available objects, one containing the
   /// rest.
-  static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                         int timeout_ms);
+  template <typename T>
+  static WaitResult<T> Wait(const std::vector<ObjectRef<T>> &objects, int num_objects,
+                            int timeout_ms);
 
   /// Create a `TaskCaller` for calling remote function.
   /// It is used for normal task, such as Ray::Task(Plus1, 1), Ray::Task(Plus, 1, 2).
@@ -85,6 +76,9 @@ class Ray {
 
  private:
   static std::once_flag is_inited_;
+
+  template <typename T>
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
 
   template <typename FuncType>
   static TaskCaller<FuncType> TaskInternal(FuncType &func);
@@ -141,9 +135,21 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectRef<T>> 
   return Get<T>(object_ids);
 }
 
-inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                            int timeout_ms) {
-  return ray::internal::RayRuntime()->Wait(ids, num_objects, timeout_ms);
+template <typename T>
+inline WaitResult<T> Ray::Wait(const std::vector<ObjectRef<T>> &objects, int num_objects,
+                               int timeout_ms) {
+  auto object_ids = ObjectRefsToObjectIDs<T>(objects);
+  auto results = ray::internal::RayRuntime()->Wait(object_ids, num_objects, timeout_ms);
+  std::list<ObjectRef<T>> readys;
+  std::list<ObjectRef<T>> unreadys;
+  for (size_t i = 0; i < results.size(); i++) {
+    if (results[i] == true) {
+      readys.emplace_back(objects[i]);
+    } else {
+      unreadys.emplace_back(objects[i]);
+    }
+  }
+  return WaitResult<T>(std::move(readys), std::move(unreadys));
 }
 
 template <typename FuncType>

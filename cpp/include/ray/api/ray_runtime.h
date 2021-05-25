@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/function_manager.h>
-#include <ray/api/wait_result.h>
 
 #include <cstdint>
 #include <memory>
@@ -39,17 +38,21 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &ids) = 0;
 
-  virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                          int timeout_ms) = 0;
+  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                 int timeout_ms) = 0;
 
   virtual ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
-                        std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
+                        std::vector<ray::api::TaskArg> &args) = 0;
   virtual ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
+                              std::vector<ray::api::TaskArg> &args) = 0;
   virtual ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
                              const ActorID &actor,
-                             std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
+                             std::vector<ray::api::TaskArg> &args) = 0;
 };
+
+void AddLocalReference(const ObjectID &id);
+
+void RemoveLocalReference(const ObjectID &id);
 
 }  // namespace api
 }  // namespace ray
