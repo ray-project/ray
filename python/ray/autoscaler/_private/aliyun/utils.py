@@ -22,8 +22,6 @@ from aliyunsdkecs.request.v20140526.TagResourcesRequest \
     import TagResourcesRequest
 from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest \
     import AllocatePublicIpAddressRequest
-from aliyunsdkecs.request.v20140526.AttachKeyPairRequest \
-    import AttachKeyPairRequest
 from aliyunsdkecs.request.v20140526.ImportKeyPairRequest \
     import ImportKeyPairRequest
 from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest \
@@ -44,14 +42,10 @@ from aliyunsdkecs.request.v20140526.CreateVSwitchRequest \
     import CreateVSwitchRequest
 from aliyunsdkecs.request.v20140526.CreateVpcRequest \
     import CreateVpcRequest
-from aliyunsdkecs.request.v20140526.DescribeZonesRequest \
-    import DescribeZonesRequest
 from aliyunsdkecs.request.v20140526.DescribeVpcsRequest \
     import DescribeVpcsRequest
 from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest \
     import DescribeVSwitchesRequest
-from aliyunsdkecs.request.v20140526.RebootInstanceRequest \
-    import RebootInstanceRequest
 
 
 class AcsClient:
