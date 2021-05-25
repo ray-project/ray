@@ -148,7 +148,7 @@ Ray with cloud providers
 
     .. group-tab:: Aliyun
 
-        First, you need to configure your aliyun account. You need to set access key and access key secret in yaml config file.
+        First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``), then obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>` and garnt AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user, set the AccessKey pair in yaml config file.
 
         Once above done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ecs.n4.large head node (on-demand) configured to autoscale up to two ecs.n4.2xlarge.
 
