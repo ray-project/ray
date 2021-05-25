@@ -32,6 +32,8 @@ class FixedPoint {
 
   FixedPoint operator=(double const d);
 
+  FixedPoint operator+=(double const d);
+
   FixedPoint operator+=(int64_t const ru);
 
   bool operator<(FixedPoint const &ru1) const;

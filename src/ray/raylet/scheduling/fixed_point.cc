@@ -59,6 +59,11 @@ FixedPoint FixedPoint::operator=(double const d) {
   return *this;
 }
 
+FixedPoint FixedPoint::operator+=(double const d) {
+  i_ += (int64_t)(d * RESOURCE_UNIT_SCALING);
+  return *this;
+}
+
 FixedPoint FixedPoint::operator+=(int64_t const ru) {
   *this += (double)ru;
   return *this;
