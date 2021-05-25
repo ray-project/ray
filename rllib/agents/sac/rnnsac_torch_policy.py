@@ -327,17 +327,6 @@ def actor_critic_loss(
     def reduce_mean_valid(t):
         return torch.sum(t[seq_mask]) / num_valid
 
-    # mask variables with burn_in mask
-    q_t_selected = q_t_selected * seq_mask
-    q_t_selected_target = q_t_selected_target * seq_mask
-    if policy.config["twin_q"]:
-        twin_q_t_selected = twin_q_t_selected * seq_mask
-    log_pis_t = log_pis_t * seq_mask[..., None]
-    if model.discrete:
-        policy_t = policy_t * seq_mask[..., None]
-    else:
-        q_t_det_policy = q_t_det_policy * seq_mask
-
     # Compute the TD-error (potentially clipped).
     base_td_error = torch.abs(q_t_selected - q_t_selected_target)
     if policy.config["twin_q"]:
@@ -381,14 +370,14 @@ def actor_critic_loss(
         actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t - q_t_det_policy)
 
     # Save for stats function.
-    policy.q_t = q_t
-    policy.policy_t = policy_t
-    policy.log_pis_t = log_pis_t
+    policy.q_t = q_t * seq_mask[..., None]
+    policy.policy_t = policy_t * seq_mask[..., None]
+    policy.log_pis_t = log_pis_t * seq_mask[..., None]
 
     # Store td-error in model, such that for multi-GPU, we do not override
     # them during the parallel loss phase. TD-error tensor in final stats
     # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error
+    model.td_error = td_error * seq_mask
 
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
