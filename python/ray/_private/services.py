@@ -267,16 +267,26 @@ def get_address_info_from_redis_helper(redis_address,
             "Redis has started but no raylets have registered yet.")
 
     relevant_client = None
+    head_node_client = None
     for client_info in client_table:
         if not client_info["Alive"]:
             continue
         client_node_ip_address = client_info["NodeManagerAddress"]
-        if (client_node_ip_address == node_ip_address
-                or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())
-                or client_node_ip_address == redis_ip_address):
+        if client_node_ip_address == node_ip_address:
             relevant_client = client_info
             break
+        if ((client_node_ip_address == "127.0.0.1"
+             and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
+            head_node_client = client_info
+
+    if relevant_client is None and head_node_client is not None:
+        logger.info(f"This node has an IP address of {node_ip_address}, "
+                    "while we can not found the matched Raylet address. "
+                    "This maybe come from when you connect the Ray cluster "
+                    "with a different IP address or connect a container.")
+        relevant_client = head_node_client
+
     if relevant_client is None:
         raise RuntimeError(
             f"This node has an IP address of {node_ip_address}, and Ray "
