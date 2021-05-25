@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ClientInfo:
+class ClientContext:
     """
-    Basic information of the remote server for a given Ray Client connection.
+    Basic context manager for a ClientBuilder connection.
     """
     dashboard_url: Optional[str]
     python_version: str
@@ -23,6 +23,15 @@ class ClientInfo:
     ray_commit: str
     protocol_version: str
     _num_clients: int
+
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(self, *exc) -> None:
+        ray.util.disconnect()
+
+    def disconnect(self) -> None:
+        self.__exit__()
 
 
 class ClientBuilder:
@@ -45,7 +54,7 @@ class ClientBuilder:
         self._job_config.set_ray_namespace(namespace)
         return self
 
-    def connect(self) -> ClientInfo:
+    def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...).
         """
@@ -53,7 +62,7 @@ class ClientBuilder:
             self.address, job_config=self._job_config)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
-        return ClientInfo(
+        return ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
@@ -79,7 +88,7 @@ class ClientBuilder:
 
 
 class _LocalClientBuilder(ClientBuilder):
-    def connect(self) -> ClientInfo:
+    def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...).
         """
