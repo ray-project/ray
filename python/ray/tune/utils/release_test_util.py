@@ -1,3 +1,4 @@
+from collections import Counter
 import json
 import os
 import time
@@ -137,7 +138,7 @@ def timed_tune_run(name: str,
         run_kwargs["checkpoint_freq"] = checkpoint_iters
 
     start_time = time.monotonic()
-    tune.run(
+    analysis = tune.run(
         _train,
         config=config,
         num_samples=num_samples,
@@ -145,7 +146,13 @@ def timed_tune_run(name: str,
         **run_kwargs)
     time_taken = time.monotonic() - start_time
 
-    result = {"time_taken": time_taken, "last_update": time.time()}
+    result = {
+        "time_taken": time_taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials])),
+        "last_update": time.time()
+    }
+
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/tune_test.json")
     with open(test_output_json, "wt") as f:

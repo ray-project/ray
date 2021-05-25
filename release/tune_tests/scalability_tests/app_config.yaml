@@ -15,5 +15,5 @@ post_build_cmds:
   - pip3 install numpy || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   # TODO: REMOVE
-  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/tune/utils/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/0e14a4c40b7b462f81ef7bcf7cbdc4941a0bfd28/python/ray/tune/utils/release_test_util.py
-  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/f0bf365943314dae4664e7226e52afbede94bcf3/python/ray/util/xgboost/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/tune/utils/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/2ce24ae4d55c45f15b250e876036ae3c4dd39017/python/ray/tune/utils/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/2ce24ae4d55c45f15b250e876036ae3c4dd39017/python/ray/util/xgboost/release_test_util.py

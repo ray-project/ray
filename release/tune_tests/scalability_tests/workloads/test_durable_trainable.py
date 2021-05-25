@@ -47,8 +47,7 @@ def main(bucket):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--bucket", type=str, help="Bucket name")
+    parser.add_argument("--bucket", type=str, help="Bucket name")
     args, _ = parser.parse_known_args()
 
     main(args.bucket or "ray-tune-scalability-test")

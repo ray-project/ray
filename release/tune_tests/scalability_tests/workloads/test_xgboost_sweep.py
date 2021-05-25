@@ -17,6 +17,7 @@ Test owner: krfricke
 Acceptance criteria: Should run faster than 2600 seconds. Should run without
 errors.
 """
+from collections import Counter
 import json
 import os
 import time
@@ -75,7 +76,7 @@ def main():
         num_actors=num_actors_per_sample)
 
     start_time = time.monotonic()
-    tune.run(
+    analysis = tune.run(
         tune.with_parameters(
             xgboost_train, ray_params=ray_params, num_boost_round=100),
         config=config,
@@ -85,6 +86,9 @@ def main():
 
     result = {
         "time_taken": time_taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials])),
+        "last_update": time.time()
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/tune_test.json")
