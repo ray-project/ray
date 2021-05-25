@@ -9,6 +9,9 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED,
                                  NODE_KIND_WORKER)
 from ray.autoscaler._private.util import hash_launch_conf
+from ray.autoscaler._private.prom_metrics import (
+    AUTOSCALER_EXCEPTIONS_COUNTER, AUTOSCALER_WORKER_STARTUP_TIME_HISTOGRAM,
+    AUTOSCALER_STARTED_NODES_COUNTER)
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +23,6 @@ class NodeLauncher(threading.Thread):
                  provider,
                  queue,
                  pending,
-                 startup_histogram=None,
                  node_types=None,
                  index=None,
                  *args,
@@ -28,7 +30,6 @@ class NodeLauncher(threading.Thread):
         self.queue = queue
         self.pending = pending
         self.provider = provider
-        self.startup_histogram = startup_histogram
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
@@ -63,9 +64,9 @@ class NodeLauncher(threading.Thread):
         launch_start_time = time.time()
         self.provider.create_node(node_config, node_tags, count)
         startup_time = time.time() - launch_start_time
-        if self.startup_histogram:
-            for _ in range(count):
-                self.startup_histogram.observe(startup_time)
+        for _ in range(count):
+            AUTOSCALER_WORKER_STARTUP_TIME_HISTOGRAM.observe(startup_time)
+        AUTOSCALER_STARTED_NODES_COUNTER.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")
@@ -77,6 +78,7 @@ class NodeLauncher(threading.Thread):
             try:
                 self._launch_node(config, count, node_type)
             except Exception:
+                AUTOSCALER_EXCEPTIONS_COUNTER.inc()
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)

@@ -61,6 +61,7 @@ AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 # to run.
 AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
 
+# Port that autoscaler prometheus metrics will be exported to
 AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
 
 # Max number of retries to AWS (default is 5, time increases exponentially)

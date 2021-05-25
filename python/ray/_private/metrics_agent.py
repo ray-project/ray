@@ -197,6 +197,8 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                            node["MetricsExportPort"]) for node in nodes
             if node["alive"] is True
         ]
+        # TODO(ckw): how to get autoscaler ip?
+        # autoscaler_export_addr = "{}:{}".format("????", AUTOSCALER_METRIC_PO
         return json.dumps([{
             "labels": {
                 "job": "ray"
