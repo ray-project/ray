@@ -238,7 +238,7 @@ ResourceIds::ResourceIds(double resource_quantity) {
 }
 
 ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids)
-    : whole_ids_(whole_ids), total_capacity_(whole_ids.size()), decrement_backlog_(0) {}
+    : whole_ids_(whole_ids), total_capacity_((uint64_t)whole_ids.size()), decrement_backlog_(0) {}
 
 ResourceIds::ResourceIds(
     const std::vector<std::pair<int64_t, FixedPoint>> &fractional_ids)
@@ -383,7 +383,7 @@ bool ResourceIds::TotalQuantityIsZero() const {
 }
 
 FixedPoint ResourceIds::TotalQuantity() const {
-  FixedPoint total_quantity = FixedPoint(whole_ids_.size());
+  FixedPoint total_quantity = FixedPoint((uint64_t)whole_ids_.size());
   for (auto const &fractional_pair : fractional_ids_) {
     total_quantity += fractional_pair.second;
   }
