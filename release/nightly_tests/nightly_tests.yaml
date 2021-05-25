@@ -85,7 +85,7 @@
   run:
     timeout: 3000
     prepare: python wait_cluster.py 2 600
-    script: python sgd_gpu/sgd_gpu_test.py --num-workers=2 --use-gpu --address=auto
+    script: python sgd_gpu/sgd_gpu_test.py
 
 # Test multi nodes 100GB shuffle with a large number of partitions.
 # TODO(sang): Not working due to a bug https://github.com/ray-project/ray/issues/16025.
