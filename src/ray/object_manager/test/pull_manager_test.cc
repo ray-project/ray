@@ -453,6 +453,31 @@ TEST_P(PullManagerTest, TestDeduplicateBundles) {
   AssertNoLeaks();
 }
 
+// https://github.com/ray-project/ray/issues/15990
+TEST_P(PullManagerTest, TestDuplicateObjectsInDuplicateRequests) {
+  auto refs = CreateObjectRefs(2);
+  // Duplicate an object id in the pull request.
+  refs.push_back(refs[0]);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id1 = pull_manager_.Pull(refs, GetParam(), &objects_to_locate);
+  // One object is duplicate, so there are only two requests total.
+  objects_to_locate.clear();
+  auto req_id2 = pull_manager_.Pull(refs, GetParam(), &objects_to_locate);
+  ASSERT_TRUE(objects_to_locate.empty());
+
+  // Cancel one request. It should not check fail.
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id1));
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id1);
+  ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(objects_to_cancel.empty());
+
+  // Cancel the remaining request.
+  auto objects_to_cancel2 = pull_manager_.CancelPull(req_id2);
+  ASSERT_EQ(objects_to_cancel2.size(), 2);
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   /// Test admission control for a single pull bundle request. We should
   /// activate the request when we are under the reported capacity and

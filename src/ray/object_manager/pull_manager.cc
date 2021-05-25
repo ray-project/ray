@@ -330,15 +330,14 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     auto obj_id = ObjectRefToId(ref);
     RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
     auto it = object_pull_requests_.find(obj_id);
-    if (it == object_pull_requests_.end()) {
-      // If there are duplicated object ids in the bundle,
-      // it is possible we already pull the object.
-      continue;
-    }
-    RAY_CHECK(it->second.bundle_request_ids.erase(bundle_it->first));
-    if (it->second.bundle_request_ids.empty()) {
-      object_pull_requests_.erase(it);
-      object_ids_to_cancel_subscription.push_back(obj_id);
+    if (it != object_pull_requests_.end()) {
+      // Note that there may be duplicate object ids in the bundle, so the erase
+      // here could be a no-op.
+      it->second.bundle_request_ids.erase(bundle_it->first);
+      if (it->second.bundle_request_ids.empty()) {
+        object_pull_requests_.erase(it);
+        object_ids_to_cancel_subscription.push_back(obj_id);
+      }
     }
   }
   request_queue->erase(bundle_it);
