@@ -383,6 +383,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             # This will lead us to call a Object.get when it is not necessary,
             # so defer seek and call seek before reading objects instead.
             self.transport_params = {"defer_seek": True, "resource": self.s3}
+        else:
+            self.transport_params = {}
+
         self.transport_params.update(self.override_transport_params)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
