@@ -3,9 +3,9 @@ from concurrent import futures
 from dataclasses import dataclass
 import grpc
 import logging
+from itertools import chain
 import json
 import psutil
-from queue import Queue
 import socket
 import sys
 from threading import Thread, RLock
@@ -286,23 +286,6 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(task, context, "Schedule")
 
 
-def forward_streaming_requests(grpc_input_generator: Iterator[Any],
-                               output_queue: "Queue") -> None:
-    """
-    Forwards streaming requests from the grpc_input_generator into the
-    output_queue.
-    """
-    try:
-        for req in grpc_input_generator:
-            output_queue.put(req)
-    except grpc.RpcError as e:
-        logger.debug("closing dataservicer reader thread "
-                     f"grpc error reading request_iterator: {e}")
-    finally:
-        # Set the sentinel value for the output_queue
-        output_queue.put(None)
-
-
 def ray_client_server_env_prep(job_config: JobConfig) -> JobConfig:
     return job_config
 
@@ -342,8 +325,6 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         modified_init_req, job_config = prepare_runtime_init_req(
             request_iterator)
 
-        queue = Queue()
-        queue.put(modified_init_req)
         if not self.proxy_manager.start_specific_server(client_id, job_config):
             logger.error(f"Server startup failed for client: {client_id}, "
                          f"using JobConfig: {job_config}!")
@@ -356,18 +337,11 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return None
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-        thread = Thread(
-            target=forward_streaming_requests,
-            args=(request_iterator, queue),
-            daemon=True)
-        thread.start()
-        try:
-            resp_stream = stub.Datapath(
-                iter(queue.get, None), metadata=[("client_id", client_id)])
-            for resp in resp_stream:
-                yield resp
-        finally:
-            thread.join(1)
+        new_iter = chain([modified_init_req], request_iterator)
+        resp_stream = stub.Datapath(
+            new_iter, metadata=[("client_id", client_id)])
+        for resp in resp_stream:
+            yield resp
 
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
@@ -398,19 +372,11 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             return None
 
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
-        queue = Queue()
-        thread = Thread(
-            target=forward_streaming_requests,
-            args=(request_iterator, queue),
-            daemon=True)
-        thread.start()
-        try:
-            resp_stream = stub.Logstream(
-                iter(queue.get, None), metadata=[("client_id", client_id)])
-            for resp in resp_stream:
-                yield resp
-        finally:
-            thread.join(1)
+
+        resp_stream = stub.Logstream(
+            request_iterator, metadata=[("client_id", client_id)])
+        for resp in resp_stream:
+            yield resp
 
 
 def serve_proxier(connection_str: str, redis_address: str):
