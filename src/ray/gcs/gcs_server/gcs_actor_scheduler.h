@@ -308,22 +308,23 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
-/// RayletBasedActorScheduler randomly selects a node from the node pool for the new
-/// actor. If the worker leasing fails at the selected node, the corresponding Raylet
-/// would try to reply a spill-back node.
+/// RayletBasedActorScheduler implements a random node selection, while relying on Raylets
+/// for spillback scheduling.
 class RayletBasedActorScheduler : public GcsActorScheduler {
  public:
   using GcsActorScheduler::GcsActorScheduler;
   virtual ~RayletBasedActorScheduler() = default;
 
  protected:
-  /// Select a node to schedule the actor.
+  /// Randomly select a node from the node pool to schedule the actor.
   ///
   /// \param actor The actor to be scheduled.
   /// \return The selected node. If the selection fails, nullptr is returned.
   std::shared_ptr<rpc::GcsNodeInfo> SelectNode(std::shared_ptr<GcsActor> actor) override;
 
   /// Handler to process a worker lease reply.
+  /// If the worker leasing fails at the selected node, the corresponding Raylet tries to
+  /// reply a spillback node.
   ///
   /// \param actor The actor to be scheduled.
   /// \param node The selected node at which a worker is to be leased.
@@ -335,7 +336,7 @@ class RayletBasedActorScheduler : public GcsActorScheduler {
                               const rpc::RequestWorkerLeaseReply &reply) override;
 
  private:
-  /// Select a node from alive nodes randomly.
+  /// A helper function to select a node from alive nodes randomly.
   ///
   /// \return The selected node. If the selection fails, `nullptr` is returned.
   std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
