@@ -1,3 +1,4 @@
+import os
 import pytest
 import subprocess
 import sys
@@ -180,3 +181,31 @@ assert len(ray._private.services.find_redis_address()) == 1
         retry_interval_ms=1000)
     p1.kill()
     subprocess.check_output("ray stop --force", shell=True)
+
+
+def test_address_resolution(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50055")
+    with ray.client("localhost:50055").connect():
+        assert ray.util.client.ray.is_connected()
+
+    try:
+        os.environ["RAY_ADDRESS"] = "local"
+        with ray.client("localhost:50055").connect():
+            # client(...) takes precedence of RAY_ADDRESS=local
+            assert ray.util.client.ray.is_connected()
+
+        os.environ["RAY_OVERRIDE_ADDRESS"] = "local"
+
+        ray.client("localhost:50055").connect()
+
+        # RAY_OVERRIDE_ADDRESS="local" takes precedence & starts local cluster.
+        assert ray.worker.global_worker.node.is_head()
+
+    finally:
+        if os.environ["RAY_ADDRESS"]:
+            del os.environ["RAY_ADDRESS"]
+        if os.environ["RAY_OVERRIDE_ADDRESS"]:
+            del os.environ["RAY_OVERRIDE_ADDRESS"]
+
+        server.stop(0)
+        subprocess.check_output("ray stop --force", shell=True)
