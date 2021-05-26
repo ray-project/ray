@@ -1,16 +1,28 @@
 import argparse
 import csv
+import io
 import logging
 import os
 import random
 import subprocess
+from typing import List
 
 import numpy as np
 import ray
 
 from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
-from ray.experimental.raysort.types import ByteCount, RecordCount, PartId, PartitionInfo, Path
+from ray.experimental.raysort.types import (
+    ByteCount,
+    RecordCount,
+    PartId,
+    PartitionInfo,
+    Path,
+)
+
+# ------------------------------------------------------------
+#     Parse Arguments
+# ------------------------------------------------------------
 
 Args = argparse.Namespace
 
@@ -26,7 +38,7 @@ def get_args():
     )
     parser.add_argument(
         "--part-size",
-        default=int(10e9),
+        default=int(1e9),
         type=ByteCount,
         help="partition size in bytes",
     )
@@ -57,6 +69,11 @@ def get_args():
         for task in tasks:
             args_dict[task] = True
     return args
+
+
+# ------------------------------------------------------------
+#     Generate Input
+# ------------------------------------------------------------
 
 
 def _get_part_path(mnt: Path, part_id: PartId, kind="input") -> Path:
@@ -97,8 +114,54 @@ def generate_input(args: Args):
     parts = ray.get(tasks)
     with open(constants.INPUT_MANIFEST_FILE, "w") as fout:
         writer = csv.writer(fout)
-        writer.writerow(["part_id", "node", "mnt", "path"])
         writer.writerows(parts)
+
+
+# ------------------------------------------------------------
+#     Sort
+# ------------------------------------------------------------
+
+
+def _load_input_manifest() -> List[PartitionInfo]:
+    with open(constants.INPUT_MANIFEST_FILE) as fin:
+        reader = csv.reader(fin)
+        return [
+            PartitionInfo(int(part_id), node, mnt, path)
+            for part_id, node, mnt, path in reader
+        ]
+
+
+def _load_partition(path: Path) -> io.BytesIO:
+    with open(path, "rb") as fin:
+        return io.BytesIO(fin.read())
+
+
+@ray.remote
+def mapper(args: Args, part_id: PartId, path: Path) -> List[np.ndarray]:
+    logging_utils.init()
+    task_id = f"M-{part_id}"
+    logging.info(f"{task_id} starting")
+    part = _load_partition(path)
+    print(part.getbuffer().nbytes)
+    logging.info(f"{task_id} done")
+    # TODO: can we avoid copying here?
+    return []
+
+
+def sort_main(args: Args):
+    N = args.num_parts
+    partitions = _load_input_manifest()
+    mapper_results = np.empty((N, N), dtype=object)
+    for part_id, node, _, path in partitions:
+        res = {f"node:{node}": 1e-3}
+        mapper_results[part_id, :] = mapper.options(num_returns=N,
+                                                    resources=res).remote(
+                                                        args, part_id, path)
+
+
+# ------------------------------------------------------------
+#     Main
+# ------------------------------------------------------------
 
 
 def init(args: Args):

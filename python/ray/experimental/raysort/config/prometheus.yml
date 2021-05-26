@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: ray
+    file_sd_configs:
+      - files:
+          - "/mnt/nvme1/tmp/ray/prom_metrics_service_discovery.json"

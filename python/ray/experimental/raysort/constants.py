@@ -12,7 +12,7 @@ GENSORT_PATH = os.path.join(__DIR__, "bin/gensort/64/gensort")
 VALSORT_PATH = os.path.join(__DIR__, "bin/gensort/64/valsort")
 
 # Filenames
-WORK_DIR = "/tmp/raysort"
+WORK_DIR = "/mnt/nvme1/tmp/raysort"
 INPUT_MANIFEST_FILE = os.path.join(WORK_DIR, "input-manifest.csv")
 OUTPUT_MANIFEST_FILE = os.path.join(WORK_DIR, "output-manifest.csv")
 DATA_DIR_FMT = {
