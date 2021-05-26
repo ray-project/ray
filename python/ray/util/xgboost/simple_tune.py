@@ -1,3 +1,4 @@
+import ray
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
@@ -32,6 +33,17 @@ def train_model(config):
 
 # __train_end__
 
+# __load_begin__
+def load_best_model(best_logdir):
+    import xgboost as xgb
+    import os
+
+    best_bst = xgb.Booster()
+    best_bst.load_model(os.path.join(best_logdir, "model.xgb"))
+    return best_bst
+
+# __load_end__
+
 
 def main():
     # __tune_begin__
@@ -60,13 +72,18 @@ def main():
             "extra_cpu": num_actors * num_cpus_per_actor
         })
 
-    # Load the best model checkpoint
-    import xgboost as xgb
-    import os
-
     # Load in the best performing model.
-    best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_logdir, "model.xgb"))
+    # If using Ray Client, make sure model loading happens on server.
+    if ray.util.client.ray.is_connected():
+        # Wrap model loading in a task if using Ray Client.
+        remote_load_fn = ray.remote(load_best_model)
+        best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
+    else:
+        best_bst = ray.get(load_best_model(analysis.best_logdir))
+
+
+    # Do something with the best model.
+    _ = best_bst
 
     accuracy = 1. - analysis.best_result["eval-error"]
     print(f"Best model parameters: {analysis.best_config}")
