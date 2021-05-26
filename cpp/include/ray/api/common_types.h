@@ -41,7 +41,7 @@ struct TaskArg {
   /// If the buf is initialized shows it is a value argument.
   boost::optional<msgpack::sbuffer> buf;
   /// If the id is initialized shows it is a reference argument.
-  boost::optional<ObjectID> id;
+  boost::optional<std::string> id;
 };
 
 }  // namespace api

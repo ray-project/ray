@@ -21,10 +21,10 @@ class ActorHandle {
  public:
   ActorHandle();
 
-  ActorHandle(const ActorID &id);
+  ActorHandle(const std::string &id);
 
   /// Get a untyped ID of the actor
-  const ActorID &ID() const;
+  const std::string &ID() const;
 
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
@@ -34,7 +34,7 @@ class ActorHandle {
   MSGPACK_DEFINE(id_);
 
  private:
-  ActorID id_;
+  std::string id_;
 };
 
 // ---------- implementation ----------
@@ -42,12 +42,12 @@ template <typename ActorType>
 ActorHandle<ActorType>::ActorHandle() {}
 
 template <typename ActorType>
-ActorHandle<ActorType>::ActorHandle(const ActorID &id) {
+ActorHandle<ActorType>::ActorHandle(const std::string &id) {
   id_ = id;
 }
 
 template <typename ActorType>
-const ActorID &ActorHandle<ActorType>::ID() const {
+const std::string &ActorHandle<ActorType>::ID() const {
   return id_;
 }
 

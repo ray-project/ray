@@ -8,7 +8,7 @@ import json
 import psutil
 import socket
 import sys
-from threading import Thread, RLock
+from threading import Lock, Thread, RLock
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -314,7 +314,25 @@ def prepare_runtime_init_req(iterator: Iterator[ray_client_pb2.DataRequest]
 
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
+        self.num_clients = 0
+        self.clients_lock = Lock()
         self.proxy_manager = proxy_manager
+
+    def modify_connection_info_resp(self,
+                                    init_resp: ray_client_pb2.DataResponse
+                                    ) -> ray_client_pb2.DataResponse:
+        """
+        Modify the `num_clients` returned the ConnectionInfoResponse because
+        individual SpecificServers only have **one** client.
+        """
+        init_type = init_resp.WhichOneof("type")
+        if init_type != "connection_info":
+            return init_resp
+        modified_resp = ray_client_pb2.DataResponse()
+        modified_resp.CopyFrom(init_resp)
+        with self.clients_lock:
+            modified_resp.connection_info.num_clients = self.num_clients
+        return modified_resp
 
     def Datapath(self, request_iterator, context):
         client_id = _get_client_id_from_context(context)
@@ -337,11 +355,18 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return None
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-        new_iter = chain([modified_init_req], request_iterator)
-        resp_stream = stub.Datapath(
-            new_iter, metadata=[("client_id", client_id)])
-        for resp in resp_stream:
-            yield resp
+        try:
+            with self.clients_lock:
+                self.num_clients += 1
+            new_iter = chain([modified_init_req], request_iterator)
+            resp_stream = stub.Datapath(
+                new_iter, metadata=[("client_id", client_id)])
+            for resp in resp_stream:
+                yield self.modify_connection_info_resp(resp)
+        finally:
+            with self.clients_lock:
+                logger.debug(f"Client detached: {client_id}")
+                self.num_clients -= 1
 
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
