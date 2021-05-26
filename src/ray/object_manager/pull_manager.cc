@@ -137,8 +137,7 @@ void PullManager::DeactivatePullBundleRequest(
     auto it = active_object_pull_requests_.find(obj_id);
     if (it == active_object_pull_requests_.end() ||
         !it->second.erase(request_it->first)) {
-      // If a bundle contains multiple duplicated object ids, the active pull request
-      // could've been already removed. Then do nothing.
+      // The object is already deactivated, no action is required.
       continue;
     }
     if (it->second.empty()) {
@@ -342,8 +341,6 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
     auto it = object_pull_requests_.find(obj_id);
     if (it != object_pull_requests_.end()) {
-      // Note that there may be duplicate object ids in the bundle, so the erase
-      // here could be a no-op.
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
         RAY_CHECK(active_object_pull_requests_.count(obj_id) == 0)
@@ -446,7 +443,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
-                                RAY_LOG(DEBUG) << "Object restore for " << object_id
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
                                                << " failed, will retry later: " << status;
                               }
                             });
