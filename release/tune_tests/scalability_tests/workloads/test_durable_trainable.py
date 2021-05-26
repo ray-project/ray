@@ -25,6 +25,8 @@ def main(bucket):
     secrets_file = os.path.join(
         os.path.dirname(__file__), "..", "aws_secrets.txt")
     if os.path.isfile(secrets_file):
+        print(f"Loading AWS secrets from file {secrets_file}")
+
         from configparser import ConfigParser
         config = ConfigParser()
         config.read(secrets_file)
@@ -33,6 +35,8 @@ def main(bucket):
             for x, y in v.items():
                 var = str(x).upper()
                 os.environ[var] = str(y)
+    else:
+        print("No AWS secrets file found.")
 
     ray.init(address="auto")
 
