@@ -14,7 +14,7 @@ class ActorTaskCaller {
  public:
   ActorTaskCaller() = default;
 
-  ActorTaskCaller(RayRuntime *runtime, ActorID id,
+  ActorTaskCaller(RayRuntime *runtime, std::string id,
                   RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime), id_(id), remote_function_holder_(remote_function_holder) {}
 
@@ -23,7 +23,7 @@ class ActorTaskCaller {
 
  private:
   RayRuntime *runtime_;
-  ActorID id_;
+  std::string id_;
   RemoteFunctionHolder remote_function_holder_;
   std::vector<ray::api::TaskArg> args_;
 };
