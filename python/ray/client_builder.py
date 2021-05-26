@@ -112,6 +112,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     module = importlib.import_module(module_string)
+    assert "ClientBuilder" in dir(module), (f"Module: {module_string} does "
+                                            "not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 
