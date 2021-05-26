@@ -5,6 +5,7 @@
 
 #include "../local_mode_ray_runtime.h"
 #include "object_store.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 namespace ray {
 namespace api {

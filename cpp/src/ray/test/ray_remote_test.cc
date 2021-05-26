@@ -18,7 +18,6 @@
 
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
-#include "ray/core.h"
 
 using namespace ray::api;
 using namespace ray::internal;

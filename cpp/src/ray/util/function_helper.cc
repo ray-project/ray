@@ -3,7 +3,7 @@
 #include <ray/api/logging.h>
 #include <boost/filesystem.hpp>
 #include <memory>
-#include "ray/core.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace api {

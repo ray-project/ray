@@ -2,6 +2,8 @@
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 
 using namespace ::ray::api;
 
