@@ -416,17 +416,21 @@ def test_conda_create_ray_client(call_ray_start):
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 @pytest.mark.parametrize("pip_as_str", [True, False])
-def test_pip_task(shutdown_only, pip_as_str):
+def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     """Tests pip installs in the runtime env specified in the job config."""
 
     ray.init()
     if pip_as_str:
+        d = tmp_path / "pip_requirements"
+        d.mkdir()
+        p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
         opentelemetry-api==1.0.0rc1
         opentelemetry-sdk==1.0.0rc1
         """
-        runtime_env = {"pip": requirements_txt}
+        p.write_text(requirements_txt)
+        runtime_env = {"pip": str(p)}
     else:
         runtime_env = {
             "pip": [
@@ -455,16 +459,20 @@ def test_pip_task(shutdown_only, pip_as_str):
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 @pytest.mark.parametrize("pip_as_str", [True, False])
-def test_pip_job_config(shutdown_only, pip_as_str):
+def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     """Tests dynamic installation of pip packages in a task's runtime env."""
 
     if pip_as_str:
+        d = tmp_path / "pip_requirements"
+        d.mkdir()
+        p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
         opentelemetry-api==1.0.0rc1
         opentelemetry-sdk==1.0.0rc1
         """
-        runtime_env = {"pip": requirements_txt}
+        p.write_text(requirements_txt)
+        runtime_env = {"pip": str(p)}
     else:
         runtime_env = {
             "pip": [
