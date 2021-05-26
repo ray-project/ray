@@ -53,7 +53,6 @@ feather-format
 google-api-python-client
 gym
 gym-minigrid
-kopf
 kubernetes
 lxml
 modin
