@@ -13,6 +13,7 @@ Acceptance criteria: Should run faster than 500 seconds.
 Theoretical minimum time: 300 seconds
 """
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -21,6 +22,18 @@ from ray.tune.utils.release_test_util import timed_tune_run
 
 
 def main(bucket):
+    secrets_file = os.path.join(
+        os.path.dirname(__file__), "..", "aws_secrets.txt")
+    if os.path.isfile(secrets_file):
+        from configparser import ConfigParser
+        config = ConfigParser()
+        config.read(secrets_file)
+
+        for k, v in config.items():
+            for x, y in v.items():
+                var = str(x).upper()
+                os.environ[var] = str(y)
+
     ray.init(address="auto")
 
     num_samples = 16
