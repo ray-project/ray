@@ -242,7 +242,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
   }
 
   // Fallback to allocating from the filesystem.
-  if (pointer == nullptr && RayConfig::instance().plasma_no_oom()) {
+  if (pointer == nullptr && RayConfig::instance().plasma_unlimited()) {
     pointer = reinterpret_cast<uint8_t *>(
         PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
   }

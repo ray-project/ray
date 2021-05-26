@@ -98,7 +98,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // In never-OOM mode, fallback to allocating from the filesystem. Note that these
   // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
   // plasma_allocator.cc.
-  if (allocated_once && RayConfig::instance().plasma_no_oom()) {
+  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
     file_template = "/tmp";
   }
 

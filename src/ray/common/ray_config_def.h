@@ -121,9 +121,9 @@ RAY_CONFIG(bool, overcommit_plasma_memory,
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_no_oom,
-           getenv("RAY_PLASMA_NO_OOM") != nullptr &&
-               getenv("RAY_PLASMA_NO_OOM") != std::string("0"))
+RAY_CONFIG(bool, plasma_unlimited,
+           getenv("RAY_PLASMA_UNLIMITED") != nullptr &&
+               getenv("RAY_PLASMA_UNLIMITED") != std::string("0"))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
