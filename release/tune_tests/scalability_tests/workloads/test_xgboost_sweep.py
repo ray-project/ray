@@ -30,8 +30,8 @@ from xgboost_ray import train, RayParams, RayDMatrix
 
 def xgboost_train(config, ray_params, num_boost_round=200):
     train_set = RayDMatrix(
-        os.path.expanduser("~/data/train.parquet"), "labels")
-    test_set = RayDMatrix(os.path.expanduser("~/data/test.parquet"), "labels")
+        os.path.expanduser("/data/train.parquet"), "labels")
+    test_set = RayDMatrix(os.path.expanduser("/data/test.parquet"), "labels")
 
     evals_result = {}
 
