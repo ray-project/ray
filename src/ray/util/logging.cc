@@ -32,18 +32,6 @@
 #include <iostream>
 #include <sstream>
 
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
-#include <sys/stat.h>
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4722)  // Ignore non-returning destructor warning in GLOG
-#endif
-#include "glog/logging.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-#endif
-
 #ifdef RAY_USE_SPDLOG
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -51,6 +39,8 @@
 #include "spdlog/spdlog.h"
 #endif
 
+#include "absl/debugging/stacktrace.h"
+#include "absl/debugging/symbolize.h"
 #include "ray/util/filesystem.h"
 
 namespace ray {
@@ -64,36 +54,23 @@ std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
-bool RayLog::is_failure_signal_handler_installed_ = false;
 
 std::string GetCallTrace() {
-  std::string return_message = "Cannot get callstack information.";
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
-  return google::GetStackTraceToString();
-#endif
-  return return_message;
+  std::vector<void *> local_stack;
+  local_stack.resize(50);
+  absl::GetStackTrace(local_stack.data(), 50, 1);
+  static constexpr size_t buf_size = 1 << 14;
+  std::unique_ptr<char[]> buf(new char[buf_size]);
+  std::string output;
+  for (auto &stack : local_stack) {
+    if (absl::Symbolize(stack, buf.get(), buf_size)) {
+      output.append("    ").append(buf.get()).append("\n");
+    }
+  }
+  return output;
 }
 
-#ifdef RAY_USE_GLOG
-struct StdoutLogger : public google::base::Logger {
-  std::ostream &out() { return std::cout; }
-
-  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
-                     int length) {
-    // note: always flush otherwise it never shows up in raylet.out
-    out().write(message, length) << std::flush;
-  }
-
-  virtual void Flush() { out().flush(); }
-
-  virtual google::uint32 LogSize() { return 0; }
-};
-
-static StdoutLogger stdout_logger_singleton;
-#endif
-
 #ifdef RAY_USE_SPDLOG
-/// NOTE(lingxuan.zlx): we reuse glog const_basename function from its utils.
 inline const char *ConstBasename(const char *filepath) {
   const char *base = strrchr(filepath, '/');
 #ifdef OS_WINDOWS  // Look for either path separator in Windows
@@ -137,10 +114,8 @@ class SpdLogMessage final {
     if (!logger) {
       logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
     }
-    // To avoid dump duplicated stacktrace with installed failure signal
-    // handler, we have to check whether glog failure signal handler is enabled.
-    if (!RayLog::IsFailureSignalHandlerEnabled() &&
-        loglevel_ == static_cast<int>(spdlog::level::critical)) {
+
+    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
       stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
@@ -148,7 +123,7 @@ class SpdLogMessage final {
                 str_.str());
     logger->flush();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      // For keeping same action with glog, process will be abort if it's fatal log.
+      // Process will be abort if it's fatal log.
       std::abort();
     }
   }
@@ -209,38 +184,13 @@ class CerrLog {
   }
 };
 
-#ifdef RAY_USE_GLOG
-typedef google::LogMessage LoggingProvider;
-#elif defined(RAY_USE_SPDLOG)
+#ifdef RAY_USE_SPDLOG
 typedef ray::SpdLogMessage LoggingProvider;
 #else
 typedef ray::CerrLog LoggingProvider;
 #endif
 
-#ifdef RAY_USE_GLOG
-using namespace google;
-
-// Glog's severity map.
-static int GetMappedSeverity(RayLogLevel severity) {
-  switch (severity) {
-  case RayLogLevel::TRACE:
-  case RayLogLevel::DEBUG:
-  case RayLogLevel::INFO:
-    return GLOG_INFO;
-  case RayLogLevel::WARNING:
-    return GLOG_WARNING;
-  case RayLogLevel::ERROR:
-    return GLOG_ERROR;
-  case RayLogLevel::FATAL:
-    return GLOG_FATAL;
-  default:
-    RAY_LOG(FATAL) << "Unsupported logging level: " << static_cast<int>(severity);
-    // This return won't be hit but compiler needs it.
-    return GLOG_FATAL;
-  }
-}
-
-#elif defined(RAY_USE_SPDLOG)
+#ifdef RAY_USE_SPDLOG
 // Spdlog's severity map.
 static int GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
@@ -291,11 +241,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
   log_dir_ = log_dir;
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
-#ifdef RAY_USE_GLOG
-  google::InitGoogleLogging(app_name_.c_str());
-  int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
-#endif
+#ifdef RAY_USE_SPDLOG
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -312,12 +258,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
-#ifdef RAY_USE_GLOG
-    app_name_without_path += ".";
-    google::SetLogFilenameExtension(app_name_without_path.c_str());
-    google::SetLogDestination(level, dir_ends_with_slash.c_str());
-    FLAGS_stop_logging_if_full_disk = true;
-#else
 #ifdef _WIN32
     int pid = _getpid();
 #else
@@ -354,13 +294,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
         log_rotation_max_size_, log_rotation_file_num_);
     spdlog::set_default_logger(file_logger);
-#endif
   } else {
-#ifdef RAY_USE_GLOG
-    // NOTE(lingxuan.zlx): If no specific log dir or empty directory string,
-    // we use stdout by default.
-    google::base::SetLogger(level, &stdout_logger_singleton);
-#else
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
@@ -374,56 +308,21 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         new spdlog::logger(RayLog::GetLoggerName(), {console_sink, err_sink}));
     logger->set_level(level);
     spdlog::set_default_logger(logger);
-#endif
   }
-#ifdef RAY_USE_GLOG
-  for (int i = GLOG_INFO; i <= GLOG_FATAL; ++i) {
-    if (i != level) {
-      // NOTE(lingxuan.zlx): It means nothing can be printed or sinked to pass
-      // an empty destination.
-      // Reference from glog:
-      // https://github.com/google/glog/blob/0a2e5931bd5ff22fd3bf8999eb8ce776f159cda6/src/logging.cc#L1110
-      google::SetLogDestination(i, "");
-    }
-  }
-  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
-#endif
 #endif
 }
 
 void RayLog::UninstallSignalAction() {
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
-  if (!is_failure_signal_handler_installed_) {
-    return;
-  }
-  RAY_LOG(DEBUG) << "Uninstall signal handlers.";
-  // This signal list comes from glog's signalhandler.cc.
-  // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
-  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
   for (int signal_num : installed_signals) {
     RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
   }
-#else
-  struct sigaction sig_action;
-  memset(&sig_action, 0, sizeof(sig_action));
-  sigemptyset(&sig_action.sa_mask);
-  sig_action.sa_handler = SIG_DFL;
-  for (int signal_num : installed_signals) {
-    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
-  }
-#endif
-  is_failure_signal_handler_installed_ = false;
 #endif
 }
 
 void RayLog::ShutDownRayLog() {
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
+#ifdef RAY_USE_SPDLOG
   UninstallSignalAction();
-#endif
-#if defined(RAY_USE_GLOG)
-  google::ShutdownGoogleLogging();
-#elif defined(RAY_USE_SPDLOG)
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
   }
@@ -450,24 +349,12 @@ void WriteFailureMessage(const char *data, int size) {
 #endif
 }
 
-bool RayLog::IsFailureSignalHandlerEnabled() {
-  return is_failure_signal_handler_installed_;
-}
-
 void RayLog::InstallFailureSignalHandler() {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
   // If process crashes, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
-#endif
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
-  if (is_failure_signal_handler_installed_) {
-    return;
-  }
-  google::InstallFailureSignalHandler();
-  google::InstallFailureWriter(&WriteFailureMessage);
-  is_failure_signal_handler_installed_ = true;
 #endif
 }
 
@@ -480,9 +367,8 @@ std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
 std::string RayLog::GetLoggerName() { return logger_name_; }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
-    // glog does not have DEBUG level, we can handle it using is_enabled_.
     : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
-#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
+#ifdef RAY_USE_SPDLOG
   if (is_enabled_) {
     logging_provider_ =
         new LoggingProvider(file_name, line_number, GetMappedSeverity(severity));
