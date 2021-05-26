@@ -156,11 +156,29 @@ def current_ray_pip_specifier() -> Optional[str]:
 
 
 def inject_ray_and_python(
-        conda_dict,
+        conda_dict: Dict[Any, Any],
         ray_pip_specifier: Optional[str],
         py_version: str,
         extra_pip_dependencies: List[str] = []) -> Dict[Any, Any]:
     """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
+
+    Args:
+        conda_dict (dict): A dict representing the JSON-serialized conda
+            environment YAML file.  This dict will be modified and returned.
+        ray_pip_specifier (str, optional): A string which can be passed to
+            `pip install` to install a certain Ray version.  This could be a
+            string "ray[all]", or a wheel URL.  
+            If you don't want Ray to be injected into the dict, this parameter
+            should be set to None.
+        py_version (str): A string representing a Python version to inject
+            into the conda dependencies, e.g. "3.7.7"
+        extra_pip_dependencies (List[str]): A list of pip dependencies that
+            will be prepended to the list of pip dependencies in
+            the conda dict.  If the conda dict does not already have a "pip"
+            field, one will be created.
+    Returns:
+        The modified dict.  (Note: the input argument conda_dict is modified
+        and returned.)
     """
     if conda_dict.get("dependencies") is None:
         conda_dict["dependencies"] = []
