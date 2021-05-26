@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                               RAY_OVERRIDE_ADDRESS_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
 
@@ -107,8 +108,13 @@ def client(address: Optional[str] = None) -> ClientBuilder:
     * local -> Creates a new cluster locally and connects to it.
     * IP:Port -> Connects to a Ray Client Server at the given address.
     * module://inner_address -> load module.ClientBuilder & pass inner_address
+
+    NOTE: Address is resolved in the following order: ``RAY_OVERRIDE_ADDRESS``,
+    then client("address"), then ``RAY_ADDRESS``.
     """
-    override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE, address)
+    override_address = os.environ.get(
+        RAY_OVERRIDE_ADDRESS_ENVIRONMENT_VARIABLE)
     if override_address:
         logger.debug(
             f"Using address ({override_address}) instead of "
