@@ -91,8 +91,8 @@ class RuntimeEnvDict:
         if "conda" in runtime_env_json:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'conda' field in runtime_env "
-                                        "is not currently supported on "
-                                        "Windows.")
+                                          "is not currently supported on "
+                                          "Windows.")
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
                 yaml_file = Path(conda)
@@ -100,14 +100,16 @@ class RuntimeEnvDict:
                     if working_dir and not yaml_file.is_absolute():
                         yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
-                        raise ValueError(f"Can't find conda YAML file {yaml_file}")
+                        raise ValueError(
+                            f"Can't find conda YAML file {yaml_file}")
                     try:
                         self._dict["conda"] = yaml.load(yaml_file.read_text())
                     except Exception as e:
                         raise ValueError(
                             f"Invalid conda file {yaml_file} with error {e}")
                 else:
-                    logger.info(f"Using preinstalled conda environment: {conda}")
+                    logger.info(
+                        f"Using preinstalled conda environment: {conda}")
             elif isinstance(conda, dict):
                 self._dict["conda"] = conda
             elif conda is not None:
@@ -118,17 +120,18 @@ class RuntimeEnvDict:
         if "pip" in runtime_env_json:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'pip' field in runtime_env "
-                                        "is not currently supported on "
-                                        "Windows.")
+                                          "is not currently supported on "
+                                          "Windows.")
             if "conda" in runtime_env_json:
-                raise ValueError("The 'pip' field and 'conda' field of "
-                                "runtime_env cannot both be specified.  To use "
-                                "pip with conda, please only set the 'conda' "
-                                "field, and specify your pip dependencies "
-                                "within the conda YAML config dict: see "
-                                "https://conda.io/projects/conda/en/latest/"
-                                "user-guide/tasks/manage-environments.html"
-                                "#create-env-file-manually")
+                raise ValueError(
+                    "The 'pip' field and 'conda' field of "
+                    "runtime_env cannot both be specified.  To use "
+                    "pip with conda, please only set the 'conda' "
+                    "field, and specify your pip dependencies "
+                    "within the conda YAML config dict: see "
+                    "https://conda.io/projects/conda/en/latest/"
+                    "user-guide/tasks/manage-environments.html"
+                    "#create-env-file-manually")
             pip = runtime_env_json["pip"]
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
@@ -151,8 +154,8 @@ class RuntimeEnvDict:
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
-        
-        if self._dict["pip"] or self._dict["conda"]:
+
+        if self._dict.get("pip") or self._dict.get("conda"):
             self._dict["_ray_commit"] = ray.__commit__
 
         self._dict["env_vars"] = None
@@ -190,6 +193,7 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
+
 
 class Protocol(Enum):
     """A enum for supported backend storage."""
