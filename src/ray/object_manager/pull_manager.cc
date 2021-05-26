@@ -343,8 +343,6 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     if (it != object_pull_requests_.end()) {
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
-        RAY_CHECK(active_object_pull_requests_.count(obj_id) == 0)
-            << "Bundle should have been deactivated already";
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
