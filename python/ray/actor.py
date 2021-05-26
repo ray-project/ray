@@ -701,13 +701,17 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
-            runtime_env_dict = parsed_runtime_env.get_parsed_dict()
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
         else:
             runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
