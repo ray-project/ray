@@ -9,4 +9,4 @@
 
   run:
     timeout: 7200
-    script: python regression_tests/run_rllib_regression_tests.py
+    script: python learning_tests/run_learning_tests.py

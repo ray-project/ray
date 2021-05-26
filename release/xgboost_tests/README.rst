@@ -14,9 +14,7 @@ There are four kinds of tests:
 3. ``tune_*`` - checks multi trial training via Ray Tune.
 4. ``ft_*`` - checks fault tolerance.
 
-Generally the releaser tool will run all tests in parallel, but if you do
-it sequentially, be sure to do it in the order above. If ``train_*`` fails,
-``tune_*`` will fail, too.
+Generally the releaser tool will run all tests in parallel.
 
 Acceptance criteria
 -------------------
