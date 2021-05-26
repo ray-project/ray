@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+from pathlib import Path
 import mmap
 import random
 import shutil
@@ -14,6 +15,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import Optional
 
 import colorama
 import psutil
@@ -30,6 +32,14 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
+
+# The number of seconds to wait for the Raylet to start. This is normally
+# fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
+# (a few GB/s) to populate all the pages on Raylet startup.
+if os.environ.get("RAY_PREALLOCATE_PLASMA_MEMORY") == "1":
+    RAYLET_START_WAIT_TIME_S = 120
+else:
+    RAYLET_START_WAIT_TIME_S = 10
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
@@ -290,7 +300,7 @@ def get_address_info_from_redis_helper(redis_address,
 
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
-                                num_retries=5,
+                                num_retries=RAYLET_START_WAIT_TIME_S,
                                 redis_password=None,
                                 log_warning=True):
     counter = 0
@@ -1469,6 +1479,7 @@ def start_raylet(redis_address,
         sys.executable,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1868,7 +1879,10 @@ def start_ray_client_server(redis_address,
                             stdout_file=None,
                             stderr_file=None,
                             redis_password=None,
-                            fate_share=None):
+                            fate_share=None,
+                            server_type: str = "proxy",
+                            serialized_runtime_env: Optional[str] = None,
+                            session_dir: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1878,17 +1892,36 @@ def start_ray_client_server(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        server_type (str): Whether to start the proxy version of Ray Client.
+        serialized_runtime_env (str|None): If specified, the serialized
+            runtime_env to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
     """
+    root_ray_dir = Path(__file__).resolve().parents[1]
+    setup_worker_path = os.path.join(root_ray_dir, "workers",
+                                     ray_constants.SETUP_WORKER_FILENAME)
+    conda_shim_flag = (
+        "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
+
     command = [
-        sys.executable, "-m", "ray.util.client.server",
+        sys.executable,
+        setup_worker_path,
+        conda_shim_flag,  # These two args are to use the shim process.
+        "-m",
+        "ray.util.client.server",
         "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port)
+        "--port=" + str(ray_client_server_port),
+        "--mode=" + server_type
     ]
     if redis_password:
         command.append("--redis-password=" + redis_password)
+
+    if serialized_runtime_env:
+        command.append("--serialized-runtime-env=" + serialized_runtime_env)
+    if session_dir:
+        command.append(f"--session-dir={session_dir}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

@@ -210,6 +210,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
   // Try to evict objects until there is enough space.
   uint8_t *pointer = nullptr;
+  int num_tries = 0;
   while (true) {
     // Allocate space for the new object. We use memalign instead of malloc
     // in order to align the allocated region to a 64-byte boundary. This is not
@@ -231,8 +232,10 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
     EvictObjects(objects_to_evict);
     // More space is still needed. Try to spill objects to external storage to
-    // make room.
-    if (space_needed > 0) {
+    // make room. NOTE(ekl) if we can't achieve this after a number of retries,
+    // it's because memory fragmentation in dlmalloc prevents us from allocating
+    // even if our footprint tracker here still says we have free space.
+    if (space_needed > 0 || num_tries++ > 10) {
       *error = PlasmaError::OutOfMemory;
       break;
     }

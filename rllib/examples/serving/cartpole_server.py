@@ -23,7 +23,10 @@ CHECKPOINT_FILE = "last_checkpoint_{}.out"
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
 parser.add_argument(
-    "--framework", type=str, choices=["tf", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument(
     "--no-restore",
     action="store_true",

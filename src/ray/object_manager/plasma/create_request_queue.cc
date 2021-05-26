@@ -103,6 +103,7 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
       if (spill_objects_callback_()) {
+        oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for spilling.");
       } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to

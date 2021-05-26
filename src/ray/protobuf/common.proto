@@ -75,10 +75,6 @@ message PythonFunctionDescriptor {
 message CppFunctionDescriptor {
   /// Dynamic library name which contains the remote function.
   string lib_name = 1;
-  /// Remote function offset from base address.
-  string function_offset = 2;
-  /// Executable function offset from base address.
-  string exec_function_offset = 3;
   string function_name = 4;
 }
 
@@ -138,7 +134,10 @@ message RayException {
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
-  repeated string uris = 1;
+  /// The raw json passed from user
+  string raw_json = 1;
+  /// Uris used in this runtime env
+  repeated string uris = 2;
 }
 
 /// The task specification encapsulates all immutable information about the

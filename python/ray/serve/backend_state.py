@@ -3,6 +3,7 @@ import time
 from abc import ABC
 from collections import defaultdict
 from enum import Enum
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
@@ -33,6 +34,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
+USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "0") == "1"
 
 
 class ActorReplicaWrapper:
@@ -82,17 +84,21 @@ class ActorReplicaWrapper:
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
 
-        try:
-            self._placement_group = ray.util.get_placement_group(
-                self._placement_group_name)
-        except ValueError:
-            logger.debug(
-                "Creating placement group '{}' for backend '{}'".format(
-                    self._placement_group_name, self._backend_tag))
-            self._placement_group = ray.util.placement_group(
-                [self._actor_resources],
-                lifetime="detached",
-                name=self._placement_group_name)
+        # Feature flagging because of placement groups doesn't handle
+        # newly added nodes.
+        # https://github.com/ray-project/ray/issues/15801
+        if USE_PLACEMENT_GROUP:
+            try:
+                self._placement_group = ray.util.get_placement_group(
+                    self._placement_group_name)
+            except ValueError:
+                logger.debug(
+                    "Creating placement group '{}' for backend '{}'".format(
+                        self._placement_group_name, self._backend_tag))
+                self._placement_group = ray.util.placement_group(
+                    [self._actor_resources],
+                    lifetime="detached" if self._detached else None,
+                    name=self._placement_group_name)
 
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
@@ -137,9 +143,11 @@ class ActorReplicaWrapper:
             return True
 
         try:
-            ray.get_actor(self._actor_name)
+            handle = ray.get_actor(self._actor_name)
             ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
             self._stopped = len(ready) == 1
+            if self._stopped:
+                ray.kill(handle, no_restart=True)
         except ValueError:
             self._stopped = True
 
@@ -165,6 +173,9 @@ class ActorReplicaWrapper:
 
         Currently, this just removes the placement group.
         """
+        if not USE_PLACEMENT_GROUP:
+            return
+
         try:
             ray.util.remove_placement_group(
                 ray.util.get_placement_group(self._placement_group_name))

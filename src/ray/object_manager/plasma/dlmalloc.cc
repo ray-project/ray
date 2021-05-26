@@ -69,6 +69,10 @@ int fake_munmap(void *, int64_t);
 
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
+// Ray allocates all plasma memory up-front at once to avoid runtime allocations.
+// Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
+static bool allocated_once = false;
+
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
 static void *pointer_retreat(void *p, ptrdiff_t n) { return (unsigned char *)p - n; }
@@ -133,6 +137,12 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
+  if (allocated_once) {
+    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to allocate: " << size;
+    return MFAIL;
+  }
+  allocated_once = true;
+
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
   // page-aligned. This ensures that the segments of memory returned by
   // fake_mmap are never contiguous.
@@ -151,12 +161,11 @@ void *fake_mmap(size_t size) {
 
   // We lie to dlmalloc about where mapped memory actually lives.
   pointer = pointer_advance(pointer, kMmapRegionsGap);
-  RAY_LOG(DEBUG) << pointer << " = fake_mmap(" << size << ")";
+  RAY_LOG(INFO) << pointer << " = fake_mmap(" << size << ")";
   return pointer;
 }
 
 int fake_munmap(void *addr, int64_t size) {
-  RAY_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
 
@@ -167,6 +176,7 @@ int fake_munmap(void *addr, int64_t size) {
     // calls to mmap, to prevent dlmalloc from trimming.
     return -1;
   }
+  RAY_LOG(INFO) << "fake_munmap(" << addr << ", " << size << ")";
 
   int r;
 #ifdef _WIN32

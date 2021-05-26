@@ -701,7 +701,8 @@ void NodeManager::WarnResourceDeadlock() {
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
-        << "if this Ray cluster is expected to auto-scale.";
+        << "if this Ray cluster is expected to auto-scale or if you specified a "
+        << "runtime_env for this task or actor because it takes time to install.";
     auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
@@ -1259,6 +1260,10 @@ void NodeManager::DisconnectClient(
 }
 
 void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  // TODO: Add caching layer for performance
+  if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+    return cb(true);
+  }
   auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
   // Format of URI must be: scheme://path
   std::string sep = "://";

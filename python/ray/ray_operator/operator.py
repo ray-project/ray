@@ -308,7 +308,7 @@ def status_handling_loop():
         try:
             operator_utils.set_status(cluster_name, cluster_namespace, phase)
         except Exception:
-            log_prefix = ",".join(cluster_name, cluster_namespace)
+            log_prefix = ",".join([cluster_name, cluster_namespace])
             logger.exception(f"{log_prefix}: Error setting RayCluster status.")
 
 
