@@ -50,7 +50,7 @@ class RuntimeEnvDict:
             environment.yaml file. If a relative path is specified and
             working_dir is specified, the path is interpreted relative to
             working_dir.
-            The Ray dependency will be automatically injected into the conda 
+            The Ray dependency will be automatically injected into the conda
             env to ensure compatibility with the cluster Ray. The conda name
             may be mangled automatically to avoid conflicts between runtime
             envs.
