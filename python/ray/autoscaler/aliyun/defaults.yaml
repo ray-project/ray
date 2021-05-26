@@ -62,7 +62,7 @@ available_node_types:
         # Provider-specific config for this node type, e.g. instance type. By default
         node_config:
             InstanceType: ecs.n4.large
-            ImageId: ubuntu_18_04_64_20G_alibase_20190624.vhd
+            ImageId: ubuntu_20_04_x64_20G_alibase_20210420.vhd
             # You can provision additional disk space with a conf as follows
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
