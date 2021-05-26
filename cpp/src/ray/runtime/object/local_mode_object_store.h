@@ -5,7 +5,7 @@
 
 #include "../local_mode_ray_runtime.h"
 #include "object_store.h"
-#include "ray/core.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 namespace ray {
 namespace api {
@@ -14,7 +14,12 @@ class LocalModeObjectStore : public ObjectStore {
  public:
   LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                         int timeout_ms);
+
+  void AddLocalReference(const std::string &id);
+
+  void RemoveLocalReference(const std::string &id);
 
  private:
   void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);

@@ -13,7 +13,6 @@ py_test_module_list(
 #    "test_dynres.py",  # dyn res not implemented
     "test_actor_pool.py",
     "test_async.py",
-    "test_actor_advanced.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_advanced.py",
@@ -30,6 +29,7 @@ py_test_module_list(
     "test_client_builder.py",
     "test_client_init.py",
     "test_client_proxy.py",
+    "test_metrics_agent.py",
     "test_client_library_integration.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
@@ -69,14 +69,15 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
-    "test_object_spilling.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
+    "test_tempfile.py",
     "test_tensorflow.py",
   ],
   size = "medium",
@@ -89,9 +90,7 @@ py_test_module_list(
   files = [
     "test_object_spilling_2.py",
     "test_object_manager.py",
-    "test_reference_counting_2.py",
     "test_multi_tenancy.py",
-    "test_scheduling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -105,7 +104,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build"],
+  tags = ["exclusive", "post_wheel_build", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -129,7 +128,6 @@ py_test_module_list(
     "test_job.py",
     "test_k8s_operator_unit_tests.py",
     "test_kv.py",
-    "test_metrics_agent.py",
     "test_microbenchmarks.py",
     "test_mini.py",
     "test_monitor.py",
@@ -139,7 +137,6 @@ py_test_module_list(
     "test_ray_debugger.py",
     "test_ray_init.py",
     "test_shuffle.py",
-    "test_tempfile.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
   ],
@@ -153,6 +150,7 @@ py_test_module_list(
   files = [
     "test_cli.py",
     "test_failure.py",
+    "test_actor_advanced.py",
     "test_stress_failure.py",
   ],
   size = "large",
@@ -164,10 +162,13 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_2.py",
+    "test_failure_3.py",
+    "test_reference_counting_2.py",
+    "test_object_spilling.py",
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 

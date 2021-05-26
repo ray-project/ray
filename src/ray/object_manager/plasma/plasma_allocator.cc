@@ -35,7 +35,9 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
     return nullptr;
   }
   void *mem = dlmemalign(alignment, bytes);
-  RAY_CHECK(mem);
+  if (!mem) {
+    return nullptr;
+  }
   allocated_ += bytes;
   return mem;
 }
