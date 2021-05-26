@@ -48,7 +48,6 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
-// TODO: Should we make it an independent class?
 using ScheduleResult = std::pair<ScheduleMap, SchedulingResultStatus>;
 using BundleLocations =
     absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<BundleSpecification>>,
@@ -113,7 +112,7 @@ class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleResult Schedule(
-      std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) = 0;
 
@@ -141,7 +140,7 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                           const std::unique_ptr<ScheduleContext> &context,
                           GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -149,7 +148,7 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                           const std::unique_ptr<ScheduleContext> &context,
                           GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -158,7 +157,7 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                           const std::unique_ptr<ScheduleContext> &context,
                           GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -168,7 +167,7 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                           const std::unique_ptr<ScheduleContext> &context,
                           GcsResourceScheduler &gcs_resource_scheduler) override;
 };

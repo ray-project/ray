@@ -62,7 +62,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
 }
 
 ScheduleResult GcsStrictPackStrategy::Schedule(
-    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
@@ -73,7 +73,7 @@ ScheduleResult GcsStrictPackStrategy::Schedule(
 }
 
 ScheduleResult GcsPackStrategy::Schedule(
-    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
   // The current algorithm is to select a node and deploy as many bundles as possible.
@@ -87,7 +87,7 @@ ScheduleResult GcsPackStrategy::Schedule(
 }
 
 ScheduleResult GcsSpreadStrategy::Schedule(
-    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
@@ -98,7 +98,7 @@ ScheduleResult GcsSpreadStrategy::Schedule(
 }
 
 ScheduleResult GcsStrictSpreadStrategy::Schedule(
-    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
   // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
@@ -139,8 +139,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  auto bundles = placement_group->GetUnplacedBundles();
-  auto strategy = placement_group->GetStrategy();
+  const auto &bundles = placement_group->GetUnplacedBundles();
+  const auto &strategy = placement_group->GetStrategy();
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID()
@@ -149,8 +149,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       bundles, GetScheduleContext(placement_group->GetPlacementGroupID()),
       gcs_resource_scheduler_);
 
-  auto &selected_nodes = scheduling_result.first;
-  auto &result_status = scheduling_result.second;
+  const auto &result_status = scheduling_result.first;
+  const auto &selected_nodes = scheduling_result.second;
 
   if (result_status != SUCCESSFUL) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()

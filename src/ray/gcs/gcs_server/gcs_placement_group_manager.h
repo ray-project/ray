@@ -322,7 +322,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `std::priority_queue`.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
 
-  /// The infeasible placement_groups can't be scheduled currently.
+  /// The infeasible placement_groups that can't be scheduled currently.
   std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
