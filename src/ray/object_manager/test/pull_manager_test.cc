@@ -478,6 +478,26 @@ TEST_P(PullManagerTest, TestDuplicateObjectsInDuplicateRequests) {
   AssertNoLeaks();
 }
 
+TEST_P(PullManagerTest, TestDuplicateObjectsAreActivatedAndCleanedUp) {
+  auto refs = CreateObjectRefs(1);
+  // Duplicate an object id in the pull request.
+  refs.push_back(refs[0]);
+  auto oids = ObjectRefsToIds(refs);
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, GetParam(), &objects_to_locate);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), 0);
+  AssertNumActiveRequestsEquals(1);
+
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  AssertNumActiveRequestsEquals(0);
+  ASSERT_EQ(objects_to_cancel.size(), 1);
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   /// Test admission control for a single pull bundle request. We should
   /// activate the request when we are under the reported capacity and

@@ -25,20 +25,31 @@ PullManager::PullManager(
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            bool is_worker_request,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
+  // To avoid edge cases dealing with duplicated object ids in the bundle,
+  // canonicalize the set up-front by dropping all duplicates.
+  absl::flat_hash_set<ObjectID> seen;
+  std::vector<rpc::ObjectReference> deduplicated;
+  for (const auto& ref : object_ref_bundle) {
+    const auto& id = ObjectRefToId(ref);
+    if (seen.count(id) == 0) {
+      seen.insert(id);
+      deduplicated.push_back(ref);
+    }
+  }
   Queue::iterator bundle_it;
   if (is_worker_request) {
     bundle_it =
-        worker_request_bundles_.emplace(next_req_id_++, std::move(object_ref_bundle))
+        worker_request_bundles_.emplace(next_req_id_++, std::move(deduplicated))
             .first;
   } else {
     bundle_it =
-        task_argument_bundles_.emplace(next_req_id_++, std::move(object_ref_bundle))
+        task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated))
             .first;
   }
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first
                  << ". Bundle size: " << bundle_it->second.objects.size();
 
-  for (const auto &ref : object_ref_bundle) {
+  for (const auto &ref : deduplicated) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
     if (it == object_pull_requests_.end()) {
@@ -126,7 +137,8 @@ void PullManager::DeactivatePullBundleRequest(
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
     auto it = active_object_pull_requests_.find(obj_id);
-    if (it == active_object_pull_requests_.end() || !it->second.erase(request_it->first)) {
+    if (it == active_object_pull_requests_.end() ||
+        !it->second.erase(request_it->first)) {
       // If a bundle contains multiple duplicated object ids, the active pull request
       // could've been already removed. Then do nothing.
       continue;
@@ -336,7 +348,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       // here could be a no-op.
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
-        RAY_CHECK(active_object_pull_requests_.count(obj_id) == 0);
+        RAY_CHECK(active_object_pull_requests_.count(obj_id) == 0)
+            << "Bundle should have been deactivated already";
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -435,7 +448,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
-                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                RAY_LOG(DEBUG) << "Object restore for " << object_id
                                                << " failed, will retry later: " << status;
                               }
                             });
