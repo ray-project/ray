@@ -42,13 +42,18 @@ class RuntimeEnvDict:
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
         pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.
+            containing the path to a pip requirements.txt file.  If a relative
+            path is specified and working_dir is specified, the path is
+            interpreted relative to working_dir.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
-            environment.yaml file. The Ray dependency will be
-            automatically injected into the conda env to ensure compatibility
-            with the cluster Ray. The conda name may be mangled automatically
-            to avoid conflicts between runtime envs.
+            environment.yaml file. If a relative path is specified and
+            working_dir is specified, the path is interpreted relative to
+            working_dir.
+            The Ray dependency will be automatically injected into the conda 
+            env to ensure compatibility with the cluster Ray. The conda name
+            may be mangled automatically to avoid conflicts between runtime
+            envs.
             This field cannot be specified at the same time as the 'pip' field.
             To use pip with conda, please specify your pip dependencies within
             the conda YAML config:
@@ -99,6 +104,14 @@ class RuntimeEnvDict:
 
 def runtime_env_prep(runtime_env_json: dict):
     result_dict = dict()
+
+    if "working_dir" in runtime_env_json:
+        result_dict["working_dir"] = runtime_env_json["working_dir"]
+        working_dir = Path(result_dict["working_dir"])
+    else:
+        result_dict["working_dir"] = None
+        working_dir = None
+
     result_dict["conda"] = None
     if "conda" in runtime_env_json:
         if sys.platform == "win32":
@@ -109,6 +122,8 @@ def runtime_env_prep(runtime_env_json: dict):
         if isinstance(conda, str):
             yaml_file = Path(conda)
             if yaml_file.suffix in (".yaml", ".yml"):
+                if working_dir and not yaml_file.is_absolute():
+                    yaml_file = working_dir / yaml_file
                 if not yaml_file.is_file():
                     raise ValueError(f"Can't find conda YAML file {yaml_file}")
                 try:
@@ -143,6 +158,8 @@ def runtime_env_prep(runtime_env_json: dict):
         if isinstance(pip, str):
             # We have been given a path to a requirements.txt file.
             pip_file = Path(pip)
+            if working_dir and not pip_file.is_absolute():
+                pip_file = working_dir / pip_file
             if not pip_file.is_file():
                 raise ValueError(f"{pip_file} is not a valid file")
             result_dict["pip"] = pip_file.read_text()
@@ -153,11 +170,6 @@ def runtime_env_prep(runtime_env_json: dict):
         else:
             raise TypeError("runtime_env['pip'] must be of type str or "
                             "List[str]")
-
-    if "working_dir" in runtime_env_json:
-        result_dict["working_dir"] = runtime_env_json["working_dir"]
-    else:
-        result_dict["working_dir"] = None
 
     if "uris" in runtime_env_json:
         result_dict["uris"] = runtime_env_json["uris"]
