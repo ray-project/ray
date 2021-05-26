@@ -10,3 +10,17 @@
   run:
     timeout: 7200
     script: python learning_tests/run_learning_tests.py
+
+- name: example_scripts_on_gpu_tests
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@rllib-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 1gpu_4cpus.yaml
+
+  run:
+    timeout: 3600
+    #prepare: python wait_cluster.py 32 600
+    script: unit_gpu_tests/run.sh
