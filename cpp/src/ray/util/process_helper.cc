@@ -43,7 +43,7 @@ static void StopRayNode() {
   return;
 }
 
-void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
+void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
                              CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = config->redis_ip;
   if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
@@ -71,12 +71,16 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
   if (options.worker_type == WorkerType::DRIVER) {
-    /// TODO(Guyang Song): Get next job id from core worker by GCS client.
-    /// Random a number to avoid repeated job ids.
-    /// The repeated job ids will lead to task hang when driver connects to a existing
-    /// cluster more than once.
-    std::srand(std::time(nullptr));
-    options.job_id = JobID::FromInt(std::rand());
+    if (!config->job_id.empty()) {
+      options.job_id = JobID::FromHex(config->job_id);
+    } else {
+      /// TODO(Guyang Song): Get next job id from core worker by GCS client.
+      /// Random a number to avoid repeated job ids.
+      /// The repeated job ids will lead to task hang when driver connects to a existing
+      /// cluster more than once.
+      std::srand(std::time(nullptr));
+      options.job_id = JobID::FromInt(std::rand());
+    }
   }
   options.gcs_options = gcs_options;
   options.enable_logging = true;
@@ -93,7 +97,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   CoreWorkerProcess::Initialize(options);
 }
 
-void ProcessHelper::RayStop(std::shared_ptr<RayConfig> config) {
+void ProcessHelper::RayStop(std::shared_ptr<RayConfigInternal> config) {
   CoreWorkerProcess::Shutdown();
   if (config->redis_ip.empty()) {
     StopRayNode();

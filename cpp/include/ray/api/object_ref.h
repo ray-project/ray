@@ -1,7 +1,6 @@
 
 #pragma once
 
-#include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime_holder.h>
 #include <ray/api/serializer.h>
 

@@ -40,6 +40,7 @@ cc_library(
         "@boost//:callable_traits",
         "@boost//:dll",
         "@boost//:thread",
+        "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],
@@ -96,7 +97,7 @@ cc_test(
         "src/ray/test/cluster/*.cc",
     ]),
     args = [
-        "$(location cluster_mode_test.so)",
+        "--dynamic-library-path=$(location cluster_mode_test.so)",
     ],
     copts = COPTS,
     data = [

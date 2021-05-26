@@ -11,7 +11,7 @@ namespace api {
 
 class NativeRayRuntime : public AbstractRayRuntime {
  public:
-  NativeRayRuntime(std::shared_ptr<RayConfig> config);
+  NativeRayRuntime(std::shared_ptr<RayConfigInternal> config);
 };
 
 }  // namespace api

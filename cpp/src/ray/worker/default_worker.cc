@@ -1,7 +1,8 @@
 
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
+
+#include "../ray_config_internal.h"
 
 using namespace ::ray::api;
 
@@ -9,7 +10,7 @@ int default_worker_main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
   RAY_CHECK(argc == 7);
 
-  auto config = ray::api::RayConfig::GetInstance();
+  auto config = ray::api::RayConfigInternal::GetInstance();
   config->run_mode = RunMode::CLUSTER;
   config->worker_type = ray::WorkerType::WORKER;
   config->store_socket = std::string(argv[1]);

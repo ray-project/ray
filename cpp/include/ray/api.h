@@ -4,6 +4,7 @@
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
 #include <ray/api/object_ref.h>
+#include <ray/api/ray_config.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
@@ -20,6 +21,9 @@ namespace api {
 class Ray {
  public:
   /// Initialize Ray runtime.
+  static void Init(RayConfig &config);
+
+  /// Initialize Ray runtime with default config.
   static void Init();
 
   /// Shutdown Ray runtime.

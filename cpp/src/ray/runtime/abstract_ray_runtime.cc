@@ -2,11 +2,11 @@
 #include "abstract_ray_runtime.h"
 
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
 
 #include <cassert>
 
+#include "../ray_config_internal.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
@@ -28,7 +28,7 @@ namespace api {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
-    std::shared_ptr<RayConfig> config) {
+    std::shared_ptr<RayConfigInternal> config) {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (config->run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
@@ -46,7 +46,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
   return abstract_ray_runtime_;
 }
 
-void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
+void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfigInternal> config) {
   if (config->run_mode == RunMode::CLUSTER) {
     ProcessHelper::GetInstance().RayStop(config);
   }

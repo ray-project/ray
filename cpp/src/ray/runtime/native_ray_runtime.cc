@@ -10,7 +10,7 @@
 namespace ray {
 namespace api {
 
-NativeRayRuntime::NativeRayRuntime(std::shared_ptr<RayConfig> config) {
+NativeRayRuntime::NativeRayRuntime(std::shared_ptr<RayConfigInternal> config) {
   config_ = config;
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());

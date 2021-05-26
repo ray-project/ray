@@ -1,6 +1,6 @@
 #pragma once
-#include <ray/api/ray_config.h>
 #include <string>
+#include "../ray_config_internal.h"
 #include "ray/core.h"
 
 namespace ray {
@@ -8,9 +8,9 @@ namespace api {
 
 class ProcessHelper {
  public:
-  void RayStart(std::shared_ptr<RayConfig> config,
+  void RayStart(std::shared_ptr<RayConfigInternal> config,
                 CoreWorkerOptions::TaskExecutionCallback callback);
-  void RayStop(std::shared_ptr<RayConfig> config);
+  void RayStop(std::shared_ptr<RayConfigInternal> config);
 
   static ProcessHelper &GetInstance() {
     static ProcessHelper processHelper;
