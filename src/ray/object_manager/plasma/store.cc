@@ -243,8 +243,14 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
   // Fallback to allocating from the filesystem.
   if (pointer == nullptr && RayConfig::instance().plasma_unlimited()) {
+    RAY_LOG(ERROR)
+        << "Shared memory store full, falling back to allocating from filesystem: "
+        << size;
     pointer = reinterpret_cast<uint8_t *>(
         PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
+    if (pointer == nullptr) {
+      RAY_LOG(FATAL) << "Plasma fallback allocator failed, likely out of disk space.";
+    }
   }
 
   if (pointer != nullptr) {
