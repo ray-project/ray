@@ -69,9 +69,9 @@ int fake_munmap(void *, int64_t);
 
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
-// Ray allocates all plasma memory up-front at once to avoid runtime allocations.
-// Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
-static bool allocated_once = false;
+// Whether we have allocated our initial chunk of memory already. This is used to
+// fallback additional allocations to the filesystem when using RAY_PLASMA_UNLIMITED=1.
+static bool initial_allocation_complete = false;
 
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
@@ -98,9 +98,10 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // In never-OOM mode, fallback to allocating from the filesystem. Note that these
   // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
   // plasma_allocator.cc.
-  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+  if (initial_allocation_complete && RayConfig::instance().plasma_unlimited()) {
     file_template = "/tmp";
   }
+  initial_allocation_complete = true;
 
   file_template += "/plasmaXXXXXX";
   RAY_LOG(INFO) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
@@ -146,11 +147,6 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
-  if (allocated_once && !RayConfig::instance().overcommit_plasma_memory()) {
-    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
-    return MFAIL;
-  }
-
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
   // page-aligned. This ensures that the segments of memory returned by
   // fake_mmap are never contiguous.
@@ -159,7 +155,6 @@ void *fake_mmap(size_t size) {
   void *pointer;
   MEMFD_TYPE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
-  allocated_once = true;
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;

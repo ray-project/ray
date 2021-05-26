@@ -109,12 +109,6 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
            getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
                getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
 
-/// Whether to allow overcommit of plasma memory (this used to be the default).
-/// This can avoid fragmentation OOMs, but can lead to SIGBUS.
-RAY_CONFIG(bool, overcommit_plasma_memory,
-           getenv("RAY_OVERCOMMIT_PLASMA_MEMORY") == nullptr ||
-               getenv("RAY_OVERCOMMIT_PLASMA_MEMORY") != std::string("0"))
-
 /// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
 /// in /tmp, creating a new file per object. This degrades performance since filesystem
 /// backed objects are written to disk, but allows Ray to operate with degraded
