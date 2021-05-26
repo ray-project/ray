@@ -26,7 +26,6 @@
 #include <unordered_map>
 
 #include "absl/utility/utility.h"
-#include "ray/core.h"
 
 namespace ray {
 namespace internal {

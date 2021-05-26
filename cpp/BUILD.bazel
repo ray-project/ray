@@ -36,11 +36,8 @@ cc_library(
         "//:core_worker_lib",
         "//:ray_common",
         "//:ray_util",
-        "@boost//:asio",
         "@boost//:callable_traits",
         "@boost//:dll",
-        "@boost//:thread",
-        "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],
 )
