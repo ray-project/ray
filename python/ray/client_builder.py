@@ -22,6 +22,7 @@ class ClientInfo:
     ray_version: str
     ray_commit: str
     protocol_version: str
+    _num_clients: int
 
 
 class ClientBuilder:
@@ -57,7 +58,8 @@ class ClientBuilder:
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
-            protocol_version=client_info_dict["protocol_version"])
+            protocol_version=client_info_dict["protocol_version"],
+            _num_clients=client_info_dict["num_clients"])
 
 
 class _LocalClientBuilder(ClientBuilder):

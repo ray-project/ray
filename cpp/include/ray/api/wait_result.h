@@ -4,7 +4,6 @@
 #include <list>
 
 #include <ray/api/object_ref.h>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
