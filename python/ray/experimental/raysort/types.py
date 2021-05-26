@@ -1,6 +1,11 @@
-from collections import namedtuple
+from typing import NamedTuple
 
 ByteCount = int
+NodeAddress = str
 PartId = int
+Path = str
 RecordCount = int
-PartitionInfo = namedtuple("PartitionInfo", ["part_id", "node", "mnt", "path"])
+
+PartitionInfo = NamedTuple("PartitionInfo", [("part_id", PartId),
+                                             ("node", NodeAddress),
+                                             ("mnt", Path), ("path", Path)])

@@ -107,8 +107,11 @@ initialization_commands:
 setup_commands:
     - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
     - conda activate base
-    # - cd /tmp/ray/python/ray/experimental/raysort && pip install -U -r requirements.txt
-    # - python /tmp/ray/python/ray/setup-dev.py -y
+    - find /home/ubuntu/miniconda3/lib/python3.8/site-packages/ray -maxdepth 1 -type l -delete
+    - pip install 'ray[default]'
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    - pip install -U -r /tmp/ray/python/ray/experimental/raysort/requirements.txt
+    - python /tmp/ray/python/ray/setup-dev.py -y
     # - cd /tmp/ray/python/ray/experimental/raysort/sortlib && python setup.py build_ext --inplace
 
 # Custom commands that will be run on the head node after common setup.

@@ -10,7 +10,9 @@ import ray
 
 from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
-from ray.experimental.raysort.types import ByteCount, RecordCount, PartId, PartitionInfo
+from ray.experimental.raysort.types import ByteCount, RecordCount, PartId, PartitionInfo, Path
+
+Args = argparse.Namespace
 
 
 def get_args():
@@ -24,13 +26,13 @@ def get_args():
     )
     parser.add_argument(
         "--part-size",
-        default=10e9,
+        default=int(10e9),
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
         "--reducer-batch-num-records",
-        default=1e6,
+        default=int(1e6),
         type=RecordCount,
         help="number of bytes to buffer before writing the output to EBS",
     )
@@ -39,15 +41,16 @@ def get_args():
         "tasks to run", "if no task is specified, will run all tasks")
     tasks = ["generate_input", "sort", "validate_output"]
     for task in tasks:
-        tasks_group.add_argument(
-            f"--{task}", action="store_true", help=f"run task {task}")
+        tasks_group.add_argument(f"--{task}",
+                                 action="store_true",
+                                 help=f"run task {task}")
 
     args = parser.parse_args()
     # Derive additional arguments.
     args.part_num_records = constants.bytes_to_records(args.part_size)
     args.total_data_size = args.num_parts * args.part_size
-    args.total_num_records = constants.bytes_to_records(
-        args.num_parts * args.part_size)
+    args.total_num_records = constants.bytes_to_records(args.num_parts *
+                                                        args.part_size)
     # If no tasks are specified, run all tasks.
     args_dict = vars(args)
     if not any(args_dict[task] for task in tasks):
@@ -56,7 +59,7 @@ def get_args():
     return args
 
 
-def _get_part_path(mnt, part_id, kind="input"):
+def _get_part_path(mnt: Path, part_id: PartId, kind="input") -> Path:
     assert kind in {"input", "output"}
     dir_fmt = constants.DATA_DIR_FMT[kind]
     dirpath = dir_fmt.format(mnt=mnt)
@@ -71,18 +74,18 @@ def _get_part_path(mnt, part_id, kind="input"):
 def generate_part(part_id: PartId, size: RecordCount,
                   offset: RecordCount) -> PartitionInfo:
     logging_utils.init()
+    node = ray.worker.global_worker.node_ip_address
     mnt = random.choice(constants.WORKER_EBS_MOUNTS)
     filepath = _get_part_path(mnt, part_id, "input")
+    ret = PartitionInfo(part_id, node, mnt, filepath)
+    logging.info(ret)
     subprocess.run(
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", filepath],
-        check=True,
-    )
-    logging.info(f"Generated input {filepath} containing {size:,} records")
-    node = ray.worker.global_worker.node_ip_address
-    return PartitionInfo(part_id, node, mnt, filepath)
+        check=True)
+    return ret
 
 
-def generate_input(args):
+def generate_input(args: Args):
     size = args.part_num_records
     offset = 0
     tasks = []
@@ -98,10 +101,11 @@ def generate_input(args):
         writer.writerows(parts)
 
 
-def init(args):
+def init(args: Args):
     ray.init(address="auto")
     logging_utils.init()
     logging.info(args)
+    logging.info(ray.available_resources())
     os.makedirs(constants.WORK_DIR, exist_ok=True)
 
 

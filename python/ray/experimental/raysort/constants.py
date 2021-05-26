@@ -1,5 +1,7 @@
 import os
 
+from ray.experimental.raysort.types import ByteCount, RecordCount
+
 __DIR__ = os.path.dirname(os.path.abspath(__file__))
 
 # Basics
@@ -32,6 +34,6 @@ PROM_NODE_EXPORTER_PORT = 8091
 
 
 # Convenience functions
-def bytes_to_records(n_bytes):
+def bytes_to_records(n_bytes: ByteCount) -> RecordCount:
     assert n_bytes % RECORD_SIZE == 0
     return int(n_bytes / RECORD_SIZE)

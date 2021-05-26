@@ -1,4 +1,4 @@
-### Variables: i3.xlarge, 118111600640, 10, 10, [('/dev/nvme0n1', '/mnt/nvme0'), ('/dev/nvme1n1', '/mnt/nvme1'), ('/dev/nvme2n1', '/mnt/nvme2'), ('/dev/nvme3n1', '/mnt/nvme3')], \"/mnt/nvme0/tmp/ray/spill\",\"/mnt/nvme1/tmp/ray/spill\",\"/mnt/nvme2/tmp/ray/spill\",\"/mnt/nvme3/tmp/ray/spill\", [('/dev/xvdba', '/mnt/ebs0'), ('/dev/xvdbb', '/mnt/ebs1')], 500, i3.8xlarge
+### Variables: i3.xlarge, 107374182400, 10, 10, [('/dev/nvme0n1', '/mnt/nvme0'), ('/dev/nvme1n1', '/mnt/nvme1'), ('/dev/nvme2n1', '/mnt/nvme2'), ('/dev/nvme3n1', '/mnt/nvme3')], \"/mnt/nvme0/tmp/ray/spill\",\"/mnt/nvme1/tmp/ray/spill\",\"/mnt/nvme2/tmp/ray/spill\",\"/mnt/nvme3/tmp/ray/spill\", [('/dev/xvdba', '/mnt/ebs0'), ('/dev/xvdbb', '/mnt/ebs1')], 500, i3.8xlarge
 
 cluster_name: raysort-cluster
 max_workers: 10
@@ -140,8 +140,11 @@ initialization_commands:
 setup_commands:
     - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
     - conda activate base
-    # - cd /tmp/ray/python/ray/experimental/raysort && pip install -U -r requirements.txt
-    # - python /tmp/ray/python/ray/setup-dev.py -y
+    - find /home/ubuntu/miniconda3/lib/python3.8/site-packages/ray -maxdepth 1 -type l -delete
+    - pip install 'ray[default]'
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    - pip install -U -r /tmp/ray/python/ray/experimental/raysort/requirements.txt
+    - python /tmp/ray/python/ray/setup-dev.py -y
     # - cd /tmp/ray/python/ray/experimental/raysort/sortlib && python setup.py build_ext --inplace
 
 # Custom commands that will be run on the head node after common setup.
@@ -174,5 +177,5 @@ worker_start_ray_commands:
         --object-manager-port=8076
         --metrics-export-port=8090
         --temp-dir=/mnt/nvme1/tmp/ray
-        --object-store-memory=118111600640
+        --object-store-memory=107374182400
     - /tmp/ray/python/ray/experimental/raysort/bin/node_exporter/node_exporter --web.listen-address 0.0.0.0:8091 &
