@@ -5,10 +5,6 @@ import sys
 import pytest
 
 import ray
-import ray.util.accelerators
-import ray._private.utils
-import ray.cluster_utils
-import ray.test_utils
 
 
 @pytest.mark.parametrize("use_runtime_env", [True, False])
