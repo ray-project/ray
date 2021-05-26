@@ -110,6 +110,7 @@ class RuntimeEnvDict:
                 else:
                     logger.info(
                         f"Using preinstalled conda environment: {conda}")
+                    self._dict["conda"] = conda
             elif isinstance(conda, dict):
                 self._dict["conda"] = conda
             elif conda is not None:
