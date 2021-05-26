@@ -444,7 +444,8 @@ def main():
         # Connect to the Ray cluster
         ray.init(address="auto")
 
-        # Save all the Xarrays to disk; this will trigger Dask computations on Ray.
+        # Save all the Xarrays to disk; this will trigger
+        # Dask computations on Ray.
         logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
         SaveRoutines.save_all_xarrays(
             xarray_filename_pairs=xarray_filename_pairs,
