@@ -1,7 +1,5 @@
 cluster_name: long-running-distributed-tests
 
-max_workers: 3
-
 idle_timeout_minutes: 15
 
 docker:

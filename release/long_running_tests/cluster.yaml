@@ -44,3 +44,6 @@ setup_commands:
    - pip install -U tensorflow==1.14
    - pip install -U {{env["RAY_WHEEL"]}}
    - pip install -q "ray[all]" "gym[atari]"
+
+head_start_ray_commands:
+    - ray stop
