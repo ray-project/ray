@@ -15,7 +15,6 @@ import yaml
 import ray
 from ray.tune import run_experiments
 
-
 if __name__ == "__main__":
     # Get path of this very script to look for yaml files.
     abs_yaml_path = Path(__file__).parent
@@ -112,11 +111,13 @@ if __name__ == "__main__":
     # Create results dict and write it to disk.
     result = {
         "time_taken": time_taken,
-        "trial_states": dict(
-            Counter([trial.status for trial in all_trials])),
+        "trial_states": dict(Counter([trial.status for trial in all_trials])),
         "last_update": time.time(),
         "passed": [k for k, exp in checks.items() if exp["passed"]],
-        "failures": {k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0}
+        "failures": {
+            k: exp["failures"]
+            for k, exp in checks.items() if exp["failures"] > 0
+        }
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/tune_test.json")
