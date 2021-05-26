@@ -167,7 +167,7 @@ def inject_ray_and_python(
             environment YAML file.  This dict will be modified and returned.
         ray_pip_specifier (str, optional): A string which can be passed to
             `pip install` to install a certain Ray version.  This could be a
-            string "ray[all]", or a wheel URL.  
+            string "ray[all]", or a wheel URL.
             If you don't want Ray to be injected into the dict, this parameter
             should be set to None.
         py_version (str): A string representing a Python version to inject
