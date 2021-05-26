@@ -1,6 +1,7 @@
 
 #include "function_helper.h"
 #include <dlfcn.h>
+#include <ray/api/logging.h>
 #include <stdio.h>
 #include <string.h>
 #include <boost/filesystem.hpp>
