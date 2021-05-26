@@ -7,7 +7,7 @@ import yaml
 import hashlib
 
 from filelock import FileLock
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
@@ -141,6 +141,12 @@ def current_ray_pip_specifier() -> Optional[str]:
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
+        logger.warning(
+            "Current Ray version could not be detected, most likely "
+            "because you are using a version of Ray "
+            "built from source.  If you wish to use runtime_env, "
+            "you can try building a wheel and including the wheel "
+            "explicitly as a pip dependency.")
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
@@ -149,8 +155,13 @@ def current_ray_pip_specifier() -> Optional[str]:
         return f"ray[all]=={ray.__version__}"
 
 
-def inject_ray_and_python(conda_dict, ray_pip_specifier: Optional[str],
-                          py_version: str) -> None:
+def inject_ray_and_python(
+        conda_dict,
+        ray_pip_specifier: Optional[str],
+        py_version: str,
+        extra_pip_dependencies: List[str] = []) -> Dict[Any, Any]:
+    """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
+    """
     if conda_dict.get("dependencies") is None:
         conda_dict["dependencies"] = []
 
@@ -169,21 +180,18 @@ def inject_ray_and_python(conda_dict, ray_pip_specifier: Optional[str],
     # Insert Ray dependency. If the user has already included Ray, conda
     # will raise an error only if the two are incompatible.
 
-    if ray_pip_specifier is not None:
-        found_pip_dict = False
-        for dep in deps:
-            if isinstance(dep, dict) and dep.get("pip"):
+    found_pip_dict = False
+    for dep in deps:
+        if isinstance(dep, dict) and dep.get("pip") and isinstance(
+                dep["pip"], list):
+            dep["pip"] = extra_pip_dependencies + dep["pip"]
+            if ray_pip_specifier is not None:
                 dep["pip"].append(ray_pip_specifier)
-                found_pip_dict = True
-                break
-        if not found_pip_dict:
-            deps.append({"pip": [ray_pip_specifier]})
-    else:
-        logger.warning("Current Ray version could not be inserted "
-                       "into conda's pip dependencies, most likely "
-                       "because you are using a version of Ray "
-                       "built from source.  If so, you can try "
-                       "building a wheel and including the wheel "
-                       "as a dependency.")
+            found_pip_dict = True
+            break
+    if not found_pip_dict:
+        deps.append({"pip": extra_pip_dependencies})
+        if ray_pip_specifier is not None:
+            dep["pip"].append(ray_pip_specifier)
 
     return conda_dict
