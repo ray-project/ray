@@ -5,7 +5,6 @@
 
 #include "../local_mode_ray_runtime.h"
 #include "object_store.h"
-#include "ray/core.h"
 
 namespace ray {
 namespace api {

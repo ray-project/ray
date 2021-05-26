@@ -1,7 +1,6 @@
 #include "process_helper.h"
 #include <ray/api/logging.h>
 #include "hiredis/hiredis.h"
-#include "ray/core.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
