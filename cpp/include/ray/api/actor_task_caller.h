@@ -4,7 +4,6 @@
 #include <ray/api/arguments.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/static_check.h>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {

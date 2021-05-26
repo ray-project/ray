@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <msgpack.hpp>
+#include "ray/core.h"
 
 namespace ray {
 namespace api {

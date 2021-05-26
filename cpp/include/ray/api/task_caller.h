@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/static_check.h>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
