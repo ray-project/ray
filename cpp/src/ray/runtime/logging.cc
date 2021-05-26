@@ -41,8 +41,8 @@ class RayLogImpl : public RayLog, public ray::RayLog {
   std::ostream &Stream() override { return ray::RayLog::Stream(); }
 };
 
-std::unique_ptr<RayLog> CreateCppLog(const char *file_name, int line_number,
-                                         RayLogLevel severity) {
+std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
+                                     RayLogLevel severity) {
   return std::make_unique<RayLogImpl>(file_name, line_number, severity);
 }
 

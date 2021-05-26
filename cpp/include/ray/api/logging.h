@@ -31,7 +31,7 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 
 #ifdef RAY_LOG_INTERNAL
 #undef RAY_LOG_INTERNAL
-#define RAY_LOG_INTERNAL(level) *CreateCppLog(__FILE__, __LINE__, level)
+#define RAY_LOG_INTERNAL(level) *CreateRayLog(__FILE__, __LINE__, level)
 #endif
 
 // To make the logging lib plugable with other logging libs and make
@@ -59,7 +59,7 @@ class RayLog {
   virtual std::ostream &Stream() = 0;
 };
 
-std::unique_ptr<RayLog> CreateCppLog(const char *file_name, int line_number,
+std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
                                      RayLogLevel severity);
 bool IsLevelEnabled(RayLogLevel log_level);
 
