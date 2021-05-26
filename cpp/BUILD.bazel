@@ -125,4 +125,3 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
