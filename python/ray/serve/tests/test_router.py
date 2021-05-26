@@ -4,7 +4,6 @@ controller or the backend worker, use mock if necessary.
 """
 import asyncio
 from collections import defaultdict
-import os
 
 import pytest
 
@@ -20,7 +19,12 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def ray_instance():
-    os.environ["SERVE_LOG_DEBUG"] = "1"  # Turns on debug log for tests
+    # Note(simon):
+    # This line should be not turned on on master because it leads to very
+    # spammy and not useful log in case of a failure in CI.
+    # To run locally, please use this instead.
+    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
     ray.init(num_cpus=16)
     yield
     ray.shutdown()

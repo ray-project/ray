@@ -91,8 +91,6 @@ TEST(RayApiTest, DuplicateRegister) {
 }
 
 TEST(RayApiTest, NormalTask) {
-  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
-
   auto r = Ray::Task(Return).Remote();
   EXPECT_EQ(1, *(r.Get()));
 
@@ -154,6 +152,4 @@ TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = Ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), RayException);
-
-  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }

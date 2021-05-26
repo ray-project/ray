@@ -96,8 +96,12 @@ ray_files += [
 extras = {
     "default": ["colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX"],
-    "k8s": ["kubernetes"]
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "k8s": ["kubernetes"],
+    "observability": [
+        "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+        "opentelemetry-exporter-otlp==1.1.0"
+    ]
 }
 
 extras["rllib"] = extras["tune"] + [

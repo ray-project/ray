@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <ray/api/wait_result.h>
+#include <ray/api/function_manager.h>
 
 #include <cstdint>
 #include <memory>
@@ -14,15 +14,19 @@
 namespace ray {
 namespace api {
 
-struct MemberFunctionPtrHolder {
-  uintptr_t value[2];
-};
+struct RemoteFunctionHolder {
+  RemoteFunctionHolder() = default;
+  template <typename F>
+  RemoteFunctionHolder(F func) {
+    auto func_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
+    if (func_name.empty()) {
+      throw RayException(
+          "Function not found. Please use RAY_REMOTE to register this function.");
+    }
+    function_name = std::move(func_name);
+  }
 
-struct RemoteFunctionPtrHolder {
-  /// The remote function pointer
-  uintptr_t function_pointer;
-  /// The executable function pointer
-  uintptr_t exec_function_pointer;
+  /// The remote function name.
   std::string function_name;
 };
 
@@ -34,16 +38,21 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &ids) = 0;
 
-  virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                          int timeout_ms) = 0;
+  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                 int timeout_ms) = 0;
 
-  virtual ObjectID Call(const RemoteFunctionPtrHolder &fptr,
-                        std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
-  virtual ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
-                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
-  virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
-                             std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
+  virtual ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
+                        std::vector<ray::api::TaskArg> &args) = 0;
+  virtual ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
+                              std::vector<ray::api::TaskArg> &args) = 0;
+  virtual ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
+                             const ActorID &actor,
+                             std::vector<ray::api::TaskArg> &args) = 0;
 };
+
+void AddLocalReference(const ObjectID &id);
+
+void RemoveLocalReference(const ObjectID &id);
 
 }  // namespace api
 }  // namespace ray

@@ -14,7 +14,8 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
@@ -58,6 +59,12 @@ class MyCallbacks(DefaultCallbacks):
         assert lr == optim_lr, "LR scheduling error!"
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
+        stats = result["info"]["learner"][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+        # Learning rate should go to 0 after 1 iter.
+        check(stats["cur_lr"], 5e-5 if trainer.iteration == 1 else 0.0)
+        # Entropy coeff goes to 0.05, then 0.0 (per iter).
+        check(stats["entropy_coeff"], 0.1 if trainer.iteration == 1 else 0.05)
+
         trainer.workers.foreach_policy(self._check_lr_torch if trainer.config[
             "framework"] == "torch" else self._check_lr_tf)
 
@@ -71,7 +78,7 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_ppo_compilation_and_lr_schedule(self):
+    def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         # For checking lr-schedule correctness.
@@ -85,12 +92,19 @@ class TestPPO(unittest.TestCase):
         # Use default-native keras models whenever possible.
         config["model"]["_use_default_native_models"] = True
 
+        # Setup lr- and entropy schedules for testing.
+        config["lr_schedule"] = [[0, config["lr"]], [128, 0.0]]
+        # Set entropy_coeff to a faulty value to proof that it'll get
+        # overridden by the schedule below (which is expected).
+        config["entropy_coeff"] = 100.0
+        config["entropy_coeff_schedule"] = [[0, 0.1], [256, 0.0]]
+
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
-        num_iterations = 1
+        num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for fw in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
@@ -100,8 +114,18 @@ class TestPPO(unittest.TestCase):
                     config["model"]["lstm_use_prev_reward"] = lstm
 
                     trainer = ppo.PPOTrainer(config=config, env=env)
+                    policy = trainer.get_policy()
+                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    lr = policy.cur_lr
+                    if fw == "tf":
+                        entropy_coeff, lr = policy.get_session().run(
+                            [entropy_coeff, lr])
+                    check(entropy_coeff, 0.1)
+                    check(lr, config["lr"])
+
                     for i in range(num_iterations):
-                        trainer.train()
+                        print(trainer.train())
+
                     check_compute_single_action(
                         trainer,
                         include_prev_action_reward=True,
@@ -124,7 +148,10 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        # Test w/ LSTMs.
+        config["model"]["use_lstm"] = True
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False

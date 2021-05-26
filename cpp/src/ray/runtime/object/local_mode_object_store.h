@@ -14,7 +14,8 @@ class LocalModeObjectStore : public ObjectStore {
  public:
   LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                         int timeout_ms);
 
  private:
   void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);

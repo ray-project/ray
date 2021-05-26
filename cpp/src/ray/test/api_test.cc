@@ -14,6 +14,8 @@ int Plus(int x, int y) { return x + y; }
 
 int Triple(int x, int y, int z) { return x + y + z; }
 
+RAY_REMOTE(Return1, Plus1, Plus, Triple);
+
 class Counter {
  public:
   int count;
@@ -38,6 +40,9 @@ class Counter {
     return count;
   }
 };
+
+RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
+           &Counter::Add);
 
 TEST(RayApiTest, PutTest) {
   Ray::Init();
@@ -65,8 +70,8 @@ TEST(RayApiTest, WaitTest) {
   auto r0 = Ray::Task(Return1).Remote();
   auto r1 = Ray::Task(Plus1).Remote(3);
   auto r2 = Ray::Task(Plus).Remote(2, 3);
-  std::vector<ObjectID> objects = {r0.ID(), r1.ID(), r2.ID()};
-  WaitResult result = Ray::Wait(objects, 3, 1000);
+  std::vector<ObjectRef<int>> objects = {r0, r1, r2};
+  WaitResult<int> result = Ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
   std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(objects);

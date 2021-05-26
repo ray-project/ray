@@ -64,8 +64,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
   return result_sbuffers;
 }
 
-WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                      int timeout_ms) {
+std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
+                                             int num_objects, int timeout_ms) {
   absl::flat_hash_set<ObjectID> memory_object_ids;
   for (const auto &object_id : ids) {
     memory_object_ids.insert(object_id);
@@ -77,18 +77,15 @@ WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }
-  std::vector<ObjectID> ready_vector;
-  ready_vector.reserve(ready.size());
-  std::vector<ObjectID> unready_vector;
-  unready_vector.reserve(ids.size() - ready.size());
+  std::vector<bool> result;
+  result.reserve(ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
-      ready_vector.push_back(ids[i]);
+      result.push_back(true);
     } else {
-      unready_vector.push_back(ids[i]);
+      result.push_back(false);
     }
   }
-  WaitResult result(std::move(ready_vector), std::move(unready_vector));
   return result;
 }
 }  // namespace api
