@@ -62,6 +62,19 @@ class SpecificServer:
         return self.process_handle_future.result()
 
 
+def _match_running_client_server(command: List[str]) -> bool:
+    """
+    Detects if the main process in the given command is the RayClient Server.
+    This works by ensuring that the the first three arguments are similar to:
+        <python> -m ray.util.client.server
+    """
+    flattened = " ".join(command)
+    rejoined = flattened.split()
+    if len(rejoined) < 3:
+        return False
+    return rejoined[1:3] == ["-m", "ray.util.client.server"]
+
+
 class ProxyManager():
     def __init__(self,
                  redis_address: Optional[str],
@@ -161,10 +174,7 @@ class ProxyManager():
                     f"SpecificServer startup failed for client: {client_id}")
                 break
             cmd = psutil_proc.cmdline()
-            flattened = " ".join(cmd)
-            if "--session-dir" not in flattened:
-                # This flag is consumed by setup_runtime_env.py::setup, meaning
-                # that the internal process has been launched.
+            if _match_running_client_server(cmd):
                 break
             logger.debug(
                 "Waiting for Process to reach the actual client server.")
