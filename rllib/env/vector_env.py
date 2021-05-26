@@ -92,7 +92,7 @@ class VectorEnv:
         Returns:
             List[Env]: List of all underlying sub environments.
         """
-        raise NotImplementedError
+        return []
 
     # Experimental method.
     def try_render_at(self, index: Optional[int] = None) -> None:

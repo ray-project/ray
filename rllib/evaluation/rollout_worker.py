@@ -980,8 +980,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env)]
+        # Call function on all underlying (vectorized) envs.
         else:
             return [func(e) for e in envs]
 
@@ -994,8 +997,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env, self.env_context)]
+        # Call function on all underlying (vectorized) envs.
         else:
             ret = []
             for i, e in enumerate(envs):

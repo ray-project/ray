@@ -10,11 +10,10 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -75,38 +74,6 @@ class FailOnStepEnv(gym.Env):
 
     def step(self, action):
         raise ValueError("kaboom")
-
-
-class MockVectorEnv(VectorEnv):
-    def __init__(self, episode_length, num_envs):
-        super().__init__(
-            observation_space=gym.spaces.Discrete(1),
-            action_space=gym.spaces.Discrete(2),
-            num_envs=num_envs)
-        self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
-
-    @override(VectorEnv)
-    def vector_reset(self):
-        return [e.reset() for e in self.envs]
-
-    @override(VectorEnv)
-    def reset_at(self, index):
-        return self.envs[index].reset()
-
-    @override(VectorEnv)
-    def vector_step(self, actions):
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
-        for i in range(len(self.envs)):
-            obs, rew, done, info = self.envs[i].step(actions[i])
-            obs_batch.append(obs)
-            rew_batch.append(rew)
-            done_batch.append(done)
-            info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, info_batch
-
-    @override(VectorEnv)
-    def get_unwrapped(self):
-        return self.envs
 
 
 class TestRolloutWorker(unittest.TestCase):
