@@ -200,8 +200,9 @@ class PlasmaStore {
     if (!RayConfig::instance().plasma_no_oom()) {
       RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     }
-    size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
-    callback(std::max(0, available));
+    size_t available =
+        std::max(0L, PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use);
+    callback(available);
   }
 
  private:
