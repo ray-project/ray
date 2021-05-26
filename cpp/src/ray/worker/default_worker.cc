@@ -13,7 +13,7 @@ int default_worker_main(int argc, char **argv) {
 
   auto config = ray::api::RayConfig::GetInstance();
   config->run_mode = RunMode::CLUSTER;
-  config->worker_type = ray::WorkerType::WORKER;
+  config->worker_type = (ray::api::WorkerType)ray::WorkerType::WORKER;
   config->store_socket = std::string(argv[1]);
   config->raylet_socket = std::string(argv[2]);
   config->node_manager_port = std::stoi(std::string(argv[3]));
