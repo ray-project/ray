@@ -147,6 +147,8 @@ if __name__ == "__main__":
 
     end_time = time.time()
 
+    best_config = analysis.best_config
+    best_config.pop("data")
     result_str = "Best hyperparameters found were: ", analysis.best_config
 
     json_output_file = os.environ.get("TEST_OUTPUT_JSON",
