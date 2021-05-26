@@ -88,5 +88,9 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   }
   return result;
 }
+
+void LocalModeObjectStore::AddLocalReference(const std::string &id) { return; }
+
+void LocalModeObjectStore::RemoveLocalReference(const std::string &id) { return; }
 }  // namespace api
 }  // namespace ray

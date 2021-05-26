@@ -29,12 +29,14 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
   }
 }
 
-inline void CopyAndAddRefrence(ObjectID &dest_id, const ObjectID &id) {
+inline void CopyAndAddReference(std::string &dest_id, const std::string &id) {
   dest_id = id;
-  AddLocalReference(id);
+  ray::internal::RayRuntime()->AddLocalReference(id);
 }
 
-inline void SubRefrence(const ObjectID &id) { RemoveLocalReference(id); }
+inline void SubReference(const std::string &id) {
+  ray::internal::RayRuntime()->RemoveLocalReference(id);
+}
 
 /// Represents an object in the object store..
 /// \param T The type of object.
@@ -44,19 +46,19 @@ class ObjectRef {
   ObjectRef();
   ~ObjectRef();
 
-  ObjectRef(const ObjectRef &rhs) { CopyAndAddRefrence(id_, rhs.id_); }
+  ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 
   ObjectRef &operator=(const ObjectRef &rhs) {
-    CopyAndAddRefrence(id_, rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
     return *this;
   }
 
-  ObjectRef(const ObjectID &id);
+  ObjectRef(const std::string &id);
 
   bool operator==(const ObjectRef<T> &object) const;
 
   /// Get a untyped ID of the object
-  const ObjectID &ID() const;
+  const std::string &ID() const;
 
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
@@ -68,7 +70,7 @@ class ObjectRef {
   MSGPACK_DEFINE(id_);
 
  private:
-  ObjectID id_;
+  std::string id_;
 };
 
 // ---------- implementation ----------
@@ -85,13 +87,13 @@ template <typename T>
 ObjectRef<T>::ObjectRef() {}
 
 template <typename T>
-ObjectRef<T>::ObjectRef(const ObjectID &id) {
-  CopyAndAddRefrence(id_, id);
+ObjectRef<T>::ObjectRef(const std::string &id) {
+  CopyAndAddReference(id_, id);
 }
 
 template <typename T>
 ObjectRef<T>::~ObjectRef() {
-  SubRefrence(id_);
+  SubReference(id_);
 }
 
 template <typename T>
@@ -100,7 +102,7 @@ inline bool ObjectRef<T>::operator==(const ObjectRef<T> &object) const {
 }
 
 template <typename T>
-const ObjectID &ObjectRef<T>::ID() const {
+const std::string &ObjectRef<T>::ID() const {
   return id_;
 }
 
@@ -113,21 +115,21 @@ template <>
 class ObjectRef<void> {
  public:
   ObjectRef() = default;
-  ~ObjectRef() { SubRefrence(id_); }
+  ~ObjectRef() { SubReference(id_); }
 
-  ObjectRef(const ObjectRef &rhs) { CopyAndAddRefrence(id_, rhs.id_); }
+  ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 
   ObjectRef &operator=(const ObjectRef &rhs) {
-    CopyAndAddRefrence(id_, rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
     return *this;
   }
 
-  ObjectRef(const ObjectID &id) { CopyAndAddRefrence(id_, id); }
+  ObjectRef(const std::string &id) { CopyAndAddReference(id_, id); }
 
   bool operator==(const ObjectRef<void> &object) const { return id_ == object.id_; }
 
   /// Get a untyped ID of the object
-  const ObjectID &ID() const { return id_; }
+  const std::string &ID() const { return id_; }
 
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
@@ -142,7 +144,7 @@ class ObjectRef<void> {
   MSGPACK_DEFINE(id_);
 
  private:
-  ObjectID id_;
+  std::string id_;
 };
 }  // namespace api
 }  // namespace ray
