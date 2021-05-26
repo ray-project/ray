@@ -146,10 +146,12 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
-  // In unlimited allocation mode, fail allocations done by PlasmaAllocator::Memalign() after the
-  // initial allocation. Allow allocations done by PlasmaAllocator::DiskMemalignUnlimited(),
-  // which sets mmap_threshold to zero prior to calling dlmemalign().
-  if (RayConfig::instance().plasma_unlimited() && allocated_once && mparams.mmap_threshold > 0) {
+  // In unlimited allocation mode, fail allocations done by PlasmaAllocator::Memalign()
+  // after the initial allocation. Allow allocations done by
+  // PlasmaAllocator::DiskMemalignUnlimited(), which sets mmap_threshold to zero prior to
+  // calling dlmemalign().
+  if (RayConfig::instance().plasma_unlimited() && allocated_once &&
+      mparams.mmap_threshold > 0) {
     RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
     return MFAIL;
   }
