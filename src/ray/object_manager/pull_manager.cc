@@ -29,8 +29,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   // canonicalize the set up-front by dropping all duplicates.
   absl::flat_hash_set<ObjectID> seen;
   std::vector<rpc::ObjectReference> deduplicated;
-  for (const auto& ref : object_ref_bundle) {
-    const auto& id = ObjectRefToId(ref);
+  for (const auto &ref : object_ref_bundle) {
+    const auto &id = ObjectRefToId(ref);
     if (seen.count(id) == 0) {
       seen.insert(id);
       deduplicated.push_back(ref);
@@ -39,12 +39,10 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   Queue::iterator bundle_it;
   if (is_worker_request) {
     bundle_it =
-        worker_request_bundles_.emplace(next_req_id_++, std::move(deduplicated))
-            .first;
+        worker_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   } else {
     bundle_it =
-        task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated))
-            .first;
+        task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   }
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first
                  << ". Bundle size: " << bundle_it->second.objects.size();
