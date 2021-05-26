@@ -10,6 +10,7 @@ from ray._private.thirdparty.pathspec import PathSpec
 from ray.job_config import JobConfig
 from enum import Enum
 
+import ray
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
@@ -77,7 +78,92 @@ class RuntimeEnvDict:
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
         # unspecified.  However, if all values are None this is set to {}.
-        self._dict = runtime_env_prep(runtime_env_json)
+        self._dict = dict()
+
+        if "working_dir" in runtime_env_json:
+            self._dict["working_dir"] = runtime_env_json["working_dir"]
+            working_dir = Path(self._dict["working_dir"])
+        else:
+            self._dict["working_dir"] = None
+            working_dir = None
+
+        self._dict["conda"] = None
+        if "conda" in runtime_env_json:
+            if sys.platform == "win32":
+                raise NotImplementedError("The 'conda' field in runtime_env "
+                                        "is not currently supported on "
+                                        "Windows.")
+            conda = runtime_env_json["conda"]
+            if isinstance(conda, str):
+                yaml_file = Path(conda)
+                if yaml_file.suffix in (".yaml", ".yml"):
+                    if working_dir and not yaml_file.is_absolute():
+                        yaml_file = working_dir / yaml_file
+                    if not yaml_file.is_file():
+                        raise ValueError(f"Can't find conda YAML file {yaml_file}")
+                    try:
+                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                    except Exception as e:
+                        raise ValueError(
+                            f"Invalid conda file {yaml_file} with error {e}")
+                else:
+                    logger.info(f"Using preinstalled conda environment: {conda}")
+            elif isinstance(conda, dict):
+                self._dict["conda"] = conda
+            elif conda is not None:
+                raise TypeError("runtime_env['conda'] must be of type str or "
+                                "dict")
+
+        self._dict["pip"] = None
+        if "pip" in runtime_env_json:
+            if sys.platform == "win32":
+                raise NotImplementedError("The 'pip' field in runtime_env "
+                                        "is not currently supported on "
+                                        "Windows.")
+            if "conda" in runtime_env_json:
+                raise ValueError("The 'pip' field and 'conda' field of "
+                                "runtime_env cannot both be specified.  To use "
+                                "pip with conda, please only set the 'conda' "
+                                "field, and specify your pip dependencies "
+                                "within the conda YAML config dict: see "
+                                "https://conda.io/projects/conda/en/latest/"
+                                "user-guide/tasks/manage-environments.html"
+                                "#create-env-file-manually")
+            pip = runtime_env_json["pip"]
+            if isinstance(pip, str):
+                # We have been given a path to a requirements.txt file.
+                pip_file = Path(pip)
+                if working_dir and not pip_file.is_absolute():
+                    pip_file = working_dir / pip_file
+                if not pip_file.is_file():
+                    raise ValueError(f"{pip_file} is not a valid file")
+                self._dict["pip"] = pip_file.read_text()
+            elif isinstance(pip, list) and all(
+                    isinstance(dep, str) for dep in pip):
+                # Construct valid pip requirements.txt from list of packages.
+                self._dict["pip"] = "\n".join(pip) + "\n"
+            else:
+                raise TypeError("runtime_env['pip'] must be of type str or "
+                                "List[str]")
+
+        if "uris" in runtime_env_json:
+            self._dict["uris"] = runtime_env_json["uris"]
+
+        if "_ray_release" in runtime_env_json:
+            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
+        
+        if self._dict["pip"] or self._dict["conda"]:
+            self._dict["_ray_commit"] = ray.__commit__
+
+        # TODO(ekl) we should have better schema validation here.
+        # TODO(ekl) support py_modules
+        # TODO(architkulkarni) support env_vars, docker
+
+        # TODO(architkulkarni) This is to make it easy for the worker caching
+        # code in C++ to check if the env is empty without deserializing and
+        # parsing it.  We should use a less confusing approach here.
+        if all(val is None for val in self._dict.values()):
+            self._dict = {}
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -100,95 +186,6 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
-
-
-def runtime_env_prep(runtime_env_json: dict):
-    result_dict = dict()
-
-    if "working_dir" in runtime_env_json:
-        result_dict["working_dir"] = runtime_env_json["working_dir"]
-        working_dir = Path(result_dict["working_dir"])
-    else:
-        result_dict["working_dir"] = None
-        working_dir = None
-
-    result_dict["conda"] = None
-    if "conda" in runtime_env_json:
-        if sys.platform == "win32":
-            raise NotImplementedError("The 'conda' field in runtime_env "
-                                      "is not currently supported on "
-                                      "Windows.")
-        conda = runtime_env_json["conda"]
-        if isinstance(conda, str):
-            yaml_file = Path(conda)
-            if yaml_file.suffix in (".yaml", ".yml"):
-                if working_dir and not yaml_file.is_absolute():
-                    yaml_file = working_dir / yaml_file
-                if not yaml_file.is_file():
-                    raise ValueError(f"Can't find conda YAML file {yaml_file}")
-                try:
-                    result_dict["conda"] = yaml.load(yaml_file.read_text())
-                except Exception as e:
-                    raise ValueError(
-                        f"Invalid conda file {yaml_file} with error {e}")
-            else:
-                logger.info(f"Using preinstalled conda environment: {conda}")
-        elif isinstance(conda, dict):
-            result_dict["conda"] = conda
-        elif conda is not None:
-            raise TypeError("runtime_env['conda'] must be of type str or "
-                            "dict")
-
-    result_dict["pip"] = None
-    if "pip" in runtime_env_json:
-        if sys.platform == "win32":
-            raise NotImplementedError("The 'pip' field in runtime_env "
-                                      "is not currently supported on "
-                                      "Windows.")
-        if "conda" in runtime_env_json:
-            raise ValueError("The 'pip' field and 'conda' field of "
-                             "runtime_env cannot both be specified.  To use "
-                             "pip with conda, please only set the 'conda' "
-                             "field, and specify your pip dependencies "
-                             "within the conda YAML config dict: see "
-                             "https://conda.io/projects/conda/en/latest/"
-                             "user-guide/tasks/manage-environments.html"
-                             "#create-env-file-manually")
-        pip = runtime_env_json["pip"]
-        if isinstance(pip, str):
-            # We have been given a path to a requirements.txt file.
-            pip_file = Path(pip)
-            if working_dir and not pip_file.is_absolute():
-                pip_file = working_dir / pip_file
-            if not pip_file.is_file():
-                raise ValueError(f"{pip_file} is not a valid file")
-            result_dict["pip"] = pip_file.read_text()
-        elif isinstance(pip, list) and all(
-                isinstance(dep, str) for dep in pip):
-            # Construct valid pip requirements.txt from list of packages.
-            result_dict["pip"] = "\n".join(pip) + "\n"
-        else:
-            raise TypeError("runtime_env['pip'] must be of type str or "
-                            "List[str]")
-
-    if "uris" in runtime_env_json:
-        result_dict["uris"] = runtime_env_json["uris"]
-
-    if "_ray_release" in runtime_env_json:
-        result_dict["_ray_release"] = runtime_env_json["_ray_release"]
-
-    # TODO(ekl) we should have better schema validation here.
-    # TODO(ekl) support py_modules
-    # TODO(architkulkarni) support env_vars, docker
-
-    # TODO(architkulkarni) This is to make it easy for the worker caching
-    # code in C++ to check if the env is empty without deserializing and
-    # parsing it.  We should use a less confusing approach here.
-    if all(val is None for val in result_dict.values()):
-        result_dict = {}
-
-    return result_dict
-
 
 class Protocol(Enum):
     """A enum for supported backend storage."""
