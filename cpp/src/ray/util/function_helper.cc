@@ -52,8 +52,7 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   return lib;
 }
 
-std::function<msgpack::sbuffer(const std::string &,
-                               const std::vector<std::shared_ptr<::ray::RayObject>> &,
+std::function<msgpack::sbuffer(const std::string &, const std::vector<msgpack::sbuffer> &,
                                msgpack::sbuffer *)>
 FunctionHelper::GetEntryFunction(const std::string &lib_name) {
   auto it = funcs_.find(lib_name);
@@ -68,8 +67,8 @@ FunctionHelper::GetEntryFunction(const std::string &lib_name) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::string &, const std::vector<std::shared_ptr<::ray::RayObject>> &,
-        msgpack::sbuffer *)>(*lib, "TaskExecutionHandler");
+        const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>(
+        *lib, "TaskExecutionHandler");
     funcs_.emplace(lib_name, entry_func);
     return entry_func;
   } catch (std::exception &e) {

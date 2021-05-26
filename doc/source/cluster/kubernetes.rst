@@ -74,7 +74,8 @@ with scaling allowed up to three workers.
 
   # Install a small Ray cluster with the default configuration
   # in a new namespace called "ray". Let's name the Helm release "example-cluster."
-  $ helm -n ray install example-cluster --create-namespace ./rayNAME: example-cluster
+  $ helm -n ray install example-cluster --create-namespace ./ray
+  NAME: example-cluster
   LAST DEPLOYED: Fri May 14 11:44:06 2021
   NAMESPACE: ray
   STATUS: deployed

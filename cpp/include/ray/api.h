@@ -3,8 +3,6 @@
 
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
-#include <ray/api/actor_task_caller.h>
-#include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
@@ -80,7 +78,7 @@ class Ray {
   static std::once_flag is_inited_;
 
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
   template <typename FuncType>
   static TaskCaller<FuncType> TaskInternal(FuncType &func);
@@ -98,9 +96,9 @@ namespace ray {
 namespace api {
 
 template <typename T>
-inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
+inline static std::vector<std::string> ObjectRefsToObjectIDs(
     const std::vector<ObjectRef<T>> &object_refs) {
-  std::vector<ObjectID> object_ids;
+  std::vector<std::string> object_ids;
   for (auto it = object_refs.begin(); it != object_refs.end(); it++) {
     object_ids.push_back(it->ID());
   }
@@ -120,7 +118,7 @@ inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<std::string> &ids) {
   auto result = ray::internal::RayRuntime()->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
