@@ -1,0 +1,12 @@
+- name: regression_tests
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@rllib-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 8gpus_64cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python regression_tests/run_rllib_regression_tests.py

@@ -1,0 +1,7 @@
+# RLlib
+ray[rllib]
+
+# Env adapters
+gym[atari]
+atari_py
+pybullet
