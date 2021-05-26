@@ -709,7 +709,8 @@ class ActorClass:
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
                            "will be removed in Ray 1.5.  Please use "
-                           "runtime_env[`env_vars`] instead.")
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
