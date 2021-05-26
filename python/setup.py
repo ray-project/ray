@@ -97,12 +97,14 @@ extras = {
     "default": ["colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
-    "k8s": ["kopf", "kubernetes"],
+    "k8s": ["kubernetes"],
     "observability": [
         "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
         "opentelemetry-exporter-otlp==1.1.0"
     ]
 }
+if sys.version_info >= (3, 7, 0):
+    extras["k8s"].append("kopf")
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",
