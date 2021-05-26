@@ -77,11 +77,12 @@ class Worker:
               at least once.  For infinite retries, catch the ConnectionError
               exception.
         """
-        self.metadata = metadata if metadata else []
+        self._client_id = make_client_id()
+        self.metadata = [("client_id", self._client_id)] + (metadata if
+                                                            metadata else [])
         self.channel = None
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
-        self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
 
         if secure:
@@ -439,8 +440,7 @@ class Worker:
         """
         if self.server is not None:
             logger.debug("Pinging server.")
-            result = self.get_cluster_info(
-                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            result = self.get_cluster_info(ray_client_pb2.ClusterInfoType.PING)
             return result is not None
         return False
 

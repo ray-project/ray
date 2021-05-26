@@ -24,7 +24,7 @@ class ActorCreator {
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<std::unique_ptr<::ray::TaskArg>> args_;
+  std::vector<ray::api::TaskArg> args_;
 };
 
 // ---------- implementation ----------
