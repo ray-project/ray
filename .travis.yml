@@ -35,8 +35,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
-        - . ./ci/travis/ci.sh build || true
-        - sleep 60
+        - . ./ci/travis/ci.sh build
       script:
         # cc bazel tests (w/o RLlib)
         # NOTE: core_worker_test is out-of-date and should already covered by Python
