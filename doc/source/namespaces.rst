@@ -13,7 +13,7 @@ first connect to the cluster.
 
    ray.init(namespace="hello")
    # or using ray client
-   ctx = ray.client().namespace("world").connect()
+   ray.client().namespace("world").connect()
 
 Named actors are only accessible within their namespaces.
 
@@ -26,27 +26,26 @@ Named actors are only accessible within their namespaces.
       pass
 
     # Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
-    ctx = ray.client().namespace("colors").connect()
-    Actor.options(name="orange", lifetime="detached")
-    Actor.options(name="purple", lifetime="detached")
-    ctx.disconnect()
+    with ray.client().namespace("colors").connect():
+      Actor.options(name="orange", lifetime="detached")
+      Actor.options(name="purple", lifetime="detached")
 
     # Job 2 is now connecting to a different namespace.
-    ctx = ray.client().namespace("fruits").connect()
-    # This fails because "orange" was defined in the "colors" namespace.
-    ray.get_actor("orange")
-    # This succceeds because the name "orange" is unused in this namespace.
-    Actor.options(name="orange", lifetime="detached")
-    Actor.options(name="watermelon", lifetime="detached")
-    ctx.disconnect()
+    with ray.client().namespace("fruits").connect():
+      # This fails because "orange" was defined in the "colors" namespace.
+      ray.get_actor("orange")
+      # This succceeds because the name "orange" is unused in this namespace.
+      Actor.options(name="orange", lifetime="detached")
+      Actor.options(name="watermelon", lifetime="detached")
 
     # Job 3 connects to the original "colors" namespace
-    ctx = ray.client().namespace("colors").connect()
+    context = ray.client().namespace("colors").connect()
     # This fails because "watermelon" was in the fruits namespace.
     ray.get_actor("watermelon")
     # This returns the "orange" actor we created in the first job, not the second.
     ray.get_actor("orange")
-    ctx.disconnect()
+    context.disconnect()
+    # We are manually managing the scope of the connection in this example. 
          
 
 Anonymous namespaces

@@ -60,7 +60,7 @@ def conda_envs():
 
 check_remote_client_conda = """
 import ray
-ctx = ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).\\
+context = ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).\\
 connect()
 @ray.remote
 def get_tf_version():
@@ -68,7 +68,7 @@ def get_tf_version():
     return tf.__version__
 
 assert ray.get(get_tf_version.remote()) == "{tf_version}"
-ctx.disconnect()
+context.disconnect()
 """
 
 

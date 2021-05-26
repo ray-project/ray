@@ -90,20 +90,19 @@ print(ray.get_runtime_context().namespace)
 
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
-    with ray.client("localhost:50055").connect() as client_ctx:
-        assert client_ctx.dashboard_url == ray.worker.get_dashboard_url()
+    with ray.client("localhost:50055").connect() as client_context:
+        assert client_context.dashboard_url == ray.worker.get_dashboard_url()
         python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
-        assert client_ctx.python_version == python_version
-        assert client_ctx.ray_version == ray.__version__
-        assert client_ctx.ray_commit == ray.__commit__
+        assert client_context.python_version == python_version
+        assert client_context.ray_version == ray.__version__
+        assert client_context.ray_commit == ray.__commit__
         protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
-        assert client_ctx.protocol_version == protocol_version
+        assert client_context.protocol_version == protocol_version
 
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)
 
 
-@pytest.mark.skip()
 def test_local_clusters():
     """
     This tests the various behaviors of connecting to local clusters:
