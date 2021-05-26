@@ -25,6 +25,9 @@ namespace plasma {
 extern "C" {
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *mem);
+void dlmallopt(int, int);
+int M_MMAP_THRESHOLD;
+size_t MAX_SIZE_T;
 }
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
@@ -35,6 +38,19 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
     return nullptr;
   }
   void *mem = dlmemalign(alignment, bytes);
+  if (!mem) {
+    return nullptr;
+  }
+  allocated_ += bytes;
+  return mem;
+}
+
+void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
+  // Forces allocation as a separate file.
+  dlmallopt(M_MMAP_THRESHOLD, 0);
+  void *mem = dlmemalign(alignment, bytes);
+  // Reset to the default value.
+  dlmallopt(M_MMAP_THRESHOLD, MAX_SIZE_T);
   if (!mem) {
     return nullptr;
   }
