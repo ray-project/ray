@@ -1,0 +1,33 @@
+cluster_name: ray-release-microbenchmark
+
+docker:
+    image: anyscale/ray:latest
+    container_name: ray_container
+    pull_before_run: False
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
+
+
+available_node_types:
+    cpu_64_ondemand:
+        node_config:
+            InstanceType: m5.16xlarge
+
+        resources: {"CPU": 64}
+        min_workers: 0
+        max_workers: 0
+
+auth:
+    ssh_user: ubuntu
+
+head_node_type: cpu_64_ondemand
+
+
+setup_commands:
+    - pip install -U {{env["RAY_WHEEL"]}}
+
+head_start_ray_commands:
+    - ray stop
