@@ -73,6 +73,7 @@ py_test_module_list(
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_runtime_env_env_vars.py",
     "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
