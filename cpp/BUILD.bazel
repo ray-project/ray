@@ -39,7 +39,6 @@ cc_library(
         "@boost//:asio",
         "@boost//:callable_traits",
         "@boost//:dll",
-        "@boost//:filesystem",
         "@boost//:thread",
         "@com_google_absl//absl/synchronization",
         "@msgpack",
@@ -86,6 +85,7 @@ cc_test(
     linkstatic = False,
     deps = [
         "ray_api",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )

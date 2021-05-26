@@ -13,20 +13,6 @@
 // limitations under the License.
 
 #include <ray/api/logging.h>
-
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <execinfo.h>
-#endif
-
-#include <signal.h>
-#include <stdlib.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
-#include <ray/api/logging.h>
 #include <ray/util/logging.h>
 
 namespace ray {
