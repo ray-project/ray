@@ -125,17 +125,18 @@ void PullManager::DeactivatePullBundleRequest(
   for (const auto &ref : request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
-    if (!active_object_pull_requests_[obj_id].erase(request_it->first)) {
+    auto it = active_object_pull_requests_.find(obj_id);
+    if (it == active_object_pull_requests_.end() || !it->second.erase(request_it->first)) {
       // If a bundle contains multiple duplicated object ids, the active pull request
       // could've been already removed. Then do nothing.
       continue;
     }
-    if (active_object_pull_requests_[obj_id].empty()) {
+    if (it->second.empty()) {
       RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
-      active_object_pull_requests_.erase(obj_id);
+      active_object_pull_requests_.erase(it->first);
       objects_to_cancel->insert(obj_id);
     }
   }
@@ -335,6 +336,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       // here could be a no-op.
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
+        RAY_CHECK(active_object_pull_requests_.count(obj_id) == 0);
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
