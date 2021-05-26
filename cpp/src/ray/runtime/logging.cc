@@ -32,21 +32,21 @@
 namespace ray {
 namespace api {
 
-class CppRayLog : public CppLogBase, public ray::RayLog {
+class RayLogImpl : public RayLog, public ray::RayLog {
  public:
-  CppRayLog(const char *file_name, int line_number, CppRayLogLevel severity)
+  RayLogImpl(const char *file_name, int line_number, RayLogLevel severity)
       : ray::RayLog(file_name, line_number, (ray::RayLogLevel)severity) {}
-  bool IsEnabled() const override { return RayLog::IsEnabled(); }
+  bool IsEnabled() const override { return ray::RayLog::IsEnabled(); }
 
-  std::ostream &Stream() override { return RayLog::Stream(); }
+  std::ostream &Stream() override { return ray::RayLog::Stream(); }
 };
 
-std::unique_ptr<CppLogBase> CreateCppLog(const char *file_name, int line_number,
-                                         CppRayLogLevel severity) {
-  return std::make_unique<CppRayLog>(file_name, line_number, severity);
+std::unique_ptr<RayLog> CreateCppLog(const char *file_name, int line_number,
+                                         RayLogLevel severity) {
+  return std::make_unique<RayLogImpl>(file_name, line_number, severity);
 }
 
-bool IsLevelEnabled(CppRayLogLevel log_level) {
+bool IsLevelEnabled(RayLogLevel log_level) {
   return ray::RayLog::IsLevelEnabled((ray::RayLogLevel)log_level);
 }
 
