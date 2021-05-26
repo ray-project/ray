@@ -26,8 +26,9 @@ class ClientInfo:
 
 class ClientBuilder:
     """
-    Builder for a Ray Client connection. This class can be subclassed
-    by other builder classes.
+    Builder for a Ray Client connection. This class can be subclassed by
+    custom builder classes to modify connection behavior to include additional
+    features or altered semantics. One example is the ``_LocalClientBuilder``.
     """
 
     def __init__(self, address: Optional[str]) -> None:
