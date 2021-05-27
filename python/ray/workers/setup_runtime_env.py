@@ -39,14 +39,18 @@ def setup(input_args):
 
     py_executable: str = sys.executable
 
-    if runtime_env.get("conda"):
+    conda_dict = get_conda_dict(runtime_env, args.session_dir)
+
+    if runtime_env["conda"] or runtime_env["pip"]:
         py_executable = "python"
         if isinstance(runtime_env["conda"], str):
-            commands += get_conda_activate_commands(runtime_env["conda"])
-        elif isinstance(runtime_env["conda"], dict):
+            conda_env_name = runtime_env["conda"]
+            # commands += get_conda_activate_commands(runtime_env["conda"])
+        else:
+            assert conda_dict is not None
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
-            conda_dict = inject_dependencies(runtime_env["conda"], py_version,
+            conda_dict = inject_dependencies(conda_dict, py_version,
                                              [current_ray_pip_specifier()])
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
@@ -66,43 +70,6 @@ def setup(input_args):
                     yaml.dump(conda_dict, file, sort_keys=True)
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
-            commands += get_conda_activate_commands(conda_env_name)
-    elif runtime_env.get("pip"):
-        # Install pip requirements into an empty conda env.
-        py_executable = "python"
-        requirements_txt = runtime_env["pip"]
-        pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
-        pip_hash_str = f"pip-generated-{pip_hash}"
-
-        conda_dir = os.path.join(args.session_dir, "runtime_resources",
-                                 "conda")
-        requirements_txt_path = os.path.join(
-            conda_dir, f"requirements-{pip_hash_str}.txt")
-
-        py_version = ".".join(map(str, sys.version_info[:3]))  # E.g. 3.6.13
-        conda_dict = {
-            "name": pip_hash_str,
-            "dependencies": ["pip", {
-                "pip": [f"-r {requirements_txt_path}"]
-            }]
-        }
-
-        conda_dict = inject_dependencies(conda_dict, py_version,
-                                         [current_ray_pip_specifier()])
-
-        file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(args.session_dir, file_lock_name)):
-            try_to_create_directory(conda_dir)
-            conda_yaml_path = os.path.join(conda_dir,
-                                           f"env-{pip_hash_str}.yml")
-            with open(conda_yaml_path, "w") as file:
-                yaml.dump(conda_dict, file, sort_keys=True)
-
-            with open(requirements_txt_path, "w") as file:
-                file.write(requirements_txt)
-
-            conda_env_name = get_or_create_conda_env(conda_yaml_path,
-                                                     conda_dir)
 
         commands += get_conda_activate_commands(conda_env_name)
 
@@ -123,7 +90,9 @@ def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
         This function does not inject Ray or Python into the conda dict.
         If the runtime env does not specify pip or conda, or if it specifies
         the name of a preinstalled conda environment, this function returns
-        None.
+        None.  If pip is specified, a conda dict is created containing the
+        pip dependencies.  If conda is already given as a dict, this function
+        is the identity function.
     """
     if runtime_env.get("conda"):
         if isinstance(runtime_env["conda"], dict):
