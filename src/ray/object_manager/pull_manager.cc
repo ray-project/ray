@@ -187,7 +187,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     // TODO(ekl) in unlimited mode, this should trigger spilling on OOM?
     if (num_bytes_being_pulled_ < num_bytes_available_ ||
         RayConfig::instance().plasma_unlimited()) {
-      RAY_LOG(ERROR) << "Activated unlimited";
       worker_requests_remaining = ActivateNextPullBundleRequest(
           worker_request_bundles_, &highest_worker_req_id_being_pulled_,
           &objects_to_pull);
@@ -210,7 +209,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // the task request queue.
   while (num_bytes_being_pulled_ > num_bytes_available_ &&
          highest_task_req_id_being_pulled_ != 0) {
-    RAY_LOG(ERROR) << "Deactivating task args request "
+    RAY_LOG(DEBUG) << "Deactivating task args request "
                    << highest_task_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
@@ -227,7 +226,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   while (num_bytes_being_pulled_ > num_bytes_available_ &&
          highest_worker_req_id_being_pulled_ != 0 &&
          !RayConfig::instance().plasma_unlimited()) {
-    RAY_LOG(ERROR) << "Deactivating worker request "
+    RAY_LOG(DEBUG) << "Deactivating worker request "
                    << highest_worker_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
