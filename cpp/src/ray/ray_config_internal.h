@@ -10,7 +10,6 @@ namespace api {
 
 enum class RunMode { SINGLE_PROCESS, CLUSTER };
 
-/// TODO(Guyang Song): Make configuration complete and use to initialize.
 class RayConfigInternal {
  public:
   WorkerType worker_type = WorkerType::DRIVER;
@@ -39,14 +38,9 @@ class RayConfigInternal {
 
   static std::shared_ptr<RayConfigInternal> GetInstance();
 
-  void SetRedisAddress(const std::string address) {
-    auto pos = address.find(':');
-    RAY_CHECK(pos != std::string::npos);
-    redis_ip = address.substr(0, pos);
-    redis_port = std::stoi(address.substr(pos + 1, address.length()));
-  }
-
   void Init(RayConfig &config);
+
+  void SetRedisAddress(const std::string address);
 
  private:
   static std::shared_ptr<RayConfigInternal> config_;

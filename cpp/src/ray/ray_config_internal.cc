@@ -50,7 +50,11 @@ void RayConfigInternal::Init(RayConfig &config) {
     if (!FLAGS_redis_address.empty()) {
       SetRedisAddress(FLAGS_redis_address);
     }
-    redis_password = FLAGS_redis_password;
+    google::CommandLineFlagInfo info;
+    // Don't rewrite `redis_password` when it is not set in the command line.
+    if (GetCommandLineFlagInfo("redis_password", &info) && !info.is_default) {
+      redis_password = FLAGS_redis_password;
+    }
     if (!FLAGS_job_id.empty()) {
       job_id = FLAGS_job_id;
     }
@@ -70,5 +74,12 @@ void RayConfigInternal::Init(RayConfig &config) {
   RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !lib_name.empty())
       << "Please add a local dynamic library by '--dynamic-library-path'";
 };
+
+void RayConfigInternal::SetRedisAddress(const std::string address) {
+  auto pos = address.find(':');
+  RAY_CHECK(pos != std::string::npos);
+  redis_ip = address.substr(0, pos);
+  redis_port = std::stoi(address.substr(pos + 1, address.length()));
+}
 }  // namespace api
 }  // namespace ray
