@@ -4,6 +4,7 @@
 
 #include <future>
 #include <thread>
+#include "boost/filesystem.hpp"
 
 using namespace ray::api;
 
@@ -43,6 +44,29 @@ class Counter {
 
 RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
            &Counter::Add);
+
+TEST(RayApiTest, LogTest) {
+  auto log_path = boost::filesystem::current_path().string() + "/tmp/";
+  ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
+  std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
+  RAYLOG(DEBUG) << str_arr[0];
+  RAYLOG(INFO) << str_arr[1];
+  RAYLOG(WARNING) << str_arr[2];
+  RAY_CHECK(true);
+
+  for (auto &it : boost::filesystem::directory_iterator(log_path)) {
+    if (!boost::filesystem::is_directory(it)) {
+      std::ifstream in(it.path().string(), std::ios::binary);
+      std::string line;
+      for (int i = 0; i < 3; i++) {
+        std::getline(in, line);
+        EXPECT_TRUE(line.find(str_arr[i]) != std::string::npos);
+      }
+    }
+  }
+
+  boost::filesystem::remove_all(log_path);
+}
 
 TEST(RayApiTest, PutTest) {
   Ray::Init();
