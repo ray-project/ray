@@ -10,15 +10,16 @@ class AutoscalerPrometheusMetrics:
     def __init__(self, registry: CollectorRegistry = None):
         self.registry: CollectorRegistry = registry or \
             CollectorRegistry(auto_describe=True)
-        # Buckets: 30 seconds, 1 minute, 2 minutes, 4 minutes
-        #          8 minutes, 15 minutes, 30 minutes, 1 hour
+        # Buckets: 30 seconds, 1 minute, 2 minutes, 4 minutes,
+        #          6 minutes, 8 minutes, 10 minutes, 12 minutes,
+        #          15 minutes, 20 minutes, 30 minutes, 1 hour
         self.worker_startup_time: Histogram = Histogram(
             "worker_startup_time_seconds",
             "Worker startup time.",
             unit="seconds",
             namespace="autoscaler",
             registry=self.registry,
-            buckets=[30, 60, 120, 240, 480, 900, 1800, 3600])
+            buckets=[30, 60, 120, 240, 360, 480, 600, 720, 900, 1800, 3600])
         self.pending_nodes: Gauge = Gauge(
             "pending_nodes",
             "Number of nodes pending to be started.",
@@ -45,7 +46,7 @@ class AutoscalerPrometheusMetrics:
             registry=self.registry)
         self.update_loop_exceptions: Counter = Counter(
             "update_loop_exceptions",
-            "Number of exceptions raised in the update loop of th e"
+            "Number of exceptions raised in the update loop of the "
             "autoscaler.",
             unit="exceptions",
             namespace="autoscaler",

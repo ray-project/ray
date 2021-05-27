@@ -200,7 +200,6 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                            node["MetricsExportPort"]) for node in nodes
             if node["alive"] is True
         ]
-        # TODO(ckw): store monitor_ip in RayCluster scenario
         redis_client = services.create_redis_client(self.redis_address,
                                                     self.redis_password)
         autoscaler_addr = redis_client.get("AutoscalerMetricsAddress")

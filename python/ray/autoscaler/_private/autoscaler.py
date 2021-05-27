@@ -478,7 +478,7 @@ class StandardAutoscaler:
                 try:
                     validate_config(new_config)
                 except Exception as e:
-                    self.prom_metrics.config_validation_exceptions().inc()
+                    self.prom_metrics.config_validation_exceptions.inc()
                     logger.debug(
                         "Cluster config validation failed. The version of "
                         "the ray CLI you launched this cluster with may "
@@ -735,7 +735,7 @@ class StandardAutoscaler:
             quantity=count,
             aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
-        self.prom_metrics.set(self.pending_launches.value)
+        self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         # Split into individual launch requests of the max batch size.
         while count > 0:
