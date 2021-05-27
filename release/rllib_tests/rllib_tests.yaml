@@ -1,4 +1,4 @@
-- name: regression_tests
+- name: learning_tests
   owner:
     mail: "sven@anyscale.com"
     slack: "@rllib-team"
@@ -23,3 +23,16 @@
   run:
     timeout: 3600
     script: unit_gpu_tests/run.sh
+
+- name: stress_tests
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@rllib-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 4gpus_544_cpus.yaml
+
+  run:
+    timeout: 3600
+    script: /run.sh
