@@ -106,7 +106,7 @@ if __name__ == "__main__":
     if args.server_address and not args.tracking_uri:
         raise RuntimeError("If running this example with Ray Client, "
                            "the tracking URI for your tracking server should"
-                           "be explicitly passed in")
+                           "be explicitly passed in.")
 
     if args.smoke_test:
         mlflow_tracking_uri = os.path.join(tempfile.gettempdir(), "mlruns")
