@@ -4,8 +4,6 @@
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/ray_runtime_holder.h>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
