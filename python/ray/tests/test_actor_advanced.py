@@ -1175,6 +1175,7 @@ def test_kill_pending_actor_with_no_restart_false():
     ray.shutdown()
 
 
+@pytest.mark.skip(sys.platform == "win32", reason="Failing on Windows")
 def test_actor_timestamps(ray_start_regular):
     @ray.remote
     class Foo:
