@@ -39,18 +39,14 @@ def test_many_fractional_resources(shutdown_only):
     result_ids = []
     for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], num_cpus=resource_set["CPU"]))
+        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
 
         resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], num_gpus=resource_set["GPU"]))
+        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
         result_ids.append(
-            f._remote(
-                [False, resource_set],
-                resources={"Custom": resource_set["Custom"]}))
+            f._remote([False, resource_set], resources={"Custom": rand1}))
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
@@ -60,15 +56,15 @@ def test_many_fractional_resources(shutdown_only):
         result_ids.append(
             f._remote(
                 [False, resource_set],
-                num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
-                resources={"Custom": resource_set["Custom"]}))
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
         result_ids.append(
             f._remote(
                 [True, resource_set],
-                num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
-                resources={"Custom": resource_set["Custom"]}))
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
     assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the
