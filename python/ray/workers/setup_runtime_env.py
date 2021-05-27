@@ -111,6 +111,11 @@ def setup(input_args):
     commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_separator = " && "
     command_str = command_separator.join(commands)
+
+    if runtime_env.get("env_vars"):
+        env_vars = runtime_env["env_vars"]
+        os.environ.update(env_vars)
+
     os.execvp("bash", ["bash", "-c", command_str])
 
 
