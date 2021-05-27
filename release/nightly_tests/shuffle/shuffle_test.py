@@ -16,7 +16,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     start = time.time()
-    success = True
+    success = 1
     try:
         subprocess.check_call([
             "python", "-m", "ray.experimental.shuffle",
@@ -26,7 +26,10 @@ if __name__ == "__main__":
         ])
     except Exception as e:
         print(f"The test failed with {e}")
-        success = False
+        success = 0
     delta = time.time() - start
+
+    if not success:
+        delta = 0
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps({"shuffle_time": delta, "success": success}))

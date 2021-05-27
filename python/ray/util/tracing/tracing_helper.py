@@ -145,7 +145,7 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
     # We only get task ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
         task_id = (runtime_context["task_id"].hex()
-                   if runtime_context["task_id"] else None)
+                   if runtime_context.get("task_id") else None)
         if task_id:
             span_args["ray.task_id"] = task_id
 
@@ -195,7 +195,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     # We only get actor ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
         actor_id = (runtime_context["actor_id"].hex()
-                    if runtime_context["actor_id"] else None)
+                    if runtime_context.get("actor_id") else None)
 
         if actor_id:
             span_args["ray.actor_id"] = actor_id
@@ -313,6 +313,7 @@ def _tracing_actor_creation(method):
             kwargs = {}
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
+            kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
@@ -464,8 +465,7 @@ def _inject_tracing_into_class(_cls):
         # Skip tracing for staticmethod or classmethod, because these method
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
-        if (is_static_method(_cls, name) or is_class_method(method)
-                or not is_tracing_enabled()):
+        if (is_static_method(_cls, name) or is_class_method(method)):
             continue
 
         # Add _ray_trace_ctx to method signature

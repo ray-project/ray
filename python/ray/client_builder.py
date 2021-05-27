@@ -22,11 +22,14 @@ class ClientInfo:
     ray_version: str
     ray_commit: str
     protocol_version: str
+    _num_clients: int
 
 
 class ClientBuilder:
     """
-    Builder for a Ray Client connection.
+    Builder for a Ray Client connection. This class can be subclassed by
+    custom builder classes to modify connection behavior to include additional
+    features or altered semantics. One example is the ``_LocalClientBuilder``.
     """
 
     def __init__(self, address: Optional[str]) -> None:
@@ -36,17 +39,31 @@ class ClientBuilder:
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
         Set an environment for the session.
+        Args:
+            env (Dict[st, Any]): A runtime environment to use for this
+            connection. See ``runtime_env.py`` for what values are
+            accepted in this dict.
         """
         self._job_config.set_runtime_env(env)
         return self
 
     def namespace(self, namespace: str) -> "ClientBuilder":
+        """
+        Sets the namespace for the session.
+        Args:
+            namespace (str): Namespace to use.
+        """
         self._job_config.set_ray_namespace(namespace)
         return self
 
     def connect(self) -> ClientInfo:
         """
         Begin a connection to the address passed in via ray.client(...).
+
+        Returns:
+            ClientInfo: Dataclass with information about the setting. This
+                includes the server's version of Python & Ray as well as the
+                dashboard_url.
         """
         client_info_dict = ray.util.client_connect.connect(
             self.address, job_config=self._job_config)
@@ -57,7 +74,8 @@ class ClientBuilder:
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
-            protocol_version=client_info_dict["protocol_version"])
+            protocol_version=client_info_dict["protocol_version"],
+            _num_clients=client_info_dict["num_clients"])
 
 
 class _LocalClientBuilder(ClientBuilder):
@@ -101,10 +119,12 @@ def client(address: Optional[str] = None) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be
     of the following forms:
-    * None -> Connects to or creates a local cluster and connects to it.
-    * local -> Creates a new cluster locally and connects to it.
-    * IP:Port -> Connects to a Ray Client Server at the given address.
-    * module://inner_address -> load module.ClientBuilder & pass inner_address
+
+        * None: Connects to or creates a local cluster and connects to it.
+        * ``"local"``: Creates a new cluster locally and connects to it.
+        * ``"IP:Port"``: Connects to a Ray Client Server at the given address.
+        * ``"module://inner_address"``: load module.ClientBuilder & pass
+            inner_address
     """
     override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if override_address:

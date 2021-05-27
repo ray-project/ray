@@ -80,17 +80,23 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
+Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   request->error = request->create_callback(&request->result);
-  return request->error != PlasmaError::OutOfMemory;
+  if (request->error == PlasmaError::OutOfMemory) {
+    return Status::ObjectStoreFull("");
+  } else if (request->error == PlasmaError::TransientOutOfMemory) {
+    return Status::TransientObjectStoreFull("");
+  } else {
+    return Status::OK();
+  }
 }
 
 Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto create_ok = ProcessRequest(*request_it);
+    auto status = ProcessRequest(*request_it);
     auto now = get_time_();
-    if (create_ok) {
+    if (status.ok()) {
       FinishRequest(request_it);
       // Reset the oom start time since the creation succeeds.
       oom_start_time_ns_ = -1;
@@ -102,9 +108,9 @@ Status CreateRequestQueue::ProcessRequests() {
       if (oom_start_time_ns_ == -1) {
         oom_start_time_ns_ = now;
       }
-      if (spill_objects_callback_()) {
+      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
-        return Status::TransientObjectStoreFull("Waiting for spilling.");
+        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
       } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
