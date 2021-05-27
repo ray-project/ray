@@ -54,7 +54,7 @@ def main():
 
     ray.init(address="auto")
 
-    num_samples = 32
+    num_samples = 31  # So that we fit on 1024 CPUs with 1 head bundle
     num_actors_per_sample = 32
 
     max_runtime = 3500
