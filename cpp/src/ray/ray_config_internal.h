@@ -24,11 +24,11 @@ class RayConfigInternal {
 
   int node_manager_port = 62665;
 
-  std::string lib_name = "";
+  std::string dynamic_library_path = "";
 
-  std::string store_socket = "";
+  std::string plasma_store_socket_name = "";
 
-  std::string raylet_socket = "";
+  std::string raylet_socket_name = "";
 
   std::string session_dir = "";
 

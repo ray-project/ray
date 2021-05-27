@@ -57,11 +57,15 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
           ? GetSessionDir(redis_ip, config->redis_port, config->redis_password)
           : config->session_dir;
 
-  auto store_socket = config->store_socket.empty() ? session_dir + "/sockets/plasma_store"
-                                                   : config->store_socket;
+  auto store_socket = config->plasma_store_socket_name.empty()
+                          ? session_dir + "/sockets/plasma_store"
+                          : config->plasma_store_socket_name;
 
-  auto raylet_socket = config->raylet_socket.empty() ? session_dir + "/sockets/raylet"
-                                                     : config->raylet_socket;
+  auto raylet_socket = config->raylet_socket_name.empty()
+                           ? session_dir + "/sockets/raylet"
+                           : config->raylet_socket_name;
+
+  auto log_dir = config->logs_dir.empty() ? session_dir + "/logs" : config->logs_dir;
 
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
@@ -85,7 +89,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
   }
   options.gcs_options = gcs_options;
   options.enable_logging = true;
-  options.log_dir = session_dir + "/logs";
+  options.log_dir = log_dir;
   options.install_failure_signal_handler = true;
   options.node_ip_address = "127.0.0.1";
   options.node_manager_port = config->node_manager_port;

@@ -3,21 +3,26 @@
 
 #include "ray_config_internal.h"
 
-DEFINE_string(redis_address, "", "The ip address of redis server.");
+DEFINE_string(redis_address, "", "The address of the Redis server to connect to.");
 
-DEFINE_string(redis_password, "", "The password of redis server.");
+DEFINE_string(redis_password, "",
+              "Prevents external clients without the password from connecting to Redis "
+              "if provided.");
 
-DEFINE_string(dynamic_library_path, "", "The local path of the dynamic library.");
+DEFINE_string(dynamic_library_path, "",
+              "The local path of application's dynamic library.");
 
 DEFINE_string(job_id, "", "Assigned job id.");
 
-DEFINE_int32(node_manager_port, 62665, "The node manager port in Raylet.");
+DEFINE_int32(node_manager_port, 62665, "The port to use for the node manager.");
 
-DEFINE_string(raylet_name, "", "Local raylet socket name.");
+DEFINE_string(raylet_socket_name, "",
+              "It will specify the socket name used by the raylet if provided.");
 
-DEFINE_string(object_store_name, "", "Local object store socket name.");
+DEFINE_string(plasma_store_socket_name, "",
+              "It will specify the socket name used by the plasma store if provided.");
 
-DEFINE_string(logs_dir, "", "Log dir for workers.");
+DEFINE_string(logs_dir, "", "Logs dir for workers.");
 
 namespace ray {
 namespace api {
@@ -37,7 +42,7 @@ void RayConfigInternal::Init(RayConfig &config) {
   }
   run_mode = config.local_mode ? RunMode::SINGLE_PROCESS : RunMode::CLUSTER;
   if (!config.dynamic_library_path.empty()) {
-    lib_name = config.dynamic_library_path;
+    dynamic_library_path = config.dynamic_library_path;
   }
   redis_password = config.redis_password_;
   if (config.argc_ != nullptr && config.argv_ != nullptr) {
@@ -45,7 +50,7 @@ void RayConfigInternal::Init(RayConfig &config) {
     gflags::ParseCommandLineFlags(config.argc_, config.argv_, true);
 
     if (!FLAGS_dynamic_library_path.empty()) {
-      lib_name = FLAGS_dynamic_library_path;
+      dynamic_library_path = FLAGS_dynamic_library_path;
     }
     if (!FLAGS_redis_address.empty()) {
       SetRedisAddress(FLAGS_redis_address);
@@ -59,18 +64,18 @@ void RayConfigInternal::Init(RayConfig &config) {
       job_id = FLAGS_job_id;
     }
     node_manager_port = FLAGS_node_manager_port;
-    if (!FLAGS_raylet_name.empty()) {
-      raylet_socket = FLAGS_raylet_name;
+    if (!FLAGS_raylet_socket_name.empty()) {
+      raylet_socket_name = FLAGS_raylet_socket_name;
     }
-    if (!FLAGS_object_store_name.empty()) {
-      store_socket = FLAGS_object_store_name;
+    if (!FLAGS_plasma_store_socket_name.empty()) {
+      plasma_store_socket_name = FLAGS_plasma_store_socket_name;
     }
     if (!FLAGS_logs_dir.empty()) {
       logs_dir = FLAGS_logs_dir;
     }
     gflags::ShutDownCommandLineFlags();
   }
-  RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !lib_name.empty())
+  RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !dynamic_library_path.empty())
       << "Please add a local dynamic library by '--dynamic-library-path'";
 };
 
