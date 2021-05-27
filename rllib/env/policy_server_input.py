@@ -149,6 +149,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
 
         def execute_command(self, args):
             command = args["command"]
+            print(command)#TODO
             response = {}
             # Generic commands:
             if command == PolicyClient.ACTION_SPACE:

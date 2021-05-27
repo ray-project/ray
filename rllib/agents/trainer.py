@@ -127,16 +127,16 @@ COMMON_CONFIG: TrainerConfigDict = {
     # `tune.register_env([name], lambda env_ctx: [env object])`,
     # or a string specifier of an RLlib supported type. In the latter case,
     # RLlib will try to interpret the specifier as either an openAI gym env,
-    # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an Env
-    # class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+    # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
+    # Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
     "env": None,
     # The observation- and action spaces for the Policies of this Trainer.
     # Use None for automatically inferring these from the given env.
     "observation_space": None,
     "action_space": None,
-    # Arguments dict passed to the env creator as an EnvContext object (which is
-    # a dict plus the properties: num_workers, worker_index, vector_index, and
-    # remote).
+    # Arguments dict passed to the env creator as an EnvContext object (which
+    # is a dict plus the properties: num_workers, worker_index, vector_index,
+    # and remote).
     "env_config": {},
     # A callable taking the last train results, the base env and the env
     # context as args and returning a new task to set the env to.
@@ -1214,6 +1214,11 @@ class Trainer(Trainable):
         # the videos.
         if config.get("record_env") == "":
             config["record_env"] = True
+
+        # DefaultCallbacks if callbacks - for whatever reason - set to
+        # None.
+        if config["callbacks"] is None:
+            config["callbacks"] = DefaultCallbacks
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)

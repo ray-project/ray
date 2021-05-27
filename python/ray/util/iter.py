@@ -488,7 +488,7 @@ class ParallelIterator(Generic[T]):
                     futures = [a.par_iter_next.remote() for a in active]
 
         name = f"{self}.batch_across_shards()"
-        return LocalIterator(base_iterator, SharedMetrics(), name=name)
+        return LocalIterator(base_iterator, SharedMetrics(), name=name, timeout=1)#TODO:no timeout
 
     def gather_async(self, batch_ms=0, num_async=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.

@@ -375,101 +375,97 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # No Env will be used in this particular worker:
-        # - No env specified.
-        # - `create_env_on_driver=False` AND:
-        #  -- Local worker (w/ >0 remote workers) and
-        #     `create_env_on_driver=False`.
-        #  -- Local worker and not using sampler (offline/external input).
-        if policy_config["env"] is None or \
-            (policy_config["create_env_on_driver"] is False and
-             ((worker_index == 0 and num_workers > 0) or
-              policy_config["input"] != "sampler")):
-            self.env = None
         # Create an env for this worker.
-        else:
-            self.env = _validate_env(env_creator(env_context))
-            if validate_env is not None:
-                validate_env(self.env, self.env_context)
+        self.env = None
+        if not (worker_index == 0 and num_workers > 0
+                and policy_config["create_env_on_driver"] is False):
+            env_ = env_creator(env_context)
+            if env_:
+                self.env = _validate_env(env_)
+                if validate_env is not None:
+                    validate_env(self.env, self.env_context)
 
-            if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
+                if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
 
-                def wrap(env):
-                    return env  # we can't auto-wrap these env types
+                    def wrap(env):
+                        return env  # we can't auto-wrap these env types
 
-            elif is_atari(self.env) and \
-                    not model_config.get("custom_preprocessor") and \
-                    preprocessor_pref == "deepmind":
+                elif is_atari(self.env) and \
+                        not model_config.get("custom_preprocessor") and \
+                        preprocessor_pref == "deepmind":
 
-                # Deepmind wrappers already handle all preprocessing.
-                self.preprocessing_enabled = False
+                    # Deepmind wrappers already handle all preprocessing.
+                    self.preprocessing_enabled = False
 
-                # If clip_rewards not explicitly set to False, switch it
-                # on here (clip between -1.0 and 1.0).
-                if clip_rewards is None:
-                    clip_rewards = True
+                    # If clip_rewards not explicitly set to False, switch it
+                    # on here (clip between -1.0 and 1.0).
+                    if clip_rewards is None:
+                        clip_rewards = True
 
-                # Deprecated way of framestacking is used.
-                framestack = model_config.get("framestack") is True
-                # framestacking via trajectory view API is enabled.
-                num_framestacks = model_config.get("num_framestacks", 0)
+                    # Deprecated way of framestacking is used.
+                    framestack = model_config.get("framestack") is True
+                    # framestacking via trajectory view API is enabled.
+                    num_framestacks = model_config.get("num_framestacks", 0)
 
-                # Trajectory view API is on and num_framestacks=auto: Only
-                # stack traj. view based if old `framestack=[invalid value]`.
-                if num_framestacks == "auto":
-                    if framestack == DEPRECATED_VALUE:
-                        model_config["num_framestacks"] = num_framestacks = 4
-                    else:
-                        model_config["num_framestacks"] = num_framestacks = 0
-                framestack_traj_view = num_framestacks > 1
+                    # Trajectory view API is on and num_framestacks=auto:
+                    # Only stack traj. view based if old
+                    # `framestack=[invalid value]`.
+                    if num_framestacks == "auto":
+                        if framestack == DEPRECATED_VALUE:
+                            model_config[
+                                "num_framestacks"] = num_framestacks = 4
+                        else:
+                            model_config[
+                                "num_framestacks"] = num_framestacks = 0
+                    framestack_traj_view = num_framestacks > 1
 
-                def wrap(env):
-                    env = wrap_deepmind(
-                        env,
-                        dim=model_config.get("dim"),
-                        framestack=framestack,
-                        framestack_via_traj_view_api=framestack_traj_view)
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
+                    def wrap(env):
+                        env = wrap_deepmind(
                             env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
-                    return env
-            else:
+                            dim=model_config.get("dim"),
+                            framestack=framestack,
+                            framestack_via_traj_view_api=framestack_traj_view)
+                        if record_env:
+                            from gym import wrappers
+                            path_ = record_env if isinstance(record_env, str) \
+                                else log_dir
+                            # Relative path: Add logdir here, otherwise, this
+                            # would not work for non-local workers.
+                            if not re.search("[/\\\]", path_):
+                                path_ = os.path.join(log_dir, path_)
+                            print(f"Setting the path for recording to {path_}")
+                            env = wrappers.Monitor(
+                                env,
+                                path_,
+                                resume=True,
+                                force=True,
+                                video_callable=lambda _: True,
+                                mode="evaluation" if
+                                policy_config["in_evaluation"] else "training")
+                        return env
+                else:
 
-                def wrap(env):
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
-                    return env
+                    def wrap(env):
+                        if record_env:
+                            from gym import wrappers
+                            path_ = record_env if isinstance(record_env, str) \
+                                else log_dir
+                            # Relative path: Add logdir here, otherwise, this
+                            # would not work for non-local workers.
+                            if not re.search("[/\\\]", path_):
+                                path_ = os.path.join(log_dir, path_)
+                            print(f"Setting the path for recording to {path_}")
+                            env = wrappers.Monitor(
+                                env,
+                                path_,
+                                resume=True,
+                                force=True,
+                                video_callable=lambda _: True,
+                                mode="evaluation" if
+                                policy_config["in_evaluation"] else "training")
+                        return env
 
-            self.env: EnvType = wrap(self.env)
+                self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):
             return wrap(
@@ -1241,11 +1237,11 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _validate_and_canonicalize(
-    policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
-    env: Optional[EnvType],
-    spaces: Optional[Dict[PolicyID, Tuple[
-        gym.spaces.Space, gym.spaces.Space]]],
-    policy_config: Optional[PartialTrainerConfigDict],
+        policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
+        env: Optional[EnvType],
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]],
+        policy_config: Optional[PartialTrainerConfigDict],
 ) -> MultiAgentPolicyConfigDict:
 
     if isinstance(policy, dict):
@@ -1272,8 +1268,10 @@ def _validate_and_canonicalize(
                     "If no env given, must provide obs/action spaces either "
                     "in the `multiagent.policies` dict or under "
                     "`config.[observation|action]_space`!")
-            spaces = {DEFAULT_POLICY_ID: (policy_config["observation_space"],
-                                          policy_config["action_space"])}
+            spaces = {
+                DEFAULT_POLICY_ID: (policy_config["observation_space"],
+                                    policy_config["action_space"])
+            }
         return {
             DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
                                 spaces[DEFAULT_POLICY_ID][1], {})

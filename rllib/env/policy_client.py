@@ -10,7 +10,10 @@ import time
 from typing import Union, Optional
 
 import ray.cloudpickle as pickle
-from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
+from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
@@ -235,13 +238,7 @@ class PolicyClient:
         (self.rollout_worker,
          self.inference_thread) = _create_embedded_rollout_worker(
              kwargs, self._send)
-        # If server has no env (which is the expected case):
-        # Generate a dummy ExternalEnv here using RandomEnv and the
-        # given observation/action spaces.
-        if self.rollout_worker.env is None:
-            self.env = _auto_wrap_external(lambda env_ctx: RandomEnv())
-        else:
-            self.env = self.rollout_worker.env
+        self.env = self.rollout_worker.env
 
     def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()
@@ -342,12 +339,29 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # input config to the default, which runs env rollouts.
     kwargs = kwargs.copy()
     del kwargs["input_creator"]
-    logger.info("Creating rollout worker with kwargs={}".format(kwargs))
-    real_env_creator = kwargs["env_creator"]
-    kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
 
+    # If server has no env (which is the expected case):
+    # Generate a dummy ExternalEnv here using RandomEnv and the
+    # given observation/action spaces.
+    if kwargs["policy_config"].get("env") is None:
+        config = {
+            "action_space": kwargs["policy_config"]["action_space"],
+            "observation_space": kwargs["policy_config"]["observation_space"],
+        }
+        is_ma = kwargs["policy_config"]["multiagent"].get("policies")
+        kwargs["env_creator"] = _auto_wrap_external(
+            lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(config))
+        kwargs["policy_config"]["env"] = True
+    # Otherwise, use the env specified by the server args.
+    else:
+        real_env_creator = kwargs["env_creator"]
+        kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
+
+    logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
     rollout_worker = RolloutWorker(**kwargs)
+
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
     inference_thread.start()
+
     return rollout_worker, inference_thread
