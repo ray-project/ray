@@ -33,6 +33,7 @@ def train_model(config):
 
 # __train_end__
 
+
 # __load_begin__
 def load_best_model(best_logdir):
     import xgboost as xgb
@@ -41,6 +42,7 @@ def load_best_model(best_logdir):
     best_bst = xgb.Booster()
     best_bst.load_model(os.path.join(best_logdir, "model.xgb"))
     return best_bst
+
 
 # __load_end__
 
@@ -80,7 +82,6 @@ def main():
         best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
     else:
         best_bst = ray.get(load_best_model(analysis.best_logdir))
-
 
     # Do something with the best model.
     _ = best_bst
