@@ -1,7 +1,7 @@
 - name: horovod_test
   owner:
     mail: "amog@anyscale.com"
-    slack: @tune-team
+    slack: "@tune-team"
 
   cluster:
     app_config: app_config.yaml
@@ -9,5 +9,5 @@
 
   run:
     timeout: 3600 # 10 hours.
-    prepare: python ../util/wait_cluster 3 600
+    prepare: python3 ../util/wait_cluster 3 600
     script: python3 workloads/horovod_test.py

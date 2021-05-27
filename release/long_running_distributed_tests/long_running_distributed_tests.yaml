@@ -1,7 +1,7 @@
 - name: pytorch_pbt_failure
   owner:
     mail: "amog@anyscale.com"
-    slack: @tune-team
+    slack: "@tune-team"
 
   cluster:
     app_config: app_config.yaml
