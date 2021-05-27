@@ -124,28 +124,32 @@ class RuntimeEnvDict:
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
 
+        self._dict["env_vars"] = None
+        if "env_vars" in runtime_env_json:
+            env_vars = runtime_env_json["env_vars"]
+            self._dict["env_vars"] = env_vars
+            if not (isinstance(env_vars, dict) and all(
+                    isinstance(k, str) and isinstance(v, str)
+                    for (k, v) in env_vars.items())):
+                raise TypeError("runtime_env['env_vars'] must be of type"
+                                "Dict[str, str]")
+
+        if self._dict.get("working_dir"):
+            if self._dict["env_vars"] is None:
+                self._dict["env_vars"] = {}
+            # TODO(ekl): env vars is probably not the right long term impl.
+            self._dict["env_vars"].update(
+                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
-        # TODO(architkulkarni) support env_vars, docker
+        # TODO(architkulkarni) support docker
 
         # TODO(architkulkarni) This is to make it easy for the worker caching
         # code in C++ to check if the env is empty without deserializing and
         # parsing it.  We should use a less confusing approach here.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
-
-    def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
-        """Given existing worker env vars, return an updated dict.
-
-        This sets any necessary env vars to setup the runtime env.
-        TODO(ekl): env vars is probably not the right long term impl.
-        """
-        if override_environment_variables is None:
-            override_environment_variables = {}
-        if self._dict.get("working_dir"):
-            override_environment_variables.update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
-        return override_environment_variables
 
     def get_parsed_dict(self) -> dict:
         return self._dict
