@@ -144,7 +144,7 @@ class StandardAutoscaler:
             self.reset(errors_fatal=False)
             self._update()
         except Exception as e:
-            self.prom_metrics.exceptions.inc()
+            self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
             # Don't abort the autoscaler if the K8s API server is down.
@@ -478,7 +478,7 @@ class StandardAutoscaler:
                 try:
                     validate_config(new_config)
                 except Exception as e:
-                    self.prom_metrics.exceptions.inc()
+                    self.prom_metrics.config_validation_exceptions().inc()
                     logger.debug(
                         "Cluster config validation failed. The version of "
                         "the ray CLI you launched this cluster with may "
@@ -542,7 +542,7 @@ class StandardAutoscaler:
                     upscaling_speed)
 
         except Exception as e:
-            self.prom_metrics.exceptions.inc()
+            self.prom_metrics.reset_exceptions.inc()
             if errors_fatal:
                 raise e
             else:
@@ -735,6 +735,7 @@ class StandardAutoscaler:
             quantity=count,
             aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
+        self.prom_metrics.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         # Split into individual launch requests of the max batch size.
         while count > 0:
@@ -763,6 +764,7 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
             for node in nodes:
                 self.node_tracker.untrack(node)
+                self.prom_metrics.stopped_nodes.inc()
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
 

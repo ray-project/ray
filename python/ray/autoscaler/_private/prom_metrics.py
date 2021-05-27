@@ -19,6 +19,12 @@ class AutoscalerPrometheusMetrics:
             namespace="autoscaler",
             registry=self.registry,
             buckets=[30, 60, 120, 240, 480, 900, 1800, 3600])
+        self.pending_nodes: Gauge = Gauge(
+            "pending_nodes",
+            "Number of nodes pending to be started.",
+            unit="nodes",
+            namespace="autoscaler",
+            registry=self.registry)
         self.started_nodes: Counter = Counter(
             "started_nodes",
             "Number of nodes started.",
@@ -37,9 +43,29 @@ class AutoscalerPrometheusMetrics:
             unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
-        self.exceptions: Counter = Counter(
-            "exceptions",
-            "Number of exceptions raised during execution of autoscaler.",
+        self.update_loop_exceptions: Counter = Counter(
+            "update_loop_exceptions",
+            "Number of exceptions raised in the update loop of th e"
+            "autoscaler.",
+            unit="exceptions",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.node_launch_exceptions: Counter = Counter(
+            "node_launch_exceptions",
+            "Number of exceptions raised while launching nodes.",
+            unit="exceptions",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.reset_exceptions: Counter = Counter(
+            "reset_exceptions",
+            "Number of exceptions raised while resetting the autoscaler.",
+            unit="exceptions",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.config_validation_exceptions: Counter = Counter(
+            "config_validation_exceptions",
+            "Number of exceptions raised while validating the config "
+            "during a reset",
             unit="exceptions",
             namespace="autoscaler",
             registry=self.registry)

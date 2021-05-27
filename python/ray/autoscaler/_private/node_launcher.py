@@ -83,10 +83,11 @@ class NodeLauncher(threading.Thread):
                 self._launch_node(config, count, node_type)
             except Exception:
                 if self.prom_metrics:
-                    self.prom_metrics.exceptions.inc()
+                    self.prom_metrics.node_launch_exceptions.inc()
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)
+                self.pending_nodes.set(self.pending.value)
 
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
