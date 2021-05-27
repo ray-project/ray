@@ -49,6 +49,8 @@ _METRICS = [
     "ray_outbound_heartbeat_size_kb_sum",
 ]
 
+# This list of metrics should be kept in sync with
+# ray/python/ray/autoscaler/_private/prom_metrics.py
 _AUTOSCALER_METRICS = [
     "autoscaler_config_validation_exceptions",
     "autoscaler_node_launch_exceptions", "autoscaler_pending_nodes",
