@@ -369,7 +369,10 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
 void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBatchData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
-  GetResourceUsageBatchForBroadcast_Locked(buffer);
+  if (!resources_buffer_.empty()) {
+    GetResourceUsageBatchForBroadcast_Locked(buffer);
+    resources_buffer_.clear();
+  }
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
