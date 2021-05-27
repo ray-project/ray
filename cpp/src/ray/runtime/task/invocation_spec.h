@@ -4,7 +4,8 @@
 #include <ray/api/ray_runtime.h>
 #include <msgpack.hpp>
 
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_util.h"
 
 namespace ray {
 namespace api {

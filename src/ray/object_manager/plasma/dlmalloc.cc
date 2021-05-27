@@ -137,8 +137,8 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
-  if (allocated_once) {
-    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to allocate: " << size;
+  if (allocated_once && !RayConfig::instance().overcommit_plasma_memory()) {
+    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
     return MFAIL;
   }
   allocated_once = true;
