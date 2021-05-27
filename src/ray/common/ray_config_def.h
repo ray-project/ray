@@ -109,6 +109,12 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
            getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
                getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
 
+/// Whether to allow overcommit of plasma memory (this used to be the default).
+/// This can avoid fragmentation OOMs, but can lead to SIGBUS.
+RAY_CONFIG(bool, overcommit_plasma_memory,
+           getenv("RAY_OVERCOMMIT_PLASMA_MEMORY") == nullptr ||
+               getenv("RAY_OVERCOMMIT_PLASMA_MEMORY") != std::string("0"))
+
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
 /// many tasks to the same node.
