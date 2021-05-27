@@ -80,18 +80,23 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
-                                        bool fallback_allocator) {
+Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request, bool fallback_allocator) {
   request->error = request->create_callback(&request->result, fallback_allocator);
-  return request->error != PlasmaError::OutOfMemory;
+  if (request->error == PlasmaError::OutOfMemory) {
+    return Status::ObjectStoreFull("");
+  } else if (request->error == PlasmaError::TransientOutOfMemory) {
+    return Status::TransientObjectStoreFull("");
+  } else {
+    return Status::OK();
+  }
 }
 
 Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto create_ok = ProcessRequest(*request_it, /*fallback_allocator=*/false);
+    auto status = ProcessRequest(*request_it, /*fallback_allocator=*/false);
     auto now = get_time_();
-    if (create_ok) {
+    if (status.ok()) {
       FinishRequest(request_it);
       // Reset the oom start time since the creation succeeds.
       oom_start_time_ns_ = -1;
@@ -106,9 +111,9 @@ Status CreateRequestQueue::ProcessRequests() {
       // Use a faster timeout in unlimited allocation mode to avoid excess latency.
       auto grace_period_ns =
           RayConfig::instance().plasma_unlimited() ? 2e9 : oom_grace_period_ns_;
-      if (spill_objects_callback_()) {
+      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
-        return Status::TransientObjectStoreFull("Waiting for spilling.");
+        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
       } else if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
@@ -117,8 +122,7 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         if (RayConfig::instance().plasma_unlimited()) {
           // Trigger the fallback allocator.
-          auto create_ok = ProcessRequest(*request_it, /*fallback_allocator=*/true);
-          RAY_CHECK(create_ok);
+          RAY_CHECK_OK(ProcessRequest(*request_it, /*fallback_allocator=*/true));
           // Note that we don't reset oom_start_time_ns_ until we complete a
           // "normal" allocation.
           FinishRequest(request_it);
