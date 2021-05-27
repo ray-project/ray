@@ -319,8 +319,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
                                       const WorkerID &owner_worker_id, int64_t data_size,
                                       int64_t metadata_size, int device_num,
                                       const std::shared_ptr<Client> &client,
-                                      bool fallback_allocator,
-                                      PlasmaObject *result) {
+                                      bool fallback_allocator, PlasmaObject *result) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);

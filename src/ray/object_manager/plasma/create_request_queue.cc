@@ -80,7 +80,8 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request, bool fallback_allocator) {
+Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
+                                          bool fallback_allocator) {
   request->error = request->create_callback(&request->result, fallback_allocator);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
