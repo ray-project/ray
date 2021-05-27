@@ -2,7 +2,6 @@ import os
 import importlib
 import logging
 from dataclasses import dataclass
-from urllib.parse import urlparse
 from typing import Any, Dict, Optional, Tuple
 
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
@@ -92,9 +91,10 @@ def _split_address(address: str) -> Tuple[str, str]:
     """
     if "://" not in address:
         address = "ray://" + address
-    url_object = urlparse(address)
-    module_string = url_object.scheme
-    inner_address = address.replace(module_string + "://", "", 1)
+    # NOTE: We use a custom splitting function instead of urllib because
+    # PEP allows "underscores" in a module names, while URL schemes do not
+    # allow them.
+    module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
 
 
