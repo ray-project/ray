@@ -5,6 +5,7 @@
 #include <future>
 #include <thread>
 #include "boost/filesystem.hpp"
+#include "ray/util/logging.h"
 
 using namespace ray::api;
 

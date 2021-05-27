@@ -15,6 +15,7 @@
 #include <boost/callable_traits.hpp>
 #include <memory>
 #include <msgpack.hpp>
+#include <mutex>
 
 namespace ray {
 namespace api {
