@@ -154,7 +154,7 @@ def inject_ray_and_python(
         conda_dict: Dict[Any, Any],
         ray_pip_specifier: Optional[str],
         py_version: str,
-        extra_pip_dependencies: List[str] = []) -> Dict[Any, Any]:
+        extra_pip_dependencies: Optional[List[str]] = None) -> Dict[Any, Any]:
     """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
 
     Args:
@@ -175,6 +175,8 @@ def inject_ray_and_python(
         The modified dict.  (Note: the input argument conda_dict is modified
         and returned.)
     """
+    if extra_pip_dependencies is None:
+        extra_pip_dependencies = []
     if conda_dict.get("dependencies") is None:
         conda_dict["dependencies"] = []
 
@@ -203,8 +205,10 @@ def inject_ray_and_python(
             found_pip_dict = True
             break
     if not found_pip_dict:
-        deps.append({"pip": extra_pip_dependencies})
+        pip_list = extra_pip_dependencies
         if ray_pip_specifier is not None:
-            dep["pip"].append(ray_pip_specifier)
+            pip_list.append(ray_pip_specifier)
+        deps.append({"pip": pip_list})
+
 
     return conda_dict

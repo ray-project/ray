@@ -3,12 +3,14 @@ from ray.workers.setup_runtime_env import inject_ray_and_python
 import pytest
 import sys
 import unittest
+import yaml
 
 import subprocess
 
 from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
+from ray._private.runtime_env import RuntimeEnvDict
 from ray.job_config import JobConfig
 from ray.test_utils import run_string_as_driver
 
@@ -357,7 +359,6 @@ def test_inject_ray_and_python():
     for i in range(num_tests):
         output = inject_ray_and_python(conda_dicts[i], "ray==1.2.3", "7.8")
         error_msg = (f"failed on input {i}."
-                     f"Input: {conda_dicts[i]} \n"
                      f"Output: {output} \n"
                      f"Expected output: {outputs[i]}")
         assert (output == outputs[i]), error_msg
@@ -493,6 +494,27 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         import pip_install_test  # noqa
     assert ray.get(f.remote())
 
+def test_conda_input_filepath(tmp_path):
+    conda_dict = {
+            "dependencies": [
+                "pip", {
+                    "pip": [
+                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    d = tmp_path / "pip_requirements"
+    d.mkdir()
+    p = d / "environment.yml"
+
+    p.write_text(yaml.dump(conda_dict))
+    
+    runtime_env_dict = RuntimeEnvDict({"conda": conda_dict})
+
+    output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
+    assert output_conda_dict == conda_dict
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package(shutdown_only):
