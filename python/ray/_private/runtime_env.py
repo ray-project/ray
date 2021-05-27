@@ -170,6 +170,9 @@ class RuntimeEnvDict:
             self._dict["env_vars"].update(
                 RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
 
+        if "_ray_release" in runtime_env_json:
+            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
+
         if "_ray_commit" in runtime_env_json:
             self._dict["_ray_commit"] = runtime_env_json["_ray_commit"]
         else:
