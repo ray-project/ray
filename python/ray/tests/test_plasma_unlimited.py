@@ -97,6 +97,37 @@ def test_spilling_when_possible_on_get():
         ray.shutdown()
 
 
+def test_task_unlimited():
+    try:
+        address = _init_ray()
+        x1 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+        refs = [x1]
+        # x1 is spilled.
+        x2 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+        x2p = ray.get(x2)
+        sentinel = ray.put(np.zeros(100 * MB, dtype=np.uint8))
+        _check_spilled_mb(address, spilled=400)
+
+        @ray.remote
+        def consume(refs):
+            # round 1: triggers fallback allocation, spilling of the sentinel
+            # round 2: x2 is spilled
+            ray.get(refs[0])
+            # round 1: triggers fallback allocation.
+            return ray.put(np.zeros(400 * MB, dtype=np.uint8))
+
+        # round 1
+        ray.get(consume.remote(refs))
+        _check_spilled_mb(address, spilled=500, restored=400)
+
+        # round 2
+        del x2p
+        ray.get(consume.remote(refs))
+        _check_spilled_mb(address, spilled=900, restored=800)
+    finally:
+        ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     import sys
