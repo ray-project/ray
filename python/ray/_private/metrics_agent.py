@@ -21,8 +21,10 @@ from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
+from ray._private import services
 
 import ray._private.prometheus_exporter as prometheus_exporter
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
@@ -185,6 +187,8 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     def __init__(self, redis_address, redis_password, temp_dir):
         ray.state.state._initialize_global_state(
             redis_address=redis_address, redis_password=redis_password)
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -198,7 +202,12 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             if node["alive"] is True
         ]
         # TODO(ckw): how to get autoscaler ip?
-        # autoscaler_export_addr = "{}:{}".format("????", AUTOSCALER_METRIC_PO
+        redis_client = services.create_redis_client(self.redis_address,
+                                                    self.redis_password)
+        monitor_ip = redis_client.get("autoscaler_ip")
+        if monitor_ip:
+            autoscaler_export_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            metrics_export_addresses.append(autoscaler_export_addr)
         return json.dumps([{
             "labels": {
                 "job": "ray"

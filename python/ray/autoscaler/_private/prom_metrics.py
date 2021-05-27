@@ -41,4 +41,5 @@ class AutoscalerPrometheusMetrics:
             registry=self.registry)
 
 
-DEFAULT_AUTOSCALER_METRICS = AutoscalerPrometheusMetrics(CollectorRegistry())
+DEFAULT_AUTOSCALER_METRICS = AutoscalerPrometheusMetrics(
+    CollectorRegistry(auto_describe=True))

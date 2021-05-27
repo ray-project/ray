@@ -92,13 +92,15 @@ class Monitor:
                  autoscaling_config,
                  redis_password=None,
                  prefix_cluster_info=False,
+                 monitor_ip=None,
                  stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
-
+        if monitor_ip:
+            self.redis.put("monitor_ip", monitor_ip)
         (ip, port) = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
@@ -359,6 +361,12 @@ if __name__ == "__main__":
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
         f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+    parser.add_argument(
+        "--monitor-ip",
+        required=False,
+        type=str,
+        default="",
+        help="The IP address of the machine hosting the monitor process")
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
@@ -381,6 +389,7 @@ if __name__ == "__main__":
     monitor = Monitor(
         args.redis_address,
         autoscaling_config,
-        redis_password=args.redis_password)
+        redis_password=args.redis_password,
+        monitor_ip=args.monitor_ip)
 
     monitor.run()
