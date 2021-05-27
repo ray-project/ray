@@ -31,6 +31,10 @@ except ImportError:
 class PolicyClient:
     """REST client to interact with a RLlib policy server."""
 
+    # Generic commands (for both modes).
+    ACTION_SPACE = "ACTION_SPACE"
+    OBSERVATION_SPACE = "OBSERVATION_SPACE"
+
     # Commands for local inference mode.
     GET_WORKER_ARGS = "GET_WORKER_ARGS"
     GET_WEIGHTS = "GET_WEIGHTS"
@@ -59,7 +63,7 @@ class PolicyClient:
                 or None for manual control via client.
         """
         self.address = address
-        self.env = None
+        self.env: ExternalEnv = None
         if inference_mode == "local":
             self.local = True
             self._setup_local_rollout_worker(update_interval)
@@ -231,7 +235,13 @@ class PolicyClient:
         (self.rollout_worker,
          self.inference_thread) = _create_embedded_rollout_worker(
              kwargs, self._send)
-        self.env = self.rollout_worker.env
+        # If server has no env (which is the expected case):
+        # Generate a dummy ExternalEnv here using RandomEnv and the
+        # given observation/action spaces.
+        if self.rollout_worker.env is None:
+            self.env = _auto_wrap_external(lambda env_ctx: RandomEnv())
+        else:
+            self.env = self.rollout_worker.env
 
     def _update_local_policy(self, force=False):
         assert self.inference_thread.is_alive()

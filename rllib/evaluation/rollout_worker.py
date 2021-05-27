@@ -375,9 +375,16 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # No Env will be used in this particular worker (not needed).
-        if worker_index == 0 and num_workers > 0 and \
-                policy_config["create_env_on_driver"] is False:
+        # No Env will be used in this particular worker:
+        # - No env specified.
+        # - `create_env_on_driver=False` AND:
+        #  -- Local worker (w/ >0 remote workers) and
+        #     `create_env_on_driver=False`.
+        #  -- Local worker and not using sampler (offline/external input).
+        if policy_config["env"] is None or \
+            (policy_config["create_env_on_driver"] is False and
+             ((worker_index == 0 and num_workers > 0) or
+              policy_config["input"] != "sampler")):
             self.env = None
         # Create an env for this worker.
         else:
@@ -476,7 +483,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
-            policy_spec, self.env, spaces=spaces)
+            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
         self.policy_map: Dict[PolicyID, Policy] = None
@@ -1234,11 +1241,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _validate_and_canonicalize(
-        policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
-        env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[
-            gym.spaces.Space, gym.spaces.Space]]] = None) -> \
-        MultiAgentPolicyConfigDict:
+    policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
+    env: Optional[EnvType],
+    spaces: Optional[Dict[PolicyID, Tuple[
+        gym.spaces.Space, gym.spaces.Space]]],
+    policy_config: Optional[PartialTrainerConfigDict],
+) -> MultiAgentPolicyConfigDict:
+
     if isinstance(policy, dict):
         _validate_multiagent_config(policy)
         return policy
@@ -1255,11 +1264,20 @@ def _validate_and_canonicalize(
                 DEFAULT_POLICY_ID: (policy, env.observation_space,
                                     env.action_space, {})
             }
-        else:
-            return {
-                DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
-                                    spaces[DEFAULT_POLICY_ID][1], {})
-            }
+
+        if spaces is None:
+            if "action_space" not in policy_config or \
+                    "observation_space" not in policy_config:
+                raise ValueError(
+                    "If no env given, must provide obs/action spaces either "
+                    "in the `multiagent.policies` dict or under "
+                    "`config.[observation|action]_space`!")
+            spaces = {DEFAULT_POLICY_ID: (policy_config["observation_space"],
+                                          policy_config["action_space"])}
+        return {
+            DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
+                                spaces[DEFAULT_POLICY_ID][1], {})
+        }
 
 
 def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
@@ -1267,8 +1285,7 @@ def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
     # Loop through all policy definitions in multi-agent policie
     for k, v in policy.items():
         if not isinstance(k, str):
-            raise ValueError("policy keys must be strs, got {}".format(
-                type(k)))
+            raise ValueError("Policy key must be str, got {}!".format(k))
         if not isinstance(v, (tuple, list)) or len(v) != 4:
             raise ValueError(
                 "policy values must be tuples/lists of "

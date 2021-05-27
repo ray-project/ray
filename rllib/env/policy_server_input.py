@@ -80,7 +80,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         # Forwards client-reported rewards directly into the local rollout
         # worker. This is a bit of a hack since it is patching the get_metrics
         # function of the sampler.
-        self.rollout_worker.sampler.get_metrics = get_metrics
+        if self.rollout_worker.sampler is not None:
+            self.rollout_worker.sampler.get_metrics = get_metrics
 
         handler = _make_handler(self.rollout_worker, self.samples_queue,
                                 self.metrics_queue)
@@ -134,7 +135,6 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def __init__(self, *a, **kw):
             super().__init__(*a, **kw)
 
-        @override(SimpleHTTPRequestHandler)
         def do_POST(self):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
@@ -150,8 +150,13 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def execute_command(self, args):
             command = args["command"]
             response = {}
+            # Generic commands:
+            if command == PolicyClient.ACTION_SPACE:
+                logger.info("Got sample batch of size {} from client.".format(
+                    args["samples"].count))
+                report_data(args)
             # Local inference commands:
-            if command == PolicyClient.GET_WORKER_ARGS:
+            elif command == PolicyClient.GET_WORKER_ARGS:
                 logger.info("Sending worker creation args to client.")
                 response["worker_args"] = rollout_worker.creation_args()
             elif command == PolicyClient.GET_WEIGHTS:
