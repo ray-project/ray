@@ -1,6 +1,8 @@
 
 #include <ray/api.h>
 #include <ray/util/logging.h>
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 
 #include "../ray_config_internal.h"
 

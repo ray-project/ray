@@ -4,8 +4,6 @@
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/ray_runtime_holder.h>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
@@ -54,8 +52,13 @@ const std::string &ActorHandle<ActorType>::ID() const {
 template <typename ActorType>
 template <typename F>
 ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+  using Self = boost::callable_traits::class_of_t<F>;
+  static_assert(
+      std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
+      "class types must be same");
   RemoteFunctionHolder remote_func_holder(actor_func);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, remote_func_holder);
+  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
+                            std::move(remote_func_holder));
 }
 
 }  // namespace api

@@ -10,7 +10,9 @@
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace api {

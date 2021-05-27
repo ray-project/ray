@@ -384,6 +384,9 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
         << max_pinned_task_arguments_bytes_;
   } else if (pinned_task_arguments_bytes_ > max_pinned_task_arguments_bytes_) {
     ReleaseTaskArgs(spec.TaskId());
+    RAY_LOG(DEBUG) << "Cannot dispatch task " << spec.TaskId()
+                   << " with arguments of size " << task_arg_bytes
+                   << " current pinned bytes is " << pinned_task_arguments_bytes_;
     return false;
   }
 

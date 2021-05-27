@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/actor_handle.h>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
@@ -16,10 +15,10 @@ class ActorCreator {
   ActorCreator() {}
 
   ActorCreator(RayRuntime *runtime, RemoteFunctionHolder remote_function_holder)
-      : runtime_(runtime), remote_function_holder_(remote_function_holder) {}
+      : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ActorHandle<GetActorType<F>> Remote(Args... args);
+  ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
  private:
   RayRuntime *runtime_;
@@ -30,9 +29,9 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args... args) {
+ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&... args) {
   StaticCheck<F, Args...>();
-  Arguments::WrapArgs(&args_, args...);
+  Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_actor_id = runtime_->CreateActor(remote_function_holder_, args_);
   return ActorHandle<GetActorType<F>>(returned_actor_id);
 }

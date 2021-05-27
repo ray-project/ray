@@ -17,7 +17,6 @@
 #include <msgpack.hpp>
 #include <string>
 #include "boost/optional.hpp"
-#include "ray/core.h"
 
 namespace ray {
 namespace api {

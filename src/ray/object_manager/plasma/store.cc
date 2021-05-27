@@ -231,11 +231,26 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     std::vector<ObjectID> objects_to_evict;
     int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
     EvictObjects(objects_to_evict);
-    // More space is still needed. Try to spill objects to external storage to
-    // make room. NOTE(ekl) if we can't achieve this after a number of retries,
-    // it's because memory fragmentation in dlmalloc prevents us from allocating
+    // More space is still needed.
+    if (space_needed > 0) {
+      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need " << space_needed
+                     << " num bytes unsealed: " << num_bytes_unsealed_;
+      space_needed -= num_bytes_unsealed_;
+      if (space_needed > 0) {
+        // Even if all unsealed objects were sealed and spilled, there would
+        // not be enough space.
+        *error = PlasmaError::OutOfMemory;
+      } else {
+        // There will be enough space once there are no more unsealed objects.
+        *error = PlasmaError::TransientOutOfMemory;
+      }
+      break;
+    }
+
+    // NOTE(ekl) if we can't achieve this after a number of retries, it's
+    // because memory fragmentation in dlmalloc prevents us from allocating
     // even if our footprint tracker here still says we have free space.
-    if (space_needed > 0 || num_tries++ > 10) {
+    if (num_tries++ > 10) {
       *error = PlasmaError::OutOfMemory;
       break;
     }
@@ -290,7 +305,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
                                       int64_t metadata_size, int device_num,
                                       const std::shared_ptr<Client> &client,
                                       PlasmaObject *result) {
-  RAY_LOG(DEBUG) << "creating object " << object_id.Hex() << " size " << data_size;
+  RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -316,6 +331,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::OutOfMemory;
   }
 
+  RAY_LOG(DEBUG) << "create object " << object_id << " succeeded";
   auto ptr = std::make_unique<ObjectTableEntry>();
   entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
   entry->data_size = data_size;
@@ -926,8 +942,6 @@ void PlasmaStore::ProcessCreateRequests() {
     // Try to process requests later, after space has been made.
     create_timer_ = execute_after(io_context_,
                                   [this]() {
-                                    RAY_LOG(DEBUG)
-                                        << "OOM timer finished, retrying create requests";
                                     create_timer_ = nullptr;
                                     ProcessCreateRequests();
                                   },

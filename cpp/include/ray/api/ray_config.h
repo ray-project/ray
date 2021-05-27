@@ -1,5 +1,8 @@
 
 #pragma once
+#include <ray/api/common_types.h>
+#include <ray/api/logging.h>
+#include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
 

@@ -1,6 +1,6 @@
 #include "process_helper.h"
+#include <ray/api/logging.h>
 #include "hiredis/hiredis.h"
-#include "ray/core.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -46,7 +46,8 @@ static void StopRayNode() {
 void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
                              CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = config->redis_ip;
-  if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
+  if ((ray::WorkerType)config->worker_type == ray::WorkerType::DRIVER &&
+      redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);
   }
@@ -66,7 +67,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
       gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
 
   CoreWorkerOptions options;
-  options.worker_type = config->worker_type;
+  options.worker_type = (ray::WorkerType)config->worker_type;
   options.language = Language::CPP;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
