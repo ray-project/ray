@@ -24,10 +24,6 @@ FILENAME_FMT = {
     "output": "output-{part_id:08}",
 }
 
-# Worker node config
-WORKER_EBS_DEVICE_COUNT = 2
-WORKER_EBS_MOUNTS = [f"/mnt/ebs{d}" for d in range(WORKER_EBS_DEVICE_COUNT)]
-
 # Prometheus config
 PROM_RAY_EXPORTER_PORT = 8090
 PROM_NODE_EXPORTER_PORT = 8091

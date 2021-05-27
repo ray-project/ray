@@ -34,7 +34,7 @@ flags.DEFINE_string(
 )
 flags.DEFINE_integer(
     "worker_ebs_device_count",
-    2,
+    0,
     "number of EBS storage devices per worker",
 )
 flags.DEFINE_integer(
@@ -44,7 +44,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
     "object_store_memory",
-    100 * 1024 * 1024 * 1024,
+    60 * 1024 * 1024 * 1024,
     "memory reserved for object store per worker",
 )
 flags.DEFINE_bool(

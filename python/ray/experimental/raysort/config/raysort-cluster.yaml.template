@@ -91,8 +91,8 @@ rsync_filter:
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
-{% if NVME_DEVICE_MOUNTS is defined and WORKER_EBS_DEVICE_MOUNTS is defined %}
-{% for dev, dir in NVME_DEVICE_MOUNTS + WORKER_EBS_DEVICE_MOUNTS %}
+{% if NVME_DEVICE_MOUNTS is defined %}
+{% for dev, dir in NVME_DEVICE_MOUNTS + (WORKER_EBS_DEVICE_MOUNTS if WORKER_EBS_DEVICE_MOUNTS is defined else []) %}
     - test -b {{dev}} && sudo mkfs -F -t ext4 {{dev}} || true
     - sudo mkdir -p {{dir}}
     - test -b {{dev}} && sudo mount {{dev}} {{dir}} || true
