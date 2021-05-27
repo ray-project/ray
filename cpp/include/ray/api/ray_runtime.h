@@ -9,8 +9,6 @@
 #include <typeinfo>
 #include <vector>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
