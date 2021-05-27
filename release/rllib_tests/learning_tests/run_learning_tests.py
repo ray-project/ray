@@ -119,8 +119,8 @@ if __name__ == "__main__":
             for k, exp in checks.items() if exp["failures"] > 0
         }
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/tune_test.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/rllib_learning_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
