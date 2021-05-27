@@ -39,10 +39,10 @@ def setup(input_args):
 
     py_executable: str = sys.executable
 
-    if runtime_env["conda"] or runtime_env["pip"]:
+    if runtime_env.get("conda") or runtime_env.get("pip"):
         conda_dict = get_conda_dict(runtime_env, args.session_dir)
         py_executable = "python"
-        if isinstance(runtime_env["conda"], str):
+        if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:
             assert conda_dict is not None
