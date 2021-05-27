@@ -124,6 +124,7 @@ def test_task_unlimited():
         del x2p
         ray.get(consume.remote(refs))
         _check_spilled_mb(address, spilled=900, restored=800)
+        del sentinel
     finally:
         ray.shutdown()
 
