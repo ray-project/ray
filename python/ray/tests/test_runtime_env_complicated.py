@@ -494,27 +494,29 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         import pip_install_test  # noqa
     assert ray.get(f.remote())
 
+
 def test_conda_input_filepath(tmp_path):
     conda_dict = {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
-        }
+        "dependencies": [
+            "pip", {
+                "pip": [
+                    "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
+                    "opentelemetry-sdk==1.0.0rc1"
+                ]
+            }
+        ]
+    }
     d = tmp_path / "pip_requirements"
     d.mkdir()
     p = d / "environment.yml"
 
     p.write_text(yaml.dump(conda_dict))
-    
+
     runtime_env_dict = RuntimeEnvDict({"conda": conda_dict})
 
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
+
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package(shutdown_only):

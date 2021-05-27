@@ -210,5 +210,4 @@ def inject_ray_and_python(
             pip_list.append(ray_pip_specifier)
         deps.append({"pip": pip_list})
 
-
     return conda_dict
