@@ -13,9 +13,8 @@ First, install OpenTelemetry.
 
 .. code-block:: shell
 
-    pip install opentelemetry-api==1.1.0
-    pip install opentelemetry-sdk==1.1.0
-    pip install opentelemetry-exporter-otlp==1.1.0
+    pip install opentelemetry-api==1.0.0rc1
+    pip install opentelemetry-sdk==1.0.0rc1
 
 Tracing Startup Hook
 --------------------
@@ -31,7 +30,7 @@ Below is an example tracing startup hook that sets up the default tracing provid
   from opentelemetry.sdk.trace import TracerProvider
   from opentelemetry.sdk.trace.export import (
       ConsoleSpanExporter,
-      SimpleSpanProcessor,
+      SimpleExportSpanProcessor,
   )
   
   
@@ -42,7 +41,7 @@ Below is an example tracing startup hook that sets up the default tracing provid
       # context and will log a warning if attempted multiple times.
       trace.set_tracer_provider(TracerProvider())
       trace.get_tracer_provider().add_span_processor(
-          SimpleSpanProcessor(
+          SimpleExportSpanProcessor(
               ConsoleSpanExporter(
                   out=open(f"/tmp/spans/{os.getpid()}.json", "a")
                   )
