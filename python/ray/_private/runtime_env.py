@@ -173,8 +173,11 @@ class RuntimeEnvDict:
             self._dict["env_vars"].update(
                 RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
 
-        if self._dict.get("pip") or self._dict.get("conda"):
-            self._dict["_ray_commit"] = ray.__commit__
+        if "_ray_commit" in runtime_env_json:
+            self._dict["_ray_commit"] = runtime_env_json["_ray_commit"]
+        else:
+            if self._dict.get("pip") or self._dict.get("conda"):
+                self._dict["_ray_commit"] = ray.__commit__
 
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
