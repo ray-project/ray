@@ -27,6 +27,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_client_mode",
+    size = "small",
+    main = "test_tensorflow.py",
+    srcs = ["tests/test_tensorflow.py"],
+    tags = ["exclusive", "tf", "client_unit_tests", "client"]
+)
+
+py_test(
     name = "test_torch",
     size = "large",
     srcs = ["tests/test_torch.py"],
@@ -59,10 +67,19 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_basic_client_mode",
+    main = "test_torch_basic.py",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_torch_failure",
     size = "large",
     srcs = ["tests/test_torch_failure.py"],
-    tags = ["exclusive", "pytorch"],
+    tags = ["exclusive", "pytorch", "client", "client_unit_tests"],
     deps = [":sgd_lib"],
 )
 
@@ -72,14 +89,6 @@ py_test(
     srcs = ["tests/test_torch_runner.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-)
-
-pytest_module_list(
-    files = ["tests/test_torch_basic.py", "tests/test_tensorflow.py"],
-    size = "medium",
-    name_suffix = "_client_mode",
-    tags = ["exclusive", "client_unit_tests"],
-    deps = [":sgd_lib"]
 )
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
