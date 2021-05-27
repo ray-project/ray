@@ -1,5 +1,6 @@
 import argparse
 import csv
+from functools import reduce
 import io
 import logging
 import os
@@ -9,6 +10,7 @@ from typing import List
 
 import numpy as np
 import ray
+from ray import ObjectRef
 
 from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
@@ -31,19 +33,20 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-n",
-        "--num-parts",
-        default=100,
+        "--num_parts",
+        default=1000,
         type=int,
         help="number of partitions (tasks)",
     )
     parser.add_argument(
-        "--part-size",
+        "-s",
+        "--part_size",
         default=int(1e9),
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
-        "--reducer-batch-num-records",
+        "--reducer_batch_num_records",
         default=int(1e6),
         type=RecordCount,
         help="number of bytes to buffer before writing the output to EBS",
@@ -94,7 +97,7 @@ def generate_part(part_id: PartId, size: RecordCount,
     node = ray.worker.global_worker.node_ip_address
     mnt = random.choice(constants.WORKER_EBS_MOUNTS)
     filepath = _get_part_path(mnt, part_id, "input")
-    ret = PartitionInfo(part_id, node, mnt, filepath)
+    ret = PartitionInfo(part_id, node, filepath)
     logging.info(ret)
     subprocess.run(
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", filepath],
@@ -126,8 +129,8 @@ def _load_input_manifest() -> List[PartitionInfo]:
     with open(constants.INPUT_MANIFEST_FILE) as fin:
         reader = csv.reader(fin)
         return [
-            PartitionInfo(int(part_id), node, mnt, path)
-            for part_id, node, mnt, path in reader
+            PartitionInfo(int(part_id), node, path)
+            for part_id, node, path in reader
         ]
 
 
@@ -137,26 +140,74 @@ def _load_partition(path: Path) -> io.BytesIO:
 
 
 @ray.remote
-def mapper(args: Args, part_id: PartId, path: Path) -> List[np.ndarray]:
+def mapper(args: Args, mapper_id: PartId, path: Path) -> List[ObjectRef]:
     logging_utils.init()
-    task_id = f"M-{part_id}"
+    task_id = f"M-{mapper_id}"
     logging.info(f"{task_id} starting")
     part = _load_partition(path)
-    print(part.getbuffer().nbytes)
     logging.info(f"{task_id} done")
+    buf = part.getbuffer()
+    N = args.num_parts
+    offset = 0
+    size = int(np.ceil(buf.nbytes / N))
+    chunks = []
+    for _ in range(N):
+        chunks.append((offset, size))
+        offset += size
     # TODO: can we avoid copying here?
-    return []
+    return [ray.put(buf[offset:offset + size]) for offset, size in chunks]
+
+
+@ray.remote
+def reducer(args: Args, reducer_id: PartId, *chunks) -> PartitionInfo:
+    logging_utils.init()
+    task_id = f"R-{reducer_id}"
+    logging.info(f"{task_id} starting")
+    chunks = ray.get(list(chunks))
+    logging.info(f"{task_id} done")
+    # Write output to EBS
+    node = ray.worker.global_worker.node_ip_address
+    mnt = random.choice(constants.WORKER_EBS_MOUNTS)
+    filepath = _get_part_path(mnt, reducer_id, "output")
+    ret = PartitionInfo(reducer_id, node, filepath)
+    with open(filepath, "wb") as fout:
+        for chunk in chunks:
+            fout.write(chunk)
+    return ret
 
 
 def sort_main(args: Args):
     N = args.num_parts
     partitions = _load_input_manifest()
     mapper_results = np.empty((N, N), dtype=object)
-    for part_id, node, _, path in partitions:
-        res = {f"node:{node}": 1e-3}
-        mapper_results[part_id, :] = mapper.options(num_returns=N,
-                                                    resources=res).remote(
-                                                        args, part_id, path)
+    for part_id, node, path in partitions:
+        mapper_results[part_id, :] = mapper.options(
+            num_returns=N, resources={f"node:{node}": 1e-3}
+        ).remote(
+            args, part_id, path
+        )  # yapf: disable
+
+    print(mapper_results)
+    reducer_results = []
+    for r in range(N):
+        chunks = mapper_results[:, r].tolist()
+        print(r, chunks)
+        ret = reducer.remote(args, r, *chunks)
+        reducer_results.append(ret)
+
+    output_parts = ray.get(reducer_results)
+    with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
+        writer = csv.writer(fout)
+        writer.writerows(output_parts)
+
+
+# ------------------------------------------------------------
+#     Validate Output
+# ------------------------------------------------------------
+
+
+def validate_output(args: Args):
+    print("validated output")
 
 
 # ------------------------------------------------------------

@@ -6,6 +6,6 @@ PartId = int
 Path = str
 RecordCount = int
 
-PartitionInfo = NamedTuple("PartitionInfo", [("part_id", PartId),
-                                             ("node", NodeAddress),
-                                             ("mnt", Path), ("path", Path)])
+PartitionInfo = NamedTuple(
+    "PartitionInfo", [("part_id", PartId), ("node", NodeAddress), ("path", Path)]
+)  # yapf: disable

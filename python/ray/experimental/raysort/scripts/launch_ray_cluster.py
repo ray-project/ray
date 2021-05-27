@@ -52,11 +52,6 @@ flags.DEFINE_bool(
     True,
     "if set, allocate all worker nodes at startup",
 )
-flags.DEFINE_bool(
-    "nvme",
-    True,
-    "if set, will mkfs and mount NVMe devices",
-)
 
 
 def run(cmd, **kwargs):
@@ -124,8 +119,6 @@ def write_cluster_config():
     }
     variables.update(get_worker_ebs_device_variables())
     variables.update(get_nvme_device_variables())
-    if not FLAGS.nvme:
-        variables.pop("NVME_DEVICE_MOUNTS", None)
     conf = template.render(**variables)
     output_path, _ = template_path.rsplit(".", 1)
     with open(output_path, "w") as fout:
