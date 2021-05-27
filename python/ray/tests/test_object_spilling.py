@@ -256,7 +256,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Darwin", "Windows"],
+    reason="Failing on Windows, very flaky on OSX.")
 def test_unstable_spill_objects_automatically(unstable_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -274,6 +275,9 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
     replay_buffer = []
     solution_buffer = []
     buffer_length = 100
+
+    # TODO: we shouldn't need to produce so many objects. This test should
+    # just create one or two objects only!!!
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
@@ -386,7 +390,10 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_during_get(object_spilling_config, shutdown_only):
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_async", [False, True])
+async def test_spill_during_get(object_spilling_config, shutdown_only,
+                                is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
         num_cpus=4,
@@ -400,20 +407,38 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         },
     )
 
-    @ray.remote
-    def f():
-        return np.zeros(10 * 1024 * 1024)
+    if is_async:
 
+        @ray.remote
+        class Actor:
+            async def f(self):
+                return np.zeros(10 * 1024 * 1024)
+    else:
+
+        @ray.remote
+        def f():
+            return np.zeros(10 * 1024 * 1024)
+
+    if is_async:
+        a = Actor.remote()
     ids = []
     for i in range(10):
-        x = f.remote()
+        if is_async:
+            x = a.f.remote()
+        else:
+            x = f.remote()
         print(i, x)
         ids.append(x)
 
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
-        print(ray.get(x).shape)
+        if is_async:
+            obj = await x
+        else:
+            obj = ray.get(x)
+        print(obj.shape)
+        del obj
     assert_no_thrashing(address["redis_address"])
 
 

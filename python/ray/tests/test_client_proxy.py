@@ -8,6 +8,7 @@ import grpc
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.job_config import JobConfig
+from ray.test_utils import run_string_as_driver
 import ray.util.client.server.proxier as proxier
 
 
@@ -95,6 +96,32 @@ def test_multiple_clients_use_different_drivers(call_ray_start):
 
     assert job_id_one != job_id_two
     assert namespace_one != namespace_two
+
+
+check_we_are_second = """
+import ray
+info = ray.client('localhost:25005').connect()
+assert info._num_clients == {num_clients}
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25005 --port 0"],
+    indirect=True)
+def test_correct_num_clients(call_ray_start):
+    """
+    Checks that the returned value of `num_clients` correctly tracks clients
+    connecting and disconnecting.
+    """
+    info = ray.client("localhost:25005").connect()
+    assert info._num_clients == 1
+    run_string_as_driver(check_we_are_second.format(num_clients=2))
+    ray.util.disconnect()
+    run_string_as_driver(check_we_are_second.format(num_clients=1))
 
 
 def test_prepare_runtime_init_req_fails():
