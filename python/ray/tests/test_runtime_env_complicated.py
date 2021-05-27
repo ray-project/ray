@@ -512,7 +512,7 @@ def test_conda_input_filepath(tmp_path):
 
     p.write_text(yaml.dump(conda_dict))
 
-    runtime_env_dict = RuntimeEnvDict({"conda": conda_dict})
+    runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
 
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
