@@ -209,5 +209,6 @@ ddpg-tf-halfcheetahbulletenv-v0:
         rollout_fragment_length: 1
         train_batch_size: 64
         num_workers: 0
+        num_gpus: 1
         num_gpus_per_worker: 0
         worker_side_prioritization: False
