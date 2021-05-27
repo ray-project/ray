@@ -29,7 +29,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.util import get_current_node_resource_key
+from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -298,55 +298,56 @@ def run(
         _ray_auto_init()
 
     if _remote:
-        # Get the node that the client server is running on.
-        server_node_resource = get_current_node_resource_key()
-        return ray.get(
-            ray.remote(num_cpus=0,
-                       resources={server_node_resource: 0.01})(run).remote(
-                           run_or_experiment,
-                           name,
-                           metric,
-                           mode,
-                           stop,
-                           time_budget_s,
-                           config,
-                           resources_per_trial,
-                           num_samples,
-                           local_dir,
-                           search_alg,
-                           scheduler,
-                           keep_checkpoints_num,
-                           checkpoint_score_attr,
-                           checkpoint_freq,
-                           checkpoint_at_end,
-                           verbose,
-                           progress_reporter,
-                           log_to_file,
-                           trial_name_creator,
-                           trial_dirname_creator,
-                           sync_config,
-                           export_formats,
-                           max_failures,
-                           fail_fast,
-                           restore,
-                           server_port,
-                           resume,
-                           queue_trials,
-                           reuse_actors,
-                           trial_executor,
-                           raise_on_failed_trial,
-                           callbacks,
-                           # Deprecated args
-                           loggers,
-                           ray_auto_init,
-                           run_errored_only,
-                           global_checkpoint_period,
-                           with_server,
-                           upload_dir,
-                           sync_to_cloud,
-                           sync_to_driver,
-                           sync_on_checkpoint,
-                           _remote=False))
+        remote_run = ray.remote(num_cpus=0)(run)
+
+        # Make sure tune.run is called on the sever node.
+        remote_run = force_on_current_node(remote_run)
+
+        return remote_run.remote(
+            run_or_experiment,
+            name,
+            metric,
+            mode,
+            stop,
+            time_budget_s,
+            config,
+            resources_per_trial,
+            num_samples,
+            local_dir,
+            search_alg,
+            scheduler,
+            keep_checkpoints_num,
+            checkpoint_score_attr,
+            checkpoint_freq,
+            checkpoint_at_end,
+            verbose,
+            progress_reporter,
+            log_to_file,
+            trial_name_creator,
+            trial_dirname_creator,
+            sync_config,
+            export_formats,
+            max_failures,
+            fail_fast,
+            restore,
+            server_port,
+            resume,
+            queue_trials,
+            reuse_actors,
+            trial_executor,
+            raise_on_failed_trial,
+            callbacks,
+            # Deprecated args
+            loggers,
+            ray_auto_init,
+            run_errored_only,
+            global_checkpoint_period,
+            with_server,
+            upload_dir,
+            sync_to_cloud,
+            sync_to_driver,
+            sync_on_checkpoint,
+            _remote=False)
 
     all_start = time.time()
     if global_checkpoint_period:
@@ -605,24 +606,26 @@ def run_experiments(
         _ray_auto_init()
 
     if _remote:
-        # Get the node that the client server is running on.
-        server_node_resource = get_current_node_resource_key()
+        remote_run = ray.remote(num_cpus=0)(run_experiments)
+
+        # Make sure tune.run_experiments is run on the server node.
+        remote_run = force_on_current_node(remote_run)
+
         return ray.get(
-            ray.remote(num_cpus=0, resources={server_node_resource: 0.01
-                                              })(run_experiments).remote(
-                                                  experiments,
-                                                  scheduler,
-                                                  server_port,
-                                                  verbose,
-                                                  progress_reporter,
-                                                  resume,
-                                                  queue_trials,
-                                                  reuse_actors,
-                                                  trial_executor,
-                                                  raise_on_failed_trial,
-                                                  concurrent,
-                                                  callbacks,
-                                                  _remote=False))
+            remote_run.remote(
+                experiments,
+                scheduler,
+                server_port,
+                verbose,
+                progress_reporter,
+                resume,
+                queue_trials,
+                reuse_actors,
+                trial_executor,
+                raise_on_failed_trial,
+                concurrent,
+                callbacks,
+                _remote=False))
 
     # This is important to do this here
     # because it schematize the experiments
