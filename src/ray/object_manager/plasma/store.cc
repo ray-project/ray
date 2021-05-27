@@ -210,6 +210,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
   // Try to evict objects until there is enough space.
   uint8_t *pointer = nullptr;
+  int num_tries = 0;
   while (true) {
     // Allocate space for the new object. We use memalign instead of malloc
     // in order to align the allocated region to a 64-byte boundary. This is not
