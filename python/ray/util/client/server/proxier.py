@@ -113,7 +113,7 @@ class ProxyManager():
 
     def _get_redis_address(self) -> str:
         """
-        Returns the provided Ray Redis address, or creates a new session.
+        Returns the provided Ray Redis address, or creates a new cluster.
         """
         if self.redis_address:
             return self.redis_address
