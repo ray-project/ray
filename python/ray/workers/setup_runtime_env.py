@@ -39,6 +39,8 @@ def setup(input_args):
 
     py_executable: str = sys.executable
 
+    conda_dict = get_conda_dict(runtime_env)
+
     if runtime_env.get("conda"):
         py_executable = "python"
         if isinstance(runtime_env["conda"], str):
@@ -118,6 +120,36 @@ def setup(input_args):
 
     os.execvp("bash", ["bash", "-c", command_str])
 
+def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
+    """ Construct a conda dependencies dict from a runtime env. 
+    
+        This function does not inject Ray or Python into the conda dict.
+        If the runtime env does not specify pip or conda, or if it specifies
+        the name of a preinstalled conda environment, this function returns
+        None.
+    """
+    if runtime_env.get("conda"):
+        if isinstance(runtime_env["conda"], dict):
+            return runtime_env["conda"]
+        else:
+            return None
+    if runtime_env.get("pip"):
+        requirements_txt = runtime_env["pip"]
+        pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
+        pip_hash_str = f"pip-generated-{pip_hash}"
+
+        conda_dir = os.path.join(session_dir, "runtime_resources",
+                                 "conda")
+        requirements_txt_path = os.path.join(
+            conda_dir, f"requirements-{pip_hash_str}.txt")
+        conda_dict = {
+            "name": pip_hash_str,
+            "dependencies": ["pip", {
+                "pip": [f"-r {requirements_txt_path}"]
+            }]
+        }
+        return conda_dict
+    return None
 
 def current_ray_pip_specifier() -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
