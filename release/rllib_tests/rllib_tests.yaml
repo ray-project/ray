@@ -22,5 +22,4 @@
 
   run:
     timeout: 3600
-    #prepare: python wait_cluster.py 32 600
     script: unit_gpu_tests/run.sh
