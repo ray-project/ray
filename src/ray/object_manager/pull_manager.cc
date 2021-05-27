@@ -240,7 +240,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // It should always be possible to stay under the available memory by
   // canceling all requests.
-  //
   if (!RayConfig::instance().plasma_unlimited()) {
     RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
   }
