@@ -130,6 +130,7 @@ class ProxyManager():
         """
         if self._session_dir:
             return self._session_dir
+        # Connect a driver to an already running cluster.
         connection_tuple = ray.init(address=self._get_redis_address())
         ray.shutdown()
         self._session_dir = connection_tuple["session_dir"]
