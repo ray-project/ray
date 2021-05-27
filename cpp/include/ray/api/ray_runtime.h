@@ -9,8 +9,6 @@
 #include <typeinfo>
 #include <vector>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
@@ -32,27 +30,24 @@ struct RemoteFunctionHolder {
 
 class RayRuntime {
  public:
-  virtual ObjectID Put(std::shared_ptr<msgpack::sbuffer> data) = 0;
-  virtual std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id) = 0;
+  virtual std::string Put(std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual std::shared_ptr<msgpack::sbuffer> Get(const std::string &id) = 0;
 
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
-      const std::vector<ObjectID> &ids) = 0;
+      const std::vector<std::string> &ids) = 0;
 
-  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+  virtual std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
                                  int timeout_ms) = 0;
 
-  virtual ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
-                        std::vector<ray::api::TaskArg> &args) = 0;
-  virtual ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                              std::vector<ray::api::TaskArg> &args) = 0;
-  virtual ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
-                             const ActorID &actor,
-                             std::vector<ray::api::TaskArg> &args) = 0;
+  virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
+                           std::vector<ray::api::TaskArg> &args) = 0;
+  virtual std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
+                                  std::vector<ray::api::TaskArg> &args) = 0;
+  virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
+                                const std::string &actor,
+                                std::vector<ray::api::TaskArg> &args) = 0;
+  virtual void AddLocalReference(const std::string &id) = 0;
+  virtual void RemoveLocalReference(const std::string &id) = 0;
 };
-
-void AddLocalReference(const ObjectID &id);
-
-void RemoveLocalReference(const ObjectID &id);
-
 }  // namespace api
 }  // namespace ray

@@ -83,5 +83,19 @@ std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
   }
   return results;
 }
+
+void NativeObjectStore::AddLocalReference(const std::string &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.AddLocalReference(ObjectID::FromBinary(id));
+  }
+}
+
+void NativeObjectStore::RemoveLocalReference(const std::string &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
+  }
+}
 }  // namespace api
 }  // namespace ray
