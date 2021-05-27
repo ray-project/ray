@@ -46,9 +46,8 @@ def setup(input_args):
         elif isinstance(runtime_env["conda"], dict):
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
-            conda_dict = inject_dependencies(runtime_env["conda"],
-                                               py_version,
-                                               [current_ray_pip_specifier()])
+            conda_dict = inject_dependencies(runtime_env["conda"], py_version,
+                                             [current_ray_pip_specifier()])
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
                 json.dumps(conda_dict,
@@ -89,7 +88,7 @@ def setup(input_args):
         }
 
         conda_dict = inject_dependencies(conda_dict, py_version,
-                                           [current_ray_pip_specifier()])
+                                         [current_ray_pip_specifier()])
 
         file_lock_name = f"ray-{pip_hash_str}.lock"
         with FileLock(os.path.join(args.session_dir, file_lock_name)):

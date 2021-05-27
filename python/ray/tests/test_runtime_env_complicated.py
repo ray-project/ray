@@ -351,7 +351,7 @@ def test_inject_dependencies():
     outputs[3] = {
         "dependencies": [
             "blah", "pip", {
-                "pip": [ "ray==1.2.3", "some_pkg"]
+                "pip": ["ray==1.2.3", "some_pkg"]
             }, "python=7.8"
         ]
     }
