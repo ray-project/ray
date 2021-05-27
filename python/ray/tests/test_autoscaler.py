@@ -19,6 +19,7 @@ from ray.autoscaler._private import commands
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
@@ -1368,6 +1369,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
         lm = LoadMetrics()
         lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1375,14 +1377,17 @@ class AutoscalingTest(unittest.TestCase):
             max_concurrent_launches=10,
             process_runner=runner,
             max_failures=0,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         # Write a corrupted config
         self.write_config("asdf", call_prepare_config=False)
-        for _ in range(10):
+        for i in range(10):
             autoscaler.update()
+        # config validation exceptions metrics should be incremented
+        assert mock_metrics.config_validation_exceptions.inc.call_count == 10
         time.sleep(0.1)
         assert autoscaler.pending_launches.value == 0
         assert len(
@@ -1409,14 +1414,18 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         self.provider.throw = True
         runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
             max_failures=2,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
         autoscaler.update()
+        assert mock_metrics.update_loop_exceptions.inc.call_count == 1
         autoscaler.update()
+        assert mock_metrics.update_loop_exceptions.inc.call_count == 2
         with pytest.raises(Exception):
             autoscaler.update()
 
