@@ -93,6 +93,8 @@ class Trainable:
         self._iterations_since_restore = 0
         self._restored = False
         self._trial_info = trial_info
+        self._stdout_file = stdout_file
+        self._stderr_file = stderr_file
 
         start_time = time.time()
         self.setup(copy.deepcopy(self.config))
@@ -631,6 +633,16 @@ class Trainable:
     def get_config(self):
         """Returns configuration passed in by Tune."""
         return self.config
+
+    def build_config(self, config: Dict):
+        """Builds a deep copy of the input config and populates it with
+        metadata from this Trainable.
+        """
+        new_config = copy.deepcopy(config)
+        new_config[TRIAL_INFO] = self._trial_info
+        new_config[STDOUT_FILE] = self._stdout_file
+        new_config[STDERR_FILE] = self._stderr_file
+        return new_config
 
     def step(self):
         """Subclasses should override this to implement train().

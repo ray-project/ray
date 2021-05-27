@@ -83,10 +83,11 @@ class _TorchTrainable(tune.Trainable):
                 self._num_workers_per_host, self._timeout_s)
         remote_trainable = \
             remote_trainable.options(**remote_option)
+        new_config = super().build_config(config)
 
         self.workers = [
             remote_trainable.remote(
-                config=config,
+                config=new_config,
                 logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
             for rank in range(num_workers)
         ]
@@ -313,3 +314,13 @@ def _train_simple(config: Dict, checkpoint_dir: Optional[str] = None):
                     torch.save((model.state_dict(), optimizer.state_dict()),
                                path)
         tune.report(mean_loss=loss.item())
+
+
+def _train_validate_session(config: Dict,
+                            checkpoint_dir: Optional[str] = None):
+    """For testing only. Putting this here because Ray has problems
+    serializing within the test file."""
+    current_session = tune.session.get_session()
+    assert current_session is not None
+    assert current_session._trial_id != "default"
+    assert current_session._trial_name != "default"

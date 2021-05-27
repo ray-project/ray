@@ -70,8 +70,9 @@ class _TensorFlowTrainable(tune.Trainable):
                 self._num_workers_per_host, self._timeout_s)
         remote_trainable = \
             remote_trainable.options(**remote_option)
+        new_config = super().build_config(config)
         self.workers = [
-            remote_trainable.remote(config=config, )
+            remote_trainable.remote(config=new_config, )
             for _ in range(num_workers)
         ]
 
