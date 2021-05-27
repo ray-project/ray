@@ -24,7 +24,6 @@ import ray
 from ray._private import services
 
 import ray._private.prometheus_exporter as prometheus_exporter
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
@@ -204,10 +203,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         # TODO(ckw): store monitor_ip in RayCluster scenario
         redis_client = services.create_redis_client(self.redis_address,
                                                     self.redis_password)
-        monitor_ip = redis_client.get("autoscaler_metrics_address")
-        if monitor_ip:
-            autoscaler_export_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            metrics_export_addresses.append(autoscaler_export_addr)
+        autoscaler_addr = redis_client.get("autoscaler_metrics_address")
+        if autoscaler_addr:
+            metrics_export_addresses.append(autoscaler_addr)
         return json.dumps([{
             "labels": {
                 "job": "ray"
