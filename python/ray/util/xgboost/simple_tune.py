@@ -62,8 +62,7 @@ def main():
     }
     # __tune_end__
 
-    import pdb
-    pdb.set_trace()
+
     # __tune_run_begin__
     analysis = tune.run(
         train_model,
