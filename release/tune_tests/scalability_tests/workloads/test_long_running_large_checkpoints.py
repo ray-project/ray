@@ -12,31 +12,10 @@ Acceptance criteria: Should run faster than 90,000 seconds.
 
 Theoretical minimum time: 86,400 seconds
 """
-import json
-import os
-import time
-
 import ray
 from ray import tune
 
-from ray.tune.utils.release_test_util import timed_tune_run
-
-
-class _ProgressCallback(ray.tune.callback.Callback):
-    def __init__(self):
-        self.last_update = 0
-        self.update_interval = 60
-
-    def on_step_end(self, iteration, trials):
-        if time.time() - self.last_update > self.update_interval:
-            now = time.time()
-            result = {"last_update": now, "iteration": iteration}
-            test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                              "/tmp/tune_test.json")
-            with open(test_output_json, "wt") as f:
-                json.dump(result, f)
-
-            self.last_update = now
+from ray.tune.utils.release_test_util import timed_tune_run, ProgressCallback
 
 
 def main():
@@ -48,7 +27,7 @@ def main():
 
     max_runtime = 90000
 
-    callback = _ProgressCallback()
+    callback = ProgressCallback()
 
     timed_tune_run(
         name="long running large checkpoints",

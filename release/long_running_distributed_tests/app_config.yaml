@@ -1,0 +1,19 @@
+base_image: "anyscale/ray:1.2.0-gpu"
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - awscli
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y numpy ray || true
+  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
+  - pip3 install numpy || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # TODO: REMOVE
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/tune/utils/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/2ce24ae4d55c45f15b250e876036ae3c4dd39017/python/ray/tune/utils/release_test_util.py
+  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/2ce24ae4d55c45f15b250e876036ae3c4dd39017/python/ray/util/xgboost/release_test_util.py
