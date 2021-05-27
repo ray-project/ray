@@ -2,11 +2,7 @@
 
 #include <cmath>
 
-FixedPoint::FixedPoint(double d) {
-  // We need to round, not truncate because floating point multiplication can
-  // leave a number slightly smaller than the intended whole number.
-  i_ = (uint64_t)((d * RESOURCE_UNIT_SCALING) + 0.5);
-}
+FixedPoint::FixedPoint(double d) { i_ = (uint64_t)(d * RESOURCE_UNIT_SCALING); }
 
 FixedPoint::FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }
 
