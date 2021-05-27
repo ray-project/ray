@@ -83,6 +83,11 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
+
+cdef class ClientObjectRef(ObjectRef):
+    pass
+
+
 cdef class ActorID(BaseID):
     cdef CActorID data
 

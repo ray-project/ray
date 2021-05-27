@@ -13,6 +13,7 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import enable_client_mode
+from ray._raylet import ObjectRef
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -129,6 +130,8 @@ def test_put_get(ray_start_regular_shared):
         assert not objectref == 1
         # Make sure it returns True when necessary as well.
         assert objectref == ClientObjectRef(objectref.id)
+        # Make sure ClientObjectRef is a subclass of ObjectRef
+        assert isinstance(objectref, ObjectRef)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
