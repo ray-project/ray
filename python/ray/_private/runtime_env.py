@@ -153,9 +153,6 @@ class RuntimeEnvDict:
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
 
-        if "_ray_release" in runtime_env_json:
-            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
-
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
             env_vars = runtime_env_json["env_vars"]
