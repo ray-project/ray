@@ -85,6 +85,7 @@ class PlasmaStore {
   ///        device_num = 1 corresponds to GPU0,
   ///        device_num = 2 corresponds to GPU1, etc.
   /// \param client The client that created the object.
+  /// \param fallback_allocator Whether to allow falling back to the fs allocator
   /// \param result The object that has been created.
   /// \return One of the following error codes:
   ///  - PlasmaError::OK, if the object was created successfully.
@@ -98,7 +99,8 @@ class PlasmaStore {
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, int64_t data_size,
                            int64_t metadata_size, int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject *result);
+                           const std::shared_ptr<Client> &client, bool fallback_allocator,
+                           PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -208,7 +210,7 @@ class PlasmaStore {
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        PlasmaObject *object);
+                                        bool fallback_allocator, PlasmaObject *object);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
@@ -237,7 +239,7 @@ class PlasmaStore {
 
   uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
                           ptrdiff_t *offset, const std::shared_ptr<Client> &client,
-                          bool is_create, PlasmaError *error);
+                          bool is_create, bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();

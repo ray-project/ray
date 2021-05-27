@@ -31,7 +31,7 @@ int dlmallopt(int param_number, int value);
 
 /* Copied from dlmalloc.c; make sure to keep in sync */
 size_t MAX_SIZE_T = (size_t)-1;
-int M_MMAP_THRESHOLD = -3;
+const int M_MMAP_THRESHOLD = -3;
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
@@ -54,6 +54,7 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   return mem;
 }
 
+// TODO(ekl) we should track these allocations separately from the overall footprint.
 void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
