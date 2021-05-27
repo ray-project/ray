@@ -233,7 +233,10 @@ def test_override_environment_variables_complex(shutdown_only,
                 "a": "b",
             }).remote("z")) == "job_z")
 
-
+# TODO(architkulkarni): Investigate flakiness on Travis CI.  It may be that
+# there aren't enough CPUs (2-4 on Travis CI vs. likely 8 on Buildkite) and
+# worker processes are being killed to adhere to the soft limit.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Travis CI.")
 @pytest.mark.parametrize("use_runtime_env", [True, False])
 def test_override_environment_variables_reuse(shutdown_only, use_runtime_env):
     """Test that previously set env vars don't pollute newer calls."""
