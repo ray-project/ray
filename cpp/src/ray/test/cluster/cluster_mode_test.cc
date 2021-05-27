@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
+#include "ray/util/logging.h"
 
 using namespace ::ray::api;
 
