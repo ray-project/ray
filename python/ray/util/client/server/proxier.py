@@ -117,7 +117,8 @@ class ProxyManager():
         """
         if self.redis_address:
             return self.redis_address
-        connection_tuple = ray.init(address=self.redis_address)
+        # Start a new, locally scoped cluster.
+        connection_tuple = ray.init()
         self.redis_address = connection_tuple["redis_address"]
         self._session_dir = connection_tuple["session_dir"]
         return self.redis_address
