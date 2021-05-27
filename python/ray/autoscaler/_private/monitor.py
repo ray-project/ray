@@ -13,6 +13,7 @@ from multiprocessing.synchronize import Event
 from typing import Optional
 
 import grpc
+import prometheus_client
 
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -21,6 +22,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
@@ -130,6 +132,16 @@ class Monitor:
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 
+        self.prom_metrics = AutoscalerPrometheusMetrics()
+        try:
+            logger.info("Starting autoscaler metrics server on port {}".format(
+                AUTOSCALER_METRIC_PORT))
+            prometheus_client.start_http_server(
+                AUTOSCALER_METRIC_PORT, registry=self.prom_metrics.registry)
+        except Exception:
+            logger.exception(
+                "An exception occurred while starting the metrics server.")
+
         logger.info("Monitor: Started")
 
     def __del__(self):
@@ -141,7 +153,8 @@ class Monitor:
                 self.autoscaling_config,
                 self.load_metrics,
                 prefix_cluster_info=self.prefix_cluster_info,
-                event_summarizer=self.event_summarizer)
+                event_summarizer=self.event_summarizer,
+                prom_metrics=self.prom_metrics)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""

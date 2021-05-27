@@ -7,8 +7,9 @@ from prometheus_client import (
 
 
 class AutoscalerPrometheusMetrics:
-    def __init__(self, registry: CollectorRegistry):
-        self.registry: CollectorRegistry = registry
+    def __init__(self, registry: CollectorRegistry = None):
+        self.registry: CollectorRegistry = registry or \
+            CollectorRegistry(auto_describe=True)
         # Buckets: 30 seconds, 1 minute, 2 minutes, 4 minutes
         #          8 minutes, 15 minutes, 30 minutes, 1 hour
         self.worker_startup_time: Histogram = Histogram(
@@ -42,7 +43,3 @@ class AutoscalerPrometheusMetrics:
             unit="exceptions",
             namespace="autoscaler",
             registry=self.registry)
-
-
-DEFAULT_AUTOSCALER_METRICS = AutoscalerPrometheusMetrics(
-    CollectorRegistry(auto_describe=True))

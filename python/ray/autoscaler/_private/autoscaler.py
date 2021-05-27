@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from ray.autoscaler._private.prom_metrics import DEFAULT_AUTOSCALER_METRICS
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -7,7 +7,6 @@ import logging
 import math
 import operator
 import os
-import prometheus_client
 import subprocess
 import threading
 import time
@@ -34,8 +33,7 @@ from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     format_info_string
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_METRIC_PORT, AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -49,10 +47,6 @@ UpdateInstructions = namedtuple(
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
-
-# Prevent multiple metric servers from starting if multiple autoscalers
-# are instantiated, for example when testing
-_metric_server_started = False
 
 
 class StandardAutoscaler:
@@ -92,7 +86,8 @@ class StandardAutoscaler:
         # Keep this before self.reset (if an exception occurs in reset
         # then prom_metrics must be instantitiated to increment the
         # exception counter)
-        self.prom_metrics = prom_metrics or DEFAULT_AUTOSCALER_METRICS
+        self.prom_metrics = prom_metrics or \
+            AutoscalerPrometheusMetrics()
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.head_node_ip = load_metrics.local_ip
@@ -142,22 +137,6 @@ class StandardAutoscaler:
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
-
-        global _metric_server_started
-        if not _metric_server_started:
-            try:
-                logger.info(
-                    "Starting autoscaler metrics server on port {}".format(
-                        AUTOSCALER_METRIC_PORT))
-                prometheus_client.start_http_server(
-                    AUTOSCALER_METRIC_PORT,
-                    registry=self.prom_metrics.registry)
-                _metric_server_started = True
-            except Exception as e:
-                logger.error(
-                    "An error occurred while starting the metrics server.")
-                raise e
-
         logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
