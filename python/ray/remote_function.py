@@ -275,6 +275,12 @@ class RemoteFunction:
         else:
             runtime_env_dict = {}
 
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language.format_args(worker, args, kwargs)
