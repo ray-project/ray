@@ -1,5 +1,5 @@
 import os
-from ray.workers.setup_runtime_env import inject_ray_and_python
+from ray.workers.setup_runtime_env import inject_dependencies
 import pytest
 import sys
 import unittest
@@ -321,7 +321,7 @@ def test_conda_create_job_config(shutdown_only):
     assert ray.get(f.remote())
 
 
-def test_inject_ray_and_python():
+def test_inject_dependencies():
     num_tests = 4
     conda_dicts = [None] * num_tests
     outputs = [None] * num_tests
@@ -351,13 +351,13 @@ def test_inject_ray_and_python():
     outputs[3] = {
         "dependencies": [
             "blah", "pip", {
-                "pip": ["some_pkg", "ray==1.2.3"]
+                "pip": [ "ray==1.2.3", "some_pkg"]
             }, "python=7.8"
         ]
     }
 
     for i in range(num_tests):
-        output = inject_ray_and_python(conda_dicts[i], "ray==1.2.3", "7.8")
+        output = inject_dependencies(conda_dicts[i], "7.8", ["ray==1.2.3"])
         error_msg = (f"failed on input {i}."
                      f"Output: {output} \n"
                      f"Expected output: {outputs[i]}")

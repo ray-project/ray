@@ -46,12 +46,12 @@ def setup(input_args):
         elif isinstance(runtime_env["conda"], dict):
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
-            conda_dict = inject_ray_and_python(runtime_env["conda"],
-                                               current_ray_pip_specifier(),
-                                               py_version)
+            conda_dict = inject_dependencies(runtime_env["conda"],
+                                               py_version,
+                                               [current_ray_pip_specifier()])
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
-                json.dumps(runtime_env["conda"],
+                json.dumps(conda_dict,
                            sort_keys=True).encode("utf-8")).hexdigest()
             conda_hash_str = f"conda-generated-{conda_hash}"
             file_lock_name = f"ray-{conda_hash_str}.lock"
@@ -88,9 +88,8 @@ def setup(input_args):
             }]
         }
 
-        conda_dict = inject_ray_and_python(conda_dict,
-                                           current_ray_pip_specifier(),
-                                           py_version)
+        conda_dict = inject_dependencies(conda_dict, py_version,
+                                           [current_ray_pip_specifier()])
 
         file_lock_name = f"ray-{pip_hash_str}.lock"
         with FileLock(os.path.join(args.session_dir, file_lock_name)):
@@ -191,24 +190,18 @@ def current_ray_pip_specifier() -> Optional[str]:
         return f"ray[all]=={ray.__version__}"
 
 
-def inject_ray_and_python(
+def inject_dependencies(
         conda_dict: Dict[Any, Any],
-        ray_pip_specifier: Optional[str],
         py_version: str,
-        extra_pip_dependencies: Optional[List[str]] = None) -> Dict[Any, Any]:
+        pip_dependencies: Optional[List[str]] = None) -> Dict[Any, Any]:
     """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
 
     Args:
         conda_dict (dict): A dict representing the JSON-serialized conda
             environment YAML file.  This dict will be modified and returned.
-        ray_pip_specifier (str, optional): A string which can be passed to
-            `pip install` to install a certain Ray version.  This could be a
-            string "ray[all]", or a wheel URL.
-            If you don't want Ray to be injected into the dict, this parameter
-            should be set to None.
         py_version (str): A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
-        extra_pip_dependencies (List[str]): A list of pip dependencies that
+        pip_dependencies (List[str]): A list of pip dependencies that
             will be prepended to the list of pip dependencies in
             the conda dict.  If the conda dict does not already have a "pip"
             field, one will be created.
@@ -216,8 +209,8 @@ def inject_ray_and_python(
         The modified dict.  (Note: the input argument conda_dict is modified
         and returned.)
     """
-    if extra_pip_dependencies is None:
-        extra_pip_dependencies = []
+    if pip_dependencies is None:
+        pip_dependencies = []
     if conda_dict.get("dependencies") is None:
         conda_dict["dependencies"] = []
 
@@ -233,22 +226,15 @@ def inject_ray_and_python(
     if "pip" not in deps:
         deps.append("pip")
 
-    # Insert Ray dependency. If the user has already included Ray, conda
-    # will raise an error only if the two are incompatible.
-
+    # Insert pip dependencies.
     found_pip_dict = False
     for dep in deps:
         if isinstance(dep, dict) and dep.get("pip") and isinstance(
                 dep["pip"], list):
-            dep["pip"] = extra_pip_dependencies + dep["pip"]
-            if ray_pip_specifier is not None:
-                dep["pip"].append(ray_pip_specifier)
+            dep["pip"] = pip_dependencies + dep["pip"]
             found_pip_dict = True
             break
     if not found_pip_dict:
-        pip_list = extra_pip_dependencies
-        if ray_pip_specifier is not None:
-            pip_list.append(ray_pip_specifier)
-        deps.append({"pip": pip_list})
+        deps.append({"pip": pip_dependencies})
 
     return conda_dict
