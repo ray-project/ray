@@ -68,7 +68,6 @@ void RayConfigInternal::Init(RayConfig &config) {
     if (!FLAGS_logs_dir.empty()) {
       logs_dir = FLAGS_logs_dir;
     }
-    run_mode = RunMode::CLUSTER;
     gflags::ShutDownCommandLineFlags();
   }
   RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !lib_name.empty())
