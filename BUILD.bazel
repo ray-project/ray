@@ -967,6 +967,17 @@ cc_test(
 )
 
 cc_test(
+    name = "throttler_test",
+    srcs = ["src/ray/util/throttler_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
