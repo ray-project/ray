@@ -4,7 +4,6 @@ import argparse
 import logging
 import logging.handlers
 import os
-from python.ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 import sys
 import signal
 import time
@@ -18,7 +17,8 @@ import grpc
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
@@ -101,7 +101,7 @@ class Monitor:
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         if monitor_ip:
-            self.redis.put("autoscaler_metrics_port",
+            self.redis.set("autoscaler_metrics_port",
                            f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}")
         (ip, port) = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
