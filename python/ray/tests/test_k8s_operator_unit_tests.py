@@ -171,7 +171,6 @@ class OperatorTest(unittest.TestCase):
                 cluster2.start_head()
 
     def test_operator_redis_password(self):
-        cluster_identifier = ("name", "namespace")
         stop_cmd = "ray stop"
         start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
             " --dashboard-host 0.0.0.0 --redis-password 1234567"
@@ -180,12 +179,12 @@ class OperatorTest(unittest.TestCase):
                             " not support setting a custom Redis password in"\
                             " Ray start commands."
         with pytest.raises(ValueError, match=exception_message):
-            check_redis_password_not_specified(cluster_config,
-                                               cluster_identifier)
+            check_redis_password_not_specified(cluster_config, "name",
+                                               "namespace")
         start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
             " --dashboard-host 0.0.0.0"
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
-        check_redis_password_not_specified(cluster_config, cluster_identifier)
+        check_redis_password_not_specified(cluster_config, "name", "namespace")
 
     def test_operator_infer_port(self):
         stop_cmd = "ray stop"

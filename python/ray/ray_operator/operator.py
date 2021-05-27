@@ -210,26 +210,43 @@ def status_handling_loop(queue: mp.Queue):
 
 
 @kopf.on.create("rayclusters")
-@kopf.on.resume("rayclusters")
 @kopf.on.update("rayclusters")
-def create_or_update_cluster(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
+@kopf.on.resume("rayclusters")
+def create_or_update_cluster(body, name, namespace, logger, memo: kopf.Memo,
+                             **kwargs):
+    """
+    1. On creation of a RayCluster resource, create the Ray cluster.
+    2. On update of a RayCluster resource, update the cluster
+        without restarting Ray processes,
+        unless the Ray head's config is modified.
+    3. On operator restart ("resume"), rebuild memo state and restart the
+        Ray cluster's monitor process, without restarting Ray processes.
+    """
     _create_or_update_cluster(body, name, namespace, memo, restart_ray=False)
 
 
 @kopf.on.field("rayclusters", field="status.autoscalerRetries")
 def restart_cluster(body, status, name, namespace, memo: kopf.Memo, **kwargs):
-    """Detects increment of status.autoscalerRetries due to monitor failure.
-    Triggers Ray cluster restart.
+    """On increment of status.autoscalerRetries, restart Ray processes.
+
+    Increment of autoscalerRetries happens when cluster's monitor fails,
+    for example due to Ray head failure.
     """
     # Don't act on initialization of status.autoscalerRetries from nil to 0.
     if status.get("autoscalerRetries"):
         # Restart the Ray cluster:
-        _create_or_update_cluster(body, name, namespace, memo, restart_ray=True)
+        _create_or_update_cluster(body, name, namespace, memo,
+                                  restart_ray=True)
 
 
-def _create_or_update_cluster(cluster_cr_body, name, namespace, memo, restart_ray=False):
+def _create_or_update_cluster(cluster_cr_body,
+                              name,
+                              namespace,
+                              memo,
+                              restart_ray=False):
     cluster_config = operator_utils.cr_to_config(cluster_cr_body)
-    operator_utils.check_redis_password_not_specified(cluster_config, name, namespace)
+    operator_utils.check_redis_password_not_specified(cluster_config, name,
+                                                      namespace)
 
     ray_cluster = memo.get("ray_cluster")
     if ray_cluster is None:
