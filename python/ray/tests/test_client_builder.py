@@ -24,6 +24,9 @@ def test_split_address(address):
     specified_other_module = f"module://{address}"
     assert client_builder._split_address(specified_other_module) == ("module",
                                                                      address)
+    non_url_compliant_module = f"module_test://{address}"
+    assert client_builder._split_address(
+        non_url_compliant_module) == ("module", address)
 
 
 @pytest.mark.parametrize(
