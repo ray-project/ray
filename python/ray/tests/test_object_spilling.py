@@ -274,9 +274,9 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 10
+    buffer_length = 20
 
-    # Each object averages 16MiB => 160MiB total.
+    # Each object averages 16MiB => 320MiB total.
     for _ in range(buffer_length):
         multiplier = random.choice([1, 2, 3])
         arr = np.random.rand(multiplier * 1024 * 1024)
