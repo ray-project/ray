@@ -124,7 +124,7 @@ class StandardAutoscaler:
                 index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
-            )
+                prom_metrics=self.prom_metrics)
             node_launcher.daemon = True
             node_launcher.start()
 

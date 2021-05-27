@@ -4,6 +4,7 @@ import argparse
 import logging
 import logging.handlers
 import os
+from python.ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 import sys
 import signal
 import time
@@ -100,7 +101,8 @@ class Monitor:
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         if monitor_ip:
-            self.redis.put("monitor_ip", monitor_ip)
+            self.redis.put("autoscaler_metrics_port",
+                           f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}")
         (ip, port) = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
