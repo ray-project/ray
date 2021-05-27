@@ -954,6 +954,18 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   PlasmaObject result = {};
   PlasmaError error;
   bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
+  if (error == PlasmaError::OutOfMemory) {
+    // Logs are suppressed because there is only one OOM error per 10 seconds.
+    RAY_LOG(INFO) << "Out of memory error is reported to the client for an object id "
+                  << object_id << ". Object store current usage "
+                  << (PlasmaAllocator::Allocated() / 1e9) << " / "
+                  << (PlasmaAllocator::GetFootprintLimit() / 1e9)
+                  << " GB. Pinned unevictable objects after spilling: "
+                  << num_bytes_in_use_ / 1024 / 1024
+                  << " MB. Unsealed objects: " << num_bytes_unsealed_ / 1024 / 1024
+                  << " MB. Object size: "
+                  << (result.data_size + result.metadata_size) / 1024 / 1024 << " MB.";
+  }
   if (finished) {
     RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
     if (SendCreateReply(client, object_id, result, error).ok() &&
