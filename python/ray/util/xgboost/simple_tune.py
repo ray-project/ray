@@ -1,4 +1,3 @@
-import ray
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
@@ -62,7 +61,6 @@ def main():
     }
     # __tune_end__
 
-
     # __tune_run_begin__
     analysis = tune.run(
         train_model,
@@ -76,13 +74,15 @@ def main():
         })
 
     # Load in the best performing model.
-    # If using Ray Client, make sure model loading happens on server.
-    if ray.util.client.ray.is_connected():
-        # Wrap model loading in a task if using Ray Client.
-        remote_load_fn = ray.remote(load_best_model)
-        best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
-    else:
-        best_bst = load_best_model(analysis.best_logdir)
+    best_bst = load_best_model(analysis.best_logdir)
+
+    # Use the following code block instead if using Ray Client.
+    # import ray
+    # if ray.util.client.ray.is_connected():
+    #     # If using Ray Client best_logdir is a directory on the server.
+    #     # So we want to make sure we wrap model loading in a task.
+    #     remote_load_fn = ray.remote(load_best_model)
+    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
 
     # Do something with the best model.
     _ = best_bst
