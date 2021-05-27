@@ -153,10 +153,10 @@ class StandardAutoscaler:
                     AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry)
                 _metric_server_started = True
-            except Exception:
+            except Exception as e:
                 logger.error(
                     "An error occurred while starting the metrics server.")
-                raise Exception
+                raise e
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
