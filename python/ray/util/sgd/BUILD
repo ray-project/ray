@@ -3,6 +3,14 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    tags = ["exclusive", "client"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_ptl",
     size = "large",
     srcs = ["tests/test_ptl.py"],
@@ -43,6 +51,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_basic",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_torch_failure",
     size = "large",
     srcs = ["tests/test_torch_failure.py"],
@@ -58,6 +74,13 @@ py_test(
     deps = [":sgd_lib"],
 )
 
+pytest_module_list(
+    files = ["tests/test_torch_basic.py", "tests/test_tensorflow.py"],
+    size = "medium",
+    name_suffix = "_client_mode",
+    tags = ["exclusive", "client_unit_tests"],
+    deps = [":sgd_lib"]
+)
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.

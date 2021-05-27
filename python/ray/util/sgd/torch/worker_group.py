@@ -256,9 +256,9 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             "workers are remote. Set use_local to True in"
             "TorchTrainer to access a local operator.")
 
-    def get_model(self):
+    def get_model(self, to_cpu=False):
         ready, _ = ray.wait(
-            [r.get_models.remote() for r in self.remote_workers])
+            [r.get_models.remote(to_cpu) for r in self.remote_workers])
         models = ray.get(ready[0])
         return models
 
