@@ -494,7 +494,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         import pip_install_test  # noqa
     assert ray.get(f.remote())
 
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_conda_input_filepath(tmp_path):
     conda_dict = {
         "dependencies": [
