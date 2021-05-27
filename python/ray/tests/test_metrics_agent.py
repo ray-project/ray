@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
@@ -46,6 +47,14 @@ _METRICS = [
     "ray_pending_actors",
     "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
+]
+
+_AUTOSCALER_METRICS = [
+    "autoscaler_config_validation_exceptions",
+    "autoscaler_node_launch_exceptions", "autoscaler_pending_nodes",
+    "autoscaler_reset_exceptions", "autoscaler_running_nodes",
+    "autoscaler_started_nodes", "autoscaler_stopped_nodes",
+    "autoscaler_update_loop_exceptions", "autoscaler_worker_startup_time"
 ]
 
 
@@ -94,8 +103,9 @@ def _setup_cluster_for_test(ray_start_cluster):
         metrics_export_port = node_info["MetricsExportPort"]
         addr = node_info["NodeManagerAddress"]
         prom_addresses.append(f"{addr}:{metrics_export_port}")
-
-    yield prom_addresses
+    autoscaler_export_addr = "{}:{}".format(cluster.head_node.node_ip_address,
+                                            AUTOSCALER_METRIC_PORT)
+    yield prom_addresses, autoscaler_export_addr
 
     ray.get(worker_should_exit.send.remote())
     ray.get(obj_refs)
@@ -107,7 +117,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 20
 
-    prom_addresses = _setup_cluster_for_test
+    prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(
@@ -165,6 +175,16 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert hist_count == 1
         assert hist_sum == 1.5
 
+        # Autoscaler metrics
+        _, autoscaler_metric_names, _ = fetch_prometheus(
+            [autoscaler_export_addr])
+        for metric in _AUTOSCALER_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(name.startswith(metric) for name in
+                       autoscaler_metric_names), \
+                    f"{metric} not in {autoscaler_metric_names}"
+
     def wrap_test_case_for_retry():
         try:
             test_cases()
@@ -197,10 +217,14 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD, "/tmp/ray")
 
     def get_metrics_export_address_from_node(nodes):
-        return [
+        node_export_addrs = [
             "{}:{}".format(node.node_ip_address, node.metrics_export_port)
             for node in nodes
         ]
+        # monitor should is run on head node for `ray_start_cluster` fixture
+        autoscaler_export_addr = "{}:{}".format(
+            cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT)
+        return node_export_addrs + [autoscaler_export_addr]
 
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert (set(get_metrics_export_address_from_node(nodes)) == set(
