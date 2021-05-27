@@ -39,8 +39,6 @@ def setup(input_args):
 
     py_executable: str = sys.executable
 
-    conda_dict = get_conda_dict(runtime_env)
-
     if runtime_env.get("conda"):
         py_executable = "python"
         if isinstance(runtime_env["conda"], str):
