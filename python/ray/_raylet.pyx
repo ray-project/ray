@@ -1163,6 +1163,25 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_object_locations(self, object_refs, int64_t timeout_ms):
+        cdef:
+            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                lookup_ids, timeout_ms, &results))
+
+        refs_location_pairs = []
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located 
+            if not results[i].get():
+                refs_location_pairs.append((object_refs[i], None))
+            else:
+                refs_location_pairs.append((object_refs[i], ObjectLocation.make(results[i])))
+        return refs_location_pairs
+
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()

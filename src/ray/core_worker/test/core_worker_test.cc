@@ -253,11 +253,6 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       ASSERT_EQ(return_ids.size(), 1);
 
       // TODO(chenshen) test GetLocationsFromOwner
-      // we want to verify that
-      // 1. before the object is resolved, the locations is empty
-      // 2. after the object is resolved, we were able to get the locations, even
-      // if the object is not owned by the driver
-
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
@@ -791,16 +786,18 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(core_worker.Put(buffers[i], {}, &ids[i]));
   }
+  std::vector<size_t> sizes{sizeof(array1) / 2 * 3, array2_size / 2 * 3};
 
   // Test GetLocationFromOwner()
   std::vector<std::shared_ptr<ObjectLocation>> location_results;
-  RAY_CHECK_OK(core_worker.GetLocationFromOwner(ids, &location_results));
+  RAY_CHECK_OK(core_worker.GetLocationFromOwner(ids, -1, &location_results));
   ASSERT_EQ(location_results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     auto &location = location_results.at(i);
-    ASSERT_EQ(location->node_ids.size(), 1);
-    ASSERT_EQ(location->node_ids.at(0), core_worker.GetCurrentNodeId());
-    ASSERT_FALSE(location->is_spilled);
+    ASSERT_EQ(location->GetObjectSize(), sizes.at(i));
+    ASSERT_EQ(location->GetNodeIDs().size(), 1);
+    ASSERT_EQ(location->GetNodeIDs().at(0), core_worker.GetCurrentNodeId());
+    ASSERT_FALSE(location->IsSpilled());
   }
 
   // Test Get().

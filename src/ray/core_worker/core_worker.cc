@@ -25,6 +25,7 @@
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
+namespace ray {
 namespace {
 
 // Duration between internal book-keeping heartbeats.
@@ -76,9 +77,21 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
   return options.job_id;
 }
 
+// Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
+std::shared_ptr<ObjectLocation> CreateObjectLocation(
+    const rpc::GetObjectLocationsOwnerReply &reply) {
+  std::vector<NodeID> node_ids;
+  node_ids.reserve(reply.node_ids_size());
+  for (size_t i = 0; i < reply.node_ids_size(); i++) {
+    node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
+  }
+  bool is_spilled = !reply.spilled_url().empty();
+  return std::make_shared<ObjectLocation>(NodeID(),  // TODO: fill the primary_node_id.
+                                          reply.object_size(), std::move(node_ids),
+                                          is_spilled, reply.spilled_url(),
+                                          NodeID::FromBinary(reply.spilled_node_id()));
+}
 }  // namespace
-
-namespace ray {
 
 /// The global instance of `CoreWorkerProcess`.
 std::unique_ptr<CoreWorkerProcess> core_worker_process;
@@ -1378,32 +1391,16 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
-namespace {
-// Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-std::shared_ptr<ObjectLocation> CreateObjectLocation(
-    const rpc::GetObjectLocationsOwnerReply &reply) {
-  std::vector<NodeID> node_ids;
-  node_ids.reserve(reply.node_ids_size());
-  for (size_t i = 0; i < reply.node_ids_size(); i++) {
-    node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
-  }
-  bool is_spilled = !reply.spilled_url().empty();
-  return std::make_shared<ObjectLocation>(std::move(node_ids), is_spilled,
-                                          reply.spilled_url(),
-                                          NodeID::FromBinary(reply.spilled_node_id()));
-}
-}  // namespace
-
 Status CoreWorker::GetLocationFromOwner(
-    const std::vector<ObjectID> &object_ids,
+    const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
     std::vector<std::shared_ptr<ObjectLocation>> *results) {
   results->resize(object_ids.size());
 
-  absl::Mutex mutex;
-  auto num_remaining = object_ids.size();
-  std::promise<void> ready_promise;
-
-  absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>> location_by_id;
+  auto mutex = std::make_shared<absl::Mutex>();
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto ready_promise = std::make_shared<std::promise<void>>();
+  auto location_by_id =
+      std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
   for (const auto &object_id : object_ids) {
     auto owner_address = GetOwnerAddress(object_id);
@@ -1414,26 +1411,33 @@ Status CoreWorker::GetLocationFromOwner(
     request.set_last_version(-1);
     client->GetObjectLocationsOwner(
         request,
-        [&object_id, &mutex, &num_remaining, &ready_promise, &location_by_id](
+        [object_id, mutex, num_remaining, ready_promise, location_by_id](
             const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(&mutex);
+          absl::MutexLock lock(mutex.get());
           if (status.ok()) {
-            location_by_id[object_id] = CreateObjectLocation(reply);
+            (*location_by_id)[object_id] = CreateObjectLocation(reply);
           } else {
             // TODO: report timeout error versus not found error?
           }
-          num_remaining--;
-          if (num_remaining == 0) {
-            ready_promise.set_value();
+          (*num_remaining)--;
+          if (*num_remaining == 0) {
+            ready_promise->set_value();
           }
         });
   }
-
-  ready_promise.get_future().wait();
+  if (timeout_ms < 0) {
+    ready_promise->get_future().wait();
+  } else if (ready_promise->get_future().wait_for(
+                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "Failed querying object locations within " << timeout_ms
+           << " milliseconds.";
+    return Status::TimedOut(stream.str());
+  }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
-    auto pair = location_by_id.find(object_ids[i]);
-    if (pair == location_by_id.end()) {
+    auto pair = location_by_id->find(object_ids[i]);
+    if (pair == location_by_id->end()) {
       continue;
     }
     (*results)[i] = pair->second;
@@ -2911,6 +2915,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
+<<<<<<< HEAD
   send_reply_callback(Status::OK(),
                       [this, is_idle]() {
                         // If the worker is idle, we exit.
@@ -2920,6 +2925,18 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
                       },
                       // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+=======
+  send_reply_callback(
+      Status::OK(),
+      [this, is_idle]() {
+        // If the worker is idle, we exit.
+        if (is_idle) {
+          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+        }
+      },
+      // We need to kill it regardless if the RPC failed.
+      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+>>>>>>> dceba8e5d (plumbing GetLocationAPI to CoWorker)
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

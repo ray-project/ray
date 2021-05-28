@@ -46,3 +46,37 @@ cdef class ProfileEvent:
         # Deleting the CProfileEvent will add it to a queue to be pushed to
         # the driver.
         self.inner.reset()
+
+
+cdef class ObjectLocation:
+    """Cython wrapper class of C++ `ray::ObjectLocation`."""
+    cdef:
+        shared_ptr[CObjectLocation] inner_
+
+    @staticmethod
+    cdef make(const shared_ptr[CObjectLocation]& object_location):
+        cdef ObjectLocation self = ObjectLocation.__new__(ObjectLocation)
+        self.inner_ = object_location
+        return self
+    
+    def primary_node_id(self):
+        return NodeID(self.inner_.get().GetPrimaryNodeID().Binary())
+
+    def object_size(self):
+        return self.inner_.get().GetObjectSize()
+
+    def node_ids(self):
+        cdef c_vector[CNodeID] c_node_ids = self.inner_.get().GetNodeIDs()
+        result = []
+        for c_node_id in c_node_ids:
+            result.append(NodeID(c_node_id.Binary()))
+        return result
+
+    def is_spilled(self):
+        return self.inner_.get().IsSpilled()
+
+    def spilled_url(self):
+        return self.inner_.get().GetSpilledURL()
+
+    def spilled_node_id(self):
+        return NodeID(self.inner_.get().GetSpilledNodeID().Binary())
