@@ -133,6 +133,25 @@ This string can be used to filter for a specific Ray cluster's logs:
       $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
       | grep example-cluster2,ray | tail -n 100
 
+.. _k8s-cleanup:
+
+Cleaning up resources
+---------------------
+When cleaning up Ray Helm resources,
+**RayCluster resources must be deleted before the Operator deployment is deleted**.
+This is because the Operator must remove a `finalizer`_ from the ``RayCluster`` resource to allow
+deletion of the resource to complete.
+
+If the Operator and ``RayCluster`` are created as part of the same Helm release,
+the ``RayCluster`` must be deleted directly before uninstalling the Helm release.
+If the Operator and one or more ``RayClusters`` are created in multiple Helm releases,
+the ``RayCluster`` releases must be uninstalled before the Operator release.
+
+To remedy a situation where the Operator deployment was deleted first and ``RayCluster`` deletion is hanging, the options are
+
+- Manually delete the ``RayCluster``'s finalizers with ``kubectl edit`` or ``kubectl patch``.
+- Restart the Operator so that it can remove ``RayCluster`` finalizers. Then remove the Operator.
+
 Cluster-scoped vs. namespaced operators
 ---------------------------------------
 By default, the Ray Helm chart installs a ``cluster-scoped`` operator.
@@ -204,6 +223,7 @@ Questions or Issues?
 .. include:: /_help.rst
 
 .. _`RayCluster CRD`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/crds/cluster_crd.yaml
+.. _`finalizer` : https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#finalizers
 .. _`namespaced`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_namespaced.yaml
 .. _`cluster-scoped`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_cluster_scoped.yaml
 .. _`example`: https://github.com/ray-project/ray/tree/master/deploy/components/example_cluster.yaml

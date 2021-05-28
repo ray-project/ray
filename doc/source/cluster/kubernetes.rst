@@ -221,9 +221,14 @@ then fetch its logs:
 Cleanup
 -------
 
-To remove a Ray Helm release and the associated API resources, use `helm uninstall`_.
+To remove a Ray Helm release and the associated API resources, use `kubectl delete`_ and `helm uninstall`_.
+Note the order of the commands below.
 
 .. code-block:: shell
+
+  # First, delete the RayCluster custom resource.
+  $ kubectl -n ray delete raycluster example-cluster
+  raycluster.cluster.ray.io "example-cluster" deleted
 
   # Delete the Ray release.
   $ helm -n ray uninstall example-cluster
@@ -235,6 +240,8 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 
 Note that ``helm uninstall`` `does not delete`_ the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
+
+- :ref:`More details on resource cleanup<k8s-cleanup>`
 
 Next steps
 ----------
@@ -261,6 +268,7 @@ Questions or Issues?
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
+.. _`kubectl delete`: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#delete
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
