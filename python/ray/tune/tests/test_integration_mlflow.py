@@ -129,6 +129,7 @@ class MLflowTest(unittest.TestCase):
             tracking_uri="test1",
             registry_uri="test2",
             experiment_name="test_exp")
+        logger.setup()
         self.assertEqual(logger.client.tracking_uri, "test1")
         self.assertEqual(logger.client.registry_uri, "test2")
         self.assertListEqual(logger.client.experiment_names,
