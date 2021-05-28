@@ -1,13 +1,14 @@
 
-a2c-tf-breakoutnoframeskip-v4:
+a2c-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: A2C
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 50.0
-        timesteps_total: 3500000
+        timesteps_total: 3500000   
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5
@@ -18,15 +19,16 @@ a2c-tf-breakoutnoframeskip-v4:
             [20000000, 0.000000000001],
         ]
 
-apex-tf-breakoutnoframeskip-v4:
+apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 10.0
         timesteps_total: 6000000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         double_q: false
         dueling: false
         num_atoms: 1
@@ -50,15 +52,16 @@ apex-tf-breakoutnoframeskip-v4:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
-dqn-tf-breakoutnoframeskip-v4:
+dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 15.0
         timesteps_total: 300000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         double_q: false
         dueling: false
         num_atoms: 1
@@ -82,15 +85,16 @@ dqn-tf-breakoutnoframeskip-v4:
         num_gpus: 0.5
         timesteps_per_iteration: 10000
 
-impala-tf-breakoutnoframeskip-v4:
+impala-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 50.0
         timesteps_total: 3000000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 10
@@ -102,15 +106,16 @@ impala-tf-breakoutnoframeskip-v4:
         ]
         num_gpus: 1
 
-ppo-tf-breakoutnoframeskip-v4:
+ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: PPO
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 30.0
         timesteps_total: 5000000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True
@@ -130,15 +135,16 @@ ppo-tf-breakoutnoframeskip-v4:
         num_gpus: 1
 
 # Expect roughly 1000 reward after 1h on 1GPU
-sac-tf-halfcheetahbulletenv-v0:
+sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: SAC
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 400.0
         timesteps_total: 40000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         horizon: 1000
         soft_horizon: false
         Q_model:
@@ -169,15 +175,16 @@ sac-tf-halfcheetahbulletenv-v0:
         metrics_smoothing_episodes: 5
 
 # Expect roughly 1000 reward after 1h on 1GPU
-ddpg-tf-halfcheetahbulletenv-v0:
+ddpg-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: DDPG
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 400.0
         timesteps_total: 350000
+    stop:
         time_total_s: 3600
     config:
-        framework: tf
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
         n_step: 1

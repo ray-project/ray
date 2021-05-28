@@ -52,13 +52,14 @@ if __name__ == "__main__":
             experiments[k] = e
             e_torch = copy.deepcopy(e)
             e_torch["config"]["framework"] = "torch"
-            k_torch = re.sub("-tf-", "-torch-", k)
+            k_tf = re.sub("^(\\w+)-", "\1-tf-", k)
+            k_torch = re.sub("-tf-", "-torch-", k_tf)
             experiments[k_torch] = e_torch
             for k_ in [k, k_torch]:
                 checks[k_] = {
-                    "min_reward": e["stop"]["episode_reward_mean"],
+                    "min_reward": e["pass_criteria"]["episode_reward_mean"],
+                    "min_timesteps": e["pass_criteria"]["timesteps_total"],
                     "time_total_s": e["stop"]["time_total_s"],
-                    "timesteps_total": e["stop"]["timesteps_total"],
                     "failures": 0,
                     "passed": False,
                 }
@@ -95,16 +96,16 @@ if __name__ == "__main__":
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
             else:
-                desired_reward = t.stopping_criterion.get("episode_reward_mean")
-                desired_timesteps = t.stopping_criterion.get("timesteps_total")
-                desired_time = t.stopping_criterion.get("time_total_s")
+                desired_reward = checks[experiment]["min_reward"]
+                desired_timesteps = checks[experiment]["min_timesteps"]
 
                 throughput = t.last_result["timesteps_total"] / \
                     t.last_result["time_total_s"]
 
                 desired_throughput = None
-                if desired_time is not None and desired_timesteps is not None:
-                    desired_throughput = desired_timesteps / desired_time
+                if desired_timesteps is not None:
+                    desired_throughput = \
+                        desired_timesteps / t.stopping_criterion["time_total_s"]
 
                 if (desired_reward and t.last_result["episode_reward_mean"] <
                     desired_reward) or \
