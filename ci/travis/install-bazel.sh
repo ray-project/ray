@@ -118,7 +118,7 @@ build --google_credentials="${translated_path}"
 EOF
   elif [ -n "${BUILDKITE-}" ]; then
 
-    if [ "${platform}" = "darwin "]; then
+    if [ "${platform}" = "darwin" ]; then
       echo "Using local disk cache on mac"
     cat <<EOF >> ~/.bazelrc
 build --disk_cache=/tmp/bazel-cache
