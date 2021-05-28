@@ -167,6 +167,21 @@ def test_prepare_runtime_init_req_modified_job():
         req.init.job_config).serialize() == new_config.serialize()
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [  # no
+        (["ipython", "-m", "ray.util.client.server"], True),
+        (["ipython -m ray.util.client.server"], True),
+        (["ipython -m", "ray.util.client.server"], True),
+        (["bash", "ipython", "-m", "ray.util.client.server"], False),
+        (["bash", "ipython -m ray.util.client.server"], False),
+        (["python", "-m", "bash", "ipython -m ray.util.client.server"], False)
+    ])
+def test_match_running_client_server(test_case):
+    command, result = test_case
+    assert proxier._match_running_client_server(command) == result
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
