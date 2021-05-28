@@ -54,7 +54,7 @@ dqn-tf-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
     stop:
-        episode_reward_mean: 10.0
+        episode_reward_mean: 15.0
         timesteps_total: 300000
         time_total_s: 3600
     config:
@@ -135,7 +135,7 @@ sac-tf-halfcheetahbulletenv-v0:
     run: SAC
     stop:
         episode_reward_mean: 400.0
-        timesteps_total: 30000
+        timesteps_total: 40000
         time_total_s: 3600
     config:
         framework: tf
@@ -173,8 +173,8 @@ ddpg-tf-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: DDPG
     stop:
-        episode_reward_mean: 20.0
-        timesteps_total: 30000
+        episode_reward_mean: 400.0
+        timesteps_total: 350000
         time_total_s: 3600
     config:
         framework: tf
