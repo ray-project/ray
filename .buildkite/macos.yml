@@ -1,3 +1,5 @@
+
+steps:
 - label: ":mac: :apple:"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
