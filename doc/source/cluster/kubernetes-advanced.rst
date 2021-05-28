@@ -143,7 +143,7 @@ This is because the Operator must remove a `finalizer`_ from the ``RayCluster`` 
 deletion of the resource to complete.
 
 If the Operator and ``RayCluster`` are created as part of the same Helm release,
-the ``RayCluster`` must be deleted directly before uninstalling the Helm release.
+the ``RayCluster`` must be deleted :ref:`before<k8s-cleanup-basic>` uninstalling the Helm release.
 If the Operator and one or more ``RayClusters`` are created in multiple Helm releases,
 the ``RayCluster`` releases must be uninstalled before the Operator release.
 
