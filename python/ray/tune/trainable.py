@@ -822,7 +822,7 @@ class DistributedTrainable(Trainable):
         Builds a deep copy of the input config and populates it with
         metadata from this Trainable.
 
-        Useful for passing this Trainable's configs to each distributed 
+        Useful for passing this Trainable's configs to each distributed
         Trainable instance.
         """
         new_config = copy.deepcopy(config)

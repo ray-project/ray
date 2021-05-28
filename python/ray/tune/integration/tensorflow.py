@@ -3,7 +3,6 @@ import logging
 
 import ray
 import os
-from ray import tune
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
