@@ -63,6 +63,7 @@ if __name__ == "__main__":
                     "failures": 0,
                     "passed": False,
                 }
+            del e["pass_criteria"]
 
     # Print out the actual config.
     print("== Test config ==")
