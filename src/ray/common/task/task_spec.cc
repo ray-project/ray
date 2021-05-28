@@ -78,7 +78,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredResources();
+    auto sched_cls = GetRequiredPlacementResources();
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
