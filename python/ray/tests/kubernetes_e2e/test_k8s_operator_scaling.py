@@ -116,7 +116,7 @@ class KubernetesScaleTest(unittest.TestCase):
                 file.flush()
 
             # Must create CRD before operator.
-            print(">>>Creating RayCluster CRD.")
+            print("\n>>>Creating RayCluster CRD.")
             cmd = f"kubectl apply -f {get_crd_path()}"
             subprocess.check_call(cmd, shell=True)
             # Takes a bit of time for CRD to register.
