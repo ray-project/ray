@@ -72,7 +72,7 @@ class AutoscalerPrometheusMetrics:
         self.config_validation_exceptions: Counter = Counter(
             "config_validation_exceptions",
             "Number of exceptions raised while validating the config "
-            "during a reset",
+            "during a reset.",
             unit="exceptions",
             namespace="autoscaler",
             registry=self.registry)

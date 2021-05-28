@@ -381,7 +381,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="The IP address of the machine hosting the monitor process")
+        help="The IP address of the machine hosting the monitor process.")
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,

@@ -1851,8 +1851,8 @@ def start_monitor(redis_address,
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        monitor_ip (str): ip address of the machine that the monitor will be
-        run on
+        monitor_ip (str): IP address of the machine that the monitor will be
+            run on. Can be excluded, but required for autoscaler metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
