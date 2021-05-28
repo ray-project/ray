@@ -81,7 +81,7 @@ TEST(RayApiTest, PutTest) {
 TEST(RayApiTest, StaticGetTest) {
   RayConfig config;
   config.local_mode = true;
-  Ray::Init();
+  Ray::Init(config);
   /// `Get` member function
   auto obj_ref1 = Ray::Put(100);
   auto res1 = obj_ref1.Get();
@@ -96,7 +96,7 @@ TEST(RayApiTest, StaticGetTest) {
 TEST(RayApiTest, WaitTest) {
   RayConfig config;
   config.local_mode = true;
-  Ray::Init();
+  Ray::Init(config);
   auto r0 = Ray::Task(Return1).Remote();
   auto r1 = Ray::Task(Plus1).Remote(3);
   auto r2 = Ray::Task(Plus).Remote(2, 3);
@@ -151,7 +151,7 @@ TEST(RayApiTest, CallWithObjectTest) {
 TEST(RayApiTest, ActorTest) {
   RayConfig config;
   config.local_mode = true;
-  Ray::Init();
+  Ray::Init(config);
   ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
@@ -186,7 +186,7 @@ TEST(RayApiTest, CompareWithFuture) {
   // Ray API
   RayConfig config;
   config.local_mode = true;
-  Ray::Init();
+  Ray::Init(config);
   auto f3 = Ray::Task(Plus1).Remote(1);
   int rt3 = *f3.Get();
 
