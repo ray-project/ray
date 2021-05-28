@@ -171,7 +171,7 @@ def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
     trainable.stop()
 
 
-def test_validate_session():
+def test_validate_session(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(_train_validate_session)
     tune.run(trainable_cls)
 

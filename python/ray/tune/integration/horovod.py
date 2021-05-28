@@ -286,5 +286,5 @@ def _train_simple(config: Dict):
 def _train_validate_session(config: Dict):
     current_session = tune.session.get_session()
     assert current_session is not None
-    assert current_session._trial_id != "default"
-    assert current_session._trial_name != "default"
+    assert current_session.trial_id != "default"
+    assert current_session.trial_name != "default"

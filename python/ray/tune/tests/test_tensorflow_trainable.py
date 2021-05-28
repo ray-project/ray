@@ -75,8 +75,8 @@ def _train_validate_session(config: Dict,
                             checkpoint_dir: Optional[str] = None):
     current_session = tune.session.get_session()
     assert current_session is not None
-    assert current_session._trial_id != "default"
-    assert current_session._trial_name != "default"
+    assert current_session.trial_id != "default"
+    assert current_session.trial_name != "default"
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
@@ -139,7 +139,7 @@ def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
     trainable.stop()
 
 
-def test_validate_session():
+def test_validate_session(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(_train_validate_session)
     tune.run(trainable_cls)
 

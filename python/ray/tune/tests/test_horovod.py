@@ -96,7 +96,7 @@ def test_resource_tune(ray_connect_cluster, use_gpu):
     assert analysis.trials[0].last_result["training_iteration"] == 2
 
 
-def test_validate_session():
+def test_validate_session(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(_train_validate_session)
     tune.run(trainable_cls)
 

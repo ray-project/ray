@@ -814,10 +814,12 @@ class Trainable:
 
 
 class DistributedTrainable(Trainable):
-    """Common class for a Trainable whose training should be performed in a distributed manner."""
+    """Common Trainable class for distributed training."""
 
     def build_config(self, config: Dict):
-        """Builds a deep copy of the input config and populates it with
+        """Builds config for disitrubted training.
+
+        Builds a deep copy of the input config and populates it with
         metadata from this Trainable.
 
         Useful for passing this Trainable's configs to each distributed 
