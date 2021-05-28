@@ -6,6 +6,8 @@ from prometheus_client import (
 )
 
 
+# The metrics in this class should be kept in sync with
+# python/ray/tests/test_metrics_agent.py
 class AutoscalerPrometheusMetrics:
     def __init__(self, registry: CollectorRegistry = None):
         self.registry: CollectorRegistry = registry or \
@@ -15,7 +17,11 @@ class AutoscalerPrometheusMetrics:
         #          15 minutes, 20 minutes, 30 minutes, 1 hour
         self.worker_startup_time: Histogram = Histogram(
             "worker_startup_time_seconds",
-            "Worker startup time.",
+            "Worker startup time. Note that when nodes are launched in "
+            "batches, the startup time for that batch will be observed "
+            "once for *each* node in that batch. For example, if 8 nodes "
+            "are launched in 3 minutes, a startup time of 3 minutes will "
+            "be observed 8 times.",
             unit="seconds",
             namespace="autoscaler",
             registry=self.registry,

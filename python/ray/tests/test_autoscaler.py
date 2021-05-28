@@ -1406,9 +1406,9 @@ class AutoscalingTest(unittest.TestCase):
 
         # Write a corrupted config
         self.write_config("asdf", call_prepare_config=False)
-        for i in range(10):
+        for _ in range(10):
             autoscaler.update()
-        # config validation exceptions metrics should be incremented
+        # config validation exceptions metrics should be incremented 10 times
         assert mock_metrics.config_validation_exceptions.inc.call_count == 10
         time.sleep(0.1)
         assert autoscaler.pending_launches.value == 0
