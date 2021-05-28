@@ -6,7 +6,9 @@
 #include <memory>
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 

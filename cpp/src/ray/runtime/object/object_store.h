@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <msgpack.hpp>
+#include "ray/common/id.h"
 
 namespace ray {
 namespace api {
@@ -55,6 +56,19 @@ class ObjectStore {
   /// \return A vector that indicates each object has appeared or not.
   virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
                                  int timeout_ms) = 0;
+
+  /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
+  ///
+  /// \param[in] id The binary string ID to increase the reference count for.
+  virtual void AddLocalReference(const std::string &id) = 0;
+
+  /// Decrease the reference count for this object ID. Should be called
+  /// by the language frontend when a reference is destroyed.
+  ///
+  /// \param[in] id The binary string ID to decrease the reference count for.
+  virtual void RemoveLocalReference(const std::string &id) = 0;
 
  private:
   virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;

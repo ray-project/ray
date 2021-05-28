@@ -4,8 +4,6 @@
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/ray_runtime_holder.h>
 
-#include "ray/core.h"
-
 namespace ray {
 namespace api {
 
@@ -21,10 +19,10 @@ class ActorHandle {
  public:
   ActorHandle();
 
-  ActorHandle(const ActorID &id);
+  ActorHandle(const std::string &id);
 
   /// Get a untyped ID of the actor
-  const ActorID &ID() const;
+  const std::string &ID() const;
 
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
@@ -34,7 +32,7 @@ class ActorHandle {
   MSGPACK_DEFINE(id_);
 
  private:
-  ActorID id_;
+  std::string id_;
 };
 
 // ---------- implementation ----------
@@ -42,20 +40,25 @@ template <typename ActorType>
 ActorHandle<ActorType>::ActorHandle() {}
 
 template <typename ActorType>
-ActorHandle<ActorType>::ActorHandle(const ActorID &id) {
+ActorHandle<ActorType>::ActorHandle(const std::string &id) {
   id_ = id;
 }
 
 template <typename ActorType>
-const ActorID &ActorHandle<ActorType>::ID() const {
+const std::string &ActorHandle<ActorType>::ID() const {
   return id_;
 }
 
 template <typename ActorType>
 template <typename F>
 ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+  using Self = boost::callable_traits::class_of_t<F>;
+  static_assert(
+      std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
+      "class types must be same");
   RemoteFunctionHolder remote_func_holder(actor_func);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, remote_func_holder);
+  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
+                            std::move(remote_func_holder));
 }
 
 }  // namespace api
