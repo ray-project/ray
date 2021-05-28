@@ -52,10 +52,10 @@ if __name__ == "__main__":
             experiments[k] = e
             e_torch = copy.deepcopy(e)
             e_torch["config"]["framework"] = "torch"
-            k_tf = re.sub("^(\\w+)-", "\1-tf-", k)
+            k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
             k_torch = re.sub("-tf-", "-torch-", k_tf)
             experiments[k_torch] = e_torch
-            for k_ in [k, k_torch]:
+            for k_ in [k_tf, k_torch]:
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
                     "min_timesteps": e["pass_criteria"]["timesteps_total"],
@@ -64,6 +64,7 @@ if __name__ == "__main__":
                     "passed": False,
                 }
             del e["pass_criteria"]
+            del e_torch["pass_criteria"]
 
     # Print out the actual config.
     print("== Test config ==")
