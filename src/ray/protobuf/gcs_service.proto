@@ -78,7 +78,9 @@ message GetActorInfoReply {
 
 message GetNamedActorInfoRequest {
   // Name of the actor.
-  string name = 2;
+  string name = 1;
+  // Namespace of the actor.
+  string ray_namespace = 2;
 }
 
 message GetNamedActorInfoReply {
@@ -88,6 +90,8 @@ message GetNamedActorInfoReply {
 }
 
 message GetAllActorInfoRequest {
+  // Whether or not to filter out actors which belong to dead jobs.
+  bool show_dead_jobs = 1;
 }
 
 message GetAllActorInfoReply {

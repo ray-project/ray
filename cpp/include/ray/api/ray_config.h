@@ -1,8 +1,10 @@
 
 #pragma once
+#include <ray/api/common_types.h>
+#include <ray/api/logging.h>
+#include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
@@ -32,13 +34,14 @@ class RayConfig {
 
   std::string session_dir = "";
 
-  bool use_ray_remote = false;
-
   static std::shared_ptr<RayConfig> GetInstance();
 
   void SetRedisAddress(const std::string address) {
     auto pos = address.find(':');
-    RAY_CHECK(pos != std::string::npos);
+    if (pos == std::string::npos) {
+      throw RayException("The address has no char ':'");
+    }
+
     redis_ip = address.substr(0, pos);
     redis_port = std::stoi(address.substr(pos + 1, address.length()));
   }

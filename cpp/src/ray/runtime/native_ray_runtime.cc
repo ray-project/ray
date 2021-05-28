@@ -3,7 +3,6 @@
 
 #include <ray/api.h>
 
-#include "../util/address_helper.h"
 #include "./object/native_object_store.h"
 #include "./object/object_store.h"
 #include "./task/native_task_submitter.h"
