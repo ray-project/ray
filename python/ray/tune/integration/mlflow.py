@@ -199,6 +199,8 @@ class MLflowLogger(Logger):
         self._trial_experiment_logger = self._experiment_logger_cls(
             tracking_uri, registry_uri, experiment_name)
 
+        self._trial_experiment_logger.setup()
+
         self._trial_experiment_logger.log_trial_start(self.trial)
 
     def on_result(self, result: Dict):
