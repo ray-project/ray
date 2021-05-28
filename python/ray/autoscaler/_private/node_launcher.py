@@ -8,6 +8,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED,
                                  NODE_KIND_WORKER)
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class NodeLauncher(threading.Thread):
                  **kwargs):
         self.queue = queue
         self.pending = pending
-        self.prom_metrics = prom_metrics
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
@@ -63,14 +64,13 @@ class NodeLauncher(threading.Thread):
         launch_start_time = time.time()
         self.provider.create_node(node_config, node_tags, count)
         startup_time = time.time() - launch_start_time
-        if self.prom_metrics:
-            for _ in range(count):
-                # Note: when launching multiple nodes we observe the time it
-                # took all nodes to start up for each node. For example, if 4
-                # nodes were launched in 25 seconds, we would observe the 25
-                # second startup time 4 times.
-                self.prom_metrics.worker_startup_time.observe(startup_time)
-            self.prom_metrics.started_nodes.inc(count)
+        for _ in range(count):
+            # Note: when launching multiple nodes we observe the time it
+            # took all nodes to start up for each node. For example, if 4
+            # nodes were launched in 25 seconds, we would observe the 25
+            # second startup time 4 times.
+            self.prom_metrics.worker_startup_time.observe(startup_time)
+        self.prom_metrics.started_nodes.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")
@@ -82,8 +82,7 @@ class NodeLauncher(threading.Thread):
             try:
                 self._launch_node(config, count, node_type)
             except Exception:
-                if self.prom_metrics:
-                    self.prom_metrics.node_launch_exceptions.inc()
+                self.prom_metrics.node_launch_exceptions.inc()
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)
