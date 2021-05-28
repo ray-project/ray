@@ -35,7 +35,7 @@ cdef extern from "src/csortlib.h" namespace "csortlib":
 HeaderT = np.dtype((np.uint8, HEADER_SIZE))
 PayloadT = np.dtype((np.uint8, RECORD_SIZE - HEADER_SIZE))
 RecordT = np.dtype([("header", HeaderT), ("body", PayloadT)])
-ChunkInfo = Tuple[int, int]
+BlockInfo = Tuple[int, int]
 
 
 def get_boundaries(n: int) -> List[int]:
@@ -58,32 +58,30 @@ cdef ConstArray[Record] _to_const_record_array(buf):
     return ret
 
 
-def sort_and_partition(part: io.BytesIO, boundaries: List[int]) -> List[ChunkInfo]:
+def sort_and_partition(part: io.BytesIO, boundaries: List[int]) -> List[BlockInfo]:
     arr = _to_record_array(part.getbuffer())
-    chunks = SortAndPartition(arr, boundaries)
-    return [(c.offset * RECORD_SIZE, c.size * RECORD_SIZE) for c in chunks]
+    blocks = SortAndPartition(arr, boundaries)
+    return [(c.offset * RECORD_SIZE, c.size * RECORD_SIZE) for c in blocks]
 
 
-def merge_partitions(chunks: List[bytes], batch_num_records: int) -> Iterable[io.BytesIO]:
+def merge_partitions(blocks: List[bytes], batch_num_records: int) -> Iterable[bytes]:
     """
-    An iterator that returns merged chunks for upload.
+    An iterator that returns merged blocks for upload.
     """
     cdef vector[ConstArray[Record]] record_arrays
-    record_arrays.reserve(len(chunks))
+    record_arrays.reserve(len(blocks))
     total_records = 0
-    for chunk in chunks:
-        if isinstance(chunk, io.BytesIO):
-            chunk = chunk.getbuffer()
-        # else:
-        #     chunk = memoryview(chunk)
-        ra = _to_const_record_array(chunk)
+    for block in blocks:
+        if isinstance(block, io.BytesIO):
+            block = block.getbuffer()
+        ra = _to_const_record_array(block)
         record_arrays.push_back(ra)
         total_records += ra.size
 
     merger = new Merger(record_arrays)
+    batch_bytes = batch_num_records * RECORD_SIZE
     cdef uint8_t[:] mv
     while True:
-        batch_bytes = batch_num_records * RECORD_SIZE
         ret = io.BytesIO(b"0" * batch_bytes)
         mv = ret.getbuffer()
         ptr = <Record*>&mv[0]
@@ -94,4 +92,4 @@ def merge_partitions(chunks: List[bytes], batch_num_records: int) -> Iterable[io
         actual_bytes = cnt * RECORD_SIZE
         ret.seek(0)
         ret.truncate(actual_bytes)
-        yield ret
+        yield ret.getbuffer()

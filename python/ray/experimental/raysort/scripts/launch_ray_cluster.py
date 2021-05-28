@@ -44,13 +44,18 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
     "object_store_memory",
-    0,
+    60 * 1024 * 1024 * 1024,
     "memory reserved for object store per worker, use default if set to 0",
 )
 flags.DEFINE_bool(
     "preallocate",
     True,
     "if set, allocate all worker nodes at startup",
+)
+flags.DEFINE_bool(
+    "new",
+    False,
+    "if set, will tear down the existing cluster first",
 )
 
 
@@ -92,7 +97,7 @@ def get_nvme_device_variables():
     spill_dirs = []
     for d in range(num_nvme_devices):
         device_mounts.append((f"/dev/nvme{d}n1", f"/mnt/nvme{d}"))
-        spill_dirs.append(f"/mnt/nvme{d}/tmp/ray/spill")
+        spill_dirs.append(f"/mnt/nvme{d}/tmp/ray")
     spill_dirs_str = ",".join(r"\"" + d + r"\"" for d in spill_dirs)
     return {
         "NVME_DEVICE_MOUNTS": device_mounts,
@@ -129,6 +134,8 @@ def write_cluster_config():
 
 
 def launch_ray_cluster(cluster_config_file):
+    if FLAGS.new:
+        run(f"ray down -y {cluster_config_file}")
     run(f"ray up -y {cluster_config_file}")
 
 

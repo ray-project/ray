@@ -6,7 +6,7 @@ PartId = int
 Path = str
 RecordCount = int
 
-ChunkInfo = Tuple[int, int]
+BlockInfo = Tuple[int, int]
 PartitionInfo = NamedTuple(
     "PartitionInfo", [("part_id", PartId), ("node", NodeAddress), ("path", Path)]
 )  # yapf: disable

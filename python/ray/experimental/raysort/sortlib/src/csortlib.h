@@ -74,7 +74,7 @@ std::vector<Partition> SortAndPartition(const Array<Record> &record_array,
 std::vector<Key> GetBoundaries(size_t num_partitions);
 
 // Responsible for merging M sorted partitions and producing the output
-// in chunks.
+// in blocks.
 //
 // CPU cost: O(Pr * log(M))
 // where Pr == sum(len(p) for p in partitions), M == len(partitions)
@@ -82,7 +82,7 @@ class Merger {
  public:
   Merger(const std::vector<ConstArray<Record>> &partitions);
 
-  // Returns the actual number of records written into `chunk_buffer`.
+  // Returns the actual number of records written into `ret`.
   size_t GetBatch(Record *const &ret, size_t max_num_records);
 
  private:

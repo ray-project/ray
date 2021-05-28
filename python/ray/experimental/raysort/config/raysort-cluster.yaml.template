@@ -144,5 +144,5 @@ worker_start_ray_commands:
         --object-manager-port=8076
         --metrics-export-port={{PROM_RAY_EXPORTER_PORT}}
         --temp-dir=/mnt/nvme1/tmp/ray
-        {% if OBJECT_STORE_MEMORY is defined %} --object-store-memory={{OBJECT_STORE_MEMORY}} {% endif %}
+        {% if OBJECT_STORE_MEMORY is defined -%} --object-store-memory={{OBJECT_STORE_MEMORY}} {% endif %}
     - /tmp/ray/python/ray/experimental/raysort/bin/node_exporter/node_exporter --web.listen-address 0.0.0.0:{{PROM_NODE_EXPORTER_PORT}} &

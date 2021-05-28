@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import subprocess
-from typing import List
+from typing import Iterable, List
 
 import numpy as np
 import ray
@@ -16,13 +16,11 @@ from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
 from ray.experimental.raysort import sortlib
 from ray.experimental.raysort import tracing_utils
-from ray.experimental.raysort.types import ByteCount, RecordCount, PartId, PartitionInfo, Path
+from ray.experimental.raysort.types import BlockInfo, ByteCount, RecordCount, PartId, PartitionInfo, Path
 
 # ------------------------------------------------------------
 #     Parse Arguments
 # ------------------------------------------------------------
-
-Args = argparse.Namespace
 
 
 def get_args():
@@ -30,16 +28,22 @@ def get_args():
     parser.add_argument(
         "-n",
         "--num_parts",
-        default=100,
+        default=1000,
         type=int,
         help="number of partitions (tasks)",
     )
     parser.add_argument(
         "-s",
         "--part_size",
-        default=int(1e9),
+        default=int(1e10),
         type=ByteCount,
         help="partition size in bytes",
+    )
+    parser.add_argument(
+        "--task_cpu_reduction",
+        default=2,
+        type=int,
+        help="useful for reducing parallelism on worker nodes",
     )
     parser.add_argument(
         "--reducer_batch_num_records",
@@ -55,10 +59,16 @@ def get_args():
         "a list of mount paths for persisting results\nthe benchmark requires this to be on EBS, but for now we use local NVMe disks",
     )
     parser.add_argument(
+        "--skip_sorting",
+        default=False,
+        action="store_true",
+        help="if set, no sorting is performed; just shuffling",
+    )
+    parser.add_argument(
         "--skip_writing_output",
         default=False,
         action="store_true",
-        help="if set, reducers will not write out results",
+        help="if set, reducers will not write out results to disk",
     )
     # Which tasks to run?
     tasks_group = parser.add_argument_group(
@@ -83,14 +93,14 @@ def get_args():
     return args
 
 
+args = get_args()
+
 # ------------------------------------------------------------
 #     Generate Input
 # ------------------------------------------------------------
 
 
-def _make_partition_info(args: Args,
-                         part_id: PartId,
-                         kind="input") -> PartitionInfo:
+def _make_partition_info(part_id: PartId, kind="input") -> PartitionInfo:
     node = ray.worker.global_worker.node_ip_address
     mnt = random.choice(args.worker_ebs_mounts)
     filepath = _get_part_path(mnt, part_id, kind)
@@ -109,10 +119,10 @@ def _get_part_path(mnt: Path, part_id: PartId, kind="input") -> Path:
 
 
 @ray.remote
-def generate_part(args: Args, part_id: PartId, size: RecordCount,
+def generate_part(part_id: PartId, size: RecordCount,
                   offset: RecordCount) -> PartitionInfo:
     logging_utils.init()
-    pinfo = _make_partition_info(args, part_id)
+    pinfo = _make_partition_info(part_id)
     subprocess.run(
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
         check=True)
@@ -120,7 +130,7 @@ def generate_part(args: Args, part_id: PartId, size: RecordCount,
     return pinfo
 
 
-def generate_input(args: Args):
+def generate_input():
     size = args.part_num_records
     offset = 0
     tasks = []
@@ -154,63 +164,80 @@ def _load_partition(path: Path) -> io.BytesIO:
         return io.BytesIO(fin.read())
 
 
-@ray.remote
-def mapper(_args: Args, boundaries: List[int], mapper_id: PartId,
+def _dummy_sort_and_partition(part: io.BytesIO,
+                              boundaries: List[int]) -> List[BlockInfo]:
+    buf = part.getbuffer()
+    N = len(boundaries)
+    offset = 0
+    size = int(np.ceil(buf.nbytes / N))
+    blocks = []
+    for _ in range(N):
+        blocks.append((offset, size))
+        offset += size
+    return blocks
+
+
+@ray.remote(num_cpus=args.task_cpu_reduction, num_returns=args.num_parts)
+def mapper(boundaries: List[int], mapper_id: PartId,
            path: Path) -> List[ObjectRef]:
     logging_utils.init()
     task_id = f"M-{mapper_id} Mapper"
     logging.info(f"{task_id} starting")
     part = _load_partition(path)
-    chunks = sortlib.sort_and_partition(part, boundaries)
+    sort_fn = _dummy_sort_and_partition if args.skip_sorting else sortlib.sort_and_partition
+    blocks = sort_fn(part, boundaries)
     logging.info(f"{task_id} saving to object store")
     # TODO: can we avoid copying here?
     buf = part.getbuffer()
     ret = [
         ray.put(np.frombuffer(buf, dtype=np.uint8, count=size, offset=offset))
-        for offset, size in chunks
+        for offset, size in blocks
     ]
     logging.info(f"{task_id} done")
     return ret
 
 
-@ray.remote
-def reducer(args: Args, reducer_id: PartId, *chunks) -> PartitionInfo:
+def _dummy_merge(blocks: List[bytes], _n: int) -> Iterable[bytes]:
+    for block in blocks:
+        yield block
+
+
+@ray.remote(num_cpus=args.task_cpu_reduction)
+def reducer(reducer_id: PartId, *blocks) -> PartitionInfo:
     logging_utils.init()
     task_id = f"R-{reducer_id} Reducer"
     logging.info(f"{task_id} starting")
-    chunks = ray.get(list(chunks))
-    merger = sortlib.merge_partitions(chunks, args.reducer_batch_num_records)
-    pinfo = _make_partition_info(args, reducer_id, "output")
+    blocks = ray.get(list(blocks))
+    merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
+    merger = merge_fn(blocks, args.reducer_batch_num_records)
+    pinfo = _make_partition_info(reducer_id, "output")
     if args.skip_writing_output:
+        total_bytes = 0
         for datachunk in merger:
-            buf = datachunk.getbuffer()
-            logging.info(f"(not) writing {len(buf)} bytes")
+            total_bytes += len(datachunk)
     else:
         with open(pinfo.path, "wb") as fout:
             for datachunk in merger:
-                buf = datachunk.getbuffer()
-                fout.write(buf)
+                fout.write(datachunk)
     logging.info(f"{task_id} done")
     return pinfo
 
 
 @tracing_utils.timeit("sorting")
-def sort_main(args: Args):
+def sort_main():
     N = args.num_parts
     partitions = _load_manifest(constants.INPUT_MANIFEST_FILE)
     boundaries = sortlib.get_boundaries(N)
     mapper_results = np.empty((N, N), dtype=object)
     for part_id, node, path in partitions:
-        mapper_results[part_id, :] = mapper.options(
-            num_returns=N, resources={f"node:{node}": 1 / args.num_parts}
-        ).remote(
-            args, boundaries, part_id, path
-        )  # yapf: disable
+        mapper_results[part_id, :] = mapper.options(resources={
+            f"node:{node}": 1 / args.num_parts
+        }).remote(boundaries, part_id, path)
 
     reducer_results = []
     for r in range(N):
-        chunks = mapper_results[:, r].tolist()
-        ret = reducer.remote(args, r, *chunks)
+        blocks = mapper_results[:, r].tolist()
+        ret = reducer.remote(r, *blocks)
         reducer_results.append(ret)
 
     output_parts = ray.get(reducer_results)
@@ -225,7 +252,7 @@ def sort_main(args: Args):
 
 
 @ray.remote
-def validate_part(_args: Args, path: Path):
+def validate_part(path: Path):
     logging_utils.init()
     proc = subprocess.run([constants.VALSORT_PATH, path], capture_output=True)
     if proc.returncode != 0:
@@ -234,7 +261,7 @@ def validate_part(_args: Args, path: Path):
     logging.info(f"Validated output {path}")
 
 
-def validate_output(args: Args):
+def validate_output():
     partitions = _load_manifest(constants.OUTPUT_MANIFEST_FILE)
     tasks = []
     for _, node, path in partitions:
@@ -252,7 +279,7 @@ def validate_output(args: Args):
 # ------------------------------------------------------------
 
 
-def init(args: Args):
+def init():
     ray.init(address="auto")
     logging_utils.init()
     logging.info(args)
@@ -261,17 +288,16 @@ def init(args: Args):
 
 
 def main():
-    args = get_args()
-    init(args)
+    init()
 
     if args.generate_input:
-        generate_input(args)
+        generate_input()
 
     if args.sort:
-        sort_main(args)
+        sort_main()
 
     if args.validate_output:
-        validate_output(args)
+        validate_output()
 
 
 if __name__ == "__main__":
