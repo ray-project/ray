@@ -9,5 +9,5 @@
 
   run:
     timeout: 3600 # 10 hours.
-    prepare: python3 ../util/wait_cluster 3 600
-    script: python3 workloads/horovod_test.py
+    prepare: python ../util/wait_cluster 3 600
+    script: python workloads/horovod_test.py

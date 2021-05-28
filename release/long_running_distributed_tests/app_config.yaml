@@ -3,4 +3,4 @@ env_vars: {}
 
 post_build_cmds:
   - pip uninstall -y ray
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
