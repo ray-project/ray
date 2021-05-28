@@ -223,7 +223,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
             "{}:{}".format(node.node_ip_address, node.metrics_export_port)
             for node in nodes
         ]
-        # monitor should is run on head node for `ray_start_cluster` fixture
+        # monitor should be run on head node for `ray_start_cluster` fixture
         autoscaler_export_addr = "{}:{}".format(
             cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT)
         return node_export_addrs + [autoscaler_export_addr]

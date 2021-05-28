@@ -879,17 +879,26 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
+
+        # started_nodes metric should have been incremented by 2
+        assert mock_metrics.started_nodes.inc.call_count == 1
+        mock_metrics.started_nodes.inc.assert_called_with(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+        # running_nodes metric should be set to 2
+        mock_metrics.running_nodes.set.assert_called_with(2)
 
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
@@ -904,12 +913,14 @@ class AutoscalingTest(unittest.TestCase):
         }, 10)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
         self.waitForNodes(10)
 
         # Gradually scales down to meet target size, never going too low
@@ -926,6 +937,8 @@ class AutoscalingTest(unittest.TestCase):
         events = autoscaler.event_summarizer.summary()
         assert ("Removing 10 nodes of type "
                 "ray-legacy-worker-node-type (outdated)." in events), events
+        assert mock_metrics.stopped_nodes.inc.call_count == 10
+        mock_metrics.started_nodes.inc.assert_called_with(5)
 
     def testDynamicScaling(self):
         config_path = self.write_config(SMALL_CLUSTER)
