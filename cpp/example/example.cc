@@ -43,7 +43,6 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, in
 int main(int argc, char **argv) {
   /// configuration
   ray::api::RayConfig config;
-  config.local_mode = false;
 
   /// initialization
   Ray::Init(config, &argc, &argv);

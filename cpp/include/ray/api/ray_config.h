@@ -14,7 +14,7 @@ class RayConfig {
   std::string address = "";
 
   // Whether or not to run this application in a local mode. This is used for debugging.
-  bool local_mode = true;
+  bool local_mode = false;
 
   // The dynamic library path which contains remote fuctions of users.
   // This parameter is not used when the application runs in local mode.

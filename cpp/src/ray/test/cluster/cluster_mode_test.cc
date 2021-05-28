@@ -43,7 +43,6 @@ char ***cmd_argv = nullptr;
 TEST(RayClusterModeTest, FullTest) {
   ray::api::RayConfig config;
   /// initialization to cluster mode
-  config.local_mode = false;
   Ray::Init(config, cmd_argc, cmd_argv);
 
   /// put and get object
