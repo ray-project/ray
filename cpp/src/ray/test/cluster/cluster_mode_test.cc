@@ -90,6 +90,11 @@ TEST(RayClusterModeTest, FullTest) {
   auto r1 = Ray::Task(Plus1).Remote(30);
   auto r2 = Ray::Task(Plus).Remote(3, 22);
 
+  std::vector<ObjectRef<int>> objects = {r0, r1, r2};
+  WaitResult<int> result = Ray::Wait(objects, 3, 1000);
+  EXPECT_EQ(result.ready.size(), 3);
+  EXPECT_EQ(result.unready.size(), 0);
+
   int result1 = *(Ray::Get(r1));
   int result0 = *(Ray::Get(r0));
   int result2 = *(Ray::Get(r2));

@@ -106,7 +106,7 @@ def test_global_gc_when_full(shutdown_only):
         def __init__(self):
             self.loop = self
             self.large_object = ray.put(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+                np.zeros(20 * 1024 * 1024, dtype=np.uint8))
 
     @ray.remote(num_cpus=1)
     class GarbageHolder:
@@ -119,15 +119,17 @@ def test_global_gc_when_full(shutdown_only):
             return self.garbage() is not None
 
         def return_large_array(self):
-            return np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+            return np.zeros(60 * 1024 * 1024, dtype=np.uint8)
 
     try:
         gc.disable()
 
         # Local driver.
+        # 20MB
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
 
         # Remote workers.
+        # 20MB * 2
         actors = [GarbageHolder.remote() for _ in range(2)]
         assert local_ref() is not None
         assert all(ray.get([a.has_garbage.remote() for a in actors]))

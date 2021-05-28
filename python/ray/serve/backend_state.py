@@ -34,7 +34,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
-USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "0") == "1"
+USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 
 
 class ActorReplicaWrapper:
