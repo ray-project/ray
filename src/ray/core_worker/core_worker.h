@@ -637,6 +637,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Get the locations of a list objects. Locations that failed to be retrieved
+  /// will be returned as nullptrs.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids,
+                              std::vector<std::shared_ptr<ObjectLocation>> *results);
+
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
 

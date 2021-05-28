@@ -1378,6 +1378,69 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
+namespace {
+// Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
+std::shared_ptr<ObjectLocation> CreateObjectLocation(
+    const rpc::GetObjectLocationsOwnerReply &reply) {
+  std::vector<NodeID> node_ids;
+  node_ids.reserve(reply.node_ids_size());
+  for (size_t i = 0; i < reply.node_ids_size(); i++) {
+    node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
+  }
+  bool is_spilled = !reply.spilled_url().empty();
+  return std::make_shared<ObjectLocation>(std::move(node_ids), is_spilled,
+                                          reply.spilled_url(),
+                                          NodeID::FromBinary(reply.spilled_node_id()));
+}
+}  // namespace
+
+Status CoreWorker::GetLocationFromOwner(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::shared_ptr<ObjectLocation>> *results) {
+  results->resize(object_ids.size());
+
+  absl::Mutex mutex;
+  auto num_remaining = object_ids.size();
+  std::promise<void> ready_promise;
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>> location_by_id;
+
+  for (const auto &object_id : object_ids) {
+    auto owner_address = GetOwnerAddress(object_id);
+    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(-1);
+    client->GetObjectLocationsOwner(
+        request,
+        [&object_id, &mutex, &num_remaining, &ready_promise, &location_by_id](
+            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
+          absl::MutexLock lock(&mutex);
+          if (status.ok()) {
+            location_by_id[object_id] = CreateObjectLocation(reply);
+          } else {
+            // TODO: report timeout error versus not found error?
+          }
+          num_remaining--;
+          if (num_remaining == 0) {
+            ready_promise.set_value();
+          }
+        });
+  }
+
+  ready_promise.get_future().wait();
+
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    auto pair = location_by_id.find(object_ids[i]);
+    if (pair == location_by_id.end()) {
+      continue;
+    }
+    (*results)[i] = pair->second;
+  }
+  return Status::OK();
+}
+
 void CoreWorker::TriggerGlobalGC() {
   local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {

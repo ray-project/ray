@@ -168,4 +168,22 @@ struct PlacementGroupCreationOptions {
   const bool is_detached = false;
 };
 
+struct ObjectLocation {
+  ObjectLocation(std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+                 NodeID spilled_node_id)
+      : node_ids(std::move(node_ids)),
+        is_spilled(is_spilled),
+        spilled_url(std::move(spilled_url)),
+        spilled_node_id(spilled_node_id) {}
+  /// The IDs of the nodes that this object appeared on or was evicted by.
+  const std::vector<NodeID> node_ids;
+  /// Whether this object has been spilled.
+  const bool is_spilled;
+  /// If spilled, the URL of this object's spill location.
+  const std::string spilled_url;
+  /// If spilled, the ID of the node that spilled the object. Nil if the object was
+  /// spilled to distributed external storage.
+  const NodeID spilled_node_id;
+};
+
 }  // namespace ray
