@@ -44,8 +44,8 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
     "object_store_memory",
-    60 * 1024 * 1024 * 1024,
-    "memory reserved for object store per worker",
+    0,
+    "memory reserved for object store per worker, use default if set to 0",
 )
 flags.DEFINE_bool(
     "preallocate",
@@ -117,6 +117,8 @@ def write_cluster_config():
         "WORKER_TYPE": FLAGS.worker_type,
         "WORKER_EBS_DEVICE_SIZE": FLAGS.worker_ebs_device_size,
     }
+    if FLAGS.object_store_memory == 0:
+        variables.pop("OBJECT_STORE_MEMORY")
     variables.update(get_worker_ebs_device_variables())
     variables.update(get_nvme_device_variables())
     conf = template.render(**variables)

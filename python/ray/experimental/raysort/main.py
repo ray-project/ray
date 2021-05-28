@@ -14,14 +14,9 @@ from ray import ObjectRef
 
 from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
+from ray.experimental.raysort import sortlib
 from ray.experimental.raysort import tracing_utils
-from ray.experimental.raysort.types import (
-    ByteCount,
-    RecordCount,
-    PartId,
-    PartitionInfo,
-    Path,
-)
+from ray.experimental.raysort.types import ByteCount, RecordCount, PartId, PartitionInfo, Path
 
 # ------------------------------------------------------------
 #     Parse Arguments
@@ -35,7 +30,7 @@ def get_args():
     parser.add_argument(
         "-n",
         "--num_parts",
-        default=1000,
+        default=100,
         type=int,
         help="number of partitions (tasks)",
     )
@@ -46,12 +41,12 @@ def get_args():
         type=ByteCount,
         help="partition size in bytes",
     )
-    # parser.add_argument(
-    #     "--reducer_batch_num_records",
-    #     default=int(1e6),
-    #     type=RecordCount,
-    #     help="number of bytes to buffer before writing the output to EBS",
-    # )
+    parser.add_argument(
+        "--reducer_batch_num_records",
+        default=int(1e6),
+        type=RecordCount,
+        help="number of bytes to buffer before writing the output to EBS",
+    )
     parser.add_argument(
         "--worker_ebs_mounts",
         default=[f"/mnt/nvme{d}" for d in range(4)],
@@ -118,10 +113,10 @@ def generate_part(args: Args, part_id: PartId, size: RecordCount,
                   offset: RecordCount) -> PartitionInfo:
     logging_utils.init()
     pinfo = _make_partition_info(args, part_id)
-    logging.info(pinfo)
     subprocess.run(
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
         check=True)
+    logging.info(f"Generated input {pinfo}")
     return pinfo
 
 
@@ -145,8 +140,8 @@ def generate_input(args: Args):
 # ------------------------------------------------------------
 
 
-def _load_input_manifest() -> List[PartitionInfo]:
-    with open(constants.INPUT_MANIFEST_FILE) as fin:
+def _load_manifest(path: Path) -> List[PartitionInfo]:
+    with open(path) as fin:
         reader = csv.reader(fin)
         return [
             PartitionInfo(int(part_id), node, path)
@@ -160,21 +155,16 @@ def _load_partition(path: Path) -> io.BytesIO:
 
 
 @ray.remote
-def mapper(args: Args, mapper_id: PartId, path: Path) -> List[ObjectRef]:
+def mapper(_args: Args, boundaries: List[int], mapper_id: PartId,
+           path: Path) -> List[ObjectRef]:
     logging_utils.init()
     task_id = f"M-{mapper_id} Mapper"
     logging.info(f"{task_id} starting")
     part = _load_partition(path)
-    buf = part.getbuffer()
-    N = args.num_parts
-    offset = 0
-    size = int(np.ceil(buf.nbytes / N))
-    chunks = []
-    for _ in range(N):
-        chunks.append((offset, size))
-        offset += size
+    chunks = sortlib.sort_and_partition(part, boundaries)
     logging.info(f"{task_id} saving to object store")
     # TODO: can we avoid copying here?
+    buf = part.getbuffer()
     ret = [
         ray.put(np.frombuffer(buf, dtype=np.uint8, count=size, offset=offset))
         for offset, size in chunks
@@ -189,26 +179,32 @@ def reducer(args: Args, reducer_id: PartId, *chunks) -> PartitionInfo:
     task_id = f"R-{reducer_id} Reducer"
     logging.info(f"{task_id} starting")
     chunks = ray.get(list(chunks))
-    logging.info(f"{task_id} done")
-    # Write output to EBS
+    merger = sortlib.merge_partitions(chunks, args.reducer_batch_num_records)
     pinfo = _make_partition_info(args, reducer_id, "output")
-    if not args.skip_writing_output:
+    if args.skip_writing_output:
+        for datachunk in merger:
+            buf = datachunk.getbuffer()
+            logging.info(f"(not) writing {len(buf)} bytes")
+    else:
         with open(pinfo.path, "wb") as fout:
-            for chunk in chunks:
-                fout.write(chunk)
+            for datachunk in merger:
+                buf = datachunk.getbuffer()
+                fout.write(buf)
+    logging.info(f"{task_id} done")
     return pinfo
 
 
 @tracing_utils.timeit("sorting")
 def sort_main(args: Args):
     N = args.num_parts
-    partitions = _load_input_manifest()
+    partitions = _load_manifest(constants.INPUT_MANIFEST_FILE)
+    boundaries = sortlib.get_boundaries(N)
     mapper_results = np.empty((N, N), dtype=object)
     for part_id, node, path in partitions:
         mapper_results[part_id, :] = mapper.options(
-            num_returns=N, resources={f"node:{node}": 1e-3}
+            num_returns=N, resources={f"node:{node}": 1 / args.num_parts}
         ).remote(
-            args, part_id, path
+            args, boundaries, part_id, path
         )  # yapf: disable
 
     reducer_results = []
@@ -228,8 +224,27 @@ def sort_main(args: Args):
 # ------------------------------------------------------------
 
 
-def validate_output(_):
-    print("validated output (no-op)")
+@ray.remote
+def validate_part(_args: Args, path: Path):
+    logging_utils.init()
+    proc = subprocess.run([constants.VALSORT_PATH, path], capture_output=True)
+    if proc.returncode != 0:
+        logging.critical("\n" + proc.stderr.decode("ascii"))
+        raise RuntimeError(f"Validation failed: {path}")
+    logging.info(f"Validated output {path}")
+
+
+def validate_output(args: Args):
+    partitions = _load_manifest(constants.OUTPUT_MANIFEST_FILE)
+    tasks = []
+    for _, node, path in partitions:
+        tasks.append(
+            validate_part.options(resources={
+                f"node:{node}": 1 / args.num_parts
+            }).remote(args, path))
+    logging.info(f"Validating {len(tasks)} partitions")
+    ray.get(tasks)
+    logging.info("All done!")
 
 
 # ------------------------------------------------------------

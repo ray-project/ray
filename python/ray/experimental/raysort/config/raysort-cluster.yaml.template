@@ -112,7 +112,7 @@ setup_commands:
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     - pip install -U -r /tmp/ray/python/ray/experimental/raysort/requirements.txt
     - python /tmp/ray/python/ray/setup-dev.py -y
-    # - cd /tmp/ray/python/ray/experimental/raysort/sortlib && python setup.py build_ext --inplace
+    - cd /tmp/ray/python/ray/experimental/raysort/sortlib && python setup.py build_ext --inplace
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
@@ -144,5 +144,5 @@ worker_start_ray_commands:
         --object-manager-port=8076
         --metrics-export-port={{PROM_RAY_EXPORTER_PORT}}
         --temp-dir=/mnt/nvme1/tmp/ray
-        --object-store-memory={{OBJECT_STORE_MEMORY}}
+        {% if OBJECT_STORE_MEMORY is defined %} --object-store-memory={{OBJECT_STORE_MEMORY}} {% endif %}
     - /tmp/ray/python/ray/experimental/raysort/bin/node_exporter/node_exporter --web.listen-address 0.0.0.0:{{PROM_NODE_EXPORTER_PORT}} &
