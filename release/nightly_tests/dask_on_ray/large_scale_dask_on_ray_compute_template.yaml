@@ -9,7 +9,7 @@ head_node_type:
     instance_type: i3.16xlarge
 
 worker_node_types:
-    - name: {{env["DATESTAMP"]}}
+    - name: {{env["DATESTAMP"]}}-3
       instance_type: i3.8xlarge
       min_workers: 20
       max_workers: 20

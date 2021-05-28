@@ -38,7 +38,7 @@ we determine the batch_size based on script parameters.
 
 """
 
-MINUTES_IN_A_MONTH = 1000
+MINUTES_IN_A_MONTH = 500
 NUM_MINS_PER_OUTPUT_FILE = 30
 SAMPLING_RATE = 200000
 SECONDS_IN_A_MIN = 20
