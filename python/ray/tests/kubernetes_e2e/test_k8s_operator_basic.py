@@ -52,13 +52,13 @@ def client_connect_to_k8s(port="10001"):
 
 
 def retry_until_true(f):
-    # Retry 60 times with 1 second delay between attempts.
+    # Keep retrying for 8 minutes with 10 seconds between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(240):
+        for _ in range(49):
             if f(*args, **kwargs):
                 return
             else:
-                time.sleep(1)
+                time.sleep(10)
         pytest.fail("The condition wasn't met before the timeout expired.")
 
     return f_with_retries
@@ -345,6 +345,19 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Cluster 1 service has been garbage-collected.
             print(">>>Checking that all Ray cluster services are gone.")
             assert num_services() == 0
+
+            # Verify that cluster deletion earlier in this test did not break
+            # the operator.
+            print(">>>Checking cluster creation again.")
+            for file in [example_cluster_file, example_cluster2_file]:
+                cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
+                subprocess.check_call(cmd, shell=True)
+            wait_for_pods(7)
+            print(">>>Checking cluster deletion again.")
+            for file in [example_cluster_file, example_cluster2_file]:
+                cmd = f"kubectl -n {NAMESPACE} delete -f {file.name}"
+                subprocess.check_call(cmd, shell=True)
+            wait_for_pods(1)
 
 
 if __name__ == "__main__":
