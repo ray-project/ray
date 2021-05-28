@@ -817,7 +817,7 @@ class DistributedTrainable(Trainable):
     """Common Trainable class for distributed training."""
 
     def build_config(self, config: Dict):
-        """Builds config for disitrubted training.
+        """Builds config for distributed training.
 
         Builds a deep copy of the input config and populates it with
         metadata from this Trainable.
