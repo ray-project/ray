@@ -81,26 +81,30 @@ if __name__ == "__main__":
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
         for t in trials:
-            desired_reward = t.stopping_criterion.get("episode_reward_mean")
-            desired_timesteps = t.stopping_criterion.get("timesteps_total")
-            desired_time = t.stopping_criterion.get("time_total_s")
-
             experiment = t.trainable_name.lower() + "-" + \
                 t.config["framework"] + "-" + t.config["env"].lower()
 
-            throughput = t.last_result["timesteps_total"] / \
-                t.last_result["time_total_s"]
-            desired_throughput = None
-            if desired_time is not None and desired_timesteps is not None:
-                desired_throughput = desired_timesteps / desired_time
-
-            if (desired_reward and t.last_result["episode_reward_mean"] <
-                t.stopping_criterion["episode_reward_mean"]) or \
-                    (desired_throughput and throughput < desired_throughput):
+            if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
             else:
-                checks[experiment]["passed"] = True
-                del experiments_to_run[experiment]
+                desired_reward = t.stopping_criterion.get("episode_reward_mean")
+                desired_timesteps = t.stopping_criterion.get("timesteps_total")
+                desired_time = t.stopping_criterion.get("time_total_s")
+
+                throughput = t.last_result["timesteps_total"] / \
+                    t.last_result["time_total_s"]
+
+                desired_throughput = None
+                if desired_time is not None and desired_timesteps is not None:
+                    desired_throughput = desired_timesteps / desired_time
+
+                if (desired_reward and t.last_result["episode_reward_mean"] <
+                    desired_reward) or \
+                        (desired_throughput and throughput < desired_throughput):
+                    checks[experiment]["failures"] += 1
+                else:
+                    checks[experiment]["passed"] = True
+                    del experiments_to_run[experiment]
 
     ray.shutdown()
 
