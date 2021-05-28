@@ -137,7 +137,7 @@ This string can be used to filter for a specific Ray cluster's logs:
 
 Cleaning up resources
 ---------------------
-When cleaning up Ray Helm resources,
+When cleaning up,
 **RayCluster resources must be deleted before the Operator deployment is deleted**.
 This is because the Operator must remove a `finalizer`_ from the ``RayCluster`` resource to allow
 deletion of the resource to complete.
@@ -147,7 +147,7 @@ the ``RayCluster`` must be deleted :ref:`before<k8s-cleanup-basic>` uninstalling
 If the Operator and one or more ``RayClusters`` are created in multiple Helm releases,
 the ``RayCluster`` releases must be uninstalled before the Operator release.
 
-To remedy a situation where the Operator deployment was deleted first and ``RayCluster`` deletion is hanging, the options are
+To remedy a situation where the Operator deployment was deleted first and ``RayCluster`` deletion is hanging, try one of the following:
 
 - Manually delete the ``RayCluster``'s finalizers with ``kubectl edit`` or ``kubectl patch``.
 - Restart the Operator so that it can remove ``RayCluster`` finalizers. Then remove the Operator.

@@ -218,6 +218,8 @@ then fetch its logs:
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
 
+.. _k8s-cleanup-basic:
+
 Cleanup
 -------
 
