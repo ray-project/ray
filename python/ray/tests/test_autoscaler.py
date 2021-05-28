@@ -161,6 +161,7 @@ class MockProvider(NodeProvider):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
+        self.error_creates = False
         self.fail_creates = False
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
@@ -213,6 +214,8 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].external_ip
 
     def create_node(self, node_config, tags, count, _skip_wait=False):
+        if self.error_creates:
+            raise Exception
         if not _skip_wait:
             self.ready_to_create.wait()
         if self.fail_creates:
@@ -2387,6 +2390,27 @@ MemAvailable:   33000000 kB
         self.waitForNodes(2)
         assert set(autoscaler.workers()) == {2, 3},\
             "Unexpected node_ids"
+
+    def testFlakyProvider(self):
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        self.provider.error_creates = True
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        autoscaler.update()
+        for _ in range(50):
+            if mock_metrics.node_launch_exceptions.inc.call_count == 1:
+                break
+            time.sleep(.1)
+        assert mock_metrics.node_launch_exceptions.inc.call_count == 1,\
+            "Expected to observe a node launch exception"
 
 
 if __name__ == "__main__":
