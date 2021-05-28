@@ -14,6 +14,7 @@ from ray.tune.resources import Resources
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
+from ray.tune.trainable import DistributedTrainable
 
 from ray.tune.function_runner import wrap_function
 from horovod.ray import RayExecutor
@@ -73,7 +74,7 @@ def distributed_checkpoint_dir(step: int, disable: bool = False):
         shutil.rmtree(path)
 
 
-class _HorovodTrainable(tune.Trainable):
+class _HorovodTrainable(DistributedTrainable):
     """Abstract Trainable class for Horovod."""
     # Callable function for training.
     _function = None

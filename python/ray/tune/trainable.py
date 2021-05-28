@@ -634,16 +634,6 @@ class Trainable:
         """Returns configuration passed in by Tune."""
         return self.config
 
-    def build_config(self, config: Dict):
-        """Builds a deep copy of the input config and populates it with
-        metadata from this Trainable.
-        """
-        new_config = copy.deepcopy(config)
-        new_config[TRIAL_INFO] = self._trial_info
-        new_config[STDOUT_FILE] = self._stdout_file
-        new_config[STDERR_FILE] = self._stderr_file
-        return new_config
-
     def step(self):
         """Subclasses should override this to implement train().
 
@@ -821,3 +811,20 @@ class Trainable:
 
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
+
+
+class DistributedTrainable(Trainable):
+    """Common class for a Trainable whose training should be performed in a distributed manner."""
+
+    def build_config(self, config: Dict):
+        """Builds a deep copy of the input config and populates it with
+        metadata from this Trainable.
+
+        Useful for passing this Trainable's configs to each distributed 
+        Trainable instance.
+        """
+        new_config = copy.deepcopy(config)
+        new_config[TRIAL_INFO] = self._trial_info
+        new_config[STDOUT_FILE] = self._stdout_file
+        new_config[STDERR_FILE] = self._stderr_file
+        return new_config

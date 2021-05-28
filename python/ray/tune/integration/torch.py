@@ -16,6 +16,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
+from ray.tune.trainable import DistributedTrainable
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
@@ -43,7 +44,7 @@ def logger_creator(log_config: Dict, logdir: str, rank: int) -> NoopLogger:
     return NoopLogger(log_config, worker_dir)
 
 
-class _TorchTrainable(tune.Trainable):
+class _TorchTrainable(DistributedTrainable):
     """Base class for distributed training on Tune.
 
     A wrapper class is needed to actually create a working
