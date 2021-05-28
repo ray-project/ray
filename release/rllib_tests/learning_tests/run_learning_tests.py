@@ -50,12 +50,18 @@ if __name__ == "__main__":
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
             e["config"]["framework"] = "tf"
+            # We also stop early, once we reach the desired reward.
+            e["stop"]["episode_reward_mean"] = \
+                e["pass_criteria"]["episode_reward_mean"]
             experiments[k] = e
+
+            # Generate the torch copy of the experiment.
             e_torch = copy.deepcopy(e)
             e_torch["config"]["framework"] = "torch"
             k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
             k_torch = re.sub("-tf-", "-torch-", k_tf)
             experiments[k_torch] = e_torch
+            # Generate `checks` dict.
             for k_ in [k_tf, k_torch]:
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
@@ -64,6 +70,7 @@ if __name__ == "__main__":
                     "failures": 0,
                     "passed": False,
                 }
+            # This key would break tune.
             del e["pass_criteria"]
             del e_torch["pass_criteria"]
 
@@ -106,14 +113,11 @@ if __name__ == "__main__":
                 throughput = t.last_result["timesteps_total"] / \
                     t.last_result["time_total_s"]
 
-                desired_throughput = None
-                if desired_timesteps is not None:
-                    desired_throughput = \
-                        desired_timesteps / t.stopping_criterion["time_total_s"]
+                desired_throughput = \
+                    desired_timesteps / t.stopping_criterion["time_total_s"]
 
-                if (desired_reward and t.last_result["episode_reward_mean"] <
-                    desired_reward) or \
-                        (desired_throughput and throughput < desired_throughput):
+                if t.last_result["episode_reward_mean"] < desired_reward or \
+                        desired_throughput and throughput < desired_throughput:
                     checks[experiment]["failures"] += 1
                 else:
                     checks[experiment]["passed"] = True
