@@ -151,6 +151,16 @@ void GcsResourceManager::HandleDeleteResources(
   ++counts_[CountType::DELETE_RESOURCES_REQUEST];
 }
 
+void GcsResourceManager::UpdateNodeRealtimeResources(
+    const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
+  if (GetClusterResources().count(node_id) == 0 ||
+      heartbeat.resources_available_changed()) {
+    RAY_LOG(DEBUG) << "Refresh gcs server resource view according to heartbeat.";
+    SetAvailableResources(node_id,
+                          ResourceSet(MapFromProtobuf(heartbeat.resources_available())));
+  }
+}
+
 void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
@@ -172,16 +182,10 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(data);
 
-  // We use `node_resource_usages_` to filter out the nodes that report resource
-  // information for the first time. `UpdateNodeResourceUsage` will modify
-  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
-  if (node_resource_usages_.count(node_id) == 0 ||
-      resources_data->resources_available_changed()) {
-    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
-    SetAvailableResources(node_id, ResourceSet(resource_changed));
-  }
-
   UpdateNodeResourceUsage(node_id, data);
+
+  // Update node realtime resources.
+  UpdateNodeRealtimeResources(node_id, *resources_data);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
@@ -414,6 +418,76 @@ std::string GcsResourceManager::DebugString() const {
          << ", GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST] << "}";
   return stream.str();
+}
+
+GcsResourceManagerEx::GcsResourceManagerEx(
+    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    : GcsResourceManager(main_io_service, gcs_pub_sub, gcs_table_storage) {
+  latest_resources_normal_task_timestamp_ = 0;
+}
+
+void GcsResourceManagerEx::HandleUpdateResources(
+    const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.node_id());
+  std::unordered_map<std::string, double> changed_resources;
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter != cluster_scheduling_resources_.end()) {
+    const auto &total_resources = iter->second.GetTotalResources();
+    for (auto &entry : request.resources()) {
+      if (!total_resources.Contains(entry.first)) {
+        changed_resources.emplace(entry.first, entry.second.resource_capacity());
+      }
+    }
+
+    if (changed_resources.empty()) {
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      RAY_LOG(DEBUG) << "Changed resources is empty, return directly, node id = "
+                     << node_id;
+      return;
+    }
+  }
+
+  rpc::ResourceTableData resource_table_data;
+  rpc::UpdateResourcesRequest new_request;
+  new_request.set_node_id(request.node_id());
+  for (const auto &resource : changed_resources) {
+    resource_table_data.set_resource_capacity(resource.second);
+    (*new_request.mutable_resources())[resource.first] = resource_table_data;
+  }
+  GcsResourceManager::HandleUpdateResources(new_request, reply, send_reply_callback);
+}
+
+void GcsResourceManagerEx::UpdateNodeRealtimeResources(
+    const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter == cluster_scheduling_resources_.end()) {
+    return;
+  }
+
+  auto &scheduling_resoruces = iter->second;
+  ResourceSet resources_normal_task(MapFromProtobuf(heartbeat.resources_normal_task()));
+  if (heartbeat.resources_normal_task_changed() &&
+      heartbeat.resources_normal_task_timestamp() >
+          latest_resources_normal_task_timestamp_ &&
+      !resources_normal_task.IsEqual(scheduling_resoruces.GetNormalTaskResources())) {
+    scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
+    latest_resources_normal_task_timestamp_ = heartbeat.resources_normal_task_timestamp();
+  }
+}
+
+std::string GcsResourceManagerEx::ToString() const {
+  std::ostringstream ostr;
+  const int indent = 0;
+  std::string indent_0(indent + 0 * 2, ' ');
+  std::string indent_1(indent + 1 * 2, ' ');
+  ostr << "{\n";
+  for (const auto &entry : cluster_scheduling_resources_) {
+    ostr << indent_1 << entry.first << " : " << entry.second.DebugString() << ",\n";
+  }
+  ostr << indent_0 << "}\n";
+  return ostr.str();
 }
 
 }  // namespace gcs

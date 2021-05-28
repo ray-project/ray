@@ -133,6 +133,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
 
+  // Update node realtime resources.
+  virtual void UpdateNodeRealtimeResources(const NodeID &node_id,
+                                           const rpc::ResourcesData &heartbeat);
+
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.
@@ -207,6 +211,32 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+};
+
+class GcsResourceManagerEx : public GcsResourceManager {
+ public:
+  /// \param main_io_service The main event loop.
+  /// \param gcs_pub_sub GCS message publisher.
+  /// \param gcs_table_storage GCS table external storage accessor.
+  explicit GcsResourceManagerEx(instrumented_io_context &main_io_service,
+                                std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+
+  virtual ~GcsResourceManagerEx() = default;
+
+  /// Handle update resource rpc request.
+  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
+                             rpc::UpdateResourcesReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  // Update node realtime resources.
+  void UpdateNodeRealtimeResources(const NodeID &node_id,
+                                   const rpc::ResourcesData &heartbeat) override;
+
+  std::string ToString() const override;
+
+ private:
+  int64_t latest_resources_normal_task_timestamp_;
 };
 
 }  // namespace gcs
