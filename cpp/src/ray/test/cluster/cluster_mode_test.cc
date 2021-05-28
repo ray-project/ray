@@ -44,8 +44,7 @@ TEST(RayClusterModeTest, FullTest) {
   ray::api::RayConfig config;
   /// initialization to cluster mode
   config.local_mode = false;
-  config.SetArgs(cmd_argc, cmd_argv);
-  Ray::Init(config);
+  Ray::Init(config, cmd_argc, cmd_argv);
 
   /// put and get object
   auto obj = Ray::Put(12345);

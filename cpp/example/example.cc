@@ -44,10 +44,9 @@ int main(int argc, char **argv) {
   /// configuration
   ray::api::RayConfig config;
   config.local_mode = false;
-  config.SetArgs(&argc, &argv);
 
   /// initialization
-  Ray::Init(config);
+  Ray::Init(config, &argc, &argv);
 
   /// put and get object
   auto obj = Ray::Put(12345);

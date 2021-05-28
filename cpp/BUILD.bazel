@@ -95,7 +95,7 @@ cc_test(
         "src/ray/test/cluster/*.cc",
     ]),
     args = [
-        "--dynamic-library-path=$(location cluster_mode_test.so)",
+        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
     ],
     copts = COPTS,
     data = [

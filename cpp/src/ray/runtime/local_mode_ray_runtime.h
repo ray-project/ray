@@ -10,7 +10,7 @@ namespace api {
 
 class LocalModeRayRuntime : public AbstractRayRuntime {
  public:
-  LocalModeRayRuntime(std::shared_ptr<RayConfigInternal> config);
+  LocalModeRayRuntime();
 
   ActorID GetNextActorID();
 };

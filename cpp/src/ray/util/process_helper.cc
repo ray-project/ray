@@ -43,41 +43,46 @@ static void StopRayNode() {
   return;
 }
 
-void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
-                             CoreWorkerOptions::TaskExecutionCallback callback) {
-  std::string redis_ip = config->redis_ip;
-  if ((ray::WorkerType)config->worker_type == ray::WorkerType::DRIVER &&
+void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
+  std::string redis_ip = ConfigInternal::Instance().redis_ip;
+  if ((ray::WorkerType)ConfigInternal::Instance().worker_type ==
+          ray::WorkerType::DRIVER &&
       redis_ip.empty()) {
     redis_ip = "127.0.0.1";
-    StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);
+    StartRayNode(ConfigInternal::Instance().redis_port,
+                 ConfigInternal::Instance().redis_password,
+                 ConfigInternal::Instance().node_manager_port);
   }
 
-  auto session_dir =
-      config->session_dir.empty()
-          ? GetSessionDir(redis_ip, config->redis_port, config->redis_password)
-          : config->session_dir;
+  auto session_dir = ConfigInternal::Instance().session_dir.empty()
+                         ? GetSessionDir(redis_ip, ConfigInternal::Instance().redis_port,
+                                         ConfigInternal::Instance().redis_password)
+                         : ConfigInternal::Instance().session_dir;
 
-  auto store_socket = config->plasma_store_socket_name.empty()
+  auto store_socket = ConfigInternal::Instance().plasma_store_socket_name.empty()
                           ? session_dir + "/sockets/plasma_store"
-                          : config->plasma_store_socket_name;
+                          : ConfigInternal::Instance().plasma_store_socket_name;
 
-  auto raylet_socket = config->raylet_socket_name.empty()
+  auto raylet_socket = ConfigInternal::Instance().raylet_socket_name.empty()
                            ? session_dir + "/sockets/raylet"
-                           : config->raylet_socket_name;
+                           : ConfigInternal::Instance().raylet_socket_name;
 
-  auto log_dir = config->logs_dir.empty() ? session_dir + "/logs" : config->logs_dir;
+  auto log_dir = ConfigInternal::Instance().logs_dir.empty()
+                     ? session_dir + "/logs"
+                     : ConfigInternal::Instance().logs_dir;
 
   gcs::GcsClientOptions gcs_options =
-      gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
+      gcs::GcsClientOptions(redis_ip, ConfigInternal::Instance().redis_port,
+                            ConfigInternal::Instance().redis_password);
 
   CoreWorkerOptions options;
-  options.worker_type = (ray::WorkerType)config->worker_type;
+  options.worker_type = ConfigInternal::Instance().worker_type;
   options.language = Language::CPP;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
   if (options.worker_type == WorkerType::DRIVER) {
-    if (!config->job_id.empty()) {
-      options.job_id = JobID::FromHex(config->job_id);
+    if (!ConfigInternal::Instance().job_id.empty()) {
+      options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
     } else {
       /// TODO(Guyang Song): Get next job id from core worker by GCS client.
       /// Random a number to avoid repeated job ids.
@@ -92,7 +97,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
   options.log_dir = log_dir;
   options.install_failure_signal_handler = true;
   options.node_ip_address = "127.0.0.1";
-  options.node_manager_port = config->node_manager_port;
+  options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = "127.0.0.1";
   options.driver_name = "cpp_worker";
   options.ref_counting_enabled = true;
@@ -102,9 +107,9 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfigInternal> config,
   CoreWorkerProcess::Initialize(options);
 }
 
-void ProcessHelper::RayStop(std::shared_ptr<RayConfigInternal> config) {
+void ProcessHelper::RayStop() {
   CoreWorkerProcess::Shutdown();
-  if (config->redis_ip.empty()) {
+  if (ConfigInternal::Instance().redis_ip.empty()) {
     StopRayNode();
   }
 }

@@ -21,8 +21,13 @@ namespace ray {
 namespace api {
 class Ray {
  public:
-  /// Initialize Ray runtime.
+  /// Initialize Ray runtime with config.
   static void Init(RayConfig &config);
+
+  /// Initialize Ray runtime with config and command-line arguments.
+  /// If a parameter is explicitly set in command-line arguments, the parameter value will
+  /// be overwritten.
+  static void Init(RayConfig &config, int *argc, char ***argv);
 
   /// Initialize Ray runtime with default config.
   static void Init();
