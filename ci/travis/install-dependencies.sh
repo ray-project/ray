@@ -222,6 +222,8 @@ install_upgrade_pip() {
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
       "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
+
+    "${python}" -m ensurepip
   fi
 }
 
