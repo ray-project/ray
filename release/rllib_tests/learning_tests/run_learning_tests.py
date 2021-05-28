@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
+            e["config"]["framework"] = "tf"
             experiments[k] = e
             e_torch = copy.deepcopy(e)
             e_torch["config"]["framework"] = "torch"
@@ -93,7 +94,8 @@ if __name__ == "__main__":
         # defined by `timesteps_total` / `time_total_s`.
         for t in trials:
             experiment = t.trainable_name.lower() + "-" + \
-                t.config["framework"] + "-" + t.config["env"].lower()
+                         t.config["framework"] + "-" + \
+                         t.config["env"].lower()
 
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
