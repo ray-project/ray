@@ -281,6 +281,7 @@ install_dependencies() {
   fi
 
   # Install modules needed in all jobs.
+  alias pip="python -m pip"
   pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
