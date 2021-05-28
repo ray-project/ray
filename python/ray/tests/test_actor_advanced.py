@@ -51,6 +51,7 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skip(sys.platform == "win32", reason="Takes too long on CI for Windows")
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -93,6 +94,7 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
+@pytest.mark.skip(sys.platform == "win32", reason="Takes too long on CI for Windows")
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -191,6 +193,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
+@pytest.mark.skip(sys.platform == "win32", reason="Takes too long on CI for Windows")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -216,6 +219,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     assert results == [1 for actor in actors]
 
 
+@pytest.mark.skip(sys.platform == "win32", reason="Takes too long on CI for Windows")
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     num_nodes = 5
