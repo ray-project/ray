@@ -2391,7 +2391,7 @@ MemAvailable:   33000000 kB
         assert set(autoscaler.workers()) == {2, 3},\
             "Unexpected node_ids"
 
-    def testFlakyProvider(self):
+    def testProviderException(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         self.provider.error_creates = True
@@ -2405,12 +2405,13 @@ MemAvailable:   33000000 kB
             update_interval_s=0,
             prom_metrics=mock_metrics)
         autoscaler.update()
-        for _ in range(50):
-            if mock_metrics.node_launch_exceptions.inc.call_count == 1:
-                break
-            time.sleep(.1)
-        assert mock_metrics.node_launch_exceptions.inc.call_count == 1,\
-            "Expected to observe a node launch exception"
+
+        def exceptions_incremented():
+            return mock_metrics.node_launch_exceptions.inc.call_count == 1
+
+        self.waitFor(
+            exceptions_incremented,
+            fail_msg="Expected to see a node launch exception")
 
 
 if __name__ == "__main__":
