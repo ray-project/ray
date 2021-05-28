@@ -84,7 +84,7 @@ class _TorchTrainable(DistributedTrainable):
                 self._num_workers_per_host, self._timeout_s)
         remote_trainable = \
             remote_trainable.options(**remote_option)
-        new_config = super().build_config(config)
+        new_config = DistributedTrainable.build_config(self, config)
 
         self.workers = [
             remote_trainable.remote(

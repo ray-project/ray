@@ -117,7 +117,7 @@ class _HorovodTrainable(DistributedTrainable):
             num_hosts=self._num_hosts,
             num_slots=self._num_slots)
 
-        new_config = super().build_config(config)
+        new_config = DistributedTrainable.build_config(self, config)
 
         # We can't put `self` in the lambda closure, so we
         # resolve the variable ahead of time.
