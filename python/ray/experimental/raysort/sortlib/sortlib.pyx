@@ -5,9 +5,10 @@ from libc.stdint cimport uint8_t, uint64_t
 from libcpp.vector cimport vector
 
 import io
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Union
 
 import numpy as np
+import ray
 
 cdef extern from "src/csortlib.h" namespace "csortlib":
     const size_t HEADER_SIZE
@@ -58,13 +59,13 @@ cdef ConstArray[Record] _to_const_record_array(buf):
     return ret
 
 
-def sort_and_partition(part: io.BytesIO, boundaries: List[int]) -> List[BlockInfo]:
-    arr = _to_record_array(part.getbuffer())
+def sort_and_partition(part: np.ndarray, boundaries: List[int]) -> List[BlockInfo]:
+    arr = _to_record_array(part)
     blocks = SortAndPartition(arr, boundaries)
     return [(c.offset * RECORD_SIZE, c.size * RECORD_SIZE) for c in blocks]
 
 
-def merge_partitions(blocks: List[bytes], batch_num_records: int) -> Iterable[bytes]:
+def merge_partitions(blocks: List[Union[np.ndarray, ray.ObjectRef]], batch_num_records: int) -> Iterable[memoryview]:
     """
     An iterator that returns merged blocks for upload.
     """
@@ -72,8 +73,8 @@ def merge_partitions(blocks: List[bytes], batch_num_records: int) -> Iterable[by
     record_arrays.reserve(len(blocks))
     total_records = 0
     for block in blocks:
-        if isinstance(block, io.BytesIO):
-            block = block.getbuffer()
+        if isinstance(block, ray.ObjectRef):
+            block = ray.get(block)
         ra = _to_const_record_array(block)
         record_arrays.push_back(ra)
         total_records += ra.size
@@ -82,14 +83,11 @@ def merge_partitions(blocks: List[bytes], batch_num_records: int) -> Iterable[by
     batch_bytes = batch_num_records * RECORD_SIZE
     cdef uint8_t[:] mv
     while True:
-        ret = io.BytesIO(b"0" * batch_bytes)
-        mv = ret.getbuffer()
+        buf = bytearray(batch_bytes)
+        mv = buf
         ptr = <Record*>&mv[0]
         cnt = merger.GetBatch(ptr, batch_num_records)
         if cnt == 0:
             return
-        del mv
         actual_bytes = cnt * RECORD_SIZE
-        ret.seek(0)
-        ret.truncate(actual_bytes)
-        yield ret.getbuffer()
+        yield mv[:actual_bytes]

@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import subprocess
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
 import numpy as np
 import ray
@@ -35,15 +35,21 @@ def get_args():
     parser.add_argument(
         "-s",
         "--part_size",
-        default=int(1e10),
+        default=int(10e9),
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
-        "--task_cpu_reduction",
+        "--mapper_cpu_reduction",
         default=2,
         type=int,
-        help="useful for reducing parallelism on worker nodes",
+        help="useful for reducing mapper task parallelism on worker nodes",
+    )
+    parser.add_argument(
+        "--reducer_cpu_reduction",
+        default=1,
+        type=int,
+        help="useful for reducing reducer task parallelism on worker nodes",
     )
     parser.add_argument(
         "--reducer_batch_num_records",
@@ -135,7 +141,7 @@ def generate_input():
     offset = 0
     tasks = []
     for part_id in range(args.num_parts):
-        tasks.append(generate_part.remote(args, part_id, size, offset))
+        tasks.append(generate_part.remote(part_id, size, offset))
         offset += size
     assert offset == args.total_num_records, args
     logging.info(f"Generating {len(tasks)} partitions")
@@ -159,17 +165,15 @@ def _load_manifest(path: Path) -> List[PartitionInfo]:
         ]
 
 
-def _load_partition(path: Path) -> io.BytesIO:
-    with open(path, "rb") as fin:
-        return io.BytesIO(fin.read())
+def _load_partition(path: Path) -> np.ndarray:
+    return np.fromfile(path, dtype=np.uint8)
 
 
-def _dummy_sort_and_partition(part: io.BytesIO,
+def _dummy_sort_and_partition(part: np.ndarray,
                               boundaries: List[int]) -> List[BlockInfo]:
-    buf = part.getbuffer()
     N = len(boundaries)
     offset = 0
-    size = int(np.ceil(buf.nbytes / N))
+    size = int(np.ceil(part.size / N))
     blocks = []
     for _ in range(N):
         blocks.append((offset, size))
@@ -177,7 +181,7 @@ def _dummy_sort_and_partition(part: io.BytesIO,
     return blocks
 
 
-@ray.remote(num_cpus=args.task_cpu_reduction, num_returns=args.num_parts)
+@ray.remote(num_cpus=args.mapper_cpu_reduction, num_returns=args.num_parts)
 def mapper(boundaries: List[int], mapper_id: PartId,
            path: Path) -> List[ObjectRef]:
     logging_utils.init()
@@ -188,21 +192,20 @@ def mapper(boundaries: List[int], mapper_id: PartId,
     blocks = sort_fn(part, boundaries)
     logging.info(f"{task_id} saving to object store")
     # TODO: can we avoid copying here?
-    buf = part.getbuffer()
-    ret = [
-        ray.put(np.frombuffer(buf, dtype=np.uint8, count=size, offset=offset))
-        for offset, size in blocks
-    ]
+    ret = [ray.put(part[offset:offset + size]) for offset, size in blocks]
     logging.info(f"{task_id} done")
     return ret
 
 
-def _dummy_merge(blocks: List[bytes], _n: int) -> Iterable[bytes]:
+def _dummy_merge(blocks: List[Union[np.ndarray, ray.ObjectRef]],
+                 _n: int) -> Iterable[memoryview]:
     for block in blocks:
-        yield block
+        if isinstance(block, ray.ObjectRef):
+            block = ray.get(block)
+        yield memoryview(block)
 
 
-@ray.remote(num_cpus=args.task_cpu_reduction)
+@ray.remote(num_cpus=args.reducer_cpu_reduction)
 def reducer(reducer_id: PartId, *blocks) -> PartitionInfo:
     logging_utils.init()
     task_id = f"R-{reducer_id} Reducer"
@@ -268,7 +271,7 @@ def validate_output():
         tasks.append(
             validate_part.options(resources={
                 f"node:{node}": 1 / args.num_parts
-            }).remote(args, path))
+            }).remote(path))
     logging.info(f"Validating {len(tasks)} partitions")
     ray.get(tasks)
     logging.info("All done!")
