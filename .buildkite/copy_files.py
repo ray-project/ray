@@ -3,18 +3,19 @@ import os
 from collections import OrderedDict
 import sys
 import time
+import subprocess
 
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
 
 parser = argparse.ArgumentParser(
     description="Helper script to upload files to S3 bucket")
-parser.add_argument("--path", type=str)
+parser.add_argument("--path", type=str, required=False)
 parser.add_argument("--destination", type=str)
 args = parser.parse_args()
 
 assert os.path.exists(args.path)
-assert args.destination in {"wheels", "containers", "logs"}
+assert args.destination in {"wheels", "containers", "logs", "docker_login"}
 assert "BUILDKITE_JOB_ID" in os.environ
 assert "BUILDKITE_COMMIT" in os.environ
 
@@ -42,6 +43,12 @@ if resp.status_code >= 500:
     print("still errorred after many retries")
     sys.exit(1)
 
+if args.destination == "docker_login":
+    pwd = resp.json()["docker_password"]
+    subprocess.call(
+        ["docker", "login", "--username", "raytravisbot", "--password", pwd])
+    sys.exit(0)
+
 sha = os.environ["BUILDKITE_COMMIT"]
 if is_dir:
     paths = [os.path.join(args.path, f) for f in os.listdir(args.path)]
@@ -52,7 +59,7 @@ print("Planning to upload", paths)
 for path in paths:
     fn = os.path.split(path)[-1]
     if args.destination == "wheels":
-        c = resp.json()["presigned_wheels"]
+        c = resp.json()["presigned_resp_prod_wheels"]
         of = OrderedDict(c["fields"])
         of["key"] = f"scratch/bk/{sha}/{fn}"
 

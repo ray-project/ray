@@ -408,13 +408,17 @@ if __name__ == "__main__":
     print("Building base images: ", args.base)
 
     build_type = args.build_type
+    if build_type == BUILDKITE:
+        if os.environ.get("BUILDKITE_PULL_REQUEST"):
+            build_type = PR
+        else:
+            build_type = MERGE
     if build_type == HUMAN:
         _configure_human_version()
-    if build_type in {HUMAN, MERGE, BUILDKITE
-                      } or _check_if_docker_files_modified():
+    if build_type in {HUMAN, MERGE} or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
-        if is_merge:
+        if is_merge:  # Buildkite should authenticate in the background.
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()
@@ -424,7 +428,7 @@ if __name__ == "__main__":
         build_ray()
         build_ray_ml()
 
-        if build_type in {MERGE, PR}:  # Skipping push on buildkite
+        if build_type in {MERGE, PR}:
             valid_branch = _valid_branch()
             if (not valid_branch) and is_merge:
                 print(f"Invalid Branch found: {_get_branch()}")
