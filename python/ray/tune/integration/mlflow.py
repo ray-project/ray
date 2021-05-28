@@ -81,7 +81,7 @@ class MLflowLoggerCallback(LoggerCallback):
                            "server. If you are using a MLflow tracking server "
                            "backed by the local filesystem, then it must be "
                            "setup on the server side and not on the client "
-                           "side")
+                           "side.")
 
     def setup(self):
         mlflow = _import_mlflow()
@@ -318,7 +318,7 @@ def mlflow_mixin(func: Callable):
                        "server. If you are using a MLflow tracking server "
                        "backed by the local filesystem, then it must be "
                        "setup on the server side and not on the client "
-                       "side")
+                       "side.")
     if hasattr(func, "__mixins__"):
         func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin, )
     else:
