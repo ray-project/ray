@@ -133,6 +133,11 @@ def wait_for_status(cluster_name, status):
     return cluster_cr["status"]["phase"] == status
 
 
+@retry_until_true
+def wait_for_services(n):
+    return num_services() == 2
+
+
 def kubernetes_configs_directory():
     relative_path = "deploy"
     return os.path.join(RAY_PATH, relative_path)
@@ -241,7 +246,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             wait_for_pods(6)
             # Check that head services are present.
             print(">>>Checking that head services are present.")
-            assert num_services() == 2
+            wait_for_services(2)
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
@@ -308,7 +313,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             wait_for_pods(4)
             # Cluster 2 service has been garbage-collected.
             print(">>>Checking that deleted cluster's service is gone.")
-            assert num_services() == 1
+            wait_for_services(1)
 
             # Check job submission
             print(">>>Submitting a job to test Ray client connection.")
@@ -344,7 +349,7 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Cluster 1 service has been garbage-collected.
             print(">>>Checking that all Ray cluster services are gone.")
-            assert num_services() == 0
+            wait_for_services(0)
 
             # Verify that cluster deletion earlier in this test did not break
             # the operator.
