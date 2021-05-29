@@ -20,10 +20,11 @@ if __name__ == "__main__":
     start = time.time()
     success = 1
     commands = [
-        "python", "-m", "ray.experimental.shuffle",
-        "--ray-address={}".format(os.environ["RAY_ADDRESS"]),
+        "python", "-m", "ray.experimental.shuffle", "--ray-address={}".format(
+            os.environ["RAY_ADDRESS"]),
         f"--num-partitions={args.num_partitions}",
-        f"--partition-size={args.partition_size}"]
+        f"--partition-size={args.partition_size}"
+    ]
     if args.no_streaming:
         commands.append("--no-streaming")
 
