@@ -68,8 +68,9 @@ class JobConfig:
                 del without_dir["working_dir"]
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
                 without_dir)
-            self.worker_env = self._parsed_runtime_env.to_worker_env_vars(
-                self.worker_env)
+            self.worker_env.update(
+                self._parsed_runtime_env.get_parsed_dict().get("env_vars")
+                or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
         self.runtime_env = runtime_env or dict()

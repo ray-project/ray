@@ -36,11 +36,8 @@ cc_library(
         "//:core_worker_lib",
         "//:ray_common",
         "//:ray_util",
-        "@boost//:asio",
         "@boost//:callable_traits",
         "@boost//:dll",
-        "@boost//:thread",
-        "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],
 )
@@ -85,6 +82,7 @@ cc_test(
     linkstatic = False,
     deps = [
         "ray_api",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -115,43 +113,6 @@ cc_binary(
     name = "cluster_mode_test.so",
     srcs = glob([
         "src/ray/test/cluster/*.cc",
-    ]),
-    copts = COPTS,
-    linkopts = ["-shared"],
-    linkstatic = True,
-    deps = [
-        "ray_api",
-        "@com_github_gflags_gflags//:gflags",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "ray_remote_cluster_test",
-    testonly = 0,
-    srcs = glob([
-        "src/ray/test/ray_remote_cluster/*.cc",
-    ]),
-    args = [
-        "$(location ray_remote_cluster_test.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "ray_cpp_pkg",
-        "ray_remote_cluster_test.so",
-    ],
-    linkstatic = True,
-    deps = [
-        "ray_api",
-        "@com_github_gflags_gflags//:gflags",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "ray_remote_cluster_test.so",
-    srcs = glob([
-        "src/ray/test/ray_remote_cluster/*.cc",
     ]),
     copts = COPTS,
     linkopts = ["-shared"],
