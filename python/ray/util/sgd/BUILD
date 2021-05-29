@@ -71,7 +71,7 @@ py_test(
     main = "test_torch_basic.py",
     size = "small",
     srcs = ["tests/test_torch_basic.py"],
-    tags = ["exclusive", "pytorch"],
+    tags = ["exclusive", "pytorch", "client", "client_unit_tests"],
     deps = [":sgd_lib"]
 )
 
@@ -79,7 +79,7 @@ py_test(
     name = "test_torch_failure",
     size = "large",
     srcs = ["tests/test_torch_failure.py"],
-    tags = ["exclusive", "pytorch", "client", "client_unit_tests"],
+    tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
 

@@ -13,6 +13,7 @@ from ray.util.sgd.utils import BATCH_COUNT
 Operator = TrainingOperator.from_creators(
     model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
 
+
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
@@ -33,6 +34,7 @@ def ray_start_4_cpus():
     # Ensure that tests don't ALL fail
     if dist.is_initialized():
         dist.destroy_process_group()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
