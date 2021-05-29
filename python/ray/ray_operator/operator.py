@@ -107,14 +107,26 @@ class RayCluster:
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
         port = operator_utils.infer_head_port(self.config)
         redis_address = services.address(ray_head_pod_ip, port)
-        self.mtr = monitor.Monitor(
+        mtr = monitor.Monitor(
             redis_address=redis_address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
             prefix_cluster_info=True,
             stop_event=self.monitor_stop_event,
         )
-        self.mtr.run()
+        mtr.run()
+
+    def teardown(self) -> None:
+        """Attempt orderly tear-down of Ray processes before RayCluster
+        deletion."""
+        self.do_in_subprocess(self._teardown, args=())
+
+    def _teardown(self) -> None:
+        commands.teardown_cluster(self.config_path,
+                                  yes=True,
+                                  workers_only=False,
+                                  override_cluster_name=None,
+                                  keep_min_workers=False)
 
     def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
         # First stop the subprocess if it's alive
@@ -149,6 +161,7 @@ class RayCluster:
 
         The key thing is to end the monitoring subprocess.
         """
+        self.teardown()
         self.clean_up_subprocess()
         self.clean_up_logging()
         self.delete_config()
