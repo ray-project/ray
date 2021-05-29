@@ -191,8 +191,8 @@ test_python() {
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046
     bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
-      "${args[@]}";
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test-arg=--durations=0 --test-arg=-ra -- "${args[@]}";
   fi
 }
 
