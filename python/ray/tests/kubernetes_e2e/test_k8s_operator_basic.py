@@ -135,7 +135,7 @@ def wait_for_status(cluster_name, status):
 
 @retry_until_true
 def wait_for_services(n):
-    return num_services() == 2
+    return num_services() == n
 
 
 def kubernetes_configs_directory():

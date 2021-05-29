@@ -118,23 +118,29 @@ class RayCluster:
 
     def teardown(self) -> None:
         """Attempt orderly tear-down of Ray processes before RayCluster
-        deletion."""
-        self.do_in_subprocess(self._teardown, args=())
+        resource deletion."""
+        self.do_in_subprocess(self._teardown, args=(), block=True)
 
     def _teardown(self) -> None:
-        commands.teardown_cluster(self.config_path,
-                                  yes=True,
-                                  workers_only=False,
-                                  override_cluster_name=None,
-                                  keep_min_workers=False)
+        commands.teardown_cluster(
+            self.config_path,
+            yes=True,
+            workers_only=False,
+            override_cluster_name=None,
+            keep_min_workers=False)
 
-    def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
+    def do_in_subprocess(self,
+                         f: Callable[[], None],
+                         args: Tuple = (),
+                         block: bool = False) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
             name=self.subprocess_name, target=f, args=args, daemon=True)
         self.subprocess.start()
+        if block:
+            self.subprocess.join()
 
     def clean_up_subprocess(self):
         """
@@ -319,6 +325,7 @@ def main():
         kwargs = {"clusterwide": True}
 
     asyncio.run(kopf.operator(**kwargs))
+
 
 if __name__ == "__main__":
     main()
