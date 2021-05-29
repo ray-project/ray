@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import multiprocessing as mp
 import os
@@ -296,3 +297,15 @@ def delete_fn(memo: kopf.Memo, **kwargs):
         return
 
     ray_cluster.clean_up()
+
+
+def main():
+    if operator_utils.NAMESPACED_OPERATOR:
+        kwargs = {"namespaces": [operator_utils.OPERATOR_NAMESPACE]}
+    else:
+        kwargs = {"clusterwide": True}
+
+    asyncio.run(kopf.operator(**kwargs))
+
+if __name__ == "__main__":
+    main()
