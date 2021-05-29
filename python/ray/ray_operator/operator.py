@@ -49,6 +49,8 @@ class RayCluster:
             cluster_namespace=self.namespace, cluster_name=self.name)
 
         # Monitor subprocess
+        # self.subprocess is non-null iff there's an active monitor subprocess
+        # or a finished monitor subprocess in need of cleanup.
         self.subprocess = None  # type: Optional[mp.Process]
         # Monitor logs for this cluster will be prefixed by the monitor
         # subprocess name:
@@ -128,12 +130,18 @@ class RayCluster:
         Executed when CR for this cluster is "DELETED".
         Executed when Autoscaling monitor is restarted.
         """
-        if self.subprocess and self.subprocess.is_alive():
-            # Triggers graceful stop of the monitor loop.
-            self.monitor_stop_event.set()
-            self.subprocess.join()
-            # Clears the event for subsequent runs of the monitor.
-            self.monitor_stop_event.clear()
+
+        if self.subprocess is None:
+            # Nothing to clean.
+            return
+
+        # Triggers graceful stop of the monitor loop.
+        self.monitor_stop_event.set()
+        self.subprocess.join()
+        # Clears the event for subsequent runs of the monitor.
+        self.monitor_stop_event.clear()
+        # Signal completed cleanup.
+        self.subprocess = None
 
     def clean_up(self) -> None:
         """Executed when the CR for this cluster is "DELETED".
