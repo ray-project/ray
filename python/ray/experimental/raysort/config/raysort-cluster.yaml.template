@@ -31,6 +31,8 @@ available_node_types:
             InstanceType: {{HEAD_TYPE}}
             ImageId: ami-013cc9df047e5a58c  # ubuntu-20.04-build-conda-python-ray
             KeyName: lsf-ray-autoscaler_us-west-2
+            Placement:
+                GroupName: raysort-pg
 
     ray.worker.default:
         min_workers: {{MIN_WORKERS}}
@@ -42,6 +44,8 @@ available_node_types:
             InstanceType: {{WORKER_TYPE}}
             ImageId: ami-013cc9df047e5a58c  # ubuntu-20.04-build-conda-python-ray
             KeyName: lsf-ray-autoscaler_us-west-2
+            Placement:
+                GroupName: raysort-pg
             InstanceMarketOptions:
                 MarketType: spot
             BlockDeviceMappings:

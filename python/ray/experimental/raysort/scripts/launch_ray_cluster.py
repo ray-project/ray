@@ -44,7 +44,8 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
     "object_store_memory",
-    60 * 1024 * 1024 * 1024,
+    0,
+    # 60 * 1024 * 1024 * 1024,
     "memory reserved for object store per worker, use default if set to 0",
 )
 flags.DEFINE_bool(

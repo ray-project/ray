@@ -40,18 +40,6 @@ def get_args():
         help="partition size in bytes",
     )
     parser.add_argument(
-        "--mapper_cpu_reduction",
-        default=2,
-        type=int,
-        help="useful for reducing mapper task parallelism on worker nodes",
-    )
-    parser.add_argument(
-        "--reducer_cpu_reduction",
-        default=1,
-        type=int,
-        help="useful for reducing reducer task parallelism on worker nodes",
-    )
-    parser.add_argument(
         "--reducer_batch_num_records",
         default=int(1e6),
         type=RecordCount,
@@ -65,10 +53,16 @@ def get_args():
         "a list of mount paths for persisting results\nthe benchmark requires this to be on EBS, but for now we use local NVMe disks",
     )
     parser.add_argument(
+        "--shuffle_only",
+        default=False,
+        action="store_true",
+        help="if set, will only run the shuffle microbenchmark",
+    )
+    parser.add_argument(
         "--skip_sorting",
         default=False,
         action="store_true",
-        help="if set, no sorting is performed; just shuffling",
+        help="if set, no sorting is actually performed",
     )
     parser.add_argument(
         "--skip_writing_output",
@@ -129,10 +123,11 @@ def generate_part(part_id: PartId, size: RecordCount,
                   offset: RecordCount) -> PartitionInfo:
     logging_utils.init()
     pinfo = _make_partition_info(part_id)
-    subprocess.run(
-        [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
-        check=True)
-    logging.info(f"Generated input {pinfo}")
+    if not args.shuffle_only:
+        subprocess.run(
+            [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
+            check=True)
+        logging.info(f"Generated input {pinfo}")
     return pinfo
 
 
@@ -181,17 +176,23 @@ def _dummy_sort_and_partition(part: np.ndarray,
     return blocks
 
 
-@ray.remote(num_cpus=args.mapper_cpu_reduction, num_returns=args.num_parts)
+@ray.remote(num_returns=args.num_parts)
 def mapper(boundaries: List[int], mapper_id: PartId,
            path: Path) -> List[ObjectRef]:
     logging_utils.init()
     task_id = f"M-{mapper_id} Mapper"
     logging.info(f"{task_id} starting")
+    if args.shuffle_only:
+        block_size = int(np.ceil(args.part_size / args.num_parts))
+        return [
+            ray.put(np.empty(block_size, dtype=np.uint8))
+            for _ in range(args.num_parts)
+        ]
+
     part = _load_partition(path)
     sort_fn = _dummy_sort_and_partition if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
     logging.info(f"{task_id} saving to object store")
-    # TODO: can we avoid copying here?
     ret = [ray.put(part[offset:offset + size]) for offset, size in blocks]
     logging.info(f"{task_id} done")
     return ret
@@ -205,12 +206,20 @@ def _dummy_merge(blocks: List[Union[np.ndarray, ray.ObjectRef]],
         yield memoryview(block)
 
 
-@ray.remote(num_cpus=args.reducer_cpu_reduction)
+@ray.remote
 def reducer(reducer_id: PartId, *blocks) -> PartitionInfo:
     logging_utils.init()
     task_id = f"R-{reducer_id} Reducer"
     logging.info(f"{task_id} starting")
+    # if args.shuffle_only:
+    #     total = 0
+    #     for block in blocks:
+    #         block = ray.get(block)
+    #         total += block.size
+    #     return (total,)
     blocks = ray.get(list(blocks))
+    if args.shuffle_only:
+        return (sum(block.size for block in blocks), )
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(blocks, args.reducer_batch_num_records)
     pinfo = _make_partition_info(reducer_id, "output")
@@ -233,20 +242,32 @@ def sort_main():
     boundaries = sortlib.get_boundaries(N)
     mapper_results = np.empty((N, N), dtype=object)
     for part_id, node, path in partitions:
-        mapper_results[part_id, :] = mapper.options(resources={
-            f"node:{node}": 1 / args.num_parts
-        }).remote(boundaries, part_id, path)
+        if not args.shuffle_only:
+            opt = {
+                "memory": args.part_size,
+                "resources": {
+                    f"node:{node}": 1 / args.num_parts
+                },
+            }
+        else:
+            opt = {}
+        mapper_results[part_id, :] = mapper.options(**opt).remote(
+            boundaries, part_id, path)
 
     reducer_results = []
     for r in range(N):
+        if not args.shuffle_only:
+            opt = {"memory": args.part_size}
+        else:
+            opt = {}
         blocks = mapper_results[:, r].tolist()
-        ret = reducer.remote(r, *blocks)
+        ret = reducer.options(**opt).remote(r, *blocks)
         reducer_results.append(ret)
 
-    output_parts = ray.get(reducer_results)
+    reducer_results = ray.get(reducer_results)
     with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
         writer = csv.writer(fout)
-        writer.writerows(output_parts)
+        writer.writerows(reducer_results)
 
 
 # ------------------------------------------------------------
@@ -265,6 +286,8 @@ def validate_part(path: Path):
 
 
 def validate_output():
+    if args.shuffle_only:
+        return
     partitions = _load_manifest(constants.OUTPUT_MANIFEST_FILE)
     tasks = []
     for _, node, path in partitions:
@@ -301,6 +324,8 @@ def main():
 
     if args.validate_output:
         validate_output()
+
+    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
 
 
 if __name__ == "__main__":

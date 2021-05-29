@@ -27,7 +27,7 @@ struct Record {
 template <typename T>
 struct HeaderComparator {
   inline bool operator()(const T &a, const T &b) {
-    return std::memcmp(a.header, b.header, HEADER_SIZE) < 0;
+    return __builtin_memcmp(a.header, b.header, HEADER_SIZE) < 0;
   }
 };
 
