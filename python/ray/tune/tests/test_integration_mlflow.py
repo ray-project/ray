@@ -175,6 +175,7 @@ class MLflowTest(unittest.TestCase):
         os.environ["MLFLOW_EXPERIMENT_ID"] = "500"
         with self.assertRaises(ValueError):
             logger = MLflowLoggerCallback()
+            logger.setup()
 
         # Experiment name env var should take precedence over id env var.
         clear_env_vars()
