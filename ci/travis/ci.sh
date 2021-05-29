@@ -192,7 +192,7 @@ test_python() {
     # shellcheck disable=SC2046
     bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
-      --test-arg=--durations=0 --test-arg=-ra -- "${args[@]}";
+      --test_arg=--durations=0 --test_arg=-ra -- "${args[@]}";
   fi
 }
 
