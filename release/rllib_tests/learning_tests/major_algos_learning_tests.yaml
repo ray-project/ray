@@ -5,7 +5,7 @@ a2c-breakoutnoframeskip-v4:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 50.0
-        timesteps_total: 7000000
+        timesteps_total: 5000000
     stop:
         time_total_s: 7200
     config:
@@ -25,7 +25,7 @@ apex-breakoutnoframeskip-v4:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 20.0
-        timesteps_total: 12000000
+        timesteps_total: 10000000
     stop:
         time_total_s: 7200
     config:
@@ -57,8 +57,8 @@ dqn-breakoutnoframeskip-v4:
     run: DQN
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 20.0
-        timesteps_total: 600000
+        episode_reward_mean: 30.0
+        timesteps_total: 450000
     stop:
         time_total_s: 7200
     config:
@@ -90,8 +90,8 @@ impala-breakoutnoframeskip-v4:
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 100.0
-        timesteps_total: 3000000
+        episode_reward_mean: 300.0
+        timesteps_total: 6000000
     stop:
         time_total_s: 3600
     config:
@@ -181,7 +181,7 @@ ddpg-halfcheetahbulletenv-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 400.0
-        timesteps_total: 700000
+        timesteps_total: 400000
     stop:
         time_total_s: 7200
     config:
