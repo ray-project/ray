@@ -42,7 +42,7 @@ The autoscaler will try to maintain at least ``minWorkers`` of the ``podType`` a
 for the head ``podType``; this signals that the ``podType`` is to be used only for the head node.
 You can use `helm upgrade`_ to adjust the fields ``minWorkers`` and ``maxWorkers`` without :ref:`restarting<k8s-restarts>` the Ray cluster.
 
-The fields ``numCPU``, ``numGPU``, ``memory``, and ``nodeSelector`` configure the Kubernetes ``PodSpec`` to use for nodes
+The fields ``CPU``, ``GPU``, ``memory``, and ``nodeSelector`` configure the Kubernetes ``PodSpec`` to use for nodes
 of the ``podType``. The ``image`` field determines the Ray container image used by all nodes in the Ray cluster.
 
 The ``rayResources`` field of each ``podType`` can be used to signal the presence of custom resources to Ray.
@@ -52,6 +52,10 @@ To schedule Ray tasks and actors that use custom hardware resources, ``rayResour
 - Use ``nodeSelector`` to constrain workers of a ``podType`` to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator.)
 - Signal availability of the hardware for that ``podType`` with ``rayResources: {"custom_resource": 3}``.
 - Schedule a Ray task or actor to use that resource with ``@ray.remote(resources={"custom_resource": 1})``.
+
+By default, the fields ``CPU``, ``GPU``, and ``memory`` are used to configure cpu, gpu, and memory resources advertised to Ray.
+However, ``rayResources`` can be used to override this behavior. For example, ``rayResources: {"CPU": 0}`` can be set for head podType,
+to :ref:``avoid scheduling tasks on the Ray head``.
 
 Refer to the documentation in `values.yaml`_ for more details.
 
@@ -190,11 +194,11 @@ Restart behavior
 The Ray cluster will restart under the following circumstances:
 
 - There is an error in the cluster's autoscaling process. This will happen if the Ray head node goes down.
-- There has been a change to the Ray head pod configuration. In terms of the Ray Helm chart, this means either ``image`` or one of the following fields of the head's ``podType`` has been modified: ``numCPU``, ``numGPU``, ``memory``, ``nodeSelector``.
+- There has been a change to the Ray head pod configuration. In terms of the Ray Helm chart, this means either ``image`` or one of the following fields of the head's ``podType`` has been modified: ``CPU``, ``GPU``, ``memory``, ``nodeSelector``.
 
 Similarly, all workers of a given ``podType`` will be discarded if
 
-- There has been a change to ``image`` or one of the following fields of the ``podType``: ``numCPU``, ``numGPU``, ``memory``, ``nodeSelector``.
+- There has been a change to ``image`` or one of the following fields of the ``podType``: ``CPU``, ``GPU``, ``memory``, ``nodeSelector``.
 
 Status information
 ~~~~~~~~~~~~~~~~~~

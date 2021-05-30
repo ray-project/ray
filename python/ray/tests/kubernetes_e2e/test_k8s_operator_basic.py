@@ -174,7 +174,7 @@ def num_services():
 
 
 class KubernetesOperatorTest(unittest.TestCase):
-    def test_examples(self):
+    def test_basic(self):
         # Validate terminate_node error handling
         provider = KubernetesNodeProvider({
             "namespace": NAMESPACE
