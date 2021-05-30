@@ -544,25 +544,25 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
-#ifdef _WIN32
-// TODO(mehrdadn): implement graceful process termination mechanism
-#else
-  // If we're just cleaning up a single worker, allow it some time to clean
-  // up its state before force killing. The client socket will be closed
-  // and the worker struct will be freed after the timeout.
-  kill(worker->GetProcess().GetId(), SIGTERM);
-#endif
+void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(INFO) << "HandleJobSubmitted " << job_id;
+  RAY_CHECK(!job_data.is_dead());
+  // Notify job manager that the job is submitted.
+  if (!job_manager_->OnJobSubmitted(std::make_shared<JobTableData>(job_data))) {
+    auto local_job_data = job_manager_->GetJobData(job_id);
+    RAY_CHECK(local_job_data != nullptr);
+    RAY_LOG(WARNING) << "Failed to handle job submitted event, local state is "
+                     << rpc::JobTableData_JobState_Name(local_job_data->state())
+                     << ", received state is "
+                     << rpc::JobTableData_JobState_Name(job_data.state());
+    return;
+  }
 
-  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-  auto retry_duration = boost::posix_time::milliseconds(
-      RayConfig::instance().kill_worker_timeout_milliseconds());
-  retry_timer->expires_from_now(retry_duration);
-  retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
-    // Force kill worker
-    worker->GetProcess().Kill();
-  });
+  if (namespace_ids_.contains(job_data.namespace_id())) {
+    // If the namespace of the node is match with the job's namespace then int the job
+    // env.
+    InitializeJobEnv(job_data);
+  }
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
@@ -572,7 +572,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // due to worker dead will be ignored.
   DisconnectClient(worker->Connection(), disconnect_type);
   worker->MarkDead();
-  KillWorker(worker);
+  worker_pool_.KillWorker(worker);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -590,6 +590,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
+  worker_pool_.KillWorker(worker);
 }
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
@@ -998,14 +999,14 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
         if (owner_worker_id == worker_id) {
           RAY_LOG(INFO) << "Owner process " << owner_worker_id
                         << " died, killing leased worker " << worker->WorkerId();
-          KillWorker(worker);
+          worker_pool_.KillWorker(worker);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
         // worker.
         RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
                       << worker->WorkerId();
-        KillWorker(worker);
+        worker_pool_.KillWorker(worker);
       }
     }
   }

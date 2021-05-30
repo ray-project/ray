@@ -349,12 +349,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker Shared ptr to the worker, or nullptr if lost.
   void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Kill a worker.
-  ///
-  /// \param worker The worker to kill.
-  /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker);
-
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
   ///

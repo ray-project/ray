@@ -151,6 +151,7 @@ WorkerPool::~WorkerPool() {
     }
   }
   for (Process proc : procs_to_kill) {
+    if (watchdog_) watchdog_->UnWatchChildProcess(proc.GetId());
     proc.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
@@ -505,7 +506,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
           << (proc.IsAlive()
                   ? "The process is still alive, probably it's hanging during start."
                   : "The process is dead, probably it crashed during start.");
-
+      if (watchdog_) watchdog_->UnWatchChildProcess(proc.GetId());
       if (proc.IsAlive()) {
         proc.Kill();
       }
@@ -1143,6 +1144,28 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   idle_of_all_languages_ = std::move(new_idle_of_all_languages);
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+}
+
+void WorkerPool::KillWorker(std::shared_ptr<WorkerInterface> worker) {
+  if (watchdog_) watchdog_->UnWatchChildProcess(worker->GetProcess().GetId());
+#ifdef _WIN32
+    // TODO(mehrdadn): implement graceful process termination mechanism
+#else
+  // If we're just cleaning up a single worker, allow it some time to clean
+  // up its state before force killing. The client socket will be closed
+  // and the worker struct will be freed after the timeout.
+  kill(worker->GetProcess().GetId(), SIGTERM);
+#endif
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(*io_service_);
+  auto retry_duration = boost::posix_time::milliseconds(
+      RayConfig::instance().kill_worker_timeout_milliseconds());
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
+    RAY_LOG(INFO) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
+    // Force kill worker
+    worker->GetProcess().Kill();
+  });
 }
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,

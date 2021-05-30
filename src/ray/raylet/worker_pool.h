@@ -400,6 +400,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
+  /// Kill a worker.
+  ///
+  /// \param worker The worker to kill.
+  /// \return Void.
+  void KillWorker(std::shared_ptr<WorkerInterface> worker);
+
  protected:
   void update_worker_startup_token_counter();
 
