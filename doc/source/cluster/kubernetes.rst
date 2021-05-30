@@ -47,15 +47,20 @@ Installing the Ray Operator with Helm
 -------------------------------------
 Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
 
-Currently, the `Ray Helm chart`_ is available on the the master branch of the Ray GitHub repo.
-The chart will be published to a public Helm repo as part of each Ray release, starting with the upcoming Ray 1.4.0.
+The chart is developed in the `Ray GitHub repository`_.
+An official version is published to a `public Helm repo`_ with each Ray release.
 
 Preparation
 ~~~~~~~~~~~
 
 - Configure `kubectl`_ to access your Kubernetes cluster.
 - Install `Helm 3`_.
-- Download the `Ray Helm chart`_.
+- Download the latest release version of the chart:
+
+.. code-block:: shell
+
+  $ helm repo add ray-charts https://ray-project.github.io/ray-helm-charts/
+  $ helm repo update
 
 To run the default example in this document, make sure your Kubernetes cluster can accomodate
 additional resource requests of 4 CPU and 2.5Gi memory.
@@ -69,12 +74,9 @@ with scaling allowed up to three workers.
 
 .. code-block:: shell
 
-  # Navigate to the directory containing the chart
-  $ cd ray/deploy/charts
-
   # Install a small Ray cluster with the default configuration
   # in a new namespace called "ray". Let's name the Helm release "example-cluster."
-  $ helm -n ray install example-cluster --create-namespace ./ray
+  $ helm -n ray install example-cluster --create-namespace ray-charts/ray
   NAME: example-cluster
   LAST DEPLOYED: Fri May 14 11:44:06 2021
   NAMESPACE: ray
@@ -258,7 +260,8 @@ Questions or Issues?
 .. _`minikube`: https://minikube.sigs.k8s.io/docs/start/
 .. _`namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
-.. _`Ray Helm chart`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
+.. _`Ray GitHub repository`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
+.. _`public Helm repo`: https://github.com/ray-project/ray-helm-charts
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/

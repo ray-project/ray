@@ -22,9 +22,9 @@ To configure Helm chart values, you can pass in a custom values ``yaml`` and/or 
 .. code-block:: shell
 
    # Pass in a custom values yaml.
-   $ helm install example-cluster -f custom_values.yaml ./ray
+   $ helm install example-cluster -f custom_values.yaml ray-charts/ray
    # Set custom values on the command line.
-   $ helm install example-cluster --set image=rayproject/ray:1.2.0 ./ray
+   $ helm install example-cluster --set image=rayproject/ray:1.2.0 ray-charts/ray
 
 Refer to the `Helm docs`_ for more information.
 
@@ -92,14 +92,14 @@ three separate Helm releases:
 .. code-block:: shell
 
   # Install the operator in its own Helm release.
-  $ helm install ray-operator --set operatorOnly=true ./ray
+  $ helm install ray-operator --set operatorOnly=true ray-charts/ray
 
   # Install a Ray cluster in a new namespace "ray".
-  $ helm -n ray install example-cluster --set clusterOnly=true ./ray --create-namespace
+  $ helm -n ray install example-cluster --set clusterOnly=true ray-charts/ray --create-namespace
 
   # Install a second Ray cluster. Launch the second cluster without any workers.
   $ helm -n ray install example-cluster2 \
-      --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ./ray
+      --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ray-charts/ray
 
   # Examine the pods in both clusters.
   $ kubectl -n ray get pods
@@ -119,7 +119,7 @@ Alternatively, the Operator and one of the Ray Clusters can be installed in the 
    # Start another Ray cluster.
    # The cluster will be managed by the operator created in the last command.
    $ helm -n ray install example-cluster2 \
-      --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ./ray
+      --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ray-charts/ray
 
 
 The Operator pod outputs autoscaling logs for all of the Ray clusters it manages.
@@ -198,6 +198,17 @@ The ``STATUS`` column reports the RayCluster's ``status.phase`` field. The follo
 
 The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` field. This tracks the number of times the cluster has restarted due to an autoscaling error.
 
+Installing the nightly chart
+----------------------------
+
+The latest development version of the Ray helm chart is available on the master branch of Ray's GitHub repo:
+
+.. code-block:: shell
+
+   $ git clone https://github.com/ray-project/ray
+   $ cd ray/deploy/charts
+   $ helm install ray-cluster ./ray
+
 Questions or Issues?
 --------------------
 
@@ -207,7 +218,7 @@ Questions or Issues?
 .. _`namespaced`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_namespaced.yaml
 .. _`cluster-scoped`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_cluster_scoped.yaml
 .. _`example`: https://github.com/ray-project/ray/tree/master/deploy/components/example_cluster.yaml
-.. _`values.yaml`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/values.yaml
+.. _`values.yaml`: https://github.com/ray-project/ray-helm-charts/blob/main/ray/values.yaml
 .. _`bug report`: https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2C+triage&template=bug_report.md&title=
 .. _`helm upgrade`: https://helm.sh/docs/helm/helm_upgrade/
 .. _`feature request`: https://github.com/ray-project/ray/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=
