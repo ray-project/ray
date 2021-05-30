@@ -5,6 +5,18 @@ const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
     ray::kObjectStoreMemory_ResourceLabel};
 
+std::unordered_map<std::string, PredefinedResources>
+create_predefined_resource_name_enum_map() {
+  std::unordered_map<std::string, PredefinedResources> map;
+  map[ray::kCPU_ResourceLabel] = PredefinedResources::CPU;
+  map[ray::kMemory_ResourceLabel] = PredefinedResources::MEM;
+  map[ray::kGPU_ResourceLabel] = PredefinedResources::GPU;
+  map[ray::kObjectStoreMemory_ResourceLabel] = PredefinedResources::OBJECT_STORE_MEM;
+  return map;
+}
+const std::unordered_map<std::string, PredefinedResources>
+    predefined_resource_name_enum_map = create_predefined_resource_name_enum_map();
+
 const std::string ResourceEnumToString(PredefinedResources resource) {
   // TODO (Alex): We should replace this with a protobuf enum.
   RAY_CHECK(resource < PredefinedResources_MAX)
@@ -571,4 +583,313 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
     }
   }
   return true;
+}
+
+/// ResourceSet class implementation
+void ResourceSet::FillByResourceMap(
+    const std::unordered_map<std::string, FixedPoint> &resource_map) {
+  predefined_resources_.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    predefined_resources_[i] = 0;
+  }
+  for (auto const &resource : resource_map) {
+    auto iter = predefined_resource_name_enum_map.find(resource.first);
+    if (iter != predefined_resource_name_enum_map.end()) {
+      predefined_resources_[iter->second] = resource.second;
+    } else {
+      int id = string_id_map_.Insert(resource.first);
+      custom_resources_[id] = resource.second;
+    }
+  }
+}
+
+ResourceSet::ResourceSet() { FillByResourceMap({}); }
+
+ResourceSet::ResourceSet(
+    const std::unordered_map<std::string, FixedPoint> &resource_map) {
+  FillByResourceMap(resource_map);
+}
+
+ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
+  std::unordered_map<std::string, FixedPoint> resource_map_fixed_point;
+  for (auto &pair : resource_map) {
+    resource_map_fixed_point[pair.first] = pair.second;
+  }
+  FillByResourceMap(resource_map_fixed_point);
+}
+
+ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
+                         const std::vector<double> resource_capacity) {
+  std::unordered_map<std::string, FixedPoint> resource_map;
+  for (size_t i = 0; i < resource_labels.size(); ++i) {
+    resource_map[resource_labels[i]] = resource_capacity[i];
+  }
+  FillByResourceMap(resource_map);
+}
+
+bool ResourceSet::operator==(const ResourceSet &rhs) const {
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
+}
+
+/// Test whether this ResourceSet is precisely equal to the other ResourceSet.
+bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
+}
+
+FixedPoint ResourceSet::GetPredefinedResource(PredefinedResources resource) const {
+  return predefined_resources_[resource];
+}
+
+FixedPoint ResourceSet::GetPredefinedResource(int resource) const {
+  return predefined_resources_[static_cast<PredefinedResources>(resource)];
+}
+
+FixedPoint ResourceSet::GetCustomResource(int64_t resource_id) const {
+  auto iter = custom_resources_.find(resource_id);
+  if (iter != custom_resources_.end()) {
+    return iter->second;
+  }
+  return 0;
+}
+
+bool ResourceSet::IsSubset(const ResourceSet &other) const {
+  // Check to make sure all keys of this are in other.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    const FixedPoint &lhs_quantity = predefined_resources_[i];
+    const FixedPoint &rhs_quantity = other.GetPredefinedResource(i);
+    if (lhs_quantity > rhs_quantity) {
+      // Resource found in rhs, but lhs capacity exceeds rhs capacity.
+      return false;
+    }
+  }
+  for (const auto &resource_pair : custom_resources_) {
+    const int64_t resource_id = resource_pair.first;
+    const FixedPoint &lhs_quantity = resource_pair.second;
+    const FixedPoint &rhs_quantity = other.GetCustomResource(resource_id);
+    if (lhs_quantity > rhs_quantity) {
+      // Resource found in rhs, but lhs capacity exceeds rhs capacity.
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ResourceSet::IsSuperset(const ResourceSet &other) const {
+  return other.IsSubset(*this);
+}
+
+void ResourceSet::AddOrUpdateResource(const std::string &resource_name,
+                                      const FixedPoint &capacity) {
+  if (capacity <= 0) {
+    return;
+  }
+
+  auto iter = predefined_resource_name_enum_map.find(resource_name);
+  if (iter != predefined_resource_name_enum_map.end()) {
+    predefined_resources_[iter->second] = capacity;
+  } else {
+    int id = string_id_map_.Insert(resource_name);
+    custom_resources_[id] = capacity;
+  }
+}
+
+bool ResourceSet::DeleteResource(const std::string &resource_name) {
+  auto iter = predefined_resource_name_enum_map.find(resource_name);
+  if (iter != predefined_resource_name_enum_map.end()) {
+    predefined_resources_[iter->second] = 0;
+    return true;
+  } else {
+    int id = string_id_map_.Get(resource_name);
+    if (id == -1) {
+      return false;
+    }
+    custom_resources_.erase(id);
+    return true;
+  }
+}
+
+const std::unordered_map<int64_t, FixedPoint> &ResourceSet::GetCustomResourceAmountMap()
+    const {
+  return custom_resources_;
+}
+
+// Add a set of resources to the current set of resources subject to upper limits on
+// capacity from the total_resource set
+void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
+                                                  const ResourceSet &total_resources) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    // ResourceSet must have predefind resources
+    const FixedPoint &total_capacity = total_resources.GetPredefinedResource(i);
+    const FixedPoint &to_add_resource_capacity = other.GetPredefinedResource(i);
+    predefined_resources_[i] =
+        std::min(predefined_resources_[i] + to_add_resource_capacity, total_capacity);
+  }
+  for (const auto &resource_pair : other.GetCustomResourceAmountMap()) {
+    const int64_t to_add_resource_id = resource_pair.first;
+    const FixedPoint &to_add_resource_capacity = resource_pair.second;
+    if (total_resources.GetCustomResource(to_add_resource_id) != 0) {
+      // If resource exists in total map, add to the local capacity map.
+      // If the new capacity is less than the total capacity, set the new capacity to
+      // the local capacity (capping to the total).
+      const FixedPoint &total_capacity =
+          total_resources.GetCustomResource(to_add_resource_id);
+      custom_resources_[to_add_resource_id] =
+          std::min(custom_resources_[to_add_resource_id] + to_add_resource_capacity,
+                   total_capacity);
+    } else {
+      // Resource does not exist in the total map, it probably got deleted from the total.
+      // Don't panic, do nothing and simply continue.
+      RAY_LOG(DEBUG) << "[AddResourcesCapacityConstrained] Resource "
+                     << to_add_resource_id
+                     << " not found in the total resource map. It probably got deleted, "
+                        "not adding back to resource_capacity_.";
+    }
+  }
+}
+
+// Perform an outer join.
+void ResourceSet::AddResources(const ResourceSet &other) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    predefined_resources_[i] += other.GetPredefinedResource(i);
+  }
+  for (const auto &resource_pair : other.GetCustomResourceAmountMap()) {
+    const int64_t resource_id = resource_pair.first;
+    const FixedPoint &resource_capacity = resource_pair.second;
+    custom_resources_[resource_id] += resource_capacity;
+  }
+}
+
+void ResourceSet::SubtractResources(const ResourceSet &other) {
+  // Subtract the resources, make sure none goes below zero and delete any if new capacity
+  // is zero.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    predefined_resources_[i] = std::max(
+        predefined_resources_[i] - other.GetPredefinedResource(i), FixedPoint(0));
+  }
+  for (const auto &resource_pair : other.GetCustomResourceAmountMap()) {
+    const int64_t resource_id = resource_pair.first;
+    const FixedPoint &resource_capacity = resource_pair.second;
+    if (custom_resources_.count(resource_id) == 1) {
+      custom_resources_[resource_id] -= resource_capacity;
+    }
+    if (custom_resources_[resource_id] <= 0) {
+      custom_resources_.erase(resource_id);
+    }
+  }
+}
+
+void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
+  // Subtract the resources, make sure none goes below zero and delete any if new capacity
+  // is zero.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    predefined_resources_[i] -= other.GetPredefinedResource(i);
+    RAY_CHECK(predefined_resources_[i] >= 0)
+        << "Capacity of resource after subtraction is negative, "
+        << predefined_resources_[i].Double() << ".";
+  }
+  for (const auto &resource_pair : other.GetCustomResourceAmountMap()) {
+    const int64_t resource_id = resource_pair.first;
+    const FixedPoint &resource_capacity = resource_pair.second;
+    RAY_CHECK(custom_resources_.count(resource_id) == 1)
+        << "Attempt to acquire unknown resource: " << resource_id << " capacity "
+        << resource_capacity.Double();
+    custom_resources_[resource_id] -= resource_capacity;
+
+    // Ensure that quantity is positive. Note, we have to have the check before
+    // erasing the object to make sure that it doesn't get added back.
+    RAY_CHECK(custom_resources_[resource_id] >= 0)
+        << "Capacity of resource after subtraction is negative, "
+        << custom_resources_[resource_id].Double() << ".";
+
+    if (custom_resources_[resource_id] == 0) {
+      custom_resources_.erase(resource_id);
+    }
+  }
+}
+
+FixedPoint ResourceSet::GetResource(const std::string &resource_name) const {
+  auto iter = predefined_resource_name_enum_map.find(resource_name);
+  if (iter != predefined_resource_name_enum_map.end()) {
+    return predefined_resources_[iter->second];
+  } else {
+    int id = string_id_map_.Get(resource_name);
+    if (id == -1) {
+      return 0;
+    }
+    return custom_resources_.at(id);
+  }
+}
+
+void ResourceSet::SetPredefinedResources(PredefinedResources resource,
+                                         FixedPoint quantity) {
+  predefined_resources_[resource] = quantity;
+}
+
+const ResourceSet ResourceSet::GetNumCpus() const {
+  ResourceSet cpu_resource_set;
+  const FixedPoint cpu_quantity = GetPredefinedResource(CPU);
+  if (cpu_quantity > 0) {
+    cpu_resource_set.SetPredefinedResources(CPU, cpu_quantity);
+  }
+  return cpu_resource_set;
+}
+
+bool ResourceSet::IsEmpty() const {
+  // Check whether the capacity of each resource type is zero. Exit early if not.
+  for (auto &it : predefined_resources_) {
+    if (it != 0) {
+      return false;
+    }
+  }
+  return custom_resources_.empty();
+}
+
+const std::unordered_map<std::string, double> ResourceSet::GetResourceMap() const {
+  std::unordered_map<std::string, double> result;
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    result[resource_labels[i]] = predefined_resources_[i].Double();
+  }
+  for (const auto &resource_pair : custom_resources_) {
+    result[string_id_map_.Get(resource_pair.first)] = resource_pair.second.Double();
+  }
+  return result;
+}
+
+const std::unordered_map<std::string, FixedPoint> ResourceSet::GetResourceAmountMap()
+    const {
+  std::unordered_map<std::string, FixedPoint> result;
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    result[resource_labels[i]] = predefined_resources_[i];
+  }
+  for (const auto &resource_pair : custom_resources_) {
+    result[string_id_map_.Get(resource_pair.first)] = resource_pair.second;
+  }
+  return result;
+}
+
+const std::string ResourceSet::ToString() const {
+  std::string return_string = "";
+
+  // Convert the first element to a string.
+  double resource_amount = predefined_resources_[0].Double();
+  return_string += ", {" + resource_labels[0] + ": " +
+                   format_resource(resource_labels[0], resource_amount) + "}";
+
+  // Add the remaining elements to the string (along with a comma).
+  for (size_t i = 1; i < PredefinedResources_MAX; i++) {
+    double resource_amount = predefined_resources_[i].Double();
+    return_string += ", {" + resource_labels[i] + ": " +
+                     format_resource(resource_labels[i], resource_amount) + "}";
+  }
+
+  for (auto it = custom_resources_.begin(); it != custom_resources_.end(); ++it) {
+    double resource_amount = (it->second).Double();
+    return_string += ", {" + string_id_map_.Get(it->first) + ": " +
+                     format_resource(string_id_map_.Get(it->first), resource_amount) +
+                     "}";
+  }
+
+  return return_string;
 }

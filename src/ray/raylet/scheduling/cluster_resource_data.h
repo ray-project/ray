@@ -39,6 +39,167 @@ std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double>
 std::vector<double> VectorFixedPointToVectorDouble(
     const std::vector<FixedPoint> &vector_fp);
 
+/// \class ResourceSet
+/// \brief Encapsulates and operates on a set of resources, including CPUs,
+/// GPUs, and custom labels.
+class ResourceSet {
+ public:
+  static std::shared_ptr<ResourceSet> Nil() {
+    static auto nil = std::make_shared<ResourceSet>();
+    return nil;
+  }
+
+  /// \brief empty ResourceSet constructor.
+  ResourceSet();
+
+  /// \brief Constructs ResourceSet from the specified resource map.
+  ResourceSet(const std::unordered_map<std::string, FixedPoint> &resource_map);
+
+  /// \brief Constructs ResourceSet from the specified resource map.
+  ResourceSet(const std::unordered_map<std::string, double> &resource_map);
+
+  /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
+  /// specification.
+  ResourceSet(const std::vector<std::string> &resource_labels,
+              const std::vector<double> resource_capacity);
+
+  /// \brief Empty ResourceSet destructor.
+  ~ResourceSet() = default;
+
+  /// \brief Test equality with the other specified ResourceSet object.
+  ///
+  /// \param rhs: Right-hand side object for equality comparison.
+  /// \return True if objects are equal, False otherwise.
+  bool operator==(const ResourceSet &rhs) const;
+
+  /// \brief Test equality with the other specified ResourceSet object.
+  ///
+  /// \param other: Right-hand side object for equality comparison.
+  /// \return True if objects are equal, False otherwise.
+  bool IsEqual(const ResourceSet &other) const;
+
+  /// \brief Get predefined resource quantity
+  FixedPoint GetPredefinedResource(PredefinedResources resource) const;
+
+  /// \brief Get predefined resource quantity
+  FixedPoint GetPredefinedResource(int resource) const;
+
+  /// \brief Get custom resource quantity
+  FixedPoint GetCustomResource(int64_t resource_id) const;
+
+  /// \brief Test whether this ResourceSet is a subset of the other ResourceSet.
+  ///
+  /// \param other: The resource set we check being a subset of.
+  /// \return True if the current resource set is the subset of other. False
+  /// otherwise.
+  bool IsSubset(const ResourceSet &other) const;
+
+  /// \brief Test if this ResourceSet is a superset of the other ResourceSet.
+  ///
+  /// \param other: The resource set we check being a superset of.
+  /// \return True if the current resource set is the superset of other.
+  /// False otherwise.
+  bool IsSuperset(const ResourceSet &other) const;
+
+  /// \brief Add or update a new resource to the resource set.
+  ///
+  /// \param resource_name: name/label of the resource to add.
+  /// \param capacity: numeric capacity value for the resource to add.
+  /// \return True, if the resource was successfully added. False otherwise.
+  void AddOrUpdateResource(const std::string &resource_name, const FixedPoint &capacity);
+
+  /// \brief [DEPARATED] Delete a resource from the resource set. This method is departed,
+  /// kept just for back compatibility and will be removed in future. Please do not use
+  /// it.
+  ///
+  /// \param resource_name: name/label of the resource to delete.
+  /// \return True if the resource was found while deleting, false if the resource did not
+  /// exist in the set.
+  bool DeleteResource(const std::string &resource_name);
+
+  /// \brief Getter method for custom_resources_
+  const std::unordered_map<int64_t, FixedPoint> &GetCustomResourceAmountMap() const;
+
+  /// \brief Add a set of resources to the current set of resources subject to upper
+  /// limits on capacity from the total_resource set.
+  ///
+  /// \param other: The other resource set to add.
+  /// \param total_resources: Total resource set which sets upper limits on capacity for
+  /// each label.
+  void AddResourcesCapacityConstrained(const ResourceSet &other,
+                                       const ResourceSet &total_resources);
+
+  /// \brief Aggregate resources from the other set into this set, adding any missing
+  /// resource labels to this set.
+  ///
+  /// \param other: The other resource set to add.
+  /// \return Void.
+  void AddResources(const ResourceSet &other);
+
+  /// \brief Subtract a set of resources from the current set of resources and
+  /// check that the post-subtraction result nonnegative. Assumes other
+  /// is a subset of the ResourceSet. Deletes any resource if the capacity after
+  /// subtraction is zero.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void SubtractResources(const ResourceSet &other);
+
+  /// \brief Same as SubtractResources but throws an error if the resource value
+  /// goes below zero.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void SubtractResourcesStrict(const ResourceSet &other);
+
+  /// \brief [DEPARATED] Return the capacity value associated with the specified
+  /// resource.This method is departed, kept just for back compatibility and will be
+  /// removed in future. Please do not use it.
+  ///
+  /// \param resource_name: Resource name for which capacity is requested.
+  /// \return The capacity value associated with the specified resource, zero if resource
+  /// does not exist.
+  FixedPoint GetResource(const std::string &resource_name) const;
+
+  /// \brief Set predefined resource quantity by index.
+  void SetPredefinedResources(PredefinedResources resource, FixedPoint quantity);
+
+  /// Return the number of CPUs.
+  ///
+  /// \return Number of CPUs.
+  const ResourceSet GetNumCpus() const;
+
+  /// Return true if the resource set is empty. False otherwise.
+  ///
+  /// \return True if the resource capacity is zero. False otherwise.
+  bool IsEmpty() const;
+
+  /// \brief [DEPARATED] Return a map of the resource and size in doubles. This method is
+  /// departed, kept just for back compatibility and will be removed in future. Please do
+  /// not use it.
+  ///
+  /// \return map of resource in string to size in double.
+  const std::unordered_map<std::string, double> GetResourceMap() const;
+
+  /// \brief [DEPARATED] Return a map of the resource and size in FixedPoint. This method
+  /// is departed, kept just for back compatibility and will be removed in future. Please
+  /// do not use it.
+  ///
+  /// \return map of resource in string to size in FixedPoint.
+  const std::unordered_map<std::string, FixedPoint> GetResourceAmountMap() const;
+
+  const std::string ToString() const;
+
+ private:
+  void FillByResourceMap(const std::unordered_map<std::string, FixedPoint> &resource_map);
+  /// List of predefined resources
+  std::vector<FixedPoint> predefined_resources_;
+  /// Key: resource ID, Value: quantity
+  std::unordered_map<int64_t, FixedPoint> custom_resources_;
+  /// Map between resource string name and integer ID
+  StringIdMap string_id_map_;
+};
+
 struct ResourceCapacity {
   FixedPoint total;
   FixedPoint available;
@@ -237,3 +398,17 @@ NodeResources ResourceMapToNodeResources(
 TaskRequest ResourceMapToTaskRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map);
+
+namespace std {
+template <>
+struct hash<ResourceSet> {
+  size_t operator()(ResourceSet const &k) const {
+    size_t seed = k.GetResourceMap().size();
+    for (auto &elem : k.GetResourceMap()) {
+      seed ^= std::hash<std::string>()(elem.first);
+      seed ^= std::hash<double>()(elem.second);
+    }
+    return seed;
+  }
+};
+}  // namespace std
