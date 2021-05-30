@@ -1,24 +1,30 @@
 import gym
+from typing import Optional, Dict
 
 import ray
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    PolicyID, LocalOptimizer
 
 torch, nn = try_import_torch()
 
 
-def add_advantages(policy,
-                   sample_batch,
-                   other_agent_batches=None,
-                   episode=None):
+def add_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
 
     # Stub serving backward compatibility.
     deprecation_warning(
@@ -30,7 +36,9 @@ def add_advantages(policy,
                                         other_agent_batches, episode)
 
 
-def actor_critic_loss(policy, model, dist_class, train_batch):
+def actor_critic_loss(policy: Policy, model: ModelV2,
+                      dist_class: ActionDistribution,
+                      train_batch: SampleBatch) -> TensorType:
     logits, _ = model.from_batch(train_batch)
     values = model.value_function()
 
@@ -68,7 +76,8 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     return total_loss
 
 
-def loss_and_entropy_stats(policy, train_batch):
+def loss_and_entropy_stats(policy: Policy,
+                           train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "policy_entropy": policy.entropy,
         "policy_loss": policy.pi_err,
@@ -76,12 +85,15 @@ def loss_and_entropy_stats(policy, train_batch):
     }
 
 
-def model_value_predictions(policy, input_dict, state_batches, model,
-                            action_dist):
+def model_value_predictions(
+        policy: Policy, input_dict: Dict[str, TensorType], state_batches,
+        model: ModelV2,
+        action_dist: ActionDistribution) -> Dict[str, TensorType]:
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 
-def torch_optimizer(policy, config):
+def torch_optimizer(policy: Policy,
+                    config: TrainerConfigDict) -> LocalOptimizer:
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 

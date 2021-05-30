@@ -162,6 +162,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def namespace(self):
+        return self.core_worker.get_job_config().ray_namespace
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
@@ -175,6 +179,12 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env in json format"""
+        return json.loads(
+            self.core_worker.get_job_config().runtime_env.raw_json)
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -550,6 +560,7 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
+        namespace=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -835,6 +846,7 @@ def init(
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
+        namespace=namespace,
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1123,7 +1135,9 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            job_config=None):
+            namespace=None,
+            job_config=None,
+            runtime_env_hash=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1137,6 +1151,7 @@ def connect(node,
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1232,13 +1247,18 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
+    if namespace is not None:
+        # The namespace field of job config may have already been set in code
+        # paths such as the client.
+        job_config.set_ray_namespace(namespace)
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
@@ -1354,6 +1374,8 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
         worker._session_index += 1
+
+        global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []

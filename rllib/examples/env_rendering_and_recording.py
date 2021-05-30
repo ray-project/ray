@@ -16,7 +16,10 @@ from ray import tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=10)
 parser.add_argument("--stop-timesteps", type=int, default=10000)
 parser.add_argument("--stop-reward", type=float, default=9.0)

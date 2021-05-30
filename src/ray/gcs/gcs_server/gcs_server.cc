@@ -87,7 +87,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitRuntimeEnvManager();
 
   // Init gcs job manager.
-  InitGcsJobManager();
+  InitGcsJobManager(gcs_init_data);
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
@@ -207,10 +207,11 @@ void GcsServer::InitGcsResourceScheduler() {
       std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
 }
 
-void GcsServer::InitGcsJobManager() {
+void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
                                                      *runtime_env_manager_);
+  gcs_job_manager_->Initialize(gcs_init_data);
   // Register service.
   job_info_service_ =
       std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
@@ -244,6 +245,21 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+      },
+      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
+      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
+        boost::asio::deadline_timer timer(main_service_);
+        timer.expires_from_now(delay);
+        timer.async_wait([fn](const boost::system::error_code &error) {
+          if (error != boost::asio::error::operation_aborted) {
+            fn();
+          } else {
+            RAY_LOG(WARNING)
+                << "The GCS actor metadata garbage collector timer failed to fire. This "
+                   "could old actor metadata not being properly cleaned up. For more "
+                   "information, check logs/gcs_server.err and logs/gcs_server.out";
+          }
+        });
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
