@@ -147,6 +147,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     is_local = config["provider"]["type"] == "local"
     if is_local:
         config = prepare_local(config)
+
     with_defaults = fillout_defaults(config, is_local)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
@@ -156,7 +157,6 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def fillout_defaults(config: Dict[str, Any],
                      is_local: bool = False) -> Dict[str, Any]:
-    provider_type = config["provider"]["type"]
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
 
@@ -175,8 +175,8 @@ def fillout_defaults(config: Dict[str, Any],
                         ("head_node" in config or "worker_nodes" in config))
     # Do merging logic for legacy configs.
     if is_legacy_config:
-        merged_config = merge_legacy_yaml_with_defaults(merged_config,
-                                                        is_local)
+        merged_config = merge_legacy_yaml_with_defaults(
+            merged_config, is_local)
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
     merged_config.pop("min_workers", None)
@@ -184,9 +184,8 @@ def fillout_defaults(config: Dict[str, Any],
     return merged_config
 
 
-def merge_legacy_yaml_with_defaults(
-        merged_config: Dict[str, Any],
-        is_local: bool) -> Dict[str, Any]:
+def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any],
+                                    is_local: bool) -> Dict[str, Any]:
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """

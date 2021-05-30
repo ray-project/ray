@@ -4,10 +4,12 @@ import sys
 import unittest
 import random
 import tempfile
+import requests
 from pathlib import Path
 import ray
 from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+                            run_string_as_driver_nonblocking,
+                            get_wheel_filename, get_master_wheel_url)
 import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
@@ -653,6 +655,27 @@ def test_init(shutdown_only):
         t = Test.remote()
         assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
+
+
+def test_get_wheel_filename():
+    ray_version = "2.0.0.dev0"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            filename = get_wheel_filename(sys_platform, ray_version,
+                                          py_version)
+            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+            url = f"{prefix}{filename}"
+            assert requests.head(url).status_code == 200
+
+
+def test_get_master_wheel_url():
+    ray_version = "2.0.0.dev0"
+    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            url = get_master_wheel_url(test_commit, sys_platform, ray_version,
+                                       py_version)
+            assert requests.head(url).status_code == 200
 
 
 if __name__ == "__main__":

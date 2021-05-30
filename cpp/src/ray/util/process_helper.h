@@ -1,7 +1,7 @@
 #pragma once
 #include <ray/api/ray_config.h>
 #include <string>
-#include "ray/core.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace api {

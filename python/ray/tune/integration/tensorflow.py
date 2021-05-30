@@ -7,10 +7,9 @@ from ray import tune
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
-from ray.util.sgd.utils import find_free_port
 from ray.util.placement_group import remove_placement_group
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
-from ray.tune.utils.util import detect_checkpoint_function
+from ray.tune.utils import detect_checkpoint_function, find_free_port
 from typing import Callable, Dict, Type, Optional
 
 logger = logging.getLogger(__name__)

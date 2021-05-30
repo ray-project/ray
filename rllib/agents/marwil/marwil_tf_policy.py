@@ -94,18 +94,20 @@ def postprocess_advantages(
 
 class MARWILLoss:
     def __init__(self, policy: Policy, value_estimates: TensorType,
-                 action_dist: ActionDistribution, actions: TensorType,
-                 cumulative_rewards: TensorType, vf_loss_coeff: float,
-                 beta: float):
+                 action_dist: ActionDistribution, train_batch: SampleBatch,
+                 vf_loss_coeff: float, beta: float):
 
-        # Advantage Estimation.
-        adv = cumulative_rewards - value_estimates
-        adv_squared = tf.reduce_mean(tf.math.square(adv))
-
-        # Value function's loss term (MSE).
-        self.v_loss = 0.5 * adv_squared
+        # L = - A * log\pi_\theta(a|s)
+        logprobs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
         if beta != 0.0:
+            cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
+            # Advantage Estimation.
+            adv = cumulative_rewards - value_estimates
+            adv_squared = tf.reduce_mean(tf.math.square(adv))
+            # Value function's loss term (MSE).
+            self.v_loss = 0.5 * adv_squared
+
             # Perform moving averaging of advantage^2.
 
             # Update averaged advantage norm.
@@ -131,17 +133,19 @@ class MARWILLoss:
                         adv, 1e-8 + tf.math.sqrt(
                             policy._moving_average_sqd_adv_norm)))
             exp_advs = tf.stop_gradient(exp_advs)
-        else:
-            exp_advs = 1.0
 
-        # L = - A * log\pi_\theta(a|s)
-        logprobs = action_dist.logp(actions)
+            self.explained_variance = tf.reduce_mean(
+                explained_variance(cumulative_rewards, value_estimates))
+
+        else:
+            # Value function's loss term (MSE).
+            self.v_loss = tf.constant(0.0)
+            exp_advs = 1.0
+            self.explained_variance = tf.constant(0.0)
+
         self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
 
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
-
-        self.explained_variance = tf.reduce_mean(
-            explained_variance(cumulative_rewards, value_estimates))
 
 
 def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
@@ -150,9 +154,7 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     action_dist = dist_class(model_out, model)
     value_estimates = model.value_function()
 
-    policy.loss = MARWILLoss(policy, value_estimates, action_dist,
-                             train_batch[SampleBatch.ACTIONS],
-                             train_batch[Postprocessing.ADVANTAGES],
+    policy.loss = MARWILLoss(policy, value_estimates, action_dist, train_batch,
                              policy.config["vf_coeff"], policy.config["beta"])
 
     return policy.loss.total_loss
