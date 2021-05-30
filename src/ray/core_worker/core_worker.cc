@@ -2724,6 +2724,7 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
   if (options_.spill_objects != nullptr) {
     std::vector<ObjectID> object_ids_to_spill;
     object_ids_to_spill.reserve(request.object_ids_to_spill_size());
@@ -2750,6 +2751,7 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
 void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
                                      rpc::AddSpilledUrlReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
   const ObjectID object_id = ObjectID::FromBinary(request.object_id());
   const std::string &spilled_url = request.spilled_url();
   const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
@@ -2798,7 +2800,9 @@ void CoreWorker::HandleDeleteSpilledObjects(
   if (options_.delete_spilled_objects != nullptr) {
     std::vector<std::string> spilled_objects_url;
     spilled_objects_url.reserve(request.spilled_objects_url_size());
+    RAY_LOG(INFO) << "URL size " << spilled_objects_url.size();
     for (const auto &url : request.spilled_objects_url()) {
+      RAY_LOG(INFO) << "Delete a url " << url;
       spilled_objects_url.push_back(url);
     }
     options_.delete_spilled_objects(spilled_objects_url, worker_context_.GetWorkerType());

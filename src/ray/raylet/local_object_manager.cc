@@ -87,7 +87,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  RAY_LOG(INFO) << "Unpinning object " << object_id;
   // The object should be in one of these stats. pinned, spilling, or spilled.
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
@@ -306,20 +306,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   num_bytes_pending_spill_ -= it->second.first->GetSize();
   objects_pending_spill_.erase(it);
 
-  // Update the object_id -> url_ref_count to use it for deletion later.
-  // We need to track the references here because a single file can contain
-  // multiple objects, and we shouldn't delete the file until
-  // all the objects are gone out of scope.
-  // object_url is equivalent to url_with_offset.
-  auto parsed_url = ParseURL(object_url);
-  const auto base_url_it = parsed_url->find("url");
-  RAY_CHECK(base_url_it != parsed_url->end());
-  if (!url_ref_count_.contains(base_url_it->second)) {
-    url_ref_count_[base_url_it->second] = 1;
-  } else {
-    url_ref_count_[base_url_it->second] += 1;
-  }
-
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
     callback(status);
@@ -350,6 +336,22 @@ void LocalObjectManager::AddSpilledUrls(
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
+
+    // Update the object_id -> url_ref_count to use it for deletion later.
+    // We need to track the references here because a single file can contain
+    // multiple objects, and we shouldn't delete the file until
+    // all the objects are gone out of scope.
+    // object_url is equivalent to url_with_offset.
+    RAY_LOG(INFO) << "Spilled " << object_id << " to " << object_url;
+    auto parsed_url = ParseURL(object_url);
+    const auto base_url_it = parsed_url->find("url");
+    RAY_CHECK(base_url_it != parsed_url->end());
+    if (!url_ref_count_.contains(base_url_it->second)) {
+      url_ref_count_[base_url_it->second] = 1;
+    } else {
+      url_ref_count_[base_url_it->second] += 1;
+    }
+
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.
@@ -475,6 +477,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       url_ref_count_it->second -= 1;
 
       // If there's no more refs, delete the object.
+      RAY_LOG(INFO) << "Delete a file " << base_url_it->second << "which has object id "
+                    << object_id;
       if (url_ref_count_it->second == 0) {
         url_ref_count_.erase(url_ref_count_it);
         object_urls_to_delete.emplace_back(object_url);
@@ -495,6 +499,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
                        << urls_to_delete.size();
         rpc::DeleteSpilledObjectsRequest request;
         for (const auto &url : urls_to_delete) {
+          RAY_LOG(INFO) << "Delete a url " << url;
           request.add_spilled_objects_url(std::move(url));
         }
         io_worker->rpc_client()->DeleteSpilledObjects(
