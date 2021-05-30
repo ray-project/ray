@@ -26,7 +26,7 @@ To configure Helm chart values, you can pass in a custom values ``yaml`` and/or 
    # Set custom values on the command line.
    $ helm install example-cluster --set image=rayproject/ray:1.2.0 ray-charts/ray
 
-Refer to the `Helm docs`_ for more information.
+Refer to the `Helm docs`_ for more information on setting custom values.
 
 Ray cluster configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -148,17 +148,6 @@ to your Helm install command.
 .. warning::
    Do not simultaneously run namespaced and cluster-scoped Ray Operators within one Kubernetes cluster, as this will lead to unintended effects.
 
-.. _no-helm:
-
-Deploying without Helm
-----------------------
-It is possible to deploy the Ray Operator without Helm.
-The necessary configuration files are available on the `Ray GitHub`_.
-The following manifests should be installed in the order listed:
-
-- The `RayCluster CRD`_.
-- The Ray Operator, `namespaced`_ or `cluster-scoped`_.\Note that the cluster-scoped operator is configured to run in namespaced ``default``. Modify as needed.
-- A RayCluster custom resource: `example`_.
 
 Ray Cluster Lifecycle
 ---------------------
@@ -198,8 +187,15 @@ The ``STATUS`` column reports the RayCluster's ``status.phase`` field. The follo
 
 The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` field. This tracks the number of times the cluster has restarted due to an autoscaling error.
 
-Installing the nightly chart
-----------------------------
+Downloading the Helm chart
+--------------------------
+
+You can download the Ray Helm chart and customize it locally:
+
+.. code-block:: shell
+
+   $ helm pull ray-charts/ray --untar
+   $ helm install ray-cluster ./ray
 
 The latest development version of the Ray helm chart is available on the master branch of Ray's GitHub repo:
 
@@ -208,6 +204,18 @@ The latest development version of the Ray helm chart is available on the master 
    $ git clone https://github.com/ray-project/ray
    $ cd ray/deploy/charts
    $ helm install ray-cluster ./ray
+
+.. _no-helm:
+
+Deploying without Helm
+----------------------
+It is possible to deploy the Ray Operator without Helm.
+The necessary configuration files are available on the `Ray GitHub`_.
+The following manifests should be installed in the order listed:
+
+- The `RayCluster CRD`_.
+- The Ray Operator, `namespaced`_ or `cluster-scoped`_.\Note that the cluster-scoped operator is configured to run in namespaced ``default``. Modify as needed.
+- A RayCluster custom resource: `example`_.
 
 Questions or Issues?
 --------------------
