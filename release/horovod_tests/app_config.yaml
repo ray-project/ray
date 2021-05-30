@@ -17,6 +17,3 @@ post_build_cmds:
   - pip install 'ray[rllib]'
   - pip install torch torchvision
   - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip install -U git+https://github.com/horovod/horovod.git
-  # TODO: REMOVE
-  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/tune/utils/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/8be5ee052f0b64b4cff98a3368bf17ea4e6937d8/python/ray/tune/utils/release_test_util.py
-  - curl -so /home/ray/anaconda3/lib/python3.7/site-packages/ray/util/xgboost/release_test_util.py https://raw.githubusercontent.com/krfricke/ray/8be5ee052f0b64b4cff98a3368bf17ea4e6937d8/python/ray/util/xgboost/release_test_util.py
