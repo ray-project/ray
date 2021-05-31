@@ -3,8 +3,8 @@
 
 /// including the header
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 #include "gflags/gflags.h"
+#include "ray/util/logging.h"
 
 /// using namespace
 using namespace ::ray::api;
@@ -41,26 +41,12 @@ class Counter {
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
 
-DEFINE_string(redis_address, "", "The ip address of redis server.");
-
-DEFINE_string(dynamic_library_path, "", "The local path of the dynamic library.");
-
 int main(int argc, char **argv) {
   /// configuration
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  const std::string dynamic_library_path = FLAGS_dynamic_library_path;
-  const std::string redis_address = FLAGS_redis_address;
-  gflags::ShutDownCommandLineFlags();
-  RAY_CHECK(!dynamic_library_path.empty())
-      << "Please add a local dynamic library by '--dynamic-library-path'";
-  ray::api::RayConfig::GetInstance()->lib_name = dynamic_library_path;
-  if (!redis_address.empty()) {
-    ray::api::RayConfig::GetInstance()->SetRedisAddress(redis_address);
-  }
-  ::ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
+  ray::api::RayConfig config;
 
   /// initialization
-  Ray::Init();
+  Ray::Init(config, &argc, &argv);
 
   /// put and get object
   auto obj = Ray::Put(12345);

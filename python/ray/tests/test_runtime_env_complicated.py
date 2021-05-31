@@ -62,14 +62,15 @@ def conda_envs():
 
 check_remote_client_conda = """
 import ray
-ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).connect()
+context = ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).\\
+connect()
 @ray.remote
 def get_tf_version():
     import tensorflow as tf
     return tf.__version__
 
 assert ray.get(get_tf_version.remote()) == "{tf_version}"
-ray.util.disconnect()
+context.disconnect()
 """
 
 
@@ -96,9 +97,8 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
 
     tf_versions = ["2.2.0", "2.3.0"]
     for i, tf_version in enumerate(tf_versions):
-        try:
-            runtime_env = {"conda": f"tf-{tf_version}"}
-            ray.client("localhost:24001").env(runtime_env).connect()
+        runtime_env = {"conda": f"tf-{tf_version}"}
+        with ray.client("localhost:24001").env(runtime_env).connect():
             assert ray.get(get_tf_version.remote()) == tf_version
             actor_handle = TfVersionActor.remote()
             assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
@@ -108,9 +108,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
             other_tf_version = tf_versions[(i + 1) % 2]
             run_string_as_driver(
                 check_remote_client_conda.format(tf_version=other_tf_version))
-        finally:
-            ray.util.disconnect()
-            ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -387,28 +384,23 @@ def test_conda_create_ray_client(call_ray_start):
             ]
         }
     }
-    try:
-        ray.client("localhost:24001").env(runtime_env).connect()
 
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa
-            return True
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
 
+    with ray.client("localhost:24001").env(runtime_env).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed on the test machine
             import pip_install_test  # noqa
         assert ray.get(f.remote())
 
-        ray.util.disconnect()
-        ray.client("localhost:24001").connect()
+    with ray.client("localhost:24001").connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
             ray.get(f.remote())
-    finally:
-        ray.util.disconnect()
-        ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(

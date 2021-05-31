@@ -169,7 +169,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
     for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+      (*resource.mutable_resources_available())[res.first] = res.second.Double();
     }
     reply->add_resources_list()->CopyFrom(resource);
   }

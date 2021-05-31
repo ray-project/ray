@@ -2,11 +2,12 @@
 #include "abstract_ray_runtime.h"
 
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
+#include <ray/util/logging.h>
 
 #include <cassert>
 
+#include "../config_internal.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
@@ -27,16 +28,15 @@ msgpack::sbuffer PackError(std::string error_msg) {
 namespace api {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
-std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
-    std::shared_ptr<RayConfig> config) {
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
-  if (config->run_mode == RunMode::SINGLE_PROCESS) {
-    runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
   } else {
-    ProcessHelper::GetInstance().RayStart(config, TaskExecutor::ExecuteTask);
-    runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime(config));
+    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
+    runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
+    RAY_LOG(INFO) << "Native ray runtime started.";
   }
-  runtime->config_ = config;
   RAY_CHECK(runtime);
   abstract_ray_runtime_ = runtime;
   return runtime;
@@ -46,9 +46,9 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
   return abstract_ray_runtime_;
 }
 
-void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
-  if (config->run_mode == RunMode::CLUSTER) {
-    ProcessHelper::GetInstance().RayStop(config);
+void AbstractRayRuntime::DoShutdown() {
+  if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
+    ProcessHelper::GetInstance().RayStop();
   }
 }
 
@@ -131,27 +131,27 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type, std::string lib_name,
 
 std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
                                      std::vector<ray::api::TaskArg> &args) {
-  auto invocation_spec =
-      BuildInvocationSpec1(TaskType::NORMAL_TASK, this->config_->lib_name,
-                           remote_function_holder, args, ActorID::Nil());
+  auto invocation_spec = BuildInvocationSpec1(
+      TaskType::NORMAL_TASK, ConfigInternal::Instance().dynamic_library_path,
+      remote_function_holder, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec).Binary();
 }
 
 std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
     std::vector<ray::api::TaskArg> &args) {
-  auto invocation_spec =
-      BuildInvocationSpec1(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name,
-                           remote_function_holder, args, ActorID::Nil());
+  auto invocation_spec = BuildInvocationSpec1(
+      TaskType::ACTOR_CREATION_TASK, ConfigInternal::Instance().dynamic_library_path,
+      remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec).Binary();
 }
 
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
     std::vector<ray::api::TaskArg> &args) {
-  auto invocation_spec =
-      BuildInvocationSpec1(TaskType::ACTOR_TASK, this->config_->lib_name,
-                           remote_function_holder, args, ActorID::FromBinary(actor));
+  auto invocation_spec = BuildInvocationSpec1(
+      TaskType::ACTOR_TASK, ConfigInternal::Instance().dynamic_library_path,
+      remote_function_holder, args, ActorID::FromBinary(actor));
   return task_submitter_->SubmitActorTask(invocation_spec).Binary();
 }
 

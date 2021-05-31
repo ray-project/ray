@@ -1,4 +1,5 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/task/scheduling_resources.h"
 
 const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
