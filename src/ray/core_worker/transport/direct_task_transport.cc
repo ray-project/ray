@@ -206,7 +206,7 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
     return false;
   }
 

@@ -40,7 +40,31 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
-  bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
+  void StealTasks(std::unique_ptr<rpc::StealTasksRequest> request,
+                  const rpc::ClientCallback<rpc::StealTasksReply> &callback) override {
+    steal_callbacks.push_back(callback);
+  }
+
+  bool ReplyStealTasks(
+      Status status = Status::OK(),
+      std::vector<TaskSpecification> tasks_stolen = std::vector<TaskSpecification>()) {
+    if (steal_callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = steal_callbacks.front();
+    auto reply = rpc::StealTasksReply();
+
+    for (auto task_spec : tasks_stolen) {
+      reply.add_stolen_tasks_ids(task_spec.TaskId().Binary());
+    }
+
+    callback(status, reply);
+    steal_callbacks.pop_front();
+    return true;
+  }
+
+  bool ReplyPushTask(Status status = Status::OK(), bool exit = false,
+                     bool stolen = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -48,6 +72,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     auto reply = rpc::PushTaskReply();
     if (exit) {
       reply.set_worker_exiting(true);
+    }
+    if (stolen) {
+      reply.set_task_stolen(true);
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -60,6 +87,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  std::list<rpc::ClientCallback<rpc::StealTasksReply>> steal_callbacks;
   std::list<rpc::CancelTaskRequest> kill_requests;
 };
 
@@ -1535,6 +1563,128 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestStealingTasks) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the
+  // pipelining of task submissions. This is done by passing a
+  // max_tasks_in_flight_per_worker parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
+
+  // prepare 20 tasks and save them in a vector
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 20; i++) {
+    tasks.push_back(BuildEmptyTaskSpec());
+  }
+  ASSERT_EQ(tasks.size(), 20);
+
+  // Submit 10 tasks, and check that 1 worker is requested.
+  for (int i = 1; i <= 20; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Grant a worker lease, and check that one more worker was requested due to the Eager
+  // Worker Requesting Mode.
+
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::FromRandom()));
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // reply push tasks on first 10 tasks -> first worker is now done and starts stealing
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
+
+  // 5 tasks get stolen
+  for (int i = 1; i <= 5; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 5);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
+
+  std::vector<TaskSpecification> tasks_stolen;
+  for (int i = 0; i < 5; i++) {
+    tasks_stolen.push_back(BuildEmptyTaskSpec());
+  }
+  ASSERT_TRUE(worker_client->ReplyStealTasks(Status::OK(), tasks_stolen));
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 20);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }
 
 }  // namespace ray
