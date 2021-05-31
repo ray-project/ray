@@ -205,10 +205,19 @@ class ClientActorHandle(ClientStub):
 
     def __init__(self, actor_ref: ClientActorRef):
         self.actor_ref = actor_ref
+        self._dir: Optional[List[str]] = None
 
     def __del__(self) -> None:
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
+
+    def __dir__(self) -> List[str]:
+        if self._dir:
+            return self._dir
+        if ray.is_connected():
+            self._dir = ray.get(ray.remote(lambda x: dir(x)).remote(self))
+            return self._dir
+        return super().__dir__()
 
     @property
     def _actor_id(self):
