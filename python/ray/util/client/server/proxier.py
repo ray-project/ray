@@ -10,7 +10,8 @@ import socket
 import sys
 from threading import Lock, Thread, RLock
 import time
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+import traceback
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.cloudpickle.compat import pickle
@@ -318,17 +319,13 @@ def ray_client_server_env_prep(job_config: JobConfig) -> JobConfig:
     return job_config
 
 
-def prepare_runtime_init_req(iterator: Iterator[ray_client_pb2.DataRequest]
+def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
                              ) -> Tuple[ray_client_pb2.DataRequest, JobConfig]:
     """
     Extract JobConfig and possibly mutate InitRequest before it is passed to
     the specific RayClient Server.
     """
-    init_req = next(iterator)
-    init_type = init_req.WhichOneof("type")
-    assert init_type == "init", ("Received initial message of type "
-                                 f"{init_type}, not 'init'.")
-    req = init_req.init
+    req = init_request.init
     job_config = JobConfig()
     if req.job_config:
         job_config = pickle.loads(req.job_config)
@@ -336,8 +333,8 @@ def prepare_runtime_init_req(iterator: Iterator[ray_client_pb2.DataRequest]
     modified_init_req = ray_client_pb2.InitRequest(
         job_config=pickle.dumps(new_job_config))
 
-    init_req.init.CopyFrom(modified_init_req)
-    return (init_req, new_job_config)
+    init_request.init.CopyFrom(modified_init_req)
+    return (init_request, new_job_config)
 
 
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
@@ -368,21 +365,32 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
 
         logger.info(f"New data connection from client {client_id}: ")
-        modified_init_req, job_config = prepare_runtime_init_req(
-            request_iterator)
-
-        if not self.proxy_manager.start_specific_server(client_id, job_config):
-            logger.error(f"Server startup failed for client: {client_id}, "
-                         f"using JobConfig: {job_config}!")
-            context.set_code(grpc.StatusCode.ABORTED)
+        init_req = next(request_iterator)
+        init_type = init_req.WhichOneof("type")
+        assert init_type == "init", ("Received initial message of type "
+                                     f"{init_type}, not 'init'.")
+        try:
+            modified_init_req, job_config = prepare_runtime_init_req(init_req)
+            if not self.proxy_manager.start_specific_server(
+                    client_id, job_config):
+                logger.error(f"Server startup failed for client: {client_id}, "
+                             f"using JobConfig: {job_config}!")
+                raise RuntimeError("Starting up Server Failed! Check "
+                                   "`ray_client_server.err` on the cluster.")
+            channel = self.proxy_manager.get_channel(client_id)
+            if channel is None:
+                logger.error(f"Channel not found for {client_id}")
+                raise RuntimeError("Proxy failed to Connect to backend! Check "
+                                   "`ray_client_server.err` on the cluster.")
+            stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+        except Exception:
+            init_resp = ray_client_pb2.DataResponse(
+                init=ray_client_pb2.InitResponse(
+                    ok=False, msg=traceback.format_exc()))
+            init_resp.req_id = init_req.req_id
+            yield init_resp
             return None
 
-        channel = self.proxy_manager.get_channel(client_id)
-        if channel is None:
-            logger.error(f"Channel not found for {client_id}")
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            return None
-        stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
         try:
             with self.clients_lock:
                 self.num_clients += 1
@@ -421,7 +429,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             time.sleep(2)
 
         if channel is None:
-            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_code(grpc.StatusCode.UNAVAILABLE)
             return None
 
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
