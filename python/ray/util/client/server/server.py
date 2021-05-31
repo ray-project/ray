@@ -660,7 +660,7 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
+        "-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
         "--mode",
         type=str,
