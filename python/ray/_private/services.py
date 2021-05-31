@@ -254,6 +254,41 @@ def find_redis_address_or_die():
     return redis_addresses.pop()
 
 
+def wait_for_node(redis_address,
+                  node_plasma_store_socket_name,
+                  redis_password=None,
+                  timeout=30):
+    """Wait until this node has appeared in the client table.
+
+    Args:
+        redis_address (str): The redis address.
+        node_plasma_store_socket_name (str): The
+            plasma_store_socket_name for the given node which we wait for.
+        redis_password (str): the redis password.
+        timeout: The amount of time in seconds to wait before raising an
+            exception.
+
+    Raises:
+        TimeoutError: An exception is raised if the timeout expires before
+            the node appears in the client table.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        clients = global_state.node_table()
+        object_store_socket_names = [
+            client["ObjectStoreSocketName"] for client in clients
+        ]
+        if node_plasma_store_socket_name in object_store_socket_names:
+            return
+        else:
+            time.sleep(0.1)
+    raise TimeoutError("Timed out while waiting for nodes to startup.")
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
