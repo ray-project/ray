@@ -52,7 +52,7 @@ CLIENT_SERVER_MAX_THREADS = float(
 
 # Aliases for compatibility.
 ClientObjectRef = raylet.ClientObjectRef
-ClientActorRef = raylet.ClientActorID
+ClientActorRef = raylet.ClientActorRef
 
 
 class ClientStub:

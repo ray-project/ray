@@ -303,7 +303,7 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ClientActorID(ActorID):
+cdef class ClientActorRef(ActorID):
 
     def __init__(self, id: bytes):
         check_id(id, CActorID.Size())
