@@ -1473,6 +1473,7 @@ cc_library(
         "@boost//:asio",
         "@boost//:property_tree",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/synchronization",

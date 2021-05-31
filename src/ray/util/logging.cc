@@ -39,6 +39,7 @@
 #include "spdlog/spdlog.h"
 #endif
 
+#include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "ray/util/filesystem.h"
@@ -59,12 +60,12 @@ std::string GetCallTrace() {
   std::vector<void *> local_stack;
   local_stack.resize(50);
   absl::GetStackTrace(local_stack.data(), 50, 1);
-  static constexpr size_t buf_size = 1 << 14;
-  std::unique_ptr<char[]> buf(new char[buf_size]);
+  static constexpr size_t buf_size = 16 * 1024;
+  char buf[buf_size];
   std::string output;
   for (auto &stack : local_stack) {
-    if (absl::Symbolize(stack, buf.get(), buf_size)) {
-      output.append("    ").append(buf.get()).append("\n");
+    if (absl::Symbolize(stack, buf, buf_size)) {
+      output.append("    ").append(buf).append("\n");
     }
   }
   return output;
@@ -332,12 +333,12 @@ void RayLog::ShutDownRayLog() {
 #endif
 }
 
-void WriteFailureMessage(const char *data, int size) {
+void WriteFailureMessage(const char *data) {
   // The data & size represent one line failure message.
   // The second parameter `size-1` means we should strip last char `\n`
   // for pretty printing.
-  if (nullptr != data && size > 0) {
-    RAY_LOG(ERROR) << std::string(data, size - 1);
+  if (nullptr != data) {
+    RAY_LOG(ERROR) << std::string(data, strlen(data) - 1);
   }
 #ifdef RAY_USE_SPDLOG
   // If logger writes logs to files, logs are fully-buffered, which is different from
@@ -356,6 +357,9 @@ void RayLog::InstallFailureSignalHandler() {
   // If process crashes, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
 #endif
+  absl::FailureSignalHandlerOptions options{};
+  options.writerfn = WriteFailureMessage;
+  absl::InstallFailureSignalHandler(options);
 }
 
 bool RayLog::IsLevelEnabled(RayLogLevel log_level) {

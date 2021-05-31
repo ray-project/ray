@@ -43,7 +43,7 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// This function return the current call stack information.
+/// This function returns the current call stack information.
 std::string GetCallTrace();
 
 enum class RayLogLevel {

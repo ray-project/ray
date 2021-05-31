@@ -13,12 +13,13 @@ def urlsplit(url):
         split_on_scheme = [None] + split_on_scheme[:1]
     split_on_path = split_on_scheme[1].split("/")
     return {
-        "scheme": split_on_scheme[0],
-        "netloc": split_on_path[0].split("."),
-        "path": split_on_path[1:],
-        "query": split_on_query[1].split("&") if len(split_on_query) > 1 else None,
-        "fragment": split_on_anchor[1] if len(split_on_anchor) > 1 else None,
-    }
+  "scheme" : split_on_scheme[0],
+             "netloc" : split_on_path[0].split("."),
+             "path"
+      : split_on_path [1:],
+        "query" : split_on_query[1].split("&") if len(split_on_query) > 1 else None,
+        "fragment" : split_on_anchor[1] if len(split_on_anchor) > 1 else None,
+}
 
 def auto_http_archive(*, name=None, url=None, urls=True,
                       build_file=None, build_file_content=None,
@@ -65,7 +66,7 @@ def auto_http_archive(*, name=None, url=None, urls=True,
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
         if prefix_without_v.startswith("v") and prefix_without_v[1:2].isdigit():
-            # GitHub automatically strips a leading 'v' in version numbers
+#GitHub automatically strips a leading 'v' in version numbers
             prefix_without_v = prefix_without_v[1:]
         strip_prefix = (url_path_parts[1] + "-" + prefix_without_v
                         if is_github and url_path_parts[2:3] == ["archive"]
@@ -77,8 +78,8 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
 
-    # Explicitly bring in protobuf dependency to work around
-    # https://github.com/ray-project/ray/issues/14117
+#Explicitly bring in protobuf dependency to work around
+#https:  // github.com/ray-project/ray/issues/14117
     http_archive(
         name = "com_google_protobuf",
         strip_prefix = "protobuf-3.16.0",
@@ -141,8 +142,8 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        # This rule is used by @com_github_nelhage_rules_boost and
-        # declaring it here allows us to avoid patching the latter.
+#This rule is used by @com_github_nelhage_rules_boost and
+#declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
         sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
@@ -154,7 +155,7 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
-        # If you update the Boost version, remember to update the 'boost' rule.
+#If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/2613d04ab3d22dfc4543ea0a083d9adeaa0daf09.tar.gz",
         sha256 = "512f913240e026099d4ca4a98b1ce8048c99de77fdc8e8584e9e2539ee119ca2",
         patches = [
@@ -182,18 +183,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_google_glog",
-        url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
-        sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
-        patches = [
-            "//thirdparty/patches:glog-log-pid-tid.patch",
-            "//thirdparty/patches:glog-stack-trace.patch",
-            "//thirdparty/patches:glog-suffix-log.patch",
-            "//thirdparty/patches:glog-dump-stacktrack.patch",
-        ],
-    )
-
-    auto_http_archive(
         name = "cython",
         build_file = True,
         url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",
@@ -210,22 +199,22 @@ def ray_deps_setup():
         ]
     )
 
-    # OpenCensus depends on Abseil so we have to explicitly pull it in.
-    # This is how diamond dependencies are prevented.
+#OpenCensus depends on Abseil so we have to explicitly pull it in.
+#This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
         url = "https://github.com/abseil/abseil-cpp/archive/aa844899c937bde5d2b24f276b59997e5b668bde.tar.gz",
         sha256 = "327a3883d24cf5d81954b8b8713867ecf2289092c7a39a9dc25a9947cf5b8b78",
     )
 
-    # OpenCensus depends on jupp0r/prometheus-cpp
+#OpenCensus depends on jupp0r / prometheus - cpp
     auto_http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
             "//thirdparty/patches:prometheus-windows-headers.patch",
-            # https://github.com/jupp0r/prometheus-cpp/pull/225
+#https:  // github.com/jupp0r/prometheus-cpp/pull/225
             "//thirdparty/patches:prometheus-windows-zlib.patch",
             "//thirdparty/patches:prometheus-windows-pollfd.patch",
         ]
@@ -233,7 +222,7 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_github_grpc_grpc",
-        # NOTE: If you update this, also update @boringssl's hash.
+#NOTE : If you update this, also update @boringssl's hash.
         url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
         sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
         patches = [
@@ -243,11 +232,11 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
-        # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
+#This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
+#provides a deterministic archive hash for caching.Explanation here:
+#https:  // github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
         name = "boringssl",
-        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
+#Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
         url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
         sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
     )
