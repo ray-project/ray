@@ -242,8 +242,8 @@ class ClientRemoteMethod(ClientStub):
     """
 
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
-        self.actor_handle = actor_handle
-        self.method_name = method_name
+        self._actor_handle = actor_handle
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
@@ -253,8 +253,8 @@ class ClientRemoteMethod(ClientStub):
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self.method_name,
-                                               self.actor_handle)
+        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
+                                               self._actor_handle)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -269,8 +269,8 @@ class ClientRemoteMethod(ClientStub):
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_ref.id
+        task.name = self._method_name
+        task.payload_id = self._actor_handle.actor_ref.id
         return task
 
 
