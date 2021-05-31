@@ -55,6 +55,7 @@ std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
+bool RayLog::is_failure_signal_handler_installed_ = false;
 
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
@@ -314,11 +315,25 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 }
 
 void RayLog::UninstallSignalAction() {
+  if (!is_failure_signal_handler_installed_) {
+    return;
+  }
+  RAY_LOG(DEBUG) << "Uninstall signal handlers.";
+  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
   for (int signal_num : installed_signals) {
     RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
   }
+#else
+  struct sigaction sig_action;
+  memset(&sig_action, 0, sizeof(sig_action));
+  sigemptyset(&sig_action.sa_mask);
+  sig_action.sa_handler = SIG_DFL;
+  for (int signal_num : installed_signals) {
+    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
+  }
 #endif
+  is_failure_signal_handler_installed_ = false;
 }
 
 void RayLog::ShutDownRayLog() {
@@ -350,6 +365,10 @@ void WriteFailureMessage(const char *data) {
 #endif
 }
 
+bool RayLog::IsFailureSignalHandlerEnabled() {
+  return is_failure_signal_handler_installed_;
+}
+
 void RayLog::InstallFailureSignalHandler() {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
@@ -357,9 +376,13 @@ void RayLog::InstallFailureSignalHandler() {
   // If process crashes, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
 #endif
+  if (is_failure_signal_handler_installed_) {
+    return;
+  }
   absl::FailureSignalHandlerOptions options{};
   options.writerfn = WriteFailureMessage;
   absl::InstallFailureSignalHandler(options);
+  is_failure_signal_handler_installed_ = true;
 }
 
 bool RayLog::IsLevelEnabled(RayLogLevel log_level) {

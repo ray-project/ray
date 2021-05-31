@@ -143,6 +143,10 @@ class RayLog : public RayLogBase {
 
   /// Install the failure signal handler to output call stack when crash.
   static void InstallFailureSignalHandler();
+
+  /// To check failure signal handler enabled or not.
+  static bool IsFailureSignalHandlerEnabled();
+
   /// Get the log level from environment variable.
   static RayLogLevel GetLogLevelFromEnv();
 
@@ -163,6 +167,9 @@ class RayLog : public RayLogBase {
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
+  /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
+  /// InstallFailureSignalHandler was not called.
+  static bool is_failure_signal_handler_installed_;
   // Log format content.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
