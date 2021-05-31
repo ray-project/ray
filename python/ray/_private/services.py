@@ -1923,3 +1923,24 @@ def start_ray_client_server(redis_address,
         stderr_file=stderr_file,
         fate_share=fate_share)
     return process_info
+
+
+def get_object_locations(obj_refs, timeout_ms=-1):
+    """Get object locations.
+
+    Returns:
+        A list of ObjectLocations for each Object. ObjectLocation could
+        be None on error.
+
+    Raises:
+        A RuntimeError is raised if the processes were not started by
+            ray.init(). 
+        A ray.exceptions.GetTimeoutError is raised if it couldn't finish
+            the request in time.
+    """
+    if not hasattr(ray.worker.global_worker, 'core_worker'):
+        raise RuntimeError(
+            "Ray core_worker doesn't exist. Did you forget to call ray.init()?"
+        )
+    return ray.worker.global_worker.core_worker.get_object_locations(
+        obj_refs, timeout_ms)

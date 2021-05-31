@@ -86,7 +86,7 @@ std::shared_ptr<ObjectLocation> CreateObjectLocation(
     node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
   }
   bool is_spilled = !reply.spilled_url().empty();
-  return std::make_shared<ObjectLocation>(NodeID(),  // TODO: fill the primary_node_id.
+  return std::make_shared<ObjectLocation>(NodeID::FromBinary(reply.primary_node_id()),
                                           reply.object_size(), std::move(node_ids),
                                           is_spilled, reply.spilled_url(),
                                           NodeID::FromBinary(reply.spilled_node_id()));
@@ -1395,6 +1395,9 @@ Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
     std::vector<std::shared_ptr<ObjectLocation>> *results) {
   results->resize(object_ids.size());
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
 
   auto mutex = std::make_shared<absl::Mutex>();
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
@@ -1417,7 +1420,8 @@ Status CoreWorker::GetLocationFromOwner(
           if (status.ok()) {
             (*location_by_id)[object_id] = CreateObjectLocation(reply);
           } else {
-            // TODO: report timeout error versus not found error?
+            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
+                             << " with error: " << status.ToString();
           }
           (*num_remaining)--;
           if (*num_remaining == 0) {
@@ -1533,6 +1537,9 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 }
 
 Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
   auto mutex = std::make_shared<absl::Mutex>();
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
   auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
@@ -2594,12 +2601,17 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   const auto &callback = [object_id, reply, send_reply_callback](
                              const absl::flat_hash_set<NodeID> &locations,
                              int64_t object_size, const std::string &spilled_url,
-                             const NodeID &spilled_node_id, int64_t current_version) {
+                             const NodeID &spilled_node_id, int64_t current_version,
+                             const absl::optional<NodeID> &optional_primary_node_id) {
+    auto primary_node_id = optional_primary_node_id.has_value()
+                               ? optional_primary_node_id.value()
+                               : NodeID() /* Nil */;
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
                    << locations.size() << " locations, spilled url: " << spilled_url
                    << ", spilled node ID: " << spilled_node_id
-                   << ", and object size: " << object_size;
+                   << ", and object size: " << object_size
+                   << ", and primary node ID: " << primary_node_id;
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
@@ -2607,6 +2619,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     reply->set_spilled_url(spilled_url);
     reply->set_spilled_node_id(spilled_node_id.Binary());
     reply->set_current_version(current_version);
+    reply->set_primary_node_id(primary_node_id.Binary());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
   auto status = reference_counter_->SubscribeObjectLocations(

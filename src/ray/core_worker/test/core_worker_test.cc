@@ -794,6 +794,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(location_results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     auto &location = location_results.at(i);
+    ASSERT_EQ(location->GetPrimaryNodeID(), core_worker.GetCurrentNodeId());
     ASSERT_EQ(location->GetObjectSize(), sizes.at(i));
     ASSERT_EQ(location->GetNodeIDs().size(), 1);
     ASSERT_EQ(location->GetNodeIDs().at(0), core_worker.GetCurrentNodeId());

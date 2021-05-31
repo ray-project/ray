@@ -230,6 +230,9 @@ message GetObjectLocationsOwnerReply {
   bytes spilled_node_id = 4;
   // The version of the returned location updates.
   int64 current_version = 5;
+  // The ID of the node that stores the primary copy in plasma. 
+  // This could be Nil if the object has been evicted or inlined.
+  bytes primary_node_id = 6;
 }
 
 message KillActorRequest {
