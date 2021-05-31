@@ -848,6 +848,9 @@ const std::unordered_map<std::string, double> ResourceSet::GetResourceMap() cons
   std::unordered_map<std::string, double> result;
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (predefined_resources_[i] <= 0) {
+      continue;
+    }
     result[resource_labels[i]] = predefined_resources_[i].Double();
   }
   for (const auto &resource_pair : custom_resources_) {
@@ -861,6 +864,9 @@ const std::unordered_map<std::string, FixedPoint> ResourceSet::GetResourceAmount
   std::unordered_map<std::string, FixedPoint> result;
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (predefined_resources_[i] <= 0) {
+      continue;
+    }
     result[resource_labels[i]] = predefined_resources_[i];
   }
   for (const auto &resource_pair : custom_resources_) {
