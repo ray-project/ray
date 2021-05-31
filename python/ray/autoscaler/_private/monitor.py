@@ -133,14 +133,18 @@ class Monitor:
         self.autoscaler = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
-        try:
-            logger.info("Starting autoscaler metrics server on port {}".format(
-                AUTOSCALER_METRIC_PORT))
-            prometheus_client.start_http_server(
-                AUTOSCALER_METRIC_PORT, registry=self.prom_metrics.registry)
-        except Exception:
-            logger.exception(
-                "An exception occurred while starting the metrics server.")
+        if monitor_ip:
+            # If monitor_ip wasn't passed in, then don't attempt to start the
+            # metric server to keep behavior identical to before metrics were
+            # introduced
+            try:
+                logger.info("Starting autoscaler metrics server on port {}".format(
+                    AUTOSCALER_METRIC_PORT))
+                prometheus_client.start_http_server(
+                    AUTOSCALER_METRIC_PORT, registry=self.prom_metrics.registry)
+            except Exception:
+                logger.exception(
+                    "An exception occurred while starting the metrics server.")
 
         logger.info("Monitor: Started")
 
