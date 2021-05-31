@@ -5,6 +5,7 @@ import base64
 from collections import defaultdict
 import os
 import queue
+import pickle
 
 import threading
 from typing import Any
@@ -30,12 +31,14 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_FOR_SPECIFIC_SERVER_S = 30
+TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
+                                            30)
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -60,7 +63,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.ray_connect_handler = ray_connect_handler
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
-        import pickle
         if request.job_config:
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
@@ -156,8 +158,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = rtc.job_id.binary()
                 ctx.node_id = rtc.node_id.binary()
+                ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
+                ctx.runtime_env = json.dumps(rtc.runtime_env)
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -656,7 +660,7 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
+        "-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
         "--mode",
         type=str,
@@ -703,7 +707,8 @@ def main():
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
-                logger.error("Failed to put health check.")
+                logger.error(f"[{args.mode}] Failed to put health check "
+                             f"on {args.redis_address}")
                 logger.exception(e)
 
             time.sleep(1)

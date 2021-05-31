@@ -37,6 +37,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
+#include "ray/util/throttler.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
@@ -699,15 +700,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The last time local gc was run.
-  int64_t last_local_gc_ns_ = 0;
+  /// When plasma storage usage is high, we'll run gc to reduce it.
+  double high_plasma_storage_usage_ = 1.0;
 
-  /// The interval in nanoseconds between local GC automatic triggers.
-  const int64_t local_gc_interval_ns_;
+  /// the timestampe local gc run
+  uint64_t local_gc_run_time_ns_;
 
-  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
-  /// triggered).
-  const int64_t local_gc_min_interval_ns_;
+  /// Throttler for local gc
+  Throttler local_gc_throttler_;
+
+  /// Throttler for global gc
+  Throttler global_gc_throttler_;
+
+  /// Seconds to initialize a local gc
+  const uint64_t local_gc_interval_ns_;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

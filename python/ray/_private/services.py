@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+from pathlib import Path
 import mmap
 import random
 import shutil
@@ -14,6 +15,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import Optional
 
 import colorama
 import psutil
@@ -1459,13 +1461,8 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "",
-            redis_address,
-            plasma_store_name,
-            raylet_name,
-            redis_password,
-            session_dir,
-        )
+            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            session_dir, log_dir)
     else:
         cpp_worker_command = []
 
@@ -1642,14 +1639,9 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(
-        cpp_worker_options,
-        redis_address,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-):
+def build_cpp_worker_command(cpp_worker_options, redis_address,
+                             plasma_store_name, raylet_name, redis_password,
+                             session_dir, log_dir):
     """This method assembles the command used to start a CPP worker.
 
     Args:
@@ -1667,7 +1659,7 @@ def build_cpp_worker_command(
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
         "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
-        session_dir
+        session_dir, log_dir
     ]
 
     return command
@@ -1879,7 +1871,9 @@ def start_ray_client_server(redis_address,
                             stderr_file=None,
                             redis_password=None,
                             fate_share=None,
-                            server_type="proxy"):
+                            server_type: str = "proxy",
+                            serialized_runtime_env: Optional[str] = None,
+                            session_dir: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1890,17 +1884,35 @@ def start_ray_client_server(redis_address,
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         server_type (str): Whether to start the proxy version of Ray Client.
+        serialized_runtime_env (str|None): If specified, the serialized
+            runtime_env to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
     """
+    root_ray_dir = Path(__file__).resolve().parents[1]
+    setup_worker_path = os.path.join(root_ray_dir, "workers",
+                                     ray_constants.SETUP_WORKER_FILENAME)
+    conda_shim_flag = (
+        "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
+
     command = [
-        sys.executable, "-m", "ray.util.client.server",
+        sys.executable,
+        setup_worker_path,
+        conda_shim_flag,  # These two args are to use the shim process.
+        "-m",
+        "ray.util.client.server",
         "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port), "--mode=" + server_type
+        "--port=" + str(ray_client_server_port),
+        "--mode=" + server_type
     ]
     if redis_password:
         command.append("--redis-password=" + redis_password)
+
+    if serialized_runtime_env:
+        command.append("--serialized-runtime-env=" + serialized_runtime_env)
+    if session_dir:
+        command.append(f"--session-dir={session_dir}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

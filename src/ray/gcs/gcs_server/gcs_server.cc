@@ -220,9 +220,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  auto actor_schedule_strategy =
-      std::make_shared<GcsRandomActorScheduleStrategy>(gcs_node_manager_);
-  auto scheduler = std::make_shared<GcsActorScheduler>(
+  auto scheduler = std::make_shared<RayletBasedActorScheduler>(
       main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsActor> actor) {
@@ -236,7 +234,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
-      raylet_client_pool_, actor_schedule_strategy,
+      raylet_client_pool_,
       /*client_factory=*/
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -247,6 +245,20 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
       [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
+      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
+        boost::asio::deadline_timer timer(main_service_);
+        timer.expires_from_now(delay);
+        timer.async_wait([fn](const boost::system::error_code &error) {
+          if (error != boost::asio::error::operation_aborted) {
+            fn();
+          } else {
+            RAY_LOG(WARNING)
+                << "The GCS actor metadata garbage collector timer failed to fire. This "
+                   "could old actor metadata not being properly cleaned up. For more "
+                   "information, check logs/gcs_server.err and logs/gcs_server.out";
+          }
+        });
+      },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });

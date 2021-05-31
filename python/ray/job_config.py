@@ -1,5 +1,9 @@
 import ray
+from typing import Any, Dict, Optional
 import uuid
+import json
+
+from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
 
 
 class JobConfig:
@@ -32,6 +36,29 @@ class JobConfig:
             self.worker_env = dict()
         else:
             self.worker_env = worker_env
+        self.num_java_workers_per_process = num_java_workers_per_process
+        self.jvm_options = jvm_options or []
+        self.code_search_path = code_search_path or []
+        # It's difficult to find the error that caused by the
+        # code_search_path is a string. So we assert here.
+        assert isinstance(self.code_search_path, (list, tuple)), \
+            f"The type of code search path is incorrect: " \
+            f"{type(code_search_path)}"
+        self.client_job = client_job
+        self.metadata = metadata or {}
+        self.ray_namespace = ray_namespace
+        self.set_runtime_env(runtime_env)
+
+    def set_metadata(self, key: str, value: str) -> None:
+        self.metadata[key] = value
+
+    def serialize(self):
+        """Serialize the struct into protobuf string"""
+        job_config = self.get_proto_job_config()
+        return job_config.SerializeToString()
+
+    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+        # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
             # Remove working_dir from the dict here, since that needs to be
@@ -41,33 +68,15 @@ class JobConfig:
                 del without_dir["working_dir"]
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
                 without_dir)
-            self.worker_env = self._parsed_runtime_env.to_worker_env_vars(
-                self.worker_env)
+            self.worker_env.update(
+                self._parsed_runtime_env.get_parsed_dict().get("env_vars")
+                or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
-        self.num_java_workers_per_process = num_java_workers_per_process
-        self.jvm_options = jvm_options or []
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), \
-            f"The type of code search path is incorrect: " \
-            f"{type(code_search_path)}"
         self.runtime_env = runtime_env or dict()
-        self.client_job = client_job
-        self.metadata = metadata or {}
-        self.ray_namespace = ray_namespace
         self._cached_pb = None
 
-    def set_metadata(self, key, value):
-        self.metadata[key] = value
-
-    def serialize(self):
-        """Serialize the struct into protobuf string"""
-        job_config = self.get_proto_job_config()
-        return job_config.SerializeToString()
-
-    def set_ray_namespace(self, ray_namespace):
+    def set_ray_namespace(self, ray_namespace: str) -> None:
         if ray_namespace != self.ray_namespace:
             self.ray_namespace = ray_namespace
             self._cached_pb = None
@@ -107,8 +116,8 @@ class JobConfig:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._parsed_runtime_env.serialize()
 
-    def _get_proto_runtime(self):
-        from ray.core.generated.common_pb2 import RuntimeEnv
-        runtime_env = RuntimeEnv()
+    def _get_proto_runtime(self) -> RuntimeEnvPB:
+        runtime_env = RuntimeEnvPB()
         runtime_env.uris[:] = self.get_runtime_env_uris()
+        runtime_env.raw_json = json.dumps(self.runtime_env)
         return runtime_env
