@@ -145,10 +145,8 @@ if __name__ == "__main__":
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         subprocess.run("sudo apt-get update".split(" "))
-        subprocess.run(
-            "sudo apt-get install -y build-essential curl unzip "
-            "psmisc".split(" ")
-        )
+        subprocess.run("sudo apt-get install -y build-essential curl unzip "
+                       "psmisc".split(" "))
         subprocess.run("pip install cython==0.29.0 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.
         try:
@@ -161,12 +159,10 @@ if __name__ == "__main__":
         os.chdir("../")
 
     try:
-        subprocess.run(
-            "ray start --head --include-dashboard false".split(" "))
+        subprocess.run("ray start --head --include-dashboard false".split(" "))
     except Exception:
         subprocess.run("ray stop".split(" "))
-        subprocess.run(
-            "ray start --head --include-dashboard false".split(" "))
+        subprocess.run("ray start --head --include-dashboard false".split(" "))
 
     # Run the training experiment.
     importlib.invalidate_caches()

@@ -22,7 +22,7 @@
 
   run:
     timeout: 3600
-    script: unit_gpu_tests/run.sh
+    script: bash unit_gpu_tests/run.sh
 
 - name: stress_tests
   owner:
@@ -35,4 +35,4 @@
 
   run:
     timeout: 3600
-    script: /run.sh
+    script: stress_tests/run.sh

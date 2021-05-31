@@ -87,7 +87,8 @@ if __name__ == "__main__":
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
             else:
-                desired_reward = t.stopping_criterion.get("episode_reward_mean")
+                desired_reward = t.stopping_criterion.get(
+                    "episode_reward_mean")
                 desired_timesteps = t.stopping_criterion.get("timesteps_total")
                 desired_time = t.stopping_criterion.get("time_total_s")
 
@@ -99,8 +100,8 @@ if __name__ == "__main__":
                     desired_throughput = desired_timesteps / desired_time
 
                 if (desired_reward and t.last_result["episode_reward_mean"] <
-                    desired_reward) or \
-                        (desired_throughput and throughput < desired_throughput):
+                        desired_reward) or (desired_throughput and
+                                            throughput < desired_throughput):
                     checks[experiment]["failures"] += 1
                 else:
                     checks[experiment]["passed"] = True
@@ -122,7 +123,7 @@ if __name__ == "__main__":
         }
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rllib_learning_test.json")
+                                      "/tmp/rllib_stress_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
