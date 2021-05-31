@@ -90,6 +90,7 @@ def train_example(num_workers=1, use_gpu=False):
     print(trainer1.validate())
 
     # If using Ray Client, make sure to force model onto CPU.
+    import ray
     m = trainer1.get_model(to_cpu=ray.util.client.ray.is_connected())
     print("trained weight: % .2f, bias: % .2f" % (
         m.weight.item(), m.bias.item()))
