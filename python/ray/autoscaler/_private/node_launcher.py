@@ -61,15 +61,7 @@ class NodeLauncher(threading.Thread):
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
-        launch_start_time = time.time()
         self.provider.create_node(node_config, node_tags, count)
-        startup_time = time.time() - launch_start_time
-        for _ in range(count):
-            # Note: when launching multiple nodes we observe the time it
-            # took all nodes to start up for each node. For example, if 4
-            # nodes were launched in 25 seconds, we would observe the 25
-            # second startup time 4 times.
-            self.prom_metrics.worker_startup_time.observe(startup_time)
         self.prom_metrics.started_nodes.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):

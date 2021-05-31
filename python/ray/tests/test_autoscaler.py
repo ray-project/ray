@@ -897,8 +897,6 @@ class AutoscalingTest(unittest.TestCase):
         # started_nodes metric should have been incremented by 2
         assert mock_metrics.started_nodes.inc.call_count == 1
         mock_metrics.started_nodes.inc.assert_called_with(2)
-        # two startup times should have been observed
-        assert mock_metrics.worker_startup_time.observe.call_count == 2
 
         autoscaler.update()
         self.waitForNodes(2)
@@ -945,7 +943,6 @@ class AutoscalingTest(unittest.TestCase):
                 "ray-legacy-worker-node-type (outdated)." in events), events
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
-        mock_metrics.worker_startup_time.observe.call_count == 5
 
     def testDynamicScaling(self):
         config_path = self.write_config(SMALL_CLUSTER)

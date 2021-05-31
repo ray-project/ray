@@ -12,20 +12,6 @@ class AutoscalerPrometheusMetrics:
     def __init__(self, registry: CollectorRegistry = None):
         self.registry: CollectorRegistry = registry or \
             CollectorRegistry(auto_describe=True)
-        # Buckets: 30 seconds, 1 minute, 2 minutes, 4 minutes,
-        #          6 minutes, 8 minutes, 10 minutes, 12 minutes,
-        #          15 minutes, 20 minutes, 30 minutes, 1 hour
-        self.worker_startup_time: Histogram = Histogram(
-            "worker_startup_time_seconds",
-            "Worker startup time. Note that when nodes are launched in "
-            "batches, the startup time for that batch will be observed "
-            "once for *each* node in that batch. For example, if 8 nodes "
-            "are launched in 3 minutes, a startup time of 3 minutes will "
-            "be observed 8 times.",
-            unit="seconds",
-            namespace="autoscaler",
-            registry=self.registry,
-            buckets=[30, 60, 120, 240, 360, 480, 600, 720, 900, 1800, 3600])
         self.pending_nodes: Gauge = Gauge(
             "pending_nodes",
             "Number of nodes pending to be started.",
