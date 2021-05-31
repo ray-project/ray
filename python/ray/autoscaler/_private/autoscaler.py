@@ -303,6 +303,8 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
+                    self.prom_metrics.stopped_nodes.inc(
+                        len(nodes_to_terminate))
                     self.provider.terminate_nodes(nodes_to_terminate)
                     nodes = self.workers()
 
@@ -750,7 +752,7 @@ class StandardAutoscaler:
         nodes = self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         # Update running nodes gauge whenever we check workers
-        self.prom_metrics.running_nodes.set(len(nodes))
+        self.prom_metrics.running_workers.set(len(nodes))
         return nodes
 
     def unmanaged_workers(self):

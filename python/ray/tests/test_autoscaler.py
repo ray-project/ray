@@ -901,8 +901,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
-        # running_nodes metric should be set to 2
-        mock_metrics.running_nodes.set.assert_called_with(2)
+        # running_workers metric should be set to 2
+        mock_metrics.running_workers.set.assert_called_with(2)
 
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
@@ -998,7 +998,7 @@ class AutoscalingTest(unittest.TestCase):
         assert ("Removing 1 nodes of type "
                 "ray-legacy-worker-node-type (max workers)." in events), events
         assert mock_metrics.stopped_nodes.inc.call_count == 1
-        mock_metrics.running_nodes.set.assert_called_with(10)
+        mock_metrics.running_workers.set.assert_called_with(10)
 
     def testInitialWorkers(self):
         """initial_workers is deprecated, this tests that it is ignored."""
@@ -2305,12 +2305,14 @@ MemAvailable:   33000000 kB
         self.provider = MockProvider()
         runner = MockProcessRunner()
         lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
             max_failures=0,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
 
         # Scale up to two up-to-date workers
         autoscaler.update()
@@ -2387,6 +2389,8 @@ MemAvailable:   33000000 kB
         self.waitForNodes(2)
         assert set(autoscaler.workers()) == {2, 3},\
             "Unexpected node_ids"
+
+        assert len(mock_metrics.stopped_nodes.mock_calls) == 1
 
     def testProviderException(self):
         config_path = self.write_config(SMALL_CLUSTER)

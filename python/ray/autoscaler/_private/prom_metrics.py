@@ -29,9 +29,9 @@ class AutoscalerPrometheusMetrics:
             unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
-        self.running_nodes: Gauge = Gauge(
-            "running_nodes",
-            "Number of nodes running.",
+        self.running_workers: Gauge = Gauge(
+            "running_workers",
+            "Number of worker nodes running.",
             unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
