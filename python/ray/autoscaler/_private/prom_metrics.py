@@ -2,7 +2,6 @@ from prometheus_client import (
     CollectorRegistry,
     Counter,
     Gauge,
-    Histogram,
 )
 
 

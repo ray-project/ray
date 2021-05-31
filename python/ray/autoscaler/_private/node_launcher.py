@@ -2,7 +2,6 @@ from typing import Any, Optional, Dict
 import copy
 import logging
 import threading
-import time
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,

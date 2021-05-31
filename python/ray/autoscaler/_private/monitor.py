@@ -138,10 +138,12 @@ class Monitor:
             # metric server to keep behavior identical to before metrics were
             # introduced
             try:
-                logger.info("Starting autoscaler metrics server on port {}".format(
-                    AUTOSCALER_METRIC_PORT))
+                logger.info(
+                    "Starting autoscaler metrics server on port {}".format(
+                        AUTOSCALER_METRIC_PORT))
                 prometheus_client.start_http_server(
-                    AUTOSCALER_METRIC_PORT, registry=self.prom_metrics.registry)
+                    AUTOSCALER_METRIC_PORT,
+                    registry=self.prom_metrics.registry)
             except Exception:
                 logger.exception(
                     "An exception occurred while starting the metrics server.")
