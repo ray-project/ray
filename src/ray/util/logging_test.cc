@@ -116,10 +116,13 @@ std::string TestFunctionLevel2() {
 #ifndef _WIN32
 TEST(PrintLogTest, CallstackTraceTest) {
   auto ret0 = TestFunctionLevel0();
+  std::cout << ret0 << std::endl;
   EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos);
   auto ret1 = TestFunctionLevel1();
+  std::cout << ret1 << std::endl;
   EXPECT_TRUE(ret1.find("TestFunctionLevel1") != std::string::npos);
   auto ret2 = TestFunctionLevel2();
+  std::cout << ret2 << std::endl;
   EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
 }
 #endif
