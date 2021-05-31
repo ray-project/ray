@@ -71,7 +71,7 @@ class LearnerThread(threading.Thread):
             try:
                 batch, _ = self.minibatch_buffer.get()
             except queue.Empty:
-                return
+                return _NextValueNotReady()
 
         with self.grad_timer:
             fetches = self.local_worker.learn_on_batch(batch)

@@ -158,10 +158,12 @@ class ConcatBatches:
         self.buffer = []
         self.count = 0
         self.batch_start_time = None
+        print(f'Reset Concat')
 
     def _on_fetch_start(self):
         if self.batch_start_time is None:
             self.batch_start_time = time.perf_counter()
+            print(f'Batch Start Time {self.batch_start_time}')
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
@@ -185,6 +187,7 @@ class ConcatBatches:
             out = SampleBatch.concat_samples(self.buffer)
             timer = _get_shared_metrics().timers[SAMPLE_TIMER]
             timer.push(time.perf_counter() - self.batch_start_time)
+            print(f'Sample Count: {self.count}')
             timer.push_units_processed(self.count)
             self.batch_start_time = None
             self.buffer = []
