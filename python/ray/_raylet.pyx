@@ -222,6 +222,50 @@ cdef increase_recursion_limit():
                          new_limit, current_depth))
 
 
+cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
+    """A helper function that converts a CObjectLocation to a Python dict.
+
+    Returns:
+        A Dict with following attributes:
+        - primary_node_id:
+            The hex ID of the node who has the primary copy of the object.
+            It could be None if the object is pending resolve, inlined or
+            evicted.
+        - object_size:
+            The size of data + metadata in bytes.
+        - node_ids:
+            The hex IDs of the nodes that this object appeared on or was
+            evicted by.
+        - is_spilled:
+            Wether the object has been spilled.
+        - spilled_url:
+            The spilled location, None if not spilled.
+        - spilled_node_id:
+            The hex node ID which spilled the object. None if the object
+            is not spilled, or was spilled to a distributed external
+            storage.
+    """
+    primary_node_id = None if c_object_location.GetPrimaryNodeID().IsNil() \
+        else c_object_location.GetPrimaryNodeID().Hex()
+    object_size = c_object_location.GetObjectSize()
+    node_ids = []
+    c_node_ids = c_object_location.GetNodeIDs()
+    for i in range(c_node_ids.size()):
+        node_ids.append(c_node_ids[i].Hex())
+    is_spilled = c_object_location.IsSpilled()
+    spilled_url = c_object_location.GetSpilledURL() if is_spilled else None
+    spilled_node_id = None if c_object_location.GetSpilledNodeID().IsNil() \
+        else c_object_location.GetSpilledNodeID().Hex()
+    return {
+        "primary_node_id": primary_node_id,
+        "object_size": object_size,
+        "node_ids": node_ids,
+        "is_spilled": is_spilled,
+        "spilled_url": spilled_url,
+        "spilled_node_id": spilled_node_id
+    }
+
+
 @cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
@@ -1169,17 +1213,19 @@ cdef class CoreWorker:
             c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
-                lookup_ids, timeout_ms, &results))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                    lookup_ids, timeout_ms, &results))
 
-        object_locations = []
+        object_locations = {}
         for i in range(results.size()):
             # core_worker will return a nullptr for objects that couldn't be
-            # located 
+            # located
             if not results[i].get():
-                object_locations.append(None)
+                continue
             else:
-                object_locations.append(ObjectLocation.make(results[i]))
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(results[i].get())
         return object_locations
 
     def global_gc(self):

@@ -1,4 +1,4 @@
-from ray._private.services import get_node_ip_address, get_object_locations
+from ray._private.services import get_node_ip_address
 from ray.util import iter
 from ray.util.actor_pool import ActorPool
 from ray.util.check_serialize import inspect_serializability
@@ -23,7 +23,6 @@ __all__ = [
     "placement_group_table",
     "get_placement_group",
     "get_node_ip_address",
-    "get_object_locations",
     "remove_placement_group",
     "inspect_serializability",
     "collective",

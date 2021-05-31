@@ -252,7 +252,6 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      // TODO(chenshen) test GetLocationsFromOwner
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 

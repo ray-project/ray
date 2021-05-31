@@ -82,7 +82,7 @@ std::shared_ptr<ObjectLocation> CreateObjectLocation(
     const rpc::GetObjectLocationsOwnerReply &reply) {
   std::vector<NodeID> node_ids;
   node_ids.reserve(reply.node_ids_size());
-  for (size_t i = 0; i < reply.node_ids_size(); i++) {
+  for (auto i = 0; i < reply.node_ids_size(); i++) {
     node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
   }
   bool is_spilled = !reply.spilled_url().empty();
@@ -2929,15 +2929,23 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> b5e325cc6 (add python tests)
   send_reply_callback(Status::OK(),
                       [this, is_idle]() {
                         // If the worker is idle, we exit.
                         if (is_idle) {
+<<<<<<< HEAD
                           Exit(rpc::WorkerExitType::IDLE_EXIT);
+=======
+                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+>>>>>>> b5e325cc6 (add python tests)
                         }
                       },
                       // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+<<<<<<< HEAD
 =======
   send_reply_callback(
       Status::OK(),
@@ -2950,6 +2958,8 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
       // We need to kill it regardless if the RPC failed.
       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 >>>>>>> dceba8e5d (plumbing GetLocationAPI to CoWorker)
+=======
+>>>>>>> b5e325cc6 (add python tests)
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

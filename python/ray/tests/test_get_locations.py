@@ -1,0 +1,86 @@
+import numpy as np
+import pytest
+import platform
+import time
+
+import ray
+
+
+def test_uninitialized():
+    with pytest.raises(RuntimeError):
+        ray.experimental.get_object_locations([])
+
+
+def test_get_locations_empty_list(ray_start_regular):
+    locations = ray.experimental.get_object_locations([])
+    assert len(locations) == 0
+
+
+def test_get_locations(ray_start_regular):
+    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+    sizes = [100, 1000]
+    obj_refs = [ray.put(np.zeros(s, dtype=np.uint8)) for s in sizes]
+    ray.wait(obj_refs)
+    locations = ray.experimental.get_object_locations(obj_refs)
+    assert len(locations) == 2
+    for idx, obj_ref in enumerate(obj_refs):
+        location = locations[obj_ref]
+        assert location["primary_node_id"] == node_id.hex().encode("ascii")
+        # assert location["object_size() == sizes[idx]
+        assert location["node_ids"] == [node_id.hex().encode("ascii")]
+        assert not location["is_spilled"]
+        assert location["spilled_url"] is None
+        assert location["spilled_node_id"] is None
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spilled_locations(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+
+    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+
+    @ray.remote
+    def task():
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+        refs = []
+        refs.append([ray.put(arr) for _ in range(2)])
+        ray.get(ray.put(arr))
+        ray.get(ray.put(arr))
+        return refs
+
+    [object_refs] = ray.get(task.remote())
+    ray.wait(object_refs)
+    locations = ray.experimental.get_object_locations(object_refs)
+    for obj_ref in object_refs:
+        location = locations[obj_ref]
+        assert location["primary_node_id"] == node_id.hex().encode("ascii")
+        # assert location["node_ids() == [node_id.hex()]
+        assert location["is_spilled"]
+        assert location["spilled_url"] is not None
+        assert location["spilled_node_id"] == node_id.hex().encode("ascii")
+
+
+def test_location_pending(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def task():
+        # sleep for 1 hour so the object will be pending
+        time.sleep(3600)
+        return 1
+
+    object_ref = task.remote()
+    locations = ray.experimental.get_object_locations([object_ref])
+    location = locations[object_ref]
+    assert location["primary_node_id"] is None
+    assert location["node_ids"] == []
+    assert not location["is_spilled"]
+    assert location["spilled_url"] is None
+    assert location["spilled_node_id"] is None

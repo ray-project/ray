@@ -4,6 +4,8 @@ import ray.worker
 from ray import profiling
 from ray import ray_constants
 from ray.state import GlobalState
+from ray._raylet import ObjectRef
+from typing import Any, Dict, List
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -179,3 +181,42 @@ def free(object_refs, local_only=False):
             return
 
         worker.core_worker.free_objects(object_refs, local_only)
+
+
+def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
+                         ) -> Dict[ObjectRef, Dict[str, Any]]:
+    """Get objects' locations.
+
+    Returns:
+        A Dict maps from an ObjectRef to a Location. The Dict excludes those
+        objects whose location lookup failed.
+
+        The Location is stored as a Dict with following attributes:
+        - primary_node_id:
+            The hex ID of the node who has the primary copy of the object.
+            It could be None if the object is pending resolve, inlined or
+            evicted.
+        - object_size:
+            The size of data + metadata in bytes.
+        - node_ids:
+            The hex IDs of the nodes that this object appeared on or was
+            evicted by.
+        - is_spilled:
+            Wether the object has been spilled.
+        - spilled_url:
+            The spilled location, None if not spilled.
+        - spilled_node_id:
+            The hex node ID which spilled the object. None if the object
+            is not spilled, or was spilled to a distributed external
+            storage.
+
+    Raises:
+        A RuntimeError is raised if the processes were not started by
+            ray.init().
+        A ray.exceptions.GetTimeoutError is raised if it couldn't finish
+            the request in time.
+    """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray hasn't been initialized.")
+    return ray.worker.global_worker.core_worker.get_object_locations(
+        obj_refs, timeout_ms)
