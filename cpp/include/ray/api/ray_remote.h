@@ -16,13 +16,14 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/overload.h>
+#include "boost/utility/string_view.hpp"
 
 namespace ray {
 
 namespace internal {
 
-inline static std::vector<absl::string_view> GetFunctionNames(absl::string_view str) {
-  std::vector<absl::string_view> output;
+inline static std::vector<boost::string_view> GetFunctionNames(boost::string_view str) {
+  std::vector<boost::string_view> output;
   size_t first = 0;
 
   while (first < str.size()) {
@@ -30,7 +31,7 @@ inline static std::vector<absl::string_view> GetFunctionNames(absl::string_view 
 
     if (first != second) {
       auto sub_str = str.substr(first, second - first);
-      if (sub_str.find_first_of('(') != absl::string_view::npos) {
+      if (sub_str.find_first_of('(') != boost::string_view::npos) {
         second = str.find_first_of(")", first) + 1;
       }
       if (str[first] == ' ') {
@@ -44,7 +45,7 @@ inline static std::vector<absl::string_view> GetFunctionNames(absl::string_view 
       output.emplace_back(name);
     }
 
-    if (second == absl::string_view::npos) break;
+    if (second == boost::string_view::npos) break;
 
     first = second + 1;
   }

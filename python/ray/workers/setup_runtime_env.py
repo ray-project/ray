@@ -7,7 +7,7 @@ import yaml
 import hashlib
 
 from filelock import FileLock
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
@@ -39,19 +39,20 @@ def setup(input_args):
 
     py_executable: str = sys.executable
 
-    if runtime_env.get("conda"):
+    if runtime_env.get("conda") or runtime_env.get("pip"):
+        conda_dict = get_conda_dict(runtime_env, args.session_dir)
         py_executable = "python"
-        if isinstance(runtime_env["conda"], str):
-            commands += get_conda_activate_commands(runtime_env["conda"])
-        elif isinstance(runtime_env["conda"], dict):
+        if isinstance(runtime_env.get("conda"), str):
+            conda_env_name = runtime_env["conda"]
+        else:
+            assert conda_dict is not None
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
-            conda_dict = inject_ray_and_python(runtime_env["conda"],
-                                               current_ray_pip_specifier(),
-                                               py_version)
+            conda_dict = inject_dependencies(conda_dict, py_version,
+                                             [current_ray_pip_specifier()])
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
-                json.dumps(runtime_env["conda"],
+                json.dumps(conda_dict,
                            sort_keys=True).encode("utf-8")).hexdigest()
             conda_hash_str = f"conda-generated-{conda_hash}"
             file_lock_name = f"ray-{conda_hash_str}.lock"
@@ -67,44 +68,6 @@ def setup(input_args):
                     yaml.dump(conda_dict, file, sort_keys=True)
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
-            commands += get_conda_activate_commands(conda_env_name)
-    elif runtime_env.get("pip"):
-        # Install pip requirements into an empty conda env.
-        py_executable = "python"
-        requirements_txt = runtime_env["pip"]
-        pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
-        pip_hash_str = f"pip-generated-{pip_hash}"
-
-        conda_dir = os.path.join(args.session_dir, "runtime_resources",
-                                 "conda")
-        requirements_txt_path = os.path.join(
-            conda_dir, f"requirements-{pip_hash_str}.txt")
-
-        py_version = ".".join(map(str, sys.version_info[:3]))  # E.g. 3.6.13
-        conda_dict = {
-            "name": pip_hash_str,
-            "dependencies": ["pip", {
-                "pip": [f"-r {requirements_txt_path}"]
-            }]
-        }
-
-        conda_dict = inject_ray_and_python(conda_dict,
-                                           current_ray_pip_specifier(),
-                                           py_version)
-
-        file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(args.session_dir, file_lock_name)):
-            try_to_create_directory(conda_dir)
-            conda_yaml_path = os.path.join(conda_dir,
-                                           f"env-{pip_hash_str}.yml")
-            with open(conda_yaml_path, "w") as file:
-                yaml.dump(conda_dict, file, sort_keys=True)
-
-            with open(requirements_txt_path, "w") as file:
-                file.write(requirements_txt)
-
-            conda_env_name = get_or_create_conda_env(conda_yaml_path,
-                                                     conda_dir)
 
         commands += get_conda_activate_commands(conda_env_name)
 
@@ -117,6 +80,44 @@ def setup(input_args):
         os.environ.update(env_vars)
 
     os.execvp("bash", ["bash", "-c", command_str])
+
+
+def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
+    """ Construct a conda dependencies dict from a runtime env.
+
+        This function does not inject Ray or Python into the conda dict.
+        If the runtime env does not specify pip or conda, or if it specifies
+        the name of a preinstalled conda environment, this function returns
+        None.  If pip is specified, a conda dict is created containing the
+        pip dependencies.  If conda is already given as a dict, this function
+        is the identity function.
+    """
+    if runtime_env.get("conda"):
+        if isinstance(runtime_env["conda"], dict):
+            return runtime_env["conda"]
+        else:
+            return None
+    if runtime_env.get("pip"):
+        requirements_txt = runtime_env["pip"]
+        pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
+        pip_hash_str = f"pip-generated-{pip_hash}"
+
+        conda_dir = os.path.join(session_dir, "runtime_resources", "conda")
+        requirements_txt_path = os.path.join(
+            conda_dir, f"requirements-{pip_hash_str}.txt")
+        conda_dict = {
+            "name": pip_hash_str,
+            "dependencies": ["pip", {
+                "pip": [f"-r {requirements_txt_path}"]
+            }]
+        }
+        file_lock_name = f"ray-{pip_hash_str}.lock"
+        with FileLock(os.path.join(session_dir, file_lock_name)):
+            try_to_create_directory(conda_dir)
+            with open(requirements_txt_path, "w") as file:
+                file.write(requirements_txt)
+        return conda_dict
+    return None
 
 
 def current_ray_pip_specifier() -> Optional[str]:
@@ -141,6 +142,12 @@ def current_ray_pip_specifier() -> Optional[str]:
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
+        logger.warning(
+            "Current Ray version could not be detected, most likely "
+            "because you are using a version of Ray "
+            "built from source.  If you wish to use runtime_env, "
+            "you can try building a wheel and including the wheel "
+            "explicitly as a pip dependency.")
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
@@ -149,8 +156,27 @@ def current_ray_pip_specifier() -> Optional[str]:
         return f"ray[all]=={ray.__version__}"
 
 
-def inject_ray_and_python(conda_dict, ray_pip_specifier: Optional[str],
-                          py_version: str) -> None:
+def inject_dependencies(
+        conda_dict: Dict[Any, Any],
+        py_version: str,
+        pip_dependencies: Optional[List[str]] = None) -> Dict[Any, Any]:
+    """Add Ray, Python and (optionally) extra pip dependencies to a conda dict.
+
+    Args:
+        conda_dict (dict): A dict representing the JSON-serialized conda
+            environment YAML file.  This dict will be modified and returned.
+        py_version (str): A string representing a Python version to inject
+            into the conda dependencies, e.g. "3.7.7"
+        pip_dependencies (List[str]): A list of pip dependencies that
+            will be prepended to the list of pip dependencies in
+            the conda dict.  If the conda dict does not already have a "pip"
+            field, one will be created.
+    Returns:
+        The modified dict.  (Note: the input argument conda_dict is modified
+        and returned.)
+    """
+    if pip_dependencies is None:
+        pip_dependencies = []
     if conda_dict.get("dependencies") is None:
         conda_dict["dependencies"] = []
 
@@ -166,24 +192,15 @@ def inject_ray_and_python(conda_dict, ray_pip_specifier: Optional[str],
     if "pip" not in deps:
         deps.append("pip")
 
-    # Insert Ray dependency. If the user has already included Ray, conda
-    # will raise an error only if the two are incompatible.
-
-    if ray_pip_specifier is not None:
-        found_pip_dict = False
-        for dep in deps:
-            if isinstance(dep, dict) and dep.get("pip"):
-                dep["pip"].append(ray_pip_specifier)
-                found_pip_dict = True
-                break
-        if not found_pip_dict:
-            deps.append({"pip": [ray_pip_specifier]})
-    else:
-        logger.warning("Current Ray version could not be inserted "
-                       "into conda's pip dependencies, most likely "
-                       "because you are using a version of Ray "
-                       "built from source.  If so, you can try "
-                       "building a wheel and including the wheel "
-                       "as a dependency.")
+    # Insert pip dependencies.
+    found_pip_dict = False
+    for dep in deps:
+        if isinstance(dep, dict) and dep.get("pip") and isinstance(
+                dep["pip"], list):
+            dep["pip"] = pip_dependencies + dep["pip"]
+            found_pip_dict = True
+            break
+    if not found_pip_dict:
+        deps.append({"pip": pip_dependencies})
 
     return conda_dict
