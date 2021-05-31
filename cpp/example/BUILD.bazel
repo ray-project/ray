@@ -9,7 +9,7 @@ cc_binary(
         "*.cc",
     ]),
     args = [
-        "--dynamic-library-path $(location example.so)",
+        "--ray-dynamic-library-path $(location example.so)",
     ],
     copts = COPTS,
     data = [
