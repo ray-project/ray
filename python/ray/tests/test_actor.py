@@ -974,5 +974,17 @@ def test_return_actor_handle_from_actor(ray_start_regular_shared):
     assert ray.get(inner.ping.remote()) == "pong"
 
 
+def test_actor_dir(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method_one(self) -> None:
+            pass
+
+    f = Foo.remote()
+
+    methods = [fn for fn in dir(f) if not fn.startswith("__")]
+    assert methods == ["method_one"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
