@@ -59,7 +59,7 @@ long RayLog::log_rotation_file_num_ = 10;
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
   local_stack.resize(50);
-  absl::GetStackTrace(local_stack.data(), 50, 1);
+  absl::GetStackTrace(local_stack.data(), 50, 0);
   static constexpr size_t buf_size = 16 * 1024;
   char buf[buf_size];
   std::string output;
