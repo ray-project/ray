@@ -1,14 +1,15 @@
 import copy
-from six.moves import queue
 import threading
 from typing import Dict
 
 from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.util.iter import _NextValueNotReady
+from six.moves import queue
 
 tf1, tf, tfv = try_import_tf()
 
