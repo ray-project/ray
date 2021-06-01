@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 #include <boost/any.hpp>
+#include <queue>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -197,6 +198,7 @@ class SubscriberInterface {
  public:
   /// Subscribe to the object.
   ///
+  /// \param sub_message The subscription message.
   /// \param channel_type The channel to subscribe to.
   /// \param publisher_address Address of the publisher to subscribe the object.
   /// \param key_id_binary The message id to subscribe from the publisher.
@@ -204,7 +206,8 @@ class SubscriberInterface {
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
-  virtual void Subscribe(const rpc::ChannelType channel_type,
+  virtual void Subscribe(const std::unique_ptr<rpc::SubMessage> sub_message,
+                         const rpc::ChannelType channel_type,
                          const rpc::Address &publisher_address,
                          const std::string &key_id_binary,
                          SubscriptionCallback subscription_callback,
@@ -252,10 +255,12 @@ class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
+                      const int command_max_batch_size,
                       rpc::CoreWorkerClientPool &publisher_client_pool)
       : subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
+        command_max_batch_size_(command_max_batch_size),
         publisher_client_pool_(publisher_client_pool),
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
@@ -268,7 +273,8 @@ class Subscriber : public SubscriberInterface {
 
   ~Subscriber() = default;
 
-  void Subscribe(const rpc::ChannelType channel_type,
+  void Subscribe(const std::unique_ptr<rpc::SubMessage> sub_message,
+                 const rpc::ChannelType channel_type,
                  const rpc::Address &publisher_address, const std::string &key_id_binary,
                  SubscriptionCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
@@ -323,6 +329,21 @@ class Subscriber : public SubscriberInterface {
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
 
+  /// Make a long polling connection if it never made the one with this publisher for
+  /// pubsub operations.
+  void MakeLongPollingConnectionIfNotConnected(const rpc::Address &publisher_address) {
+    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    auto publishers_connected_it = publishers_connected_.find(publisher_id);
+    if (publishers_connected_it == publishers_connected_.end()) {
+      publishers_connected_.emplace(publisher_id);
+      rpc::Address subscriber_address;
+      subscriber_address.set_raylet_id(subscriber_id_.Binary());
+      subscriber_address.set_ip_address(subscriber_address_);
+      subscriber_address.set_port(subscriber_port_);
+      MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
+    }
+  }
+
   /// Return true if the given publisher id has subscription to any of channel.
   bool SubscriptionExists(const PublisherID &publisher_id) {
     return std::any_of(channels_.begin(), channels_.end(), [publisher_id](const auto &p) {
@@ -334,6 +355,14 @@ class Subscriber : public SubscriberInterface {
   const SubscriberID subscriber_id_;
   const std::string subscriber_address_;
   const int subscriber_port_;
+
+  /// The command batch size for the subscriber.
+  const int command_max_batch_size_;
+
+  /// Commands queue. Commands are reported in FIFO order to the publisher. This
+  /// guarantees the ordering of commands because they are delivered only by a single RPC
+  /// (long polling request).
+  std::queue<std::shared_ptr<rpc::Command>> commands_;
 
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;

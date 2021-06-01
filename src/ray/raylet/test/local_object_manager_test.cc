@@ -37,8 +37,8 @@ using ::testing::_;
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
   void Subscribe(
-      const rpc::ChannelType channel_type, const rpc::Address &owner_address,
-      const std::string &key_id_binary,
+      rpc::SubMessage &sub_message, const rpc::ChannelType channel_type,
+      const rpc::Address &owner_address, const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(

@@ -136,32 +136,37 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
 
-void Subscriber::Subscribe(const rpc::ChannelType channel_type,
+void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+                           const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
+  // Batch a subscribe command.
+  auto command = std::make_shared<rpc::Command>();
+  command->set_channel_type(channel_type);
+  command->set_key_id(key_id_binary);
+  command->mutable_subscribe_message()->Swap(sub_message.get());
+  commands_.push(command);
+
+  MakeLongPollingConnectionIfNotConnected(publisher_address);
   Channel(channel_type)
       ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
-
-  // Make a long polling connection if we never made the one with this publisher for
-  // pubsub operations.
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto publishers_connected_it = publishers_connected_.find(publisher_id);
-  if (publishers_connected_it == publishers_connected_.end()) {
-    publishers_connected_.emplace(publisher_id);
-    rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(subscriber_id_.Binary());
-    subscriber_address.set_ip_address(subscriber_address_);
-    subscriber_address.set_port(subscriber_port_);
-    MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
-  }
 }
 
 bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
                              const std::string &key_id_binary) {
+  // Batch the unsubscribe command.
+  auto command = std::make_shared<rpc::Command>();
+  command->set_channel_type(channel_type);
+  command->set_key_id(key_id_binary);
+  rpc::UnsubscribeMessage unsub_message;
+  command->mutable_unsubscribe_message()->CopyFrom(unsub_message);
+  commands_.push(command);
+
+  MakeLongPollingConnectionIfNotConnected(publisher_address);
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
 }
 
@@ -172,6 +177,16 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   auto publisher_client = publisher_client_pool_.GetOrConnect(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+
+  // Update the command in the FIFO order.
+  size_t updated_commands = 0;
+  while (!commands_.empty() && updated_commands < command_max_batch_size_) {
+    auto &command = commands_.front();
+    auto *new_command = long_polling_request.add_commands();
+    new_command->Swap(command.get());
+    commands_.pop();
+    updated_commands += 1;
+  }
 
   publisher_client->PubsubLongPolling(
       long_polling_request, [this, publisher_address, subscriber_address](
