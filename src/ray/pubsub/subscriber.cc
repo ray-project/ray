@@ -179,7 +179,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
 
   // Update the command in the FIFO order.
-  size_t updated_commands = 0;
+  int64_t updated_commands = 0;
   while (!commands_.empty() && updated_commands < command_max_batch_size_) {
     auto &command = commands_.front();
     auto *new_command = long_polling_request.add_commands();

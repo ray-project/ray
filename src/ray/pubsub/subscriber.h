@@ -206,7 +206,7 @@ class SubscriberInterface {
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
-  virtual void Subscribe(const std::unique_ptr<rpc::SubMessage> sub_message,
+  virtual void Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                          const rpc::ChannelType channel_type,
                          const rpc::Address &publisher_address,
                          const std::string &key_id_binary,
@@ -215,14 +215,7 @@ class SubscriberInterface {
 
   /// Unsubscribe the object.
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
-  /// NOTE: Currently, this method doesn't send a RPC to the pubsub server. It is because
-  /// the client is currently used for WaitForObjectFree, and the coordinator will
-  /// automatically unregister the subscriber after publishing the object. But if we use
-  /// this method for OBOD, we should send an explicit RPC to unregister the subscriber
-  /// from the server.
   ///
-  /// TODO(sang): Once it starts sending RPCs to unsubscribe, we should start handling
-  /// message ordering.
   /// \param channel_type The channel to unsubscribe to.
   /// \param publisher_address The publisher address that it will unsubscribe to.
   /// \param key_id_binary The message id to unsubscribe.
@@ -255,7 +248,7 @@ class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
-                      const int command_max_batch_size,
+                      const int64_t command_max_batch_size,
                       rpc::CoreWorkerClientPool &publisher_client_pool)
       : subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
@@ -273,7 +266,7 @@ class Subscriber : public SubscriberInterface {
 
   ~Subscriber() = default;
 
-  void Subscribe(const std::unique_ptr<rpc::SubMessage> sub_message,
+  void Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  const rpc::ChannelType channel_type,
                  const rpc::Address &publisher_address, const std::string &key_id_binary,
                  SubscriptionCallback subscription_callback,
@@ -357,7 +350,7 @@ class Subscriber : public SubscriberInterface {
   const int subscriber_port_;
 
   /// The command batch size for the subscriber.
-  const int command_max_batch_size_;
+  const int64_t command_max_batch_size_;
 
   /// Commands queue. Commands are reported in FIFO order to the publisher. This
   /// guarantees the ordering of commands because they are delivered only by a single RPC
