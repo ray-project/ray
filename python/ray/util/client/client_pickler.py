@@ -128,7 +128,7 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="RemoteMethod",
                 client_id=self.client_id,
-                ref_id=obj.actor_handle.actor_ref.id,
+                ref_id=obj._actor_handle.actor_ref.id,
                 name=obj.method_name,
                 baseline_options=None,
             )
