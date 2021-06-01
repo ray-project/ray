@@ -482,6 +482,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*subscriber_id=*/GetWorkerID(),
       /*subscriber_address=*/rpc_address_.ip_address(),
       /*subscriber_port=*/rpc_address_.port(),
+      /*command_max_batch_size*/ RayConfig::instance().publish_batch_size(),
       /*publisher_client_pool=*/*(core_worker_client_pool_.get()));
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
