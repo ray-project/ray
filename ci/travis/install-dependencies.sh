@@ -237,20 +237,27 @@ install_node() {
 
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
+    return
   elif [ -n "${BUILDKITE-}" ] ; then
-    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    if [ "${OSTYPE}" = darwin ]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+    else
+      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      return
+    fi
   else
-    # Install the latest version of Node.js in order to build the dashboard.
-    (
-      set +x # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
-      npm config set loglevel warn  # make NPM quieter
-    )
   fi
+
+  # Install the latest version of Node.js in order to build the dashboard.
+  (
+    set +x # suppress set -x since it'll get very noisy here
+    . "${HOME}/.nvm/nvm.sh"
+    nvm install node
+    nvm use --silent node
+    npm config set loglevel warn  # make NPM quieter
+  )
 }
 
 install_toolchains() {
