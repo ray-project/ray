@@ -241,7 +241,7 @@ install_node() {
   fi
 
   if [ -n "${BUILDKITE-}" ] ; then
-    if [ "${OSTYPE}" = darwin ]; then
+    if [[ "${OSTYPE}" = darwin* ]]; then
       curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
