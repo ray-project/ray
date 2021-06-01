@@ -14,12 +14,9 @@ parser.add_argument("--path", type=str, required=False)
 parser.add_argument("--destination", type=str)
 args = parser.parse_args()
 
-assert os.path.exists(args.path)
 assert args.destination in {"wheels", "containers", "logs", "docker_login"}
 assert "BUILDKITE_JOB_ID" in os.environ
 assert "BUILDKITE_COMMIT" in os.environ
-
-is_dir = os.path.isdir(args.path)
 
 auth = BotoAWSRequestsAuth(
     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
@@ -50,6 +47,8 @@ if args.destination == "docker_login":
     sys.exit(0)
 
 sha = os.environ["BUILDKITE_COMMIT"]
+assert os.path.exists(args.path)
+is_dir = os.path.isdir(args.path)
 if is_dir:
     paths = [os.path.join(args.path, f) for f in os.listdir(args.path)]
 else:
