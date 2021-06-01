@@ -187,7 +187,7 @@ class ProxyManager():
             logger.debug(
                 "Waiting for Process to reach the actual client server.")
             time.sleep(0.5)
-        specific_server.handle_ready.set_result(proc)
+        specific_server.process_handle_future.set_result(proc)
         logger.info(f"SpecificServer started on port: {specific_server.port} "
                     f"with PID: {pid} for client: {client_id}")
         return proc.process.poll() is None
@@ -230,7 +230,7 @@ class ProxyManager():
                 for client_id, specific_server in list(self.servers.items()):
                     try:
                         specific_server.wait_ready(0.1)
-                    except TimeoutError:
+                    except futures.TimeoutError:
                         continue
                     poll_result = specific_server.process_handle(
                     ).process.poll()
@@ -250,7 +250,7 @@ class ProxyManager():
             try:
                 server.wait_ready(0.1)
                 server.process_handle().process.kill()
-            except TimeoutError:
+            except futures.TimeoutError:
                 # Server has not been started yet.
                 pass
 
@@ -446,11 +446,13 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             yield resp
 
 
-def serve_proxier(connection_str: str, redis_address: str):
+def serve_proxier(connection_str: str,
+                  redis_address: str,
+                  session_dir: Optional[str] = None):
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
-    proxy_manager = ProxyManager(redis_address)
+    proxy_manager = ProxyManager(redis_address, session_dir)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)

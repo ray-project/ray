@@ -124,6 +124,39 @@ def test_correct_num_clients(call_ray_start):
     run_string_as_driver(check_we_are_second.format(num_clients=1))
 
 
+check_connection = """
+import ray
+ray.client("localhost:25010").connect()
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+def test_delay_in_rewriting_environment(shutdown_only):
+    """
+    Check that a delay in `ray_client_server_env_prep` does not break
+    a Client connecting.
+    """
+    proxier.LOGSTREAM_RETRIES = 3
+    proxier.LOGSTREAM_RETRY_TIME = 1
+    ray_instance = ray.init()
+
+    def delay_in_rewrite(input: JobConfig):
+        import time
+        time.sleep(6)
+        return input
+
+    proxier.ray_client_server_env_prep = delay_in_rewrite
+
+    server = proxier.serve_proxier("localhost:25010",
+                                   ray_instance["redis_address"],
+                                   ray_instance["session_dir"])
+
+    run_string_as_driver(check_connection)
+    server.stop(0)
+
+
 def test_prepare_runtime_init_req_fails():
     """
     Check that a connection that is initiated with a non-Init request
