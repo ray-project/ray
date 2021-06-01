@@ -167,7 +167,7 @@ def client(address: Optional[str] = None) -> ClientBuilder:
             inner_address
     """
     env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if env_address:
+    if env_address and address is None:
         logger.debug(
             f"Using address ({env_address}) instead of auto-detection "
             f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
