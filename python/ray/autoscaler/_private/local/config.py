@@ -59,8 +59,8 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_local_manual(provider_config: Dict[str, Any]) -> bool:
-    return (provider_config["type"] == "local" and
-            "coordinator_address" not in provider_config)
+    return (provider_config["type"] == "local"
+            and "coordinator_address" not in provider_config)
 
 
 def sync_state(config: Dict[str, Any]) -> Dict[str, Any]:

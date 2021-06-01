@@ -693,15 +693,16 @@ def get_or_create_head_node(config: Dict[str, Any],
             setup_commands = config["head_setup_commands"]
             ray_start_commands = config["head_start_ray_commands"]
 
-        if ray_start_commands and is_local_manual(config):
-            # If restarting Ray on a manually-managed on-prem cluster,
-            # we need to sync local and head representations of cluster state.
+        # If restarting Ray on a manually-managed on-prem cluster,
+        # we need to sync local and head representations of cluster state.
+        if ray_start_commands and is_local_manual(config["provider"]):
             config = sync_state(config)
 
         if not no_restart:
             warn_about_bad_start_command(ray_start_commands,
                                          no_monitor_on_head)
-
+        import pdb
+        pdb.set_trace()
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
