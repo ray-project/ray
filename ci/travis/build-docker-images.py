@@ -408,6 +408,7 @@ if __name__ == "__main__":
     print("Building base images: ", args.base)
 
     build_type = args.build_type
+    is_buildkite = build_type == BUILDKITE
     if build_type == BUILDKITE:
         if os.environ.get("BUILDKITE_PULL_REQUEST"):
             build_type = PR
@@ -418,7 +419,8 @@ if __name__ == "__main__":
     if build_type in {HUMAN, MERGE} or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
-        if is_merge:  # Buildkite should authenticate in the background.
+        # Buildkite should authenticate in the background.
+        if is_merge and not is_buildkite:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()
