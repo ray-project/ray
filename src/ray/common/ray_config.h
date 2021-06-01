@@ -22,24 +22,6 @@
 #include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
 
-bool env_bool(const std::string &name, bool default_value) {
-  auto value = getenv(name.c_str());
-  if (value == nullptr) {
-    return default_value;
-  } else {
-    return value != std::string("0");
-  }
-}
-
-bool env_float(const std::string &name, float default_value) {
-  auto value = getenv(name.c_str());
-  if (value == nullptr) {
-    return default_value;
-  } else {
-    return std::stof(value);
-  }
-}
-
 class RayConfig {
 /// -----------Include ray_config_def.h to define config items.----------------
 /// A helper macro that defines a config item.
@@ -103,6 +85,25 @@ class RayConfig {
       // switch statements on strings.
 #include "ray/common/ray_config_def.h"
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
+    }
+  }
+
+ private:
+  bool env_bool(const std::string &name, bool default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return value != std::string("0");
+    }
+  }
+
+  bool env_float(const std::string &name, float default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stof(value);
     }
   }
 /// ---------------------------------------------------------------------
