@@ -460,6 +460,7 @@ class Worker:
             if job_config is None:
                 init_req = ray_client_pb2.InitRequest()
                 self._call_init(init_req)
+                return
 
             import ray._private.runtime_env as runtime_env
             import tempfile
