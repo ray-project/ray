@@ -414,8 +414,8 @@ if __name__ == "__main__":
             build_type = MERGE
     if build_type == HUMAN:
         _configure_human_version()
-    if (build_type in {HUMAN, MERGE}
-            or is_buildkite or _check_if_docker_files_modified())):
+    if (build_type in {HUMAN, MERGE} or is_buildkite
+            or _check_if_docker_files_modified()):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.
