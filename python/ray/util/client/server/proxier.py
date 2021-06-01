@@ -31,6 +31,9 @@ MAX_SPECIFIC_SERVER_PORT = 24000
 
 CHECK_CHANNEL_TIMEOUT_S = 10
 
+LOGSTREAM_RETRIES = 5
+LOGSTREAM_RETRY_TIME = 2
+
 
 def _get_client_id_from_context(context: Any) -> str:
     """
@@ -208,6 +211,7 @@ class ProxyManager():
         server = self._get_server_for_client(client_id)
         if server is None:
             return None
+        # Wait for the SpecificServer to become ready.
         server.wait_ready()
         try:
             grpc.channel_ready_future(
@@ -224,6 +228,10 @@ class ProxyManager():
         while True:
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
+                    try:
+                        specific_server.wait_ready(0.1)
+                    except TimeoutError:
+                        continue
                     poll_result = specific_server.process_handle(
                     ).process.poll()
                     if poll_result is not None:
@@ -417,14 +425,14 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         channel = None
         # We need to retry a few times because the LogClient *may* connect
         # Before the DataClient has finished connecting.
-        for i in range(5):
+        for i in range(LOGSTREAM_RETRIES):
             channel = self.proxy_manager.get_channel(client_id)
 
             if channel is not None:
                 break
             logger.warning(
                 f"Retrying Logstream connection. {i+1} attempts failed.")
-            time.sleep(2)
+            time.sleep(LOGSTREAM_RETRY_TIME)
 
         if channel is None:
             context.set_code(grpc.StatusCode.NOT_FOUND)
