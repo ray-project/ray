@@ -47,7 +47,7 @@ class _OpenTelemetryProxy:
         return self._try_import("opentelemetry.propagate")
 
     def _Context(self):
-        context = self.context()
+        context = self._context()
         if context:
             return context.context.Context
         else:
