@@ -300,7 +300,7 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
     worker = ray.worker.global_worker
     worker.check_connected()
     placement_group_info = ray.state.state.get_placement_group_by_name(
-        placement_group_name)
+        placement_group_name, worker.namespace)
     if placement_group_info is None:
         raise ValueError(
             f"Failed to look up actor with name: {placement_group_name}")

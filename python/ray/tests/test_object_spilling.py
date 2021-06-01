@@ -274,23 +274,18 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 100
+    buffer_length = 20
 
-    # TODO: we shouldn't need to produce so many objects. This test should
-    # just create one or two objects only!!!
-
-    # Create objects of more than 800 MiB.
+    # Each object averages 16MiB => 320MiB total.
     for _ in range(buffer_length):
-        ref = None
-        while ref is None:
-            multiplier = random.choice([1, 2, 3])
-            arr = np.random.rand(multiplier * 1024 * 1024)
-            ref = ray.put(arr)
-            replay_buffer.append(ref)
-            solution_buffer.append(arr)
+        multiplier = random.choice([1, 2, 3])
+        arr = np.random.rand(multiplier * 1024 * 1024)
+        ref = ray.put(arr)
+        replay_buffer.append(ref)
+        solution_buffer.append(arr)
     print("spill done.")
     # randomly sample objects
-    for _ in range(1000):
+    for _ in range(10):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
