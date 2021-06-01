@@ -1,6 +1,7 @@
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private.client_mode_hook import client_mode_wrap
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
@@ -215,7 +216,12 @@ class ClientActorHandle(ClientStub):
         if self._dir:
             return self._dir
         if ray.is_connected():
-            self._dir = ray.get(ray.remote(lambda x: dir(x)).remote(self))
+
+            @client_mode_wrap
+            def get_dir(x):
+                return dir(x)
+
+            self._dir = get_dir(self)
             return self._dir
         return super().__dir__()
 
