@@ -1485,11 +1485,12 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
-    const std::string &name,
+    const std::string &name, const std::string &ray_namespace,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
       request, [name, callback](const Status &status,
                                 const rpc::GetNamedPlacementGroupReply &reply) {
