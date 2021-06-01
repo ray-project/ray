@@ -42,7 +42,7 @@ The autoscaler will try to maintain at least ``minWorkers`` of the ``podType`` a
 for the head ``podType``; this signals that the ``podType`` is to be used only for the head node.
 You can use `helm upgrade`_ to adjust the fields ``minWorkers`` and ``maxWorkers`` without :ref:`restarting<k8s-restarts>` the Ray cluster.
 
-The fields ``numCPU``, ``numGPU``, ``memory``, and ``nodeSelector`` configure the Kubernetes ``PodSpec`` to use for nodes
+The fields ``CPU``, ``GPU``, ``memory``, and ``nodeSelector`` configure the Kubernetes ``PodSpec`` to use for nodes
 of the ``podType``. The ``image`` field determines the Ray container image used by all nodes in the Ray cluster.
 
 The ``rayResources`` field of each ``podType`` can be used to signal the presence of custom resources to Ray.
@@ -52,6 +52,10 @@ To schedule Ray tasks and actors that use custom hardware resources, ``rayResour
 - Use ``nodeSelector`` to constrain workers of a ``podType`` to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator.)
 - Signal availability of the hardware for that ``podType`` with ``rayResources: {"custom_resource": 3}``.
 - Schedule a Ray task or actor to use that resource with ``@ray.remote(resources={"custom_resource": 1})``.
+
+By default, the fields ``CPU``, ``GPU``, and ``memory`` are used to configure cpu, gpu, and memory resources advertised to Ray.
+However, ``rayResources`` can be used to override this behavior. For example, ``rayResources: {"CPU": 0}`` can be set for head podType,
+to :ref:``avoid scheduling tasks on the Ray head``.
 
 Refer to the documentation in `values.yaml`_ for more details.
 
@@ -133,6 +137,25 @@ This string can be used to filter for a specific Ray cluster's logs:
       $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
       | grep example-cluster2,ray | tail -n 100
 
+.. _k8s-cleanup:
+
+Cleaning up resources
+---------------------
+When cleaning up,
+**RayCluster resources must be deleted before the Operator deployment is deleted**.
+This is because the Operator must remove a `finalizer`_ from the ``RayCluster`` resource to allow
+deletion of the resource to complete.
+
+If the Operator and ``RayCluster`` are created as part of the same Helm release,
+the ``RayCluster`` must be deleted :ref:`before<k8s-cleanup-basic>` uninstalling the Helm release.
+If the Operator and one or more ``RayClusters`` are created in multiple Helm releases,
+the ``RayCluster`` releases must be uninstalled before the Operator release.
+
+To remedy a situation where the Operator deployment was deleted first and ``RayCluster`` deletion is hanging, try one of the following:
+
+- Manually delete the ``RayCluster``'s finalizers with ``kubectl edit`` or ``kubectl patch``.
+- Restart the Operator so that it can remove ``RayCluster`` finalizers. Then remove the Operator.
+
 Cluster-scoped vs. namespaced operators
 ---------------------------------------
 By default, the Ray Helm chart installs a ``cluster-scoped`` operator.
@@ -171,11 +194,11 @@ Restart behavior
 The Ray cluster will restart under the following circumstances:
 
 - There is an error in the cluster's autoscaling process. This will happen if the Ray head node goes down.
-- There has been a change to the Ray head pod configuration. In terms of the Ray Helm chart, this means either ``image`` or one of the following fields of the head's ``podType`` has been modified: ``numCPU``, ``numGPU``, ``memory``, ``nodeSelector``.
+- There has been a change to the Ray head pod configuration. In terms of the Ray Helm chart, this means either ``image`` or one of the following fields of the head's ``podType`` has been modified: ``CPU``, ``GPU``, ``memory``, ``nodeSelector``.
 
 Similarly, all workers of a given ``podType`` will be discarded if
 
-- There has been a change to ``image`` or one of the following fields of the ``podType``: ``numCPU``, ``numGPU``, ``memory``, ``nodeSelector``.
+- There has been a change to ``image`` or one of the following fields of the ``podType``: ``CPU``, ``GPU``, ``memory``, ``nodeSelector``.
 
 Status information
 ~~~~~~~~~~~~~~~~~~
@@ -204,6 +227,7 @@ Questions or Issues?
 .. include:: /_help.rst
 
 .. _`RayCluster CRD`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/crds/cluster_crd.yaml
+.. _`finalizer` : https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#finalizers
 .. _`namespaced`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_namespaced.yaml
 .. _`cluster-scoped`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_cluster_scoped.yaml
 .. _`example`: https://github.com/ray-project/ray/tree/master/deploy/components/example_cluster.yaml
