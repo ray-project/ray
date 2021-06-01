@@ -238,6 +238,7 @@ install_node() {
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
     return
+  fi
 
   if [ -n "${BUILDKITE-}" ] ; then
     if [ "${OSTYPE}" = darwin ]; then
