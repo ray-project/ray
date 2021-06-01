@@ -32,12 +32,20 @@
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
 
+- label: ":docker: Build Images: py36"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --build-base
+
 - label: ":docker: Build Images: py37"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
-    - python .buildkite/copy_files.py --destination docker_login
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/travis/build-docker-images.py --py-versions PY37 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38"
@@ -45,16 +53,8 @@
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
-    - python .buildkite/copy_files.py --destination docker_login
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/travis/build-docker-images.py --py-versions PY38 --build-type BUILDKITE --build-base
-
-- label: ":docker: Build Images: py36"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - python .buildkite/copy_files.py --destination docker_login
-    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
