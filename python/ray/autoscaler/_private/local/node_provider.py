@@ -12,6 +12,8 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
 )
 from ray.autoscaler._private.local.config import bootstrap_local
+from ray.autoscaler._private.local.config import get_lock_path
+from ray.autoscaler._private.local.config import get_state_path
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +160,11 @@ class LocalNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         if cluster_name:
+            lock_path = get_lock_path(cluster_name)
+            state_path = get_state_path(cluster_name)
             self.state = ClusterState(
-                "/tmp/cluster-{}.lock".format(cluster_name),
-                "/tmp/cluster-{}.state".format(cluster_name),
+                lock_path,
+                state_path,
                 provider_config,
             )
             self.use_coordinator = False
