@@ -92,6 +92,10 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
   rpc::ResourceUsageBatchData batch;
   get_resource_usage_batch_for_broadcast_(batch);
 
+  if (batch.batch_size() == 0) {
+    return;
+  }
+
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();
   stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
