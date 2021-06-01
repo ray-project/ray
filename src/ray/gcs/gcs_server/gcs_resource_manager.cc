@@ -159,7 +159,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
     for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+      (*resource.mutable_resources_available())[res.first] = res.second.Double();
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -369,7 +369,10 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
 void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBatchData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
-  GetResourceUsageBatchForBroadcast_Locked(buffer);
+  if (!resources_buffer_.empty()) {
+    GetResourceUsageBatchForBroadcast_Locked(buffer);
+    resources_buffer_.clear();
+  }
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(

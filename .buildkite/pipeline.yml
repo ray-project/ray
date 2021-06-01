@@ -279,7 +279,7 @@
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky,-client python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["RAY_CI_TUNE_AFFECTED"]
@@ -288,6 +288,7 @@
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
 
 - label: ":book: Doc tests and examples"
   conditions:

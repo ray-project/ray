@@ -103,6 +103,8 @@ extras = {
         "opentelemetry-exporter-otlp==1.1.0"
     ]
 }
+if sys.version_info >= (3, 7, 0):
+    extras["k8s"].append("kopf")
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",

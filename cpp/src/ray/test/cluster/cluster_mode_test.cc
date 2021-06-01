@@ -1,7 +1,6 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 
 using namespace ::ray::api;
 
@@ -38,17 +37,13 @@ class Counter {
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
 
-std::string lib_name = "";
-
-std::string redis_ip = "";
+int *cmd_argc = nullptr;
+char ***cmd_argv = nullptr;
 
 TEST(RayClusterModeTest, FullTest) {
+  ray::api::RayConfig config;
   /// initialization to cluster mode
-  ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
-  /// TODO(Guyang Song): add the dynamic library name
-  ray::api::RayConfig::GetInstance()->lib_name = lib_name;
-  ray::api::RayConfig::GetInstance()->redis_ip = redis_ip;
-  Ray::Init();
+  Ray::Init(config, cmd_argc, cmd_argv);
 
   /// put and get object
   auto obj = Ray::Put(12345);
@@ -164,11 +159,8 @@ TEST(RayClusterModeTest, FullTest) {
 }
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 2 || argc == 3);
-  lib_name = std::string(argv[1]);
-  if (argc == 3) {
-    redis_ip = std::string(argv[2]);
-  }
+  cmd_argc = &argc;
+  cmd_argv = &argv;
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
