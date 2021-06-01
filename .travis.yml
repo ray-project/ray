@@ -149,7 +149,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: ($LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37=1) || $MAC_WHEELS = 1
+      condition: $MAC_WHEELS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -165,16 +165,7 @@ deploy:
     on:
       branch: master
       repo: ray-project/ray
-      condition: ($LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37=1) || $MAC_WHEELS = 1
-
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY37 --build-type MERGE --build-base
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37 = 1
+      condition: $MAC_WHEELS = 1
 
   # Upload jars so that we can debug locally for every commit
   - provider: s3
@@ -191,7 +182,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
+      condition: $MAC_JARS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -207,22 +198,4 @@ deploy:
     on:
       repo: ray-project/ray
       branch: master
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
-
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 --build-type MERGE --build-base
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY36 = 1
-
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY38 --build-type MERGE --build-base
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY38 = 1
+      condition: $MAC_JARS = 1
