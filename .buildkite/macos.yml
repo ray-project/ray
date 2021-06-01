@@ -11,8 +11,8 @@ steps:
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     # TODO(simon): These should be baked into macOS AMI.
-    - brew install openjdk@8 && brew link --force openjdk@8
-    - export PATH="/usr/local/opt/openjdk@8/bin:$PATH"
+    - brew install openjdk@11 && brew link --force openjdk@11
+    - export PATH="/usr/local/opt/openjdk@11/bin:$PATH"
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
