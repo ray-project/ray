@@ -728,7 +728,6 @@ cdef void delete_spilled_objects_handler(
     with gil:
         urls = []
         size = object_urls.size()
-        print("url size : ", size)
         for i in range(size):
             urls.append(object_urls[i])
         try:

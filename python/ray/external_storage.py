@@ -310,7 +310,6 @@ class FileSystemStorage(ExternalStorage):
     def delete_spilled_objects(self, urls: List[str]):
         for url in urls:
             path = parse_url_with_offset(url.decode()).base_url
-            print("remove path", path)
             os.remove(path)
 
     def destroy_external_storage(self):
