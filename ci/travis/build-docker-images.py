@@ -419,7 +419,7 @@ if __name__ == "__main__":
     if build_type in {HUMAN, MERGE} or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
-        # Buildkite should authenticate in the background.
+        # Buildkite is authenticated in the background.
         if is_merge and not is_buildkite:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
