@@ -121,7 +121,8 @@ Status CreateRequestQueue::ProcessRequests() {
         if (dump_debug_info_callback_) {
           dump = dump_debug_info_callback_();
         }
-        RAY_LOG(INFO) << "Failed to store object " << (*request_it)->object_id << "\n" << dump;
+        RAY_LOG(INFO) << "Failed to store object " << (*request_it)->object_id << "\n"
+                      << dump;
         // Raise OOM. In this case, the request will be marked as OOM.
         // We don't return so that we can process the next entry right away.
         FinishRequest(request_it);

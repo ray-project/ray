@@ -111,7 +111,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
-                                             std::shared_ptr<Buffer> *data, bool created_by_worker) {
+                                             std::shared_ptr<Buffer> *data,
+                                             bool created_by_worker) {
   uint64_t retry_with_request_id = 0;
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
@@ -440,7 +441,8 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
+  RAY_RETURN_NOT_OK(
+      Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, true));

@@ -290,10 +290,9 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   ReadCreateRequest(input, input_size, &object_id, &owner_raylet_id, &owner_ip_address,
                     &owner_port, &owner_worker_id, &data_size, &metadata_size, &source,
                     &device_num);
-  auto error =
-      CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
-                   owner_worker_id, data_size, metadata_size, source, device_num,
-                   client, object);
+  auto error = CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
+                            owner_worker_id, data_size, metadata_size, source, device_num,
+                            client, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
@@ -301,14 +300,11 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   return error;
 }
 
-PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
-                                      const NodeID &owner_raylet_id,
-                                      const std::string &owner_ip_address, int owner_port,
-                                      const WorkerID &owner_worker_id, int64_t data_size,
-                                      int64_t metadata_size,
-                                      fb::ObjectSource source, int device_num,
-                                      const std::shared_ptr<Client> &client,
-                                      PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObject(
+    const ObjectID &object_id, const NodeID &owner_raylet_id,
+    const std::string &owner_ip_address, int owner_port, const WorkerID &owner_worker_id,
+    int64_t data_size, int64_t metadata_size, fb::ObjectSource source, int device_num,
+    const std::shared_ptr<Client> &client, PlasmaObject *result) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
@@ -1018,7 +1014,7 @@ std::string PlasmaStore::DumpDebugInfo() const {
   for (const auto &obj_entry : store_info_.objects) {
     const auto &obj = obj_entry.second;
     if (obj->state == ObjectState::PLASMA_CREATED) {
-      num_objects_unsealed ++;
+      num_objects_unsealed++;
       num_bytes_unsealed += obj->data_size;
     } else if (obj->ref_count == 1 && obj->source == fb::ObjectSource::CreatedByWorker) {
       num_objects_spillable++;
@@ -1047,7 +1043,7 @@ std::string PlasmaStore::DumpDebugInfo() const {
   }
 
   buffer << "- objects spillable: " << num_objects_spillable << "\n";
-  buffer << "- bytes spillable: " << num_bytes_spillable<< "\n";
+  buffer << "- bytes spillable: " << num_bytes_spillable << "\n";
   buffer << "- objects unsealed: " << num_objects_unsealed << "\n";
   buffer << "- bytes unsealed: " << num_bytes_unsealed << "\n";
   buffer << "- objects in use: " << num_objects_in_use << "\n";

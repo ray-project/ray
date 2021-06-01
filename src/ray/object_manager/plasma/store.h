@@ -98,8 +98,8 @@ class PlasmaStore {
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, int64_t data_size,
                            int64_t metadata_size, plasma::flatbuf::ObjectSource source,
-                           int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject *result);
+                           int device_num, const std::shared_ptr<Client> &client,
+                           PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
