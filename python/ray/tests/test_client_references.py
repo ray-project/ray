@@ -20,10 +20,10 @@ def test_client_object_ref_basics(ray_start_regular):
 
         # Invalid ref format.
         with pytest.raises(Exception):
-            ClientObjectRef(b'\0')
+            ClientObjectRef(b"\0")
 
         # Test __eq__()
-        id = b'\0' * 28
+        id = b"\0" * 28
         assert ClientObjectRef(id) == ClientObjectRef(id)
         assert ClientObjectRef(id) != ref
         assert ClientObjectRef(id) != ObjectRef(id)
@@ -58,10 +58,10 @@ def test_client_actor_ref_basics(ray_start_regular):
 
         # Invalid ref format.
         with pytest.raises(Exception):
-            ClientActorRef(b'\0')
+            ClientActorRef(b"\0")
 
         # Test __eq__()
-        id = b'\0' * 16
+        id = b"\0" * 16
         assert ClientActorRef(id) == ClientActorRef(id)
         assert ClientActorRef(id) != ref
         assert ClientActorRef(id) != ActorID(id)
