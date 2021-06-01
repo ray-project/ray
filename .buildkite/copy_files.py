@@ -60,7 +60,7 @@ for path in paths:
     if args.destination == "wheels":
         c = resp.json()["presigned_resp_prod_wheels"]
         of = OrderedDict(c["fields"])
-        of["key"] = f"scratch/bk/{sha}/{fn}"
+        of["key"] = f"{sha}/{fn}"
 
     elif args.destination == "containers":
         c = resp.json()["presigned_containers"]
