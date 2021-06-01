@@ -38,6 +38,7 @@ cc_library(
         "//:ray_util",
         "@boost//:callable_traits",
         "@boost//:dll",
+        "@com_github_gflags_gflags//:gflags",
         "@msgpack",
     ],
 )
@@ -94,7 +95,7 @@ cc_test(
         "src/ray/test/cluster/*.cc",
     ]),
     args = [
-        "$(location cluster_mode_test.so)",
+        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
     ],
     copts = COPTS,
     data = [

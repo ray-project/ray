@@ -155,7 +155,7 @@ on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``
   Connecting with Ray client requires using matching minor versions of Python (for example 3.7)
   on the server and client end, that is, on the Ray head node and in the environment where
   ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
-  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=1.3.0>`_.
+  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray>`_.
 
   Connecting with Ray client also requires matching Ray versions. To connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
 
