@@ -136,7 +136,7 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  bool ProcessRequest(std::unique_ptr<CreateRequest> &request);
+  Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
