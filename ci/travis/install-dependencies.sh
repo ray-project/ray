@@ -238,7 +238,8 @@ install_node() {
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
     return
-  elif [ -n "${BUILDKITE-}" ] ; then
+
+  if [ -n "${BUILDKITE-}" ] ; then
     if [ "${OSTYPE}" = darwin ]; then
       curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
     else
@@ -247,7 +248,6 @@ install_node() {
       sudo apt-get install -y nodejs
       return
     fi
-  else
   fi
 
   # Install the latest version of Node.js in order to build the dashboard.
