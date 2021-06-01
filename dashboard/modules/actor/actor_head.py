@@ -11,7 +11,8 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import rest_response
-from ray.new_dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
+from ray.new_dashboard.modules.actor.actor_utils import \
+    actor_classname_from_task_spec
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -39,7 +40,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
-        self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
