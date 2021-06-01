@@ -10,12 +10,11 @@ auth: {}
 upscaling_speed: 1.0
 idle_timeout_minutes: 5
 
-# For reproducibility, Ray will run in a docker image by default.
-docker:
-    image: "rayproject/ray-ml:latest-gpu"
-    container_name: "ray_container"
-    pull_before_run: True
+# Docker use not recommended: ray down will not clean up Docker state.
+docker: {}
 
+# Defaults are empty to avoid any surprise changes to on-prem cluster's state.
+# Refer to example yamls for examples of ray installation in setup commands.
 initialization_commands: []
 setup_commands: []
 head_setup_commands: []
@@ -30,7 +29,7 @@ worker_start_ray_commands:
 
 file_mounts: {}
 cluster_synced_files: []
-file_mounts_sync_continuously: False
+file_mounts_sync_continuously: false
 rsync_exclude: []
 rsync_filter: []
 
