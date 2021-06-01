@@ -18,8 +18,13 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
+/// Each of channel is prefixed by the name of components.
+/// For example, for pubsub channels that are used by core workers,
+/// there is a prefix worker.
 enum ChannelType {
+  /// A channel for object eviction.
   WORKER_OBJECT_EVICTION = 0;
+  /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
 }
 
@@ -28,8 +33,11 @@ enum ChannelType {
 ///
 
 message PubMessage {
+  /// Channel type for this publish message.
   ChannelType channel_type = 1;
+  /// The key id (e.g., object id) in bytes.
   bytes key_id = 2;
+  /// A message for the publish message.
   oneof pub_message_oneof {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
@@ -52,8 +60,11 @@ message WorkerRefRemovedMessage {
 /// Subscribe
 ///
 message Command {
+  /// The channel type for this command.
   ChannelType channel_type = 1;
+  /// The key id (e.g., object id) in bytes.
   bytes key_id = 2;
+  /// A message for a command.
   oneof command_message_one_of {
     UnsubscribeMessage unsubscribe_message = 3;
     SubMessage subscribe_message = 4;
@@ -64,6 +75,9 @@ message UnsubscribeMessage {
 }
 
 message SubMessage {
+  /// Subscribe message is one of other protobuf messages.
+  /// It needs messages with different payloads because the publisher
+  /// need more metadata than key id & channel type for subscription.
   oneof sub_message_oneof {
     WorkerObjectEvictionSubMessage worker_object_eviction_message = 1;
     WorkerRefRemovedSubMessage worker_ref_removed_message = 2;
@@ -76,7 +90,7 @@ message WorkerObjectEvictionSubMessage {
   // ObjectID of the pinned object.
   bytes object_id = 2;
   // Address of the subscriber.
-  Address subscriber_address = 3;  
+  Address subscriber_address = 3;
 }
 
 message WorkerRefRemovedSubMessage {
