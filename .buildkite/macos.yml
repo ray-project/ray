@@ -10,6 +10,8 @@ steps:
     RAY_INSTALL_JAVA: "1"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    # TODO(simon): These should be baked into macOS AMI.
+    - brew install openjdk@8 && brew link --force openjdk@8
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
