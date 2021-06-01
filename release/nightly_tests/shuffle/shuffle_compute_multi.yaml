@@ -10,7 +10,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: i3.8xlarge
+      instance_type: i3.4xlarge
       min_workers: 3
       max_workers: 3
       use_spot: false

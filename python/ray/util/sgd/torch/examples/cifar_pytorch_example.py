@@ -88,6 +88,36 @@ class CifarTrainingOperator(TrainingOperator):
             train_loader=train_loader, validation_loader=validation_loader)
 
 
+def train_cifar(num_workers, use_gpu, num_epochs, fp16=False, test_mode=False):
+    trainer1 = TorchTrainer(
+        training_operator_cls=CifarTrainingOperator,
+        initialization_hook=initialization_hook,
+        num_workers=num_workers,
+        config={
+            "lr": 0.1,
+            "test_mode": test_mode,  # subset the data
+            # this will be split across workers.
+            BATCH_SIZE: 128 * num_workers
+        },
+        use_gpu=use_gpu,
+        scheduler_step_freq="epoch",
+        use_fp16=fp16,
+        use_tqdm=False)
+    pbar = trange(num_epochs, unit="epoch")
+    for i in pbar:
+        info = {"num_steps": 1} if test_mode else {}
+        info["epoch_idx"] = i
+        info["num_epochs"] = num_epochs
+        # Increase `max_retries` to turn on fault tolerance.
+        trainer1.train(max_retries=1, info=info)
+        val_stats = trainer1.validate()
+        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
+
+    print(trainer1.validate())
+    trainer1.shutdown()
+    print("success!")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -125,30 +155,9 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)
 
-    trainer1 = TorchTrainer(
-        training_operator_cls=CifarTrainingOperator,
-        initialization_hook=initialization_hook,
+    train_cifar(
         num_workers=args.num_workers,
-        config={
-            "lr": 0.1,
-            "test_mode": args.smoke_test,  # subset the data
-            # this will be split across workers.
-            BATCH_SIZE: 128 * args.num_workers
-        },
         use_gpu=args.use_gpu,
-        scheduler_step_freq="epoch",
-        use_fp16=args.fp16,
-        use_tqdm=False)
-    pbar = trange(args.num_epochs, unit="epoch")
-    for i in pbar:
-        info = {"num_steps": 1} if args.smoke_test else {}
-        info["epoch_idx"] = i
-        info["num_epochs"] = args.num_epochs
-        # Increase `max_retries` to turn on fault tolerance.
-        trainer1.train(max_retries=1, info=info)
-        val_stats = trainer1.validate()
-        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
-
-    print(trainer1.validate())
-    trainer1.shutdown()
-    print("success!")
+        fp16=args.fp16,
+        num_epochs=args.num_epochs,
+        test_mode=args.smoke_test)
