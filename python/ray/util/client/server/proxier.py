@@ -136,27 +136,30 @@ class ProxyManager():
         self._session_dir = connection_tuple["session_dir"]
         return self._session_dir
 
+    def create_specific_server(self, client_id: str) -> None:
+        with self.server_lock:
+            port = self._get_unused_port()
+            server = SpecificServer(
+                port=port,
+                process_handle_future=futures.Future(),
+                channel=grpc.insecure_channel(
+                    f"localhost:{port}", options=GRPC_OPTIONS))
+            self.servers[client_id] = server
+
     def start_specific_server(self, client_id: str,
                               job_config: JobConfig) -> bool:
         """
         Start up a RayClient Server for an incoming client to
         communicate with. Returns whether creation was successful.
         """
-        with self.server_lock:
-            port = self._get_unused_port()
-            handle_ready = futures.Future()
-            specific_server = SpecificServer(
-                port=port,
-                process_handle_future=handle_ready,
-                channel=grpc.insecure_channel(
-                    f"localhost:{port}", options=GRPC_OPTIONS))
-            self.servers[client_id] = specific_server
+        specific_server = self._get_server_for_client(client_id)
+        assert specific_server, f"Server has not been created for: {client_id}"
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
         proc = start_ray_client_server(
             self._get_redis_address(),
-            port,
+            specific_server.port,
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
@@ -181,9 +184,9 @@ class ProxyManager():
             logger.debug(
                 "Waiting for Process to reach the actual client server.")
             time.sleep(0.5)
-        handle_ready.set_result(proc)
-        logger.info(f"SpecificServer started on port: {port} with PID: {pid} "
-                    f"for client: {client_id}")
+        specific_server.handle_ready.set_result(proc)
+        logger.info(f"SpecificServer started on port: {specific_server.port} "
+                    f"with PID: {pid} for client: {client_id}")
         return proc.process.poll() is None
 
     def _get_server_for_client(self,
@@ -366,6 +369,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
+
+        # Create Placeholder *before* reading the first request.
+        self.proxy_manager.create_specific_server(client_id)
 
         logger.info(f"New data connection from client {client_id}: ")
         modified_init_req, job_config = prepare_runtime_init_req(

@@ -32,6 +32,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     pm._free_ports = [45000, 45001]
     client = "client1"
 
+    pm.create_specific_server(client)
     assert pm.start_specific_server(client, JobConfig())
     # Channel should be ready and corresponding to an existing server
     grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
@@ -63,6 +64,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
     pm._free_ports = [46000, 46001]
     client = "client1"
 
+    pm.create_specific_server(client)
     assert not pm.start_specific_server(
         client,
         JobConfig(
