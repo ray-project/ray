@@ -1,16 +1,18 @@
 
 #pragma once
 
-#include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
 
 #include <msgpack.hpp>
 #include <mutex>
 
+#include "../config_internal.h"
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace api {
@@ -23,23 +25,27 @@ class AbstractRayRuntime : public RayRuntime {
 
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
-  ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
+  std::string Put(std::shared_ptr<msgpack::sbuffer> data);
 
-  std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id);
+  std::shared_ptr<msgpack::sbuffer> Get(const std::string &id);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID> &ids);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+                         int timeout_ms);
 
-  ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
-                std::vector<std::unique_ptr<::ray::TaskArg>> &args);
+  std::string Call(const RemoteFunctionHolder &remote_function_holder,
+                   std::vector<ray::api::TaskArg> &args);
 
-  ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                      std::vector<std::unique_ptr<::ray::TaskArg>> &args);
+  std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
+                          std::vector<ray::api::TaskArg> &args);
 
-  ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
-                     const ActorID &actor,
-                     std::vector<std::unique_ptr<::ray::TaskArg>> &args);
+  std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
+                        const std::string &actor, std::vector<ray::api::TaskArg> &args);
+
+  void AddLocalReference(const std::string &id);
+
+  void RemoveLocalReference(const std::string &id);
 
   const TaskID &GetCurrentTaskId();
 
@@ -50,7 +56,6 @@ class AbstractRayRuntime : public RayRuntime {
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
 
  protected:
-  std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
@@ -58,9 +63,9 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::shared_ptr<AbstractRayRuntime> DoInit(std::shared_ptr<RayConfig> config);
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
 
-  static void DoShutdown(std::shared_ptr<RayConfig> config);
+  static void DoShutdown();
 
   void Execute(const TaskSpecification &task_spec);
 

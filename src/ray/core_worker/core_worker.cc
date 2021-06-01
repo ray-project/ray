@@ -2862,10 +2862,11 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
-    RAY_CHECK(vec.size() > 0)
-        << "Failed to get local object but Raylet notified object is local.";
-    return success(vec.front(), object_id, py_future);
+    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+      RAY_CHECK(vec.size() > 0)
+          << "Failed to get local object but Raylet notified object is local.";
+      return success(vec.front(), object_id, py_future);
+    }
   }
 
   // Object is not available locally. We now add the callback to listener queue.
