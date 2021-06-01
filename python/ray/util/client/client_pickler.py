@@ -129,7 +129,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 type="RemoteMethod",
                 client_id=self.client_id,
                 ref_id=obj._actor_handle.actor_ref.id,
-                name=obj.method_name,
+                name=obj._method_name,
                 baseline_options=None,
             )
         elif isinstance(obj, OptionWrapper):
