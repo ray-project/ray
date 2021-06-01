@@ -597,7 +597,7 @@ void ResourceSet::FillByResourceMap(
     if (iter != predefined_resource_name_enum_map.end()) {
       predefined_resources_[iter->second] = resource.second;
     } else {
-      int id = string_id_map_.Insert(resource.first);
+      int64_t id = string_id_map_.Insert(resource.first);
       custom_resources_[id] = resource.second;
     }
   }
@@ -688,7 +688,7 @@ void ResourceSet::AddOrUpdateResource(const std::string &resource_name,
   if (iter != predefined_resource_name_enum_map.end()) {
     predefined_resources_[iter->second] = capacity;
   } else {
-    int id = string_id_map_.Insert(resource_name);
+    int64_t id = string_id_map_.Insert(resource_name);
     custom_resources_[id] = capacity;
   }
 }
@@ -699,7 +699,7 @@ bool ResourceSet::DeleteResource(const std::string &resource_name) {
     predefined_resources_[iter->second] = 0;
     return true;
   } else {
-    int id = string_id_map_.Get(resource_name);
+    int64_t id = string_id_map_.Get(resource_name);
     if (id == -1) {
       return false;
     }
@@ -721,8 +721,16 @@ void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
     // ResourceSet must have predefind resources
     const FixedPoint &total_capacity = total_resources.GetPredefinedResource(i);
     const FixedPoint &to_add_resource_capacity = other.GetPredefinedResource(i);
-    predefined_resources_[i] =
-        std::min(predefined_resources_[i] + to_add_resource_capacity, total_capacity);
+    if (total_capacity > 0) {
+      predefined_resources_[i] =
+          std::min(predefined_resources_[i] + to_add_resource_capacity, total_capacity);
+    } else {
+      // Resource does not exist in the total map, it probably got deleted from the total.
+      // Don't panic, do nothing and simply continue.
+      RAY_LOG(DEBUG) << "[AddResourcesCapacityConstrained] Predefined resource " << i
+                     << " not found in the total resource map. It probably got deleted, "
+                        "not adding back to resource_capacity_.";
+    }
   }
   for (const auto &resource_pair : other.GetCustomResourceAmountMap()) {
     const int64_t to_add_resource_id = resource_pair.first;
@@ -812,7 +820,7 @@ FixedPoint ResourceSet::GetResource(const std::string &resource_name) const {
   if (iter != predefined_resource_name_enum_map.end()) {
     return predefined_resources_[iter->second];
   } else {
-    int id = string_id_map_.Get(resource_name);
+    int64_t id = string_id_map_.Get(resource_name);
     if (id == -1) {
       return 0;
     }
