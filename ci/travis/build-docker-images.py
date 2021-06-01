@@ -98,13 +98,11 @@ def _get_wheel_name(minor_version_number):
 
 
 def _check_if_docker_files_modified():
-    proc = subprocess.run(
-        [
-            sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
-            "--output=json"
-        ],
-        capture_output=True)
-    affected_env_var_list = json.loads(proc.stdout)
+    stdout = subprocess.check_output([
+        sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
+        "--output=json"
+    ])
+    affected_env_var_list = json.loads(stdout)
     affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
                 "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
