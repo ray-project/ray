@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientActorRef, ClientObjectRef
@@ -10,6 +12,7 @@ from ray.core.generated.gcs_pb2 import ActorTableData
 from ray._raylet import ActorID, ObjectRef
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_object_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
@@ -34,6 +37,7 @@ def test_client_object_ref_basics(ray_start_regular):
         assert not ClientObjectRef(id).is_nil()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_actor_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
