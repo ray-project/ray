@@ -54,8 +54,15 @@ def test_auto_local_gc(shutdown_only):
 
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=1, num_gpus=0)
+    cluster.add_node(
+        num_cpus=1,
+        num_gpus=0,
+        _system_config={
+            "local_gc_interval_s": 10,
+            "local_gc_min_interval_s": 5,
+            "global_gc_min_interval_s": 10
+        })
+    cluster.add_node(num_cpus=1, num_gpus=0)
     ray.init(address=cluster.address)
 
     class ObjectWithCyclicRef:
