@@ -1,19 +1,14 @@
-# This file runs RLlib algorithm learning tests for select algorithms on torch.
-# It is suggested to run these on a single g3.16xlarge or p3.16xl node
-# in a DLAMI / tensorflow_p36 env.
-# Note: RL runs are inherently high variance, so you'll have to check to
-# see if the rewards reached seem reasonably in line with previous results.
-# You can find the reference results here:
-# https://github.com/ray-project/ray/tree/master/release/release_logs
 
-a2c-torch-atari:
+a2c-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: A2C
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 5000000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
-        framework: torch
         rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5
@@ -24,14 +19,16 @@ a2c-torch-atari:
             [20000000, 0.000000000001],
         ]
 
-apex-dqn-torch-atari:
+apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 20.0
+        timesteps_total: 10000000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
-        framework: torch
         double_q: false
         dueling: false
         num_atoms: 1
@@ -55,14 +52,16 @@ apex-dqn-torch-atari:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
-dqn-torch-atari:
+dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 30.0
+        timesteps_total: 450000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
-        framework: torch
         double_q: false
         dueling: false
         num_atoms: 1
@@ -86,14 +85,16 @@ dqn-torch-atari:
         num_gpus: 0.5
         timesteps_per_iteration: 10000
 
-impala-torch-atari:
+impala-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 300.0
+        timesteps_total: 6000000
     stop:
         time_total_s: 3600
     config:
-        framework: torch
         rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 10
@@ -105,14 +106,16 @@ impala-torch-atari:
         ]
         num_gpus: 1
 
-ppo-torch-atari:
+ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: PPO
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 10000000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
-        framework: torch
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True
@@ -132,14 +135,16 @@ ppo-torch-atari:
         num_gpus: 1
 
 # Expect roughly 1000 reward after 1h on 1GPU
-sac-torch-halfcheetah-pybullet:
+sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: SAC
-    num_samples: 2
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 80000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
-        framework: torch
         horizon: 1000
         soft_horizon: false
         Q_model:
@@ -168,3 +173,49 @@ sac-torch-halfcheetah-pybullet:
         normalize_actions: true
         evaluation_interval: 1
         metrics_smoothing_episodes: 5
+
+# Expect roughly 1000 reward after 1h on 1GPU
+ddpg-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: DDPG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 400000
+    stop:
+        time_total_s: 7200
+    config:
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+        env_config: {}
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 10000
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+        timesteps_per_iteration: 1000
+        target_network_update_freq: 0
+        tau: 0.001
+        buffer_size: 10000
+        prioritized_replay: True
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: False
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: False
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        rollout_fragment_length: 1
+        train_batch_size: 64
+        num_workers: 0
+        num_gpus: 1
+        num_gpus_per_worker: 0
+        worker_side_prioritization: False
