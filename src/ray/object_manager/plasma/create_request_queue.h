@@ -36,11 +36,13 @@ class CreateRequestQueue {
   CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
-                     std::function<int64_t()> get_time)
+                     std::function<int64_t()> get_time,
+                     std::function<std::string()> dump_debug_info_callback = nullptr)
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        get_time_(get_time) {}
+        get_time_(get_time),
+        dump_debug_info_callback_(dump_debug_info_callback) {}
 
   /// Add a request to the queue. The caller should use the returned request ID
   /// to later get the result of the request.
@@ -160,6 +162,8 @@ class CreateRequestQueue {
 
   /// A callback to return the current time.
   const std::function<int64_t()> get_time_;
+
+  const std::function<std::string()> dump_debug_info_callback_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time

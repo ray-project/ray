@@ -1675,7 +1675,7 @@ void NodeManager::MarkObjectsAsFailed(
     Status status;
     status = store_client_.TryCreateImmediately(
         object_id, ref.owner_address(), 0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data, plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }

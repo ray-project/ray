@@ -152,7 +152,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback, object_store_full_callback,
           /*get_time=*/
-          []() { return absl::GetCurrentTimeNanos(); }) {
+          []() { return absl::GetCurrentTimeNanos(); },
+          [this]() { return DumpDebugInfo(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 }
@@ -284,13 +285,15 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   WorkerID owner_worker_id;
   int64_t data_size;
   int64_t metadata_size;
+  fb::ObjectSource source;
   int device_num;
   ReadCreateRequest(input, input_size, &object_id, &owner_raylet_id, &owner_ip_address,
-                    &owner_port, &owner_worker_id, &data_size, &metadata_size,
+                    &owner_port, &owner_worker_id, &data_size, &metadata_size, &source,
                     &device_num);
   auto error =
       CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
-                   owner_worker_id, data_size, metadata_size, device_num, client, object);
+                   owner_worker_id, data_size, metadata_size, source, device_num,
+                   client, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
@@ -302,7 +305,8 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
                                       const NodeID &owner_raylet_id,
                                       const std::string &owner_ip_address, int owner_port,
                                       const WorkerID &owner_worker_id, int64_t data_size,
-                                      int64_t metadata_size, int device_num,
+                                      int64_t metadata_size,
+                                      fb::ObjectSource source, int device_num,
                                       const std::shared_ptr<Client> &client,
                                       PlasmaObject *result) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
@@ -349,6 +353,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   entry->owner_worker_id = owner_worker_id;
   entry->create_time = std::time(nullptr);
   entry->construct_duration = -1;
+  entry->source = source;
 
   result->store_fd = fd;
   result->data_offset = offset;
@@ -988,6 +993,78 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   return entry->ref_count == 1;
+}
+
+std::string PlasmaStore::DumpDebugInfo() const {
+  std::stringstream buffer;
+  buffer << "========== Plasma store: =================\n";
+  size_t num_objects_spillable = 0;
+  size_t num_bytes_spillable = 0;
+  size_t num_objects_unsealed = 0;
+  size_t num_bytes_unsealed = 0;
+  size_t num_objects_in_use = 0;
+  size_t num_bytes_in_use = 0;
+  size_t num_objects_evictable = 0;
+  size_t num_bytes_evictable = 0;
+
+  size_t num_objects_created_by_worker = 0;
+  size_t num_bytes_created_by_worker = 0;
+  size_t num_objects_restored = 0;
+  size_t num_bytes_restored = 0;
+  size_t num_objects_received = 0;
+  size_t num_bytes_received = 0;
+  size_t num_objects_errored = 0;
+  size_t num_bytes_errored = 0;
+  for (const auto &obj_entry : store_info_.objects) {
+    const auto &obj = obj_entry.second;
+    if (obj->state == ObjectState::PLASMA_CREATED) {
+      num_objects_unsealed ++;
+      num_bytes_unsealed += obj->data_size;
+    } else if (obj->ref_count == 1 && obj->source == fb::ObjectSource::CreatedByWorker) {
+      num_objects_spillable++;
+      num_bytes_spillable += obj->data_size;
+    } else if (obj->ref_count > 0) {
+      num_objects_in_use++;
+      num_bytes_in_use += obj->data_size;
+    } else {
+      num_bytes_evictable++;
+      num_bytes_evictable += obj->data_size;
+    }
+
+    if (obj->source == fb::ObjectSource::CreatedByWorker) {
+      num_objects_created_by_worker++;
+      num_bytes_created_by_worker += obj->data_size;
+    } else if (obj->source == fb::ObjectSource::RestoredFromStorage) {
+      num_objects_restored++;
+      num_bytes_restored += obj->data_size;
+    } else if (obj->source == fb::ObjectSource::ReceivedFromRemoteRaylet) {
+      num_objects_received++;
+      num_bytes_received += obj->data_size;
+    } else if (obj->source == fb::ObjectSource::ErrorStoredByRaylet) {
+      num_objects_errored++;
+      num_bytes_errored += obj->data_size;
+    }
+  }
+
+  buffer << "- objects spillable: " << num_objects_spillable << "\n";
+  buffer << "- bytes spillable: " << num_bytes_spillable<< "\n";
+  buffer << "- objects unsealed: " << num_objects_unsealed << "\n";
+  buffer << "- bytes unsealed: " << num_bytes_unsealed << "\n";
+  buffer << "- objects in use: " << num_objects_in_use << "\n";
+  buffer << "- bytes in use: " << num_bytes_in_use << "\n";
+  buffer << "- objects evictable: " << num_objects_evictable << "\n";
+  buffer << "- bytes evictable: " << num_bytes_evictable << "\n";
+  buffer << "\n";
+
+  buffer << "- objects created by worker: " << num_objects_created_by_worker << "\n";
+  buffer << "- bytes created by worker: " << num_bytes_created_by_worker << "\n";
+  buffer << "- objects restored: " << num_objects_restored << "\n";
+  buffer << "- bytes restored: " << num_bytes_restored << "\n";
+  buffer << "- objects received: " << num_objects_received << "\n";
+  buffer << "- bytes received: " << num_bytes_received << "\n";
+  buffer << "- objects errored: " << num_objects_errored << "\n";
+  buffer << "- bytes errored: " << num_bytes_errored << "\n";
+  return buffer.str();
 }
 
 }  // namespace plasma

@@ -97,7 +97,8 @@ class PlasmaStore {
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, int64_t data_size,
-                           int64_t metadata_size, int device_num,
+                           int64_t metadata_size, plasma::flatbuf::ObjectSource source,
+                           int device_num,
                            const std::shared_ptr<Client> &client, PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
@@ -201,6 +202,10 @@ class PlasmaStore {
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
   }
+
+  // NOTE(swang): This will iterate through all objects in the
+  // object store, so it should be called sparingly.
+  std::string DumpDebugInfo() const;
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,

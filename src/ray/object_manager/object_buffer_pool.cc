@@ -109,7 +109,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
     Status s = store_client_.TryCreateImmediately(object_id, owner_address, object_size,
-                                                  NULL, metadata_size, &data);
+                                                  NULL, metadata_size, &data, plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
       // Create failed. The object may already exist locally. If something else went

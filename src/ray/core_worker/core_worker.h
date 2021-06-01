@@ -538,7 +538,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                     bool created_by_worker);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -554,7 +555,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                         const ObjectID &object_id, const rpc::Address &owner_address,
-                        std::shared_ptr<Buffer> *data);
+                        std::shared_ptr<Buffer> *data,
+                        bool created_by_worker);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
