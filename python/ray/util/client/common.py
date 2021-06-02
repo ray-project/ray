@@ -10,7 +10,7 @@ import grpc
 import os
 import uuid
 import inspect
-from ray.util.inspect import is_cython
+from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
 from typing import Any
@@ -241,7 +241,7 @@ class ClientActorClass(ClientStub):
         # Actually instantiate the actor
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -283,12 +283,33 @@ class ClientActorHandle(ClientStub):
           is a serialized version of the actual handle as an opaque token.
     """
 
-    def __init__(self, actor_ref: ClientActorRef):
+    def __init__(self,
+                 actor_ref: ClientActorRef,
+                 actor_class: Optional[ClientActorClass] = None):
         self.actor_ref = actor_ref
+        self._dir: Optional[List[str]] = None
+        if actor_class is not None:
+            self._dir = list(
+                dict(
+                    inspect.getmembers(actor_class.actor_cls,
+                                       is_function_or_method)).keys())
 
     def __del__(self) -> None:
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
+
+    def __dir__(self) -> List[str]:
+        if self._dir is not None:
+            return self._dir
+        if ray.is_connected():
+
+            @ray.remote(num_cpus=0)
+            def get_dir(x):
+                return dir(x)
+
+            self._dir = ray.get(get_dir.remote(self))
+            return self._dir
+        return super().__dir__()
 
     @property
     def _actor_id(self):
@@ -313,8 +334,8 @@ class ClientRemoteMethod(ClientStub):
     """
 
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
-        self.actor_handle = actor_handle
-        self.method_name = method_name
+        self._actor_handle = actor_handle
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
@@ -324,8 +345,8 @@ class ClientRemoteMethod(ClientStub):
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self.method_name,
-                                               self.actor_handle)
+        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
+                                               self._actor_handle)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -340,8 +361,8 @@ class ClientRemoteMethod(ClientStub):
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_ref.id
+        task.name = self._method_name
+        task.payload_id = self._actor_handle.actor_ref.id
         return task
 
 
@@ -366,7 +387,11 @@ class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        actor_class = None
+        if isinstance(self.remote_stub, ClientActorClass):
+            actor_class = self.remote_stub
+        return ClientActorHandle(
+            ClientActorRef(ref_ids[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
