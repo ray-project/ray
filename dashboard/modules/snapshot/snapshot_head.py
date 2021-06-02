@@ -85,7 +85,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         return actors
 
     async def get_session_name(self):
-        encoded_name = await self._dashboard_head.aioredis_client.get("session_name")
+        encoded_name = await self._dashboard_head.aioredis_client.get(
+            "session_name")
         return encoded_name.decode()
 
     async def run(self, server):
