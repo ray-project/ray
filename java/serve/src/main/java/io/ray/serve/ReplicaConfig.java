@@ -30,48 +30,42 @@ public class ReplicaConfig implements Serializable {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   private void validate() {
-    if (rayActorOptions.containsKey("placement_group")) {
-      throw new IllegalArgumentException(
-          "Providing placement_group for backend actors is not currently supported.");
-    }
-    if (rayActorOptions.containsKey("lifetime")) {
-      throw new IllegalArgumentException("Specifying lifetime in init_args is not allowed.");
-    }
-    if (rayActorOptions.containsKey("name")) {
-      throw new IllegalArgumentException("Specifying name in init_args is not allowed.");
-    }
-    if (rayActorOptions.containsKey("max_restarts")) {
-      throw new IllegalArgumentException("Specifying max_restarts in init_args is not allowed.");
-    }
-    if (rayActorOptions.containsKey("max_restarts")) {
-      throw new IllegalArgumentException("Specifying max_restarts in init_args is not allowed.");
-    }
+    Preconditions.checkArgument(!rayActorOptions.containsKey("placement_group"),
+        "Providing placement_group for backend actors is not currently supported.");
+
+    Preconditions.checkArgument(!rayActorOptions.containsKey("lifetime"),
+        "Specifying lifetime in init_args is not allowed.");
+
+    Preconditions.checkArgument(!rayActorOptions.containsKey("name"),
+        "Specifying name in init_args is not allowed.");
+
+    Preconditions.checkArgument(!rayActorOptions.containsKey("max_restarts"),
+        "Specifying max_restarts in init_args is not allowed.");
 
     // TODO Confirm num_cpus, num_gpus, memory is double in protobuf.
     // Ray defaults to zero CPUs for placement, we default to one here.
-    Object numCpus = rayActorOptions.getOrDefault("num_cpus", Double.valueOf(1.0));
+    Object numCpus = rayActorOptions.getOrDefault("num_cpus", 1.0);
     Preconditions.checkArgument(numCpus instanceof Double,
         "num_cpus in ray_actor_options must be a double.");
     Preconditions.checkArgument(((Double) numCpus) >= 0,
         "num_cpus in ray_actor_options must be >= 0.");
     resource.put("CPU", (Double) numCpus);
 
-    Object numGpus = rayActorOptions.getOrDefault("num_gpus", Double.valueOf(0));
+    Object numGpus = rayActorOptions.getOrDefault("num_gpus", 0.0);
     Preconditions.checkArgument(numGpus instanceof Double,
         "num_gpus in ray_actor_options must be a double.");
     Preconditions.checkArgument(((Double) numGpus) >= 0,
         "num_gpus in ray_actor_options must be >= 0.");
     resource.put("GPU", (Double) numGpus);
 
-    Object memory = rayActorOptions.getOrDefault("memory", Double.valueOf(0));
+    Object memory = rayActorOptions.getOrDefault("memory", 0.0);
     Preconditions.checkArgument(memory instanceof Double,
         "memory in ray_actor_options must be a double.");
     Preconditions.checkArgument(((Double) memory) >= 0,
         "memory in ray_actor_options must be >= 0.");
     resource.put("memory", (Double) memory);
 
-    Object objectStoreMemory =
-        rayActorOptions.getOrDefault("object_store_memory", Double.valueOf(0));
+    Object objectStoreMemory = rayActorOptions.getOrDefault("object_store_memory", 0.0);
     Preconditions.checkArgument(objectStoreMemory instanceof Double,
         "object_store_memory in ray_actor_options must be a double.");
     Preconditions.checkArgument(((Double) objectStoreMemory) >= 0,

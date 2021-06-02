@@ -6,6 +6,6 @@ package io.ray.serve.poll;
 @FunctionalInterface
 public interface KeyListener {
 
-  void notifyChanged(Object object) throws Throwable;
+  void notifyChanged(Object object);
 
 }

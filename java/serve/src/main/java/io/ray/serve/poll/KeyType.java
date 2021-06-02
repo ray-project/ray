@@ -11,9 +11,9 @@ public class KeyType implements Serializable {
 
   private static final long serialVersionUID = -8838552786234630401L;
 
-  private LongPollNamespace longPollNamespace;
+  private final LongPollNamespace longPollNamespace;
 
-  private String key;
+  private final String key;
 
   private int hash;
 
@@ -26,16 +26,8 @@ public class KeyType implements Serializable {
     return longPollNamespace;
   }
 
-  public void setLongPollNamespace(LongPollNamespace longPollNamespace) {
-    this.longPollNamespace = longPollNamespace;
-  }
-
   public String getKey() {
     return key;
-  }
-
-  public void setKey(String key) {
-    this.key = key;
   }
 
   @Override
@@ -44,6 +36,19 @@ public class KeyType implements Serializable {
       hash = Objects.hash(longPollNamespace, key);
     }
     return hash;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    KeyType keyType = (KeyType) obj;
+    return Objects.equals(longPollNamespace, keyType.getLongPollNamespace())
+        && Objects.equals(key, keyType.getKey());
   }
 
   @Override

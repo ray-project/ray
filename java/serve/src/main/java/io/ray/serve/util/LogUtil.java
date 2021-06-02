@@ -29,7 +29,6 @@ public class LogUtil {
       patternLayout.setConversionPattern(
           format("{} component=serve backend={} replica={}", pattern, backendTag, replicaTag));
 
-      MessageFormatter.format(pattern, pattern).toString();
     }
   }
 

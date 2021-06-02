@@ -34,69 +34,61 @@ public class LongPollClient {
   /** An async thread to post the callback into. */
   private Thread pollThread;
 
-  private boolean running;
-
   public LongPollClient(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
     this.hostActor = hostActor;
     this.keyListeners = keyListeners;
-    reset();
-    this.running = true;
+    this.snapshotIds = new ConcurrentHashMap<>();
+    this.objectSnapshots = new ConcurrentHashMap<>();
     this.pollThread = new Thread(() -> {
-      while (running) {
+      while (true) {
         try {
           pollNext();
+        } catch (RayActorException e) {
+          LOGGER.debug("LongPollClient failed to connect to host. Shutting down.");
+          break;
+        } catch (RayTaskException e) {
+          LOGGER.error("LongPollHost errored", e);
         } catch (Throwable e) {
-          LOGGER.error("Long poll client failed to poll updated object of key {}", snapshotIds, e);
+          LOGGER.error("LongPollClient failed to update object of key {}", snapshotIds, e);
         }
       }
     }, "backend-poll-thread");
-    this.pollThread.start();
   }
 
-  private void reset() {
-    snapshotIds = new ConcurrentHashMap<>();
-    objectSnapshots = new ConcurrentHashMap<>();
-    currentRef = null;
+  public void start() {
+    pollThread.start();
   }
 
   /**
    * Poll the update.
-   * 
-   * @throws Throwable if exception happens
    */
-  private void pollNext() throws Throwable {
+  @SuppressWarnings("unchecked")
+  public void pollNext() {
     currentRef = ((PyActorHandle) hostActor)
         .task(PyActorMethod.of(Constants.CONTROLLER_LISTEN_FOR_CHANGE_METHOD), snapshotIds)
         .remote();
-    Object updates = currentRef.get();
-    processUpdate(updates);
+    processUpdate((Map<KeyType, UpdatedObject>) currentRef.get());
 
   }
 
-  @SuppressWarnings("unchecked")
-  private void processUpdate(Object updates) throws Throwable {
-    if (updates instanceof RayActorException) {
-      LOGGER.debug("LongPollClient failed to connect to host. Shutting down.");
-      running = false;
-      return;
-    }
+  public void processUpdate(Map<KeyType, UpdatedObject> updates) {
 
-    if (updates instanceof RayTaskException) {
-      LOGGER.error("LongPollHost errored", (RayTaskException) updates);
-      return;
-    }
-
-    Map<KeyType, UpdatedObject> updateObjects = (Map<KeyType, UpdatedObject>) updates;
-
-    LOGGER.debug("LongPollClient received updates for keys: {}", updateObjects.keySet());
+    LOGGER.debug("LongPollClient received updates for keys: {}", updates.keySet());
     
-    for (Map.Entry<KeyType, UpdatedObject> entry : updateObjects.entrySet()) {
+    for (Map.Entry<KeyType, UpdatedObject> entry : updates.entrySet()) {
       objectSnapshots.put(entry.getKey(), entry.getValue().getObjectSnapshot());
       snapshotIds.put(entry.getKey(), entry.getValue().getSnapshotId());
-      KeyListener keyListener = keyListeners.get(entry.getKey());
-      keyListener.notifyChanged(entry.getValue().getObjectSnapshot());
+      keyListeners.get(entry.getKey()).notifyChanged(entry.getValue().getObjectSnapshot());
     }
 
+  }
+
+  public Map<KeyType, Integer> getSnapshotIds() {
+    return snapshotIds;
+  }
+
+  public Map<KeyType, Object> getObjectSnapshots() {
+    return objectSnapshots;
   }
 
 }

@@ -13,7 +13,6 @@ import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,11 +47,10 @@ public class RayServeReplica {
 
   private Gauge numProcessingItems;
 
-  @SuppressWarnings("unused")
   private LongPollClient longPollClient;
 
-  public RayServeReplica(Object callable, BackendConfig backendConfig, BaseActorHandle actorHandle)
-      throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+  public RayServeReplica(Object callable, BackendConfig backendConfig,
+      BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
@@ -63,6 +61,7 @@ public class RayServeReplica {
     keyListeners.put(new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
         newConfig -> updateBackendConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
+    this.longPollClient.start();
 
     Map<TagKey, String> backendTags = new HashMap<>();
     backendTags.put(new TagKey("backend"), backendTag);
@@ -88,42 +87,42 @@ public class RayServeReplica {
 
   }
 
-  public Object handleRequest(Query request) throws Throwable {
+  public Object handleRequest(Query request) {
     long startTime = System.currentTimeMillis();
-    LOGGER.debug("Replica {} received request {}", this.replicaTag,
+    LOGGER.debug("Replica {} received request {}", replicaTag,
         request.getMetadata().getRequestId());
 
-    this.numProcessingItems.update(numOngoingRequests.incrementAndGet());
+    numProcessingItems.update(numOngoingRequests.incrementAndGet());
     Object result = invokeSingle(request);
-    this.numOngoingRequests.decrementAndGet();
+    numOngoingRequests.decrementAndGet();
 
     long requestTimeMs = System.currentTimeMillis() - startTime;
-    LOGGER.debug("Replica {} finished request {} in {}ms", this.replicaTag,
+    LOGGER.debug("Replica {} finished request {} in {}ms", replicaTag,
         request.getMetadata().getRequestId(), requestTimeMs);
 
     return result;
   }
 
-  private Object invokeSingle(Query requestItem) throws Throwable {
-    LOGGER.debug("Replica {} started executing request {}", this.replicaTag,
-        requestItem.getMetadata().getRequestId());
+  private Object invokeSingle(Query requestItem) {
 
     long start = System.currentTimeMillis();
     Method methodToCall = null;
-    Object result = null;
     try {
+      LOGGER.debug("Replica {} started executing request {}", replicaTag,
+          requestItem.getMetadata().getRequestId());
+
       methodToCall = getRunnerMethod(requestItem);
-      result = methodToCall.invoke(callable, requestItem.getArgs());
-      this.requestCounter.inc(1.0);
+      Object result = methodToCall.invoke(callable, requestItem.getArgs());
+      requestCounter.inc(1.0);
+      return result;
     } catch (Throwable e) {
-      this.errorCounter.inc(1.0);
-      throw e;
+      errorCounter.inc(1.0);
+      throw new RayServeException(LogUtil.format("Replica {} failed to invoke method {}",
+          replicaTag, methodToCall == null ? "unknown" : methodToCall.getName()), e);
+    } finally {
+      processingLatencyTracker.update(System.currentTimeMillis() - start);
     }
 
-    long latencyMs = System.currentTimeMillis() - start;
-    this.processingLatencyTracker.update(latencyMs);
-
-    return result;
   }
 
   private Method getRunnerMethod(Query query) {
@@ -151,14 +150,14 @@ public class RayServeReplica {
         Thread.sleep(config.getExperimentalGracefulShutdownWaitLoopS() * 1000);
       } catch (InterruptedException e) {
         LOGGER.error("Replica {} was interrupted in sheep when draining pending queries",
-            this.replicaTag);
+            replicaTag);
       }
-      if (this.numOngoingRequests.get() == 0) {
+      if (numOngoingRequests.get() == 0) {
         break;
       } else {
         LOGGER.debug(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
-            this.config.getExperimentalGracefulShutdownWaitLoopS(), this.numOngoingRequests.get());
+            config.getExperimentalGracefulShutdownWaitLoopS(), numOngoingRequests.get());
       }
     }
     Ray.exitActor();
@@ -168,34 +167,29 @@ public class RayServeReplica {
    * Reconfigure user's configuration in the callable object through its reconfigure method.
    * 
    * @param userConfig new user's configuration
-   * @throws IllegalAccessException from {@link Method#invoke(Object, Object...)}}
-   * @throws IllegalArgumentException from {@link Method#invoke(Object, Object...)}}
-   * @throws InvocationTargetException from {@link Method#invoke(Object, Object...)}}
    */
-  private void reconfigure(Object userConfig)
-      throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
-    Method reconfigureMethod = null;
+  private void reconfigure(Object userConfig) {
     try {
-      reconfigureMethod = ReflectUtil.getMethod(callable.getClass(),
-          Constants.BACKEND_RECONFIGURE_METHOD, userConfig);
+      Method reconfigureMethod = ReflectUtil.getMethod(callable.getClass(),
+          Constants.BACKEND_RECONFIGURE_METHOD, userConfig); // TODO cache reconfigureMethod
+      reconfigureMethod.invoke(callable, userConfig);
     } catch (NoSuchMethodException e) {
       throw new RayServeException(
-          LogUtil.format("user_config specified but backend {}  missing {} method", backendTag,
+          LogUtil.format("user_config specified but backend {} missing {} method", backendTag,
               Constants.BACKEND_RECONFIGURE_METHOD));
+    } catch (Throwable e) {
+      throw new RayServeException(
+          LogUtil.format("Backend {} failed to reconfigure user_config {}", backendTag, userConfig),
+          e);
     }
-    reconfigureMethod.invoke(callable, userConfig);
   }
 
   /**
    * Update backend configs.
    * 
    * @param newConfig the new configuration of backend
-   * @throws IllegalAccessException from {@link RayServeReplica#reconfigure(Object)}
-   * @throws IllegalArgumentException from {@link RayServeReplica#reconfigure(Object)}
-   * @throws InvocationTargetException from {@link RayServeReplica#reconfigure(Object)}
    */
-  private void updateBackendConfigs(Object newConfig)
-      throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+  private void updateBackendConfigs(Object newConfig) {
     config = (BackendConfig) newConfig;
     reconfigure(((BackendConfig) newConfig).getUserConfig());
   }

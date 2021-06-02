@@ -48,11 +48,10 @@ public class RayServeWrappedReplica {
    * @param requestMetadata request metadata
    * @param requestArgs the input parameters of the specified method of the object defined by
    *        backendDef.
-   * @throws Throwable if exception happens
+   * @return the result of request being processed
    */
-  public void handle_request(RequestMetadata requestMetadata, Object[] requestArgs)
-      throws Throwable {
-    backend.handleRequest(new Query(requestArgs, requestMetadata));
+  public Object handle_request(RequestMetadata requestMetadata, Object[] requestArgs) {
+    return backend.handleRequest(new Query(requestArgs, requestMetadata));
   }
 
   /**
@@ -64,10 +63,8 @@ public class RayServeWrappedReplica {
 
   /**
    * Wait until there is no request in processing. It is used for stopping replica gracefully.
-   * 
-   * @throws InterruptedException if current thread is interrupted when it is sleeping.
    */
-  public void drain_pending_queries() throws InterruptedException {
+  public void drain_pending_queries() {
     backend.drainPendingQueries();
   }
 

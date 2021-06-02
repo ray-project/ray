@@ -10,4 +10,8 @@ public class RayServeException extends RayException {
     super(message);
   }
 
+  public RayServeException(String message, Throwable cause) {
+    super(message, cause);
+  }
+
 }

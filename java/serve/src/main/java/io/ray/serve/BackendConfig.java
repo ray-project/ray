@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 
@@ -19,7 +20,7 @@ public class BackendConfig implements Serializable {
    * The maximum number of queries that will be sent to a replica of this backend without receiving
    * a response. Defaults to 100.
    */
-  private int maxConcurrentQueries;
+  private int maxConcurrentQueries = 100;
 
   /**
    * Arguments to pass to the reconfigure method of the backend. The reconfigure method is called if
@@ -57,6 +58,7 @@ public class BackendConfig implements Serializable {
   }
 
   public void setMaxConcurrentQueries(int maxConcurrentQueries) {
+    Preconditions.checkArgument(maxConcurrentQueries > 0, "max_concurrent_queries must be > 0");
     this.maxConcurrentQueries = maxConcurrentQueries;
   }
 
