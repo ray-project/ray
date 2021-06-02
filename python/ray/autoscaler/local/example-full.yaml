@@ -23,6 +23,10 @@ docker:
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
+    # You may need to supply a public ip for the head node if you need
+    # to run `ray up` from outside of the Ray cluster's network
+    # (e.g. the cluster is in an AWS VPC and you're starting ray from your laptop)
+    # external_head_ip: YOUR_HEAD_PUBLIC_IP
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
     # Optional when running automatic cluster management on prem. If you use a coordinator server,
     # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
