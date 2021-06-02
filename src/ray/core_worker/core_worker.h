@@ -1036,6 +1036,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
 
+  /// Helper method to fill in object status reply given an object.
+  void PopulateObjectStatus(std::shared_ptr<RayObject> obj,
+                            rpc::GetObjectStatusReply *reply);
+
   ///
   /// Private methods related to task submission.
   ///

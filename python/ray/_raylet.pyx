@@ -1543,16 +1543,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
+            c_string serialized_object_status
         CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
-                c_object_id, &c_owner_address)
+                c_object_id, &c_owner_address, &serialized_object_status)
         return (object_ref,
-                c_owner_address.SerializeAsString())
+                c_owner_address.SerializeAsString(),
+                serialized_object_status)
 
     def deserialize_and_register_object_ref(
             self, const c_string &object_ref_binary,
             ObjectRef outer_object_ref,
             const c_string &serialized_owner_address,
+            const c_string &serialized_object_status,
     ):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_ref_binary)
@@ -1566,7 +1569,8 @@ cdef class CoreWorker:
             .RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
                 c_outer_object_id,
-                c_owner_address))
+                c_owner_address,
+                serialized_object_status))
 
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
