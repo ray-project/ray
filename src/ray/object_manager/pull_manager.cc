@@ -194,6 +194,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
 
     // Activate the next worker request if we have space.
+    // TODO(ekl) consider throttling wait requests based on `num_returns`.
     // TODO(ekl) in unlimited mode, this should trigger spilling on OOM?
     if (num_bytes_being_pulled_ < num_bytes_available_ ||
         RayConfig::instance().plasma_unlimited()) {

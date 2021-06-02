@@ -134,9 +134,6 @@ Status CreateRequestQueue::ProcessRequests() {
           // "normal" allocation.
           FinishRequest(request_it);
         } else {
-          // Raise OOM. In this case, the request will be marked as OOM.
-          // We don't return so that we can process the next entry right away.
-          FinishRequest(request_it);
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
             dump = dump_debug_info_callback_();
