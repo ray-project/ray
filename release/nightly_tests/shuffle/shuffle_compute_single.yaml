@@ -9,7 +9,7 @@ head_node_type:
     instance_type: i3.2xlarge
 
 worker_node_types:
-    - name: worker_node
+    - name: worker_node4
       instance_type: i3.2xlarge
       min_workers: 0
       max_workers: 0

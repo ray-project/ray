@@ -1,3 +1,5 @@
+from collections import Counter
+import json
 import os
 import time
 
@@ -7,6 +9,28 @@ import pickle
 from ray import tune
 
 from ray.tune.durable_trainable import DurableTrainable
+
+
+class ProgressCallback(tune.callback.Callback):
+    def __init__(self):
+        self.last_update = 0
+        self.update_interval = 60
+
+    def on_step_end(self, iteration, trials, **kwargs):
+        if time.time() - self.last_update > self.update_interval:
+            now = time.time()
+            result = {
+                "last_update": now,
+                "iteration": iteration,
+                "trial_states": dict(
+                    Counter([trial.status for trial in trials])),
+            }
+            test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                              "/tmp/release_test.json")
+            with open(test_output_json, "wt") as f:
+                json.dump(result, f)
+
+            self.last_update = now
 
 
 class TestDurableTrainable(DurableTrainable):
@@ -124,16 +148,19 @@ def timed_tune_run(name: str,
             AWS_SESSION_TOKEN = aws_session
 
             def setup_env(self):
-                os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
-                os.environ[
-                    "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
-                os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
+                if self.AWS_ACCESS_KEY_ID:
+                    os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
+                if self.AWS_SECRET_ACCESS_KEY:
+                    os.environ[
+                        "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
+                if self.AWS_SESSION_TOKEN:
+                    os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
 
         _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
 
     start_time = time.monotonic()
-    tune.run(
+    analysis = tune.run(
         _train,
         config=config,
         num_samples=num_samples,
@@ -141,14 +168,26 @@ def timed_tune_run(name: str,
         **run_kwargs)
     time_taken = time.monotonic() - start_time
 
-    assert time_taken < max_runtime, \
-        f"The {name} test took {time_taken:.2f} seconds, but should not " \
-        f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n" \
-        f"--- FAILED: {name.upper()} ::: " \
-        f"{time_taken:.2f} > {max_runtime:.2f} ---"
+    result = {
+        "time_taken": time_taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials])),
+        "last_update": time.time()
+    }
 
-    print(f"The {name} test took {time_taken:.2f} seconds, which "
-          f"is below the budget of {max_runtime:.2f} seconds. "
-          f"Test successful. \n\n"
-          f"--- PASSED: {name.upper()} ::: "
-          f"{time_taken:.2f} <= {max_runtime:.2f} ---")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/tune_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    if time_taken > max_runtime:
+        print(f"The {name} test took {time_taken:.2f} seconds, but should not "
+              f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n"
+              f"--- FAILED: {name.upper()} ::: "
+              f"{time_taken:.2f} > {max_runtime:.2f} ---")
+    else:
+        print(f"The {name} test took {time_taken:.2f} seconds, which "
+              f"is below the budget of {max_runtime:.2f} seconds. "
+              f"Test successful. \n\n"
+              f"--- PASSED: {name.upper()} ::: "
+              f"{time_taken:.2f} <= {max_runtime:.2f} ---")
