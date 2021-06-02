@@ -785,7 +785,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(core_worker.Put(buffers[i], {}, &ids[i]));
   }
-  
+
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Get(ids, -1, &results));

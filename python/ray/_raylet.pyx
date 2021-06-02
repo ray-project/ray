@@ -246,16 +246,16 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             storage.
     """
     primary_node_id = None if c_object_location.GetPrimaryNodeID().IsNil() \
-        else c_object_location.GetPrimaryNodeID().Hex()
+        else c_object_location.GetPrimaryNodeID().Hex().decode("ascii")
     object_size = c_object_location.GetObjectSize()
     node_ids = []
     c_node_ids = c_object_location.GetNodeIDs()
     for i in range(c_node_ids.size()):
-        node_ids.append(c_node_ids[i].Hex())
+        node_ids.append(c_node_ids[i].Hex().decode("ascii"))
     is_spilled = c_object_location.IsSpilled()
     spilled_url = c_object_location.GetSpilledURL() if is_spilled else None
     spilled_node_id = None if c_object_location.GetSpilledNodeID().IsNil() \
-        else c_object_location.GetSpilledNodeID().Hex()
+        else c_object_location.GetSpilledNodeID().Hex().decode("ascii")
     return {
         "primary_node_id": primary_node_id,
         "object_size": object_size,
