@@ -24,8 +24,8 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
         config = prepare_manual(config)
     # Presence of head_node and worker_nodes fields triggers legacy config
     # processing later in the bootstrap process.
-    config["head_node"] = {"placeholder":{}}
-    config["worker_nodes"] = {"placeholder":{}}
+    config["head_node"] = {"placeholder": {}}
+    config["worker_nodes"] = {"placeholder": {}}
     return config
 
 

@@ -89,7 +89,7 @@ rsync_exclude: []
 rsync_filter: []
 setup_commands: []
 worker_setup_commands: []
-"""
+"""  # noqa E501
 
 
 class AutoscalingConfigTest(unittest.TestCase):
@@ -241,12 +241,10 @@ class AutoscalingConfigTest(unittest.TestCase):
         case of bootstrapping a cluster at a static set of ips.
         """
         local_config_path = os.path.join(
-            RAY_PATH,
-            "autoscaler/local/example-minimal-manual.yaml")
+            RAY_PATH, "autoscaler/local/example-minimal-manual.yaml")
         config = yaml.safe_load(open(local_config_path).read())
         config["provider"]["head_ip"] = "xxx.yyy"
-        config["provider"]["worker_ips"] = ["aaa.bbb",
-                                            "ccc.ddd", "eee.fff"]
+        config["provider"]["worker_ips"] = ["aaa.bbb", "ccc.ddd", "eee.fff"]
         config["auth"]["ssh_user"] = "user"
         config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
         prepared_config = prepare_config(config)
@@ -258,8 +256,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert prepared_config == expected_prepared
         synced_config = local_config.sync_state(prepared_config)
         state_path = "/tmp/cluster-minimal-manual.state"
-        assert (synced_config["file_mounts"]
-                == {state_path: state_path})
+        assert (synced_config["file_mounts"] == {state_path: state_path})
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
