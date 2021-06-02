@@ -1004,8 +1004,7 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   return owner_address;
 }
 
-void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
-                                  rpc::Address *owner_address,
+void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
                                   std::string *object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
@@ -1024,9 +1023,10 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
   *object_status = object_status.SerializeAsString();
 }
 
-void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
-    const ObjectID &object_id, const ObjectID &outer_object_id,
-    const rpc::Address &owner_address, const std::string &object_status) {
+void CoreWorker::RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
+                                                       const ObjectID &outer_object_id,
+                                                       const rpc::Address &owner_address,
+                                                       const std::string &object_status) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
@@ -2359,8 +2359,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   RemoveLocalReference(object_id);
 }
 
-void CoreWorker::PopulateObjectStatus(
-      std::shared_ptr<RayObject> obj, rpc::GetObjectStatusReply *reply) {
+void CoreWorker::PopulateObjectStatus(std::shared_ptr<RayObject> obj,
+                                      rpc::GetObjectStatusReply *reply) {
   // If obj is the concrete object value, it is small, so we
   // send the object back to the caller in the GetObjectStatus
   // reply, bypassing a Plasma put and object transfer. If obj
