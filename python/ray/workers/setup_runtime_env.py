@@ -54,7 +54,7 @@ def setup(input_args):
             else:
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
-                                             [current_ray_pip_specifier()])
+                                             extra_pip_dependencies)
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
                 json.dumps(conda_dict,
