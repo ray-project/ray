@@ -57,11 +57,12 @@ class TestAgentParams:
         frameworks: Optional[List[Framework]] = None,
         n_iter=2,
         threshold=1.0,
+        version=1,
     ) -> List["TestAgentParams"]:
         return cls.for_frameworks(
             algorithm=algorithm,
             config_updates=config_updates,
-            env="CartPole-v1",
+            env=f"CartPole-v{version}",
             frameworks=frameworks,
             n_iter=n_iter,
             threshold=threshold,
@@ -343,6 +344,58 @@ test_convergence_params: List[Tuple[Algorithm, dict, str, Framework, int, float]
             n_iter=100,
             threshold=140.0,
             frameworks=[Framework.TensorFlow],
+        ),
+        # This is here for reference only of how to run vanilla DQN
+        # in offline mode in a test. Keep in mind that DQN could hit
+        # the threshold just by luck by being overconfident (extreme
+        # Q-values) for some state-action pairs. A high threshold or
+        # a strict evaluation criteria is required to uncover this issue.
+        # With a high threshold, the reward performance will be high reward
+        # with an extreme variance at the begining, after it will degrade
+        # over time.
+        # TestAgentParams.for_cart_pole(
+        #     algorithm=DiscreteActionSpaceAlgorithm.DQN,
+        #     config_updates={
+        #         # Common Configs
+        #         "num_workers": 0,
+        #         "input": "tests/data/cartpole/output-*.json",
+        #         "input_evaluation": [],
+        #         "evaluation_config": {
+        #             "input": "sampler",
+        #             "explore": False,
+        #         },
+        #         "evaluation_interval": 1,
+        #         "evaluation_num_episodes": 10,
+        #         "evaluation_num_workers": 1,
+        #         "log_level": logging.ERROR,
+        #     },
+        #     n_iter=500, #25, #3000, #500, #100, #25,  # 250,
+        #     threshold=150.0,
+        #     frameworks=[Framework.TensorFlow],
+        #     version=0,
+        # ),
+        TestAgentParams.for_cart_pole(
+            algorithm=DiscreteActionSpaceAlgorithm.CQL_DQN,
+            config_updates={
+                # Common Configs
+                "num_workers": 0,
+                "input": "tests/data/cartpole/output-*.json",
+                "input_evaluation": [],
+                "evaluation_config": {
+                    "input": "sampler",
+                    "explore": False,
+                },
+                "evaluation_interval": 1,
+                "evaluation_num_episodes": 10,
+                "evaluation_num_workers": 1,
+                "log_level": logging.WARNING,
+                # CQL Configs
+                "min_q_weight": 1.0,
+            },
+            n_iter=500, #25,  # 3000, #500, #100, #25,  # 250,
+            threshold=150.0,
+            frameworks=[Framework.TensorFlow],
+            version=0,
         ),
     )
 ]

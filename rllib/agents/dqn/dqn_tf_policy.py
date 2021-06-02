@@ -1,6 +1,6 @@
 """TensorFlow policy class used for DQN"""
 
-from typing import Dict
+from typing import Any, Dict
 
 import gym
 from gym.spaces import Discrete, Box
@@ -36,6 +36,7 @@ PRIO_WEIGHTS = "weights"
 
 class QLoss:
     def __init__(self,
+                 q_t: TensorType,
                  q_t_selected: TensorType,
                  q_logits_t_selected: TensorType,
                  q_tp1_best: TensorType,
@@ -43,11 +44,13 @@ class QLoss:
                  importance_weights: TensorType,
                  rewards: TensorType,
                  done_mask: TensorType,
-                 gamma: float = 0.99,
-                 n_step: int = 1,
-                 num_atoms: int = 1,
-                 v_min: float = -10.0,
-                 v_max: float = 10.0):
+                 config: Dict[str, Any],
+                 ):
+        gamma = config.get("gamma", 0.99)
+        n_step = config.get("n_step", 1)
+        num_atoms = config.get("num_atoms", 1)
+        v_min = config.get("v_min", -10.0)
+        v_max = config.get("v_max", 10.0)
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
@@ -226,7 +229,8 @@ def get_distribution_inputs_and_class(policy: Policy,
 
 
 def build_q_losses(policy: Policy, model, _,
-                   train_batch: SampleBatch) -> TensorType:
+                   train_batch: SampleBatch,
+                   q_loss_type=QLoss) -> TensorType:
     """Constructs the loss for DQNTFPolicy.
 
     Args:
@@ -283,12 +287,11 @@ def build_q_losses(policy: Policy, model, _,
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = QLoss(
-        q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
+    policy.q_loss = q_loss_type(
+        q_t, q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
         tf.cast(train_batch[SampleBatch.DONES],
-                tf.float32), config["gamma"], config["n_step"],
-        config["num_atoms"], config["v_min"], config["v_max"])
+                tf.float32), config)
 
     return policy.q_loss.loss
 

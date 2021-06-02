@@ -117,9 +117,9 @@ def q_values_repeat(model, obs, actions, twin=False):
     num_repeat = action_shape // obs_shape
     obs_temp = tf.tile(obs, [num_repeat, 1])
     if twin:
-        preds = model.get_q_values(obs_temp, actions)
-    else:
         preds = model.get_twin_q_values(obs_temp, actions)
+    else:
+        preds = model.get_q_values(obs_temp, actions)
     preds = tf.reshape(preds, [obs_shape, num_repeat, 1])
     return preds
 
@@ -360,20 +360,6 @@ def cql_setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
 def cql_setup_mid_mixins(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
-    """Call mixin classes' constructors before Policy's loss initialization.
-
-    Adds the `compute_td_error` method to the given policy.
-    Calling `compute_td_error` with batch data will re-calculate the loss
-    on that batch AND return the per-batch-item TD-error for prioritized
-    replay buffer record weight updating (in case a prioritized replay buffer
-    is used).
-
-    Args:
-        policy (Policy): The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
-    """
     action_low = policy.model.action_space.low[0]
     action_high = policy.model.action_space.high[0]
     policy._unif_dist = tfp.distributions.Uniform(action_low, action_high,

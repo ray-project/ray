@@ -19,7 +19,8 @@ from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.env.wrappers.moab_wrapper import MOAB_MOVE_TO_CENTER_ENV_NAME, \
     MoabMoveToCenterWrapper, MOAB_MOVE_TO_CENTER_PARTIAL_OBSERVABLE_ENV_NAME, \
     MoabMoveToCenterPartialObservableWrapper, \
-    MOAB_MOVE_TO_CENTER_AVOID_OBSTACLE_ENV_NAME, MoabMoveToCenterAvoidObstacleWrapper
+    MOAB_MOVE_TO_CENTER_AVOID_OBSTACLE_ENV_NAME, MoabMoveToCenterAvoidObstacleWrapper, \
+    MOAB_MOVE_TO_CENTER_DISCRTE_ENV_NAME, MoabMoveToCenterDiscreteWrapper
 from ray.rllib.evaluation import SampleBatchBuilder
 from ray.rllib.offline import JsonWriter, IOContext
 from ray.tune import Callback
@@ -181,6 +182,10 @@ class _ProgressReport:
         log.error(message, exc_info=ex)
         self._errors.append((message, ex))
 
+    @property
+    def has_errors(self):
+        return len(self._errors) > 0
+
     def save(self):
         now = datetime.now()
         now_str = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -195,6 +200,7 @@ OMISSION_COLUMN_NAME = "exclude"
 
 ENVS_WITH_FIELD_NAMES = {
     MOAB_MOVE_TO_CENTER_ENV_NAME: MoabMoveToCenterWrapper,
+    MOAB_MOVE_TO_CENTER_DISCRTE_ENV_NAME: MoabMoveToCenterDiscreteWrapper,
     MOAB_MOVE_TO_CENTER_PARTIAL_OBSERVABLE_ENV_NAME: MoabMoveToCenterPartialObservableWrapper,
     MOAB_MOVE_TO_CENTER_AVOID_OBSTACLE_ENV_NAME: MoabMoveToCenterAvoidObstacleWrapper,
 }
@@ -516,6 +522,11 @@ class _H5Sync(_DataSync):
                         shape.append(len(sub_fields))
                         maxshape.append(len(sub_fields))
                         dtype = get_scalar_type(i, first_cell[sub_fields[0]])
+                    else:
+                        self._converter_by_index[i] = None
+                        # this case is about a column type that we don't support
+                        # so we skip this column
+                        self._columns_by_index.pop(i)
                 else:
                     dtype = get_scalar_type(i, first_cell)
 
@@ -556,6 +567,10 @@ class _H5Sync(_DataSync):
                             if sub_col in field:
                                 sub_fields.append(field[sub_col])
                         field = sub_fields
+                    else:
+                        # this case is about a column type that we don't support
+                        # and it should have been skipped, we generate an error
+                        raise Exception("Unknown column type")
                 value = (field if not self._converter_by_index[i] else
                          self._converter_by_index[i](field))
                 self._episode_data[meta_column].append(value)
@@ -780,9 +795,9 @@ def run(args, parser):
                                 and episode_index <= (episodes_count / 2)):
                                 mr_dataset.process_episode(episode_index, episode)
                     except Exception as ex:
-                        log.error("Error parsing rollouts file!!!", exc_info=ex)
+                        reporter.report_error("Error parsing rollouts file!!!", ex=ex)
                 else:
-                    log.error("No rollouts data found!!!")
+                    reporter.report_error("No rollouts data found!!!")
         reporter.report(f"Rollouts for Policy for level {policy_name} where save in:")
         reporter.report(f"- Shelve: {file_name}")
         reporter.report(f"- CSV: {current_dataset.csv_sync.file_name}")
@@ -809,7 +824,10 @@ def run(args, parser):
     if mr_dataset:
         mr_dataset.close()
 
-    reporter.report("Datasets generated!!!")
+    if not reporter.has_errors:
+        reporter.report("Datasets generated!!!")
+    else:
+        reporter.report("Datasets generation failed!!!")
     reporter.report("Datasets stats:")
     stats_header = OrderedDict()
     stats_header["Dataset"] = "s"

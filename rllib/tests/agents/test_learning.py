@@ -47,20 +47,34 @@ def test_algorithms_can_converge_with_different_frameworks(
     """
     results = None
     episode_reward_mean = -float("inf")
-    all_rewards = []
+    all_rewards_mean = []
+    all_rewards_max = []
+    all_rewards_min = []
     for i in range(n_iter):
         results = trainer.train()
         episode_reward_mean = (results["evaluation"]["episode_reward_mean"]
                                if ("evaluation_interval" in config_overrides
                                    and config_overrides["evaluation_interval"])
                                else results["episode_reward_mean"])
-        logger.warning(f"Train call {i} with reward {episode_reward_mean} and "
-                       f"Metrics:\n{results}")
-        print(f"Train call {i} with reward {episode_reward_mean} and "
-              f"Metrics:\n{results}")
-        all_rewards.append(episode_reward_mean)
-    logger.warning(f"All rewards:\n{all_rewards}")
-    print(f"All rewards:\n{all_rewards}")
+        logger.warning(f"Train call {i} with reward {episode_reward_mean}")
+        print(f"Train call {i} with reward {episode_reward_mean}")
+        all_rewards_mean.append(episode_reward_mean)
+        episode_reward_max = (results["evaluation"]["episode_reward_max"]
+                               if ("evaluation_interval" in config_overrides
+                                   and config_overrides["evaluation_interval"])
+                               else results["episode_reward_max"])
+        all_rewards_max.append(episode_reward_max)
+        episode_reward_min = (results["evaluation"]["episode_reward_min"]
+                              if ("evaluation_interval" in config_overrides
+                                  and config_overrides["evaluation_interval"])
+                              else results["episode_reward_min"])
+        all_rewards_min.append(episode_reward_min)
+    logger.warning(f"All rewards mean:\n{all_rewards_mean}")
+    print(f"All rewards mean:\n{all_rewards_mean}")
+    logger.warning(f"All rewards min:\n{all_rewards_min}")
+    print(f"All rewards min:\n{all_rewards_min}")
+    logger.warning(f"All rewards max:\n{all_rewards_max}")
+    print(f"All rewards max:\n{all_rewards_max}")
     if n_iter >= 1:
         assert results is not None
     if results:

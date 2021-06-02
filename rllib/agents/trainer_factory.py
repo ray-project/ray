@@ -42,6 +42,7 @@ class DiscreteActionSpaceAlgorithm(Algorithm):
     SAC = (sac.SACTrainer, sac.DEFAULT_CONFIG)
     CQL_SAC = (cql.CQLSACTrainer, cql.CQLSAC_DEFAULT_CONFIG)
     CQL_APEX_SAC = (cql.CQLApexSACTrainer, cql.CQLAPEXSAC_DEFAULT_CONFIG)
+    CQL_DQN = (cql.CQLDQNTrainer, cql.CQLDQN_DEFAULT_CONFIG)
 
 
 class ContinuousActionSpaceAlgorithm(Algorithm):
