@@ -552,7 +552,8 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
-def test_conda_input_filepath(tmp_path):
+@pytest.mark.parametrize("use_working_dir", [True, False])
+def test_conda_input_filepath(use_working_dir, tmp_path):
     conda_dict = {
         "dependencies": [
             "pip", {
@@ -569,7 +570,13 @@ def test_conda_input_filepath(tmp_path):
 
     p.write_text(yaml.dump(conda_dict))
 
-    runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
+    if use_working_dir:
+        runtime_env_dict = RuntimeEnvDict({
+            "working_dir": d,
+            "conda": "environment.yml"
+        })
+    else:
+        runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
 
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
