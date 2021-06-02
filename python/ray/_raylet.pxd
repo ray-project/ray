@@ -104,6 +104,7 @@ cdef class CoreWorker:
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            c_bool created_by_worker,
                             owner_address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,

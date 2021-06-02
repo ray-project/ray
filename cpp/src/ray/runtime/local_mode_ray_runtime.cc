@@ -10,8 +10,7 @@
 namespace ray {
 namespace api {
 
-LocalModeRayRuntime::LocalModeRayRuntime(std::shared_ptr<RayConfig> config) {
-  config_ = config;
+LocalModeRayRuntime::LocalModeRayRuntime() {
   worker_ = std::make_unique<WorkerContext>(
       ray::WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()), JobID::Nil());
   object_store_ = std::unique_ptr<ObjectStore>(new LocalModeObjectStore(*this));

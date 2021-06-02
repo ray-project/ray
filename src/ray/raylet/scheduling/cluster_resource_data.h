@@ -59,8 +59,8 @@ struct ResourceRequest {
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
-  /// Prefernces are given to the nodes with the lowest number of violations.
-  bool soft;
+  /// Preferences are given to the nodes with the lowest number of violations.
+  bool soft = false;
 };
 
 /// Resource request, including resource ID. This is used for custom resources.
