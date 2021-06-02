@@ -53,6 +53,7 @@ class CreateRequestQueueTest : public ::testing::Test {
             /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; },
             /*get_time=*/[&]() { return current_time_ns_; },
+            /*debug_dump_handleR*/nullptr,
             /*plasma_unlimited=*/plasma_unlimited) {}
 
   void AssertNoLeaks() {
