@@ -35,11 +35,12 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
   if (object_id.IsNil()) {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
-        out_object_id, &data);
+        out_object_id, &data, /*created_by_worker=*/true);
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
-        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data);
+        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data,
+        /*created_by_worker=*/true);
     *out_object_id = object_id;
   }
   if (!status.ok()) {
