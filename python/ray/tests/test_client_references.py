@@ -12,7 +12,6 @@ from ray.core.generated.gcs_pb2 import ActorTableData
 from ray._raylet import ActorID, ObjectRef
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_object_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
@@ -37,7 +36,6 @@ def test_client_object_ref_basics(ray_start_regular):
         assert not ClientObjectRef(id).is_nil()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_actor_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
@@ -161,11 +159,11 @@ def test_delete_ref_on_object_deletion(ray_start_regular):
         wait_for_condition(server_object_ref_count(server, 1), timeout=5)
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "do_init": False
-    }], indirect=True)
+@pytest.mark.parametrize("ray_start_cluster", [{
+    "num_nodes": 1,
+    "do_init": False
+}],
+                         indirect=True)
 def test_delete_actor_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:
