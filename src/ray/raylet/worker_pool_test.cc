@@ -318,7 +318,6 @@ class WorkerPoolTest : public ::testing::Test {
         }
         worker_pool_->PushWorker(CreateWorker(it->first, Language::PYTHON, JOB_ID,
                                               rpc::WorkerType::WORKER, runtime_env_hash));
-      } else {
         pushedProcesses_[it->first] = it->second;
       }
     }
