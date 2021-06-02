@@ -332,6 +332,10 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # input config to the default, which runs env rollouts.
     kwargs = kwargs.copy()
     del kwargs["input_creator"]
+    # Since the server also acts as an output writer, we might have to reset
+    # the output config to the default, i.e. "output": None, otherwise a
+    # local rollout worker might write to an unknown output directory
+    del kwargs["output_creator"]
     logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     real_env_creator = kwargs["env_creator"]
     kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
