@@ -155,7 +155,8 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   CheckClusterAvailableResources(node_one_id, cpu_resource, node_cpu_num);
   CheckClusterAvailableResources(node_tow_id, cpu_resource, node_cpu_num);
 
-  // Mock a request that only has one required resource but bigger than the maximum resource.
+  // Mock a request that only has one required resource but bigger than the maximum
+  // resource.
   required_resources_list.clear();
   resource_map.clear();
   resource_map[cpu_resource] = 50;

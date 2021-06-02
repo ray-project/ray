@@ -502,8 +502,7 @@ TEST_F(GcsPlacementGroupManagerTest,
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
 }
 
-TEST_F(GcsPlacementGroupManagerTest,
-      TestSchedulingCanceledWhenPgIsInfeasible) {
+TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
   auto request = Mocker::GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,

@@ -98,7 +98,9 @@ class GcsResourceScheduler {
   /// \param node_filter_func This function is used to filter candidate nodes. If a node
   /// returns true, it can be used for scheduling. By default, all nodes in the cluster
   /// can be used for scheduling.
-  /// \return `SchedulingResult`, including the selected nodes if schedule successful, otherwise, it will return an empty vector and a flag to indicate whether this request can be retry or not.
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
   SchedulingResult Schedule(
       const std::vector<ResourceSet> &required_resources_list,
       const SchedulingType &scheduling_type,
@@ -129,7 +131,9 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return `SchedulingResult`, including the selected nodes if schedule successful, otherwise, it will return an empty vector and a flag to indicate whether this request can be retry or not.
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
   SchedulingResult StrictSpreadSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
@@ -138,7 +142,9 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return `SchedulingResult`, including the selected nodes if schedule successful, otherwise, it will return an empty vector and a flag to indicate whether this request can be retry or not.
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
   SchedulingResult SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
                                   const absl::flat_hash_set<NodeID> &candidate_nodes);
 
@@ -146,7 +152,9 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return `SchedulingResult`, including the selected nodes if schedule successful, otherwise, it will return an empty vector and a flag to indicate whether this request can be retry or not.
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
   SchedulingResult StrictPackSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
@@ -155,7 +163,9 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return `SchedulingResult`, including the selected nodes if schedule successful, otherwise, it will return an empty vector and a flag to indicate whether this request can be retry or not.
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
   SchedulingResult PackSchedule(const std::vector<ResourceSet> &required_resources_list,
                                 const absl::flat_hash_set<NodeID> &candidate_nodes);
 

@@ -143,8 +143,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &strategy = placement_group->GetStrategy();
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
-                << ", id: " << placement_group->GetPlacementGroupID()
-                << ", bundles size = " << bundles.size();
+                 << ", id: " << placement_group->GetPlacementGroupID()
+                 << ", bundles size = " << bundles.size();
   auto scheduling_result = scheduler_strategies_[strategy]->Schedule(
       bundles, GetScheduleContext(placement_group->GetPlacementGroupID()),
       gcs_resource_scheduler_);
@@ -154,8 +154,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   if (result_status != SUCCESSFUL) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
-                  << ", id: " << placement_group->GetPlacementGroupID()
-                  << ", because current reource can't satisfied this required resource.";
+                   << ", id: " << placement_group->GetPlacementGroupID()
+                   << ", because current reource can't satisfied this required resource.";
     const bool &retryable = (result_status == FAILED_BUT_RETRYABLE) ? true : false;
     failure_callback(placement_group, retryable);
     return;

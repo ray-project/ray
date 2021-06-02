@@ -140,26 +140,29 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                          const std::unique_ptr<ScheduleContext> &context,
-                          GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                          const std::unique_ptr<ScheduleContext> &context,
-                          GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                          const std::unique_ptr<ScheduleContext> &context,
-                          GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
@@ -167,9 +170,10 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleResult Schedule(const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                          const std::unique_ptr<ScheduleContext> &context,
-                          GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 enum class LeasingState {
