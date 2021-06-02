@@ -171,6 +171,10 @@ RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 
+// The grace period before a worker release resources on blocking ray.get().
+// See https://github.com/ray-project/ray/issues/16025 for more details.
+RAY_CONFIG(int64_t, release_resources_timeout_milliseconds, 10)
+
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
