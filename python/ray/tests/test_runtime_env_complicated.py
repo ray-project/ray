@@ -414,7 +414,7 @@ def test_conda_create_ray_client(call_ray_start):
     indirect=True)
 def test_client_working_dir_filepath(call_ray_start, tmp_path):
     """Test that pip and conda relative filepaths work with working_dir."""
-    
+
     working_dir = tmp_path / "requirements"
     working_dir.mkdir()
 
