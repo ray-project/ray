@@ -156,8 +156,8 @@ TEST_F(PlasmaUnlimitedCreateRequestQueueTest, TestFallbackAllocator) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
 
   // Neither request was fulfilled.
   ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
