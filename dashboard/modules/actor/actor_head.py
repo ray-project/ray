@@ -57,6 +57,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             self._stubs[node_id] = stub
 
     async def _update_actors(self):
+        # TODO(fyrestone): Refactor code for updating actor / node / job.
         # Subscribe actor channel.
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
