@@ -16,6 +16,8 @@ from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
+from ray.tune.utils.release_test_util import ProgressCallback
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--smoke-test",
@@ -123,7 +125,10 @@ analysis = tune.run(
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    callbacks=[FailureInjectorCallback(time_between_checks=90)],
+    callbacks=[
+        FailureInjectorCallback(time_between_checks=90),
+        ProgressCallback()
+    ],
     queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 

@@ -88,7 +88,11 @@ class CifarTrainingOperator(TrainingOperator):
             train_loader=train_loader, validation_loader=validation_loader)
 
 
-def train_cifar(num_workers, use_gpu, num_epochs, fp16=False, test_mode=False):
+def train_cifar(test_mode=False,
+                num_workers=1,
+                use_gpu=False,
+                num_epochs=5,
+                fp16=False):
     trainer1 = TorchTrainer(
         training_operator_cls=CifarTrainingOperator,
         initialization_hook=initialization_hook,
@@ -126,6 +130,13 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for connecting to the Ray cluster")
     parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
@@ -152,12 +163,16 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-    num_cpus = 4 if args.smoke_test else None
-    ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)
+
+    if args.server_address:
+        ray.util.connect(args.server_address)
+    else:
+        num_cpus = 4 if args.smoke_test else None
+        ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)
 
     train_cifar(
+        test_mode=args.smoke_test,
         num_workers=args.num_workers,
         use_gpu=args.use_gpu,
-        fp16=args.fp16,
         num_epochs=args.num_epochs,
-        test_mode=args.smoke_test)
+        fp16=args.fp16)

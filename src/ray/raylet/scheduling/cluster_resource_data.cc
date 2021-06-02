@@ -67,10 +67,6 @@ TaskRequest ResourceMapToTaskRequest(
 
   task_request.predefined_resources.resize(PredefinedResources_MAX);
   task_request.custom_resources.resize(resource_map.size());
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    task_request.predefined_resources[0].demand = 0;
-    task_request.predefined_resources[0].soft = false;
-  }
 
   size_t i = 0;
   for (auto const &resource : resource_map) {
@@ -86,7 +82,6 @@ TaskRequest ResourceMapToTaskRequest(
       string_to_int_map.Insert(resource.first);
       task_request.custom_resources[i].id = string_to_int_map.Get(resource.first);
       task_request.custom_resources[i].demand = resource.second;
-      task_request.custom_resources[i].soft = false;
       i++;
     }
   }
