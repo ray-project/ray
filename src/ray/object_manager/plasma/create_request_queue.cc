@@ -109,9 +109,11 @@ Status CreateRequestQueue::ProcessRequests() {
       if (oom_start_time_ns_ == -1) {
         oom_start_time_ns_ = now;
       }
-      // Use a faster timeout in unlimited allocation mode to avoid excess latency.
-      auto grace_period_ns =
-          RayConfig::instance().plasma_unlimited() ? 2e9 : oom_grace_period_ns_;
+      auto grace_period_ns = oom_grace_period_ns_;
+      if (plasma_unlimited_) {
+        // Use a faster timeout in unlimited allocation mode to avoid excess latency.
+        grace_period_ns = std::min(grace_period_ns, (int64_t)2e9);
+      }
       if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
@@ -121,7 +123,7 @@ Status CreateRequestQueue::ProcessRequests() {
         // actually freeing up in the object store.
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
-        if (RayConfig::instance().plasma_unlimited()) {
+        if (plasma_unlimited_) {
           // Trigger the fallback allocator.
           RAY_CHECK_OK(ProcessRequest(*request_it, /*fallback_allocator=*/true));
           // Note that we don't reset oom_start_time_ns_ until we complete a

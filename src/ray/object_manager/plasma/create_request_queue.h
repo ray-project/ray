@@ -37,11 +37,13 @@ class CreateRequestQueue {
   CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
-                     std::function<int64_t()> get_time)
+                     std::function<int64_t()> get_time,
+                     bool plasma_unlimited = RayConfig::instance().plasma_unlimited())
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        get_time_(get_time) {}
+        get_time_(get_time),
+        plasma_unlimited_(plasma_unlimited) {}
 
   /// Add a request to the queue. The caller should use the returned request ID
   /// to later get the result of the request.
@@ -185,6 +187,9 @@ class CreateRequestQueue {
 
   /// The time OOM timer first starts. It becomes -1 upon every creation success.
   int64_t oom_start_time_ns_ = -1;
+
+  /// Whether to use the fallback allocator when out of memory.
+  bool plasma_unlimited_;
 
   friend class CreateRequestQueueTest;
 };

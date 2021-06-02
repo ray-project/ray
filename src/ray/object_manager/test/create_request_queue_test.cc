@@ -45,14 +45,15 @@ class MockClient : public ClientInterface {
 
 class CreateRequestQueueTest : public ::testing::Test {
  public:
-  CreateRequestQueueTest()
+  CreateRequestQueueTest(bool plasma_unlimited = false)
       : oom_grace_period_s_(1),
         current_time_ns_(0),
         queue_(
             /*oom_grace_period_s=*/oom_grace_period_s_,
             /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; },
-            /*get_time=*/[&]() { return current_time_ns_; }) {}
+            /*get_time=*/[&]() { return current_time_ns_; },
+            /*plasma_unlimited=*/plasma_unlimited) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(queue_.queue_.empty());
@@ -65,6 +66,11 @@ class CreateRequestQueueTest : public ::testing::Test {
   int64_t current_time_ns_;
   CreateRequestQueue queue_;
   int num_global_gc_ = 0;
+};
+
+class PlasmaUnlimitedCreateRequestQueueTest : public CreateRequestQueueTest {
+ public:
+  PlasmaUnlimitedCreateRequestQueueTest() : CreateRequestQueueTest(true) {}
 };
 
 TEST_F(CreateRequestQueueTest, TestSimple) {
@@ -131,6 +137,42 @@ TEST_F(CreateRequestQueueTest, TestOom) {
 
   // Both requests fulfilled.
   ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OutOfMemory);
+  ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
+
+  AssertNoLeaks();
+}
+
+TEST_F(PlasmaUnlimitedCreateRequestQueueTest, TestFallbackAllocator) {
+  int num_fallbacks = 0;
+  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+    if (fallback) {
+      result->data_size = 1234;
+      num_fallbacks += 1;
+      return PlasmaError::OK;
+    } else {
+      return PlasmaError::OutOfMemory;
+    }
+  };
+
+  auto client = std::make_shared<MockClient>();
+  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
+
+  // Neither request was fulfilled.
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
+  ASSERT_EQ(num_fallbacks, 0);
+
+  // Grace period is done. The first request should reply with OOM and the second
+  // request should also be served.
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
+  ASSERT_TRUE(queue_.ProcessRequests().ok());
+  ASSERT_EQ(num_fallbacks, 2);
+
+  // Both requests fulfilled.
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OK);
   ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
 
   AssertNoLeaks();
