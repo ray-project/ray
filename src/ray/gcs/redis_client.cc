@@ -25,6 +25,30 @@ namespace ray {
 
 namespace gcs {
 
+static int DoGetNextJobID(RedisContextWrapper *context) {
+  int num_attempts = 0;
+  redisReply *reply = nullptr;
+  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
+    // Try to `INCR` "JobCounter" key to generate next job id in integer representation.
+    reply = context->Command("INCR JobCounter");
+    if (reply != nullptr && reply->type != REDIS_REPLY_NIL) {
+      break;
+    }
+    // Sleep for a little, and try again if the entry isn't there yet. */
+    freeReplyObject(reply);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
+    num_attempts++;
+  }
+  RAY_CHECK(reply);
+  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
+      << "No entry found for JobCounter";
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER)
+      << "Expected integer, found Redis type " << reply->type << " for JobCounter";
+  freeReplyObject(reply);
+  return reply->integer;
+}
+
 static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
                            std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
@@ -189,6 +213,11 @@ std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &sh
   static std::hash<std::string> hash;
   size_t index = hash(shard_key) % shard_contexts_.size();
   return shard_contexts_[index];
+}
+
+int RedisClient::GetNextJobID() {
+  RAY_CHECK(primary_context_);
+  return DoGetNextJobID(primary_context_->sync_context());
 }
 
 }  // namespace gcs

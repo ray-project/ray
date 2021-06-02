@@ -64,6 +64,8 @@ class RedisStoreClient : public StoreClient {
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
+  int GetNextJobID() override;
+
  private:
   /// \class RedisScanner
   /// This class is used to scan data from Redis.

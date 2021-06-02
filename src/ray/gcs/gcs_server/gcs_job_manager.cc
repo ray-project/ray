@@ -162,6 +162,13 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+                                       rpc::GetNextJobIDReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  reply->set_job_id(gcs_table_storage_->GetNextJobID());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 std::string GcsJobManager::GetRayNamespace(const JobID &job_id) const {
   auto it = ray_namespaces_.find(job_id);
   RAY_CHECK(it != ray_namespaces_.end()) << "Couldn't find job with id: " << job_id;

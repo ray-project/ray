@@ -127,6 +127,17 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(const ItemCallback<int> &callback) {
+  RAY_LOG(INFO) << "Getting next job id";
+  rpc::GetNextJobIDRequest request;
+  client_impl_->GetGcsRpcClient().GetNextJobID(
+      request, [callback](const Status &status, const rpc::GetNextJobIDReply &reply) {
+        callback(reply.job_id());
+        RAY_LOG(INFO) << "Finished getting next job id = " << reply.job_id();
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

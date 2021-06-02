@@ -59,6 +59,13 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
       });
 }
 
+JNIEXPORT jint JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  return gcs_accessor->GetNextJobID();
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jobject o,
                                                                  jlong gcs_accessor_ptr) {

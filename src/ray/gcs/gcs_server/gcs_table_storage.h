@@ -369,6 +369,11 @@ class GcsTableStorage {
     return *system_config_table_;
   }
 
+  int GetNextJobID() {
+    RAY_CHECK(store_client_);
+    return store_client_->GetNextJobID();
+  }
+
  protected:
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;

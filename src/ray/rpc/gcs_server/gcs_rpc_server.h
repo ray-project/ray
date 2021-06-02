@@ -81,6 +81,10 @@ class JobInfoGcsServiceHandler {
   virtual void HandleReportJobError(const ReportJobErrorRequest &request,
                                     ReportJobErrorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNextJobID(const GetNextJobIDRequest &request,
+                                  GetNextJobIDReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -103,6 +107,7 @@ class JobInfoGrpcService : public GrpcService {
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
     JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
+    JOB_INFO_SERVICE_RPC_HANDLER(GetNextJobID);
   }
 
  private:
