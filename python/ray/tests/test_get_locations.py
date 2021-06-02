@@ -42,6 +42,20 @@ def test_get_locations(ray_start_regular):
         assert location["spilled_node_id"] is None
 
 
+def test_get_locations_inlined(ray_start_regular):
+    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+    obj_refs = [ray.put("123")]
+    ray.wait(obj_refs)
+    locations = ray.experimental.get_object_locations(obj_refs)
+    for idx, obj_ref in enumerate(obj_refs):
+        location = locations[obj_ref]
+        assert location["primary_node_id"] == node_id.hex()
+        assert location["node_ids"] == [node_id.hex()]
+        assert not location["is_spilled"]
+        assert location["spilled_url"] is None
+        assert location["spilled_node_id"] is None
+
+
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spilled_locations(ray_start_cluster):
@@ -67,6 +81,7 @@ def test_spilled_locations(ray_start_cluster):
     for obj_ref in object_refs:
         location = locations[obj_ref]
         assert location["primary_node_id"] == node_id.hex()
+        assert location["node_ids"] == []
         assert location["is_spilled"]
         assert location["spilled_url"] is not None
         assert location["spilled_node_id"] == node_id.hex()
@@ -86,8 +101,11 @@ def test_get_locations_multi_nodes(ray_start_cluster):
         object_store_memory=75 * 1024 * 1024)
     cluster.wait_for_nodes()
 
-    driver_node_id = ray.nodes()[0]["NodeID"]
-    worker_node_id = ray.nodes()[1]["NodeID"]
+    all_node_ids = list(map(lambda node: node["NodeID"], ray.nodes()))
+    driver_node_id = ray.runtime_context.get_runtime_context().get()[
+        "node_id"].hex()
+    all_node_ids.remove(driver_node_id)
+    worker_node_id = all_node_ids[0]
 
     @ray.remote(num_cpus=0, resources={"custom": 1})
     def create_object():

@@ -194,7 +194,7 @@ class ObjectLocation {
 
  private:
   /// The ID of the node has the primary copy of the object.
-  /// Nil if the object is pending resolve, inlined or evicted.
+  /// Nil if the object is pending resolution.
   const NodeID primary_node_id_;
   /// The size of the object in bytes.
   const uint64_t object_size_;

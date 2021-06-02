@@ -200,19 +200,24 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
         objects whose location lookup failed.
 
         The Location is stored as a Dict with following attributes:
+
         - primary_node_id:
         The hex ID of the node who has the primary copy of the object.
-        It could be None if the object is pending resolve, inlined or
-        evicted.
+        It could be None if the object is pending resolution.
+
         - object_size:
         The size of data + metadata in bytes.
+
         - node_ids:
-        The hex IDs of the nodes that this object appeared on or was
-        evicted by.
+        The hex IDs of the nodes that have an in memory copy of this
+        object.
+
         - is_spilled:
         Wether the object has been spilled.
+
         - spilled_url:
         The spilled location, None if not spilled.
+
         - spilled_node_id:
         The hex node ID which spilled the object. None if the object
         is not spilled, or was spilled to a distributed external
