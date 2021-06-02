@@ -271,8 +271,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
       (*iter->second.mutable_resource_load()) = resources.resource_load();
     }
     if (resources.resources_normal_task_changed()) {
-      (*iter->second.mutable_resources_normal_task()) =
-          resources.resources_normal_task();
+      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }
     (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
   }
@@ -427,7 +426,8 @@ std::string GcsResourceManager::DebugString() const {
 GcsResourceManagerEx::GcsResourceManagerEx(
     instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
-    : GcsResourceManager(main_io_service, gcs_pub_sub, gcs_table_storage, redis_broadcast_enabled) {
+    : GcsResourceManager(main_io_service, gcs_pub_sub, gcs_table_storage,
+                         redis_broadcast_enabled) {
   latest_resources_normal_task_timestamp_ = 0;
 }
 

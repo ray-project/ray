@@ -85,7 +85,7 @@ class TaskRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
-  
+
   TaskRequest &operator+=(const TaskRequest &other);
 };
 
