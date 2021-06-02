@@ -30,7 +30,7 @@ int dlmallopt(int param_number, int value);
 }
 
 /* Copied from dlmalloc.c; make sure to keep in sync */
-constexpr size_t MAX_SIZE_T = (size_t)-1;
+size_t MAX_SIZE_T = (size_t)-1;
 const int M_MMAP_THRESHOLD = -3;
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
