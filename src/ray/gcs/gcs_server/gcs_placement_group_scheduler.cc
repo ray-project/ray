@@ -57,7 +57,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     for (const auto &bundle : bundles) {
       schedule_map[bundle->BundleId()] = selected_nodes[index++];
     }
-  }sd
+  }
   return std::make_pair(status, schedule_map);
 }
 
