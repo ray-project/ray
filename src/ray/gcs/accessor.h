@@ -183,7 +183,7 @@ class JobInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
-  /// Get next job id.
+  /// Increment and get next job id. This is not idempotent.
   ///
   /// \param done Callback that will be called when request successfully.
   /// \return Status
