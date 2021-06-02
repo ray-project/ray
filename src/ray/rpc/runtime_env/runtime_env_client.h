@@ -21,8 +21,19 @@
 namespace ray {
 namespace rpc {
 
+class RuntimeEnvAgentClientInterface {
+ public:
+  virtual void CreateRuntimeEnv(
+      const rpc::CreateRuntimeEnvRequest &request,
+      const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) = 0;
+  virtual void DeleteRuntimeEnv(
+      const rpc::DeleteRuntimeEnvRequest &request,
+      const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) = 0;
+  virtual ~RuntimeEnvAgentClientInterface(){};
+};
+
 /// Client used for communicating with a remote runtime env agent server.
-class RuntimeEnvAgentClient {
+class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
  public:
   /// Constructor.
   ///

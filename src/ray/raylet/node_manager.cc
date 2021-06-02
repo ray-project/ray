@@ -333,9 +333,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       [this](const std::string &ip_address, int port) {
         if (ip_address.empty() || port == 0) {
           RAY_LOG(INFO) << "client nullptr";
-          return std::shared_ptr<rpc::RuntimeEnvAgentClient>(nullptr);
+          return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(nullptr);
         }
-        return std::shared_ptr<rpc::RuntimeEnvAgentClient>(
+        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);

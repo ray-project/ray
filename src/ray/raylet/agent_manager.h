@@ -31,7 +31,7 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
                                                                    uint32_t delay_ms)>
     DelayExecutorFn;
 
-typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClient>(
+typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
@@ -46,11 +46,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   };
 
   explicit AgentManager(Options options, DelayExecutorFn delay_executor,
-                        RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory)
+                        RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
+                        bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)) {
-    StartAgent();
+    if (start_agent) {
+      StartAgent();
+    }
   }
 
   void HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
@@ -77,7 +80,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
-  std::shared_ptr<rpc::RuntimeEnvAgentClient> runtime_env_agent_client_;
+  std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {
