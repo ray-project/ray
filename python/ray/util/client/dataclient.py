@@ -118,8 +118,8 @@ class DataClient:
             if self._in_shutdown:
                 raise ConnectionError(
                     "Sending request failed because the data channel "
-                    "is no longer running. This is usually due to an error "
-                    f"during the connection process: {req}")
+                    "terminated. This is usually due to an error "
+                    f"in handling the most recent request: {req}")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
