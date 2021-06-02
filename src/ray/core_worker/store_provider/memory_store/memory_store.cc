@@ -331,8 +331,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // first deserialized, so even if the object is ready for get, for the first
     // couple milliseconds upon deserialization of the ref, they don't have a status.
     // See https://github.com/ray-project/ray/issues/16025 for more details.
-    if (!(get_request->Wait(
-            RayConfig::instance().release_resources_timeout_milliseconds()))) {
+    if (!get_request->Wait(
+            RayConfig::instance().release_resources_timeout_milliseconds())) {
       RAY_CHECK_OK(
           raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
       if (timeout_ms > 0) {
