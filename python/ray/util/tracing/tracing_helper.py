@@ -32,7 +32,6 @@ class _OpenTelemetryProxy:
 
     def __getattr__(self, name):
         if name in _OpenTelemetryProxy.allowed_functions:
-            print("HELLO")
             return getattr(self, f"_{name}")()
         else:
             raise AttributeError(f"Attribute does not exist: {name}")
