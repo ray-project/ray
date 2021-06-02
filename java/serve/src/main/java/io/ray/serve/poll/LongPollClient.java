@@ -1,5 +1,6 @@
 package io.ray.serve.poll;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -35,9 +36,15 @@ public class LongPollClient {
   private Thread pollThread;
 
   public LongPollClient(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
+
+    Preconditions.checkArgument(keyListeners != null && keyListeners.size() != 0);
+
     this.hostActor = hostActor;
     this.keyListeners = keyListeners;
     this.snapshotIds = new ConcurrentHashMap<>();
+    for (KeyType keyType : keyListeners.keySet()) {
+      this.snapshotIds.put(keyType, -1);
+    }
     this.objectSnapshots = new ConcurrentHashMap<>();
     this.pollThread = new Thread(() -> {
       while (true) {
@@ -56,6 +63,10 @@ public class LongPollClient {
   }
 
   public void start() {
+    if (!(hostActor instanceof PyActorHandle)) {
+      LOGGER.warn("LongPollClient only support Python controller now.");
+      return;
+    }
     pollThread.start();
   }
 

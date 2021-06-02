@@ -1,11 +1,13 @@
 package io.ray.serve;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
-import io.ray.runtime.metric.TagKey;
+import io.ray.runtime.metric.MetricConfig;
+import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
@@ -63,27 +65,29 @@ public class RayServeReplica {
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
 
-    Map<TagKey, String> backendTags = new HashMap<>();
-    backendTags.put(new TagKey("backend"), backendTag);
-    this.requestCounter = new Count("serve_backend_request_counter",
-        "The number of queries that have been processed in this replica.", "", backendTags);
-    this.errorCounter = new Count("serve_backend_error_counter",
-        "The number of exceptions that have occurred in the backend.", "", backendTags);
+    Metrics.init(MetricConfig.DEFAULT_CONFIG);
+    this.requestCounter = Metrics.count().name("serve_backend_request_counter")
+        .description("The number of queries that have been processed in this replica.").unit("")
+        .tags(ImmutableMap.of("backend", backendTag)).register();
 
-    Map<TagKey, String> replicaTags = new HashMap<>();
-    replicaTags.put(new TagKey("backend"), backendTag);
-    replicaTags.put(new TagKey("replica"), replicaTag);
-    this.restartCounter = new Count("serve_backend_replica_starts",
-        "The number of times this replica has been restarted due to failure.", "", replicaTags);
-    this.processingLatencyTracker = new Histogram("serve_backend_processing_latency_ms",
-        "The latency for queries to be processed.", "", Constants.DEFAULT_LATENCY_BUCKET_MS,
-        replicaTags);
-    this.numProcessingItems = new Gauge("serve_replica_processing_queries",
-        "The current number of queries being processed.", "", replicaTags);
+    this.errorCounter = Metrics.count().name("serve_backend_error_counter")
+        .description("The number of exceptions that have occurred in the backend.").unit("")
+        .tags(ImmutableMap.of("backend", backendTag)).register();
+
+    this.restartCounter = Metrics.count().name("serve_backend_replica_starts")
+        .description("The number of times this replica has been restarted due to failure.").unit("")
+        .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag)).register();
+
+    this.processingLatencyTracker = Metrics.histogram().name("serve_backend_processing_latency_ms")
+        .description("The latency for queries to be processed.").unit("")
+        .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
+        .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag)).register();
+
+    this.numProcessingItems = Metrics.gauge().name("serve_replica_processing_queries")
+        .description("The current number of queries being processed.").unit("")
+        .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag)).register();
 
     this.restartCounter.inc(1.0);
-
-    LogUtil.setLayout(backendTag, replicaTag);
 
   }
 

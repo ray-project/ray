@@ -14,10 +14,10 @@ import org.testng.annotations.Test;
 
 public class RayServeReplicaTest {
 
+  @SuppressWarnings("unused")
   @Test
   public void test() {
 
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
 
     String controllerName = "RayServeReplicaTest";
@@ -28,9 +28,9 @@ public class RayServeReplicaTest {
         Ray.actor(DummyController::new).setName(controllerName).remote();
 
     BackendConfig backendConfig = new BackendConfig();
-    backendConfig.setUserConfig(10);
+    backendConfig.setUserConfig("10");
     ActorHandle<RayServeWrappedReplica> backendHandle = Ray.actor(RayServeWrappedReplica::new,
-        backendTag, replicaTag, "io.ray.serve.RayServeReplicaTest.DummyBackend", new Object[] {0},
+        backendTag, replicaTag, "io.ray.serve.RayServeReplicaTest$DummyBackend", new Object[] {"0"},
         backendConfig, controllerName).remote();
 
     backendHandle.task(RayServeWrappedReplica::ready).remote();
@@ -40,11 +40,11 @@ public class RayServeReplicaTest {
     ObjectRef<Object> resultRef = backendHandle
         .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null).remote();
 
-    Assert.assertEquals(((Integer) resultRef.get()).intValue(), 10);
+    Assert.assertEquals((String) resultRef.get(), "10");
 
   }
 
-  static class DummyController {
+  public static class DummyController {
 
     public Map<KeyType, UpdatedObject> listen_for_change(Map<KeyType, Integer> snapshotIds) {
       try {
@@ -61,23 +61,23 @@ public class RayServeReplicaTest {
     }
   }
 
-  static class DummyBackend {
+  public static class DummyBackend {
 
     private AtomicInteger counter;
 
-    public DummyBackend(Integer value) {
-      counter = new AtomicInteger(value);
+    public DummyBackend(String value) {
+      counter = new AtomicInteger(Integer.valueOf(value));
     }
 
-    public Integer __call__() {
-      return counter.get();
+    public String __call__() {
+      return String.valueOf(counter.get());
     }
 
-    public void reconfigure(Integer value) {
+    public void reconfigure(String value) {
       if (value == null) {
         return;
       }
-      counter.addAndGet(value);
+      counter.addAndGet(Integer.valueOf(value));
     }
   }
 
