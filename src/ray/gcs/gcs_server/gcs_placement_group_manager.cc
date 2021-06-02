@@ -219,6 +219,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
+    MarkSchedulingDone();
   } else {
     auto state = placement_group->GetState();
     RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
@@ -563,12 +564,14 @@ void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
 
   // Move all the infeasible placement groups to the pending queue so that we can
   // reschedule them.
-  auto end_it = pending_placement_groups_.end();
-  pending_placement_groups_.insert(end_it, infeasible_placement_groups_.cbegin(),
-                                   infeasible_placement_groups_.cend());
-  infeasible_placement_groups_.clear();
+  if (infeasible_placement_groups_.size() > 0) {
+    auto end_it = pending_placement_groups_.end();
+    pending_placement_groups_.insert(end_it, infeasible_placement_groups_.cbegin(),
+                                    infeasible_placement_groups_.cend());
+    infeasible_placement_groups_.clear();
 
-  SchedulePendingPlacementGroups();
+    SchedulePendingPlacementGroups();
+  }
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
