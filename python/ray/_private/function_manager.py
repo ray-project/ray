@@ -147,6 +147,7 @@ class FunctionActorManager:
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
+                "runtime_env_hash": self._worker.runtime_env_hash,
                 "function_name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
@@ -158,13 +159,14 @@ class FunctionActorManager:
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (job_id_str, function_id_str, function_name, serialized_function,
+        (job_id_str, function_id_str, runtime_env_hash, function_name, serialized_function,
          module, max_calls) = self._worker.redis_client.hmget(
              key, [
-                 "job_id", "function_id", "function_name", "function",
+                 "job_id", "function_id", "runtime_env_hash", "function_name", "function",
                  "module", "max_calls"
              ])
         function_id = ray.FunctionID(function_id_str)
+        runtime_env_hash = int(runtime_env_hash)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
@@ -175,7 +177,8 @@ class FunctionActorManager:
         # the temporary function above before the real function is ready.
         with self.lock:
             self._num_task_executions[job_id][function_id] = 0
-
+            if runtime_env_hash != self._worker.runtime_env_hash:
+                return
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
@@ -366,6 +369,7 @@ class FunctionActorManager:
             "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
+            "runtime_env_hash": self._worker.runtime_env_hash,
             "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
         }

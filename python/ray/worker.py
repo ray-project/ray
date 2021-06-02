@@ -125,6 +125,7 @@ class Worker:
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
         self.filter_logs_by_job = True
+        self.runtime_env_hash = 0
 
     @property
     def connected(self):
@@ -182,7 +183,7 @@ class Worker:
 
     @property
     def runtime_env(self):
-        """Get the runtime env in json format"""
+        """Get the job_config runtime env in json format"""
         return json.loads(
             self.core_worker.get_job_config().runtime_env.raw_json)
 
@@ -1253,6 +1254,7 @@ def connect(node,
         job_config.set_ray_namespace(namespace)
 
     serialized_job_config = job_config.serialize()
+    worker.runtime_env_hash = runtime_env_hash
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
