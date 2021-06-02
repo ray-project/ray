@@ -13,6 +13,7 @@ import pytest
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
+from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -39,6 +40,57 @@ def ignore_k8s_operator_configs(paths):
 
 CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 
+EXPECTED_LOCAL_CONFIG_STR = """
+cluster_name: minimal-manual
+provider:
+  head_ip: xxx.yyy
+  type: local
+  worker_ips:
+  - aaa.bbb
+  - ccc.ddd
+  - eee.fff
+auth:
+  ssh_private_key: ~/.ssh/id_rsa
+  ssh_user: user
+docker: {}
+max_workers: 3
+available_node_types:
+  ray-legacy-head-node-type:
+    max_workers: 0
+    min_workers: 0
+    node_config:
+      placeholder: {}
+    resources: {}
+  ray-legacy-worker-node-type:
+    max_workers: 3
+    min_workers: 3
+    node_config:
+      placeholder: {}
+    resources: {}
+head_node_type: ray-legacy-head-node-type
+head_start_ray_commands:
+- ray stop
+- ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+- ray stop
+- ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
+cluster_synced_files: []
+idle_timeout_minutes: 5
+upscaling_speed: 1.0
+file_mounts: {}
+file_mounts_sync_continuously: false
+head_node:
+  placeholder: {}
+worker_nodes:
+  placeholder: {}
+head_setup_commands: []
+initialization_commands: []
+rsync_exclude: []
+rsync_filter: []
+setup_commands: []
+worker_setup_commands: []
+"""
+
 
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
@@ -47,9 +99,8 @@ class AutoscalingConfigTest(unittest.TestCase):
                 if "aws/example-multi-node-type.yaml" in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
                     continue
-                if "local/defaults.yaml" in config_path:
-                    # As documented in the file, this is not a full
-                    # cluster-launching configuration.
+                if "local" in config_path:
+                    # local tested in testValidateLocal
                     continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
@@ -181,6 +232,34 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail(
                     "Config did not pass multi node types auto fill test!")
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testValidateLocal(self):
+        """
+        Tests local node provider config validation for the most common use
+        case of bootstrapping a cluster at a static set of ips.
+        """
+        local_config_path = os.path.join(
+            RAY_PATH,
+            "autoscaler/local/example-minimal-manual.yaml")
+        config = yaml.safe_load(open(local_config_path).read())
+        config["provider"]["head_ip"] = "xxx.yyy"
+        config["provider"]["worker_ips"] = ["aaa.bbb",
+                                            "ccc.ddd", "eee.fff"]
+        config["auth"]["ssh_user"] = "user"
+        config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
+        prepared_config = prepare_config(config)
+        try:
+            validate_config(prepared_config)
+        except Exception:
+            self.fail("Failed to validate local/example-minimal-manual.yaml")
+        expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
+        assert prepared_config == expected_prepared
+        synced_config = local_config.sync_state(prepared_config)
+        state_path = "/tmp/cluster-minimal-manual.state"
+        assert (synced_config["file_mounts"]
+                == {state_path: state_path})
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
