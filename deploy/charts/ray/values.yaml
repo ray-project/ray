@@ -1,0 +1,79 @@
+# Default values for Ray.
+
+# RayCluster settings:
+
+# image is Ray image to use for the head and workers of this Ray cluster.
+image: rayproject/ray:latest
+# headPodType is the podType used for the Ray head node (as configured below).
+headPodType: rayHeadType
+# podTypes is the list of pod configurations available for use as Ray nodes.
+podTypes:
+    # The key for each podType is a user-defined string.
+    # Since we set headPodType: rayHeadType, the Ray head pod will use the configuration
+    # defined in this entry of podTypes:
+    rayHeadType:
+        # No worker pods of this pod type (just the head). Thus, we set minWorkers and maxWorkers to 0.
+        minWorkers: 0
+        maxWorkers: 0
+        # CPU is the number of CPUs used by this pod type.
+        # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
+        CPU: 1
+        # memory is the memory used by this Pod type.
+        # (Used for both requests and limits.)
+        memory: 512Mi
+        # GPU is the number of NVIDIA GPUs used by this pod type.
+        # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
+        GPU: 0
+        # rayResources is an optional string-int mapping signalling additional resources to Ray.
+        # "CPU", "GPU", and "memory" are filled automatically based on the above settings, but can be overriden;
+        # For example, rayResources: {"CPU": 0} can be used in the head podType to prevent Ray from scheduling tasks on the head.
+        # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+        rayResources: {}
+        # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+        nodeSelector: {}
+    # The key for each podType is a user-defined string.
+    rayWorkerType:
+        # minWorkers is the minimum number of Ray workers of this pod type to keep running.
+        minWorkers: 2
+        # maxWorkers is the maximum number of Ray workers of this pod type to which Ray will scale.
+        maxWorkers: 3
+        # memory is the memory used by this Pod type.
+        # (Used for both requests and limits.)
+        memory: 512Mi
+        # CPU is the number of CPUs used by this pod type.
+        # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
+        CPU: 1
+        # GPU is the number of NVIDIA GPUs used by this pod type.
+        # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
+        GPU: 0
+        # rayResources is an optional string-int mapping signalling additional resources to Ray.
+        # "CPU", "GPU", and "memory" are filled automatically based on the above settings, but can be overriden;
+        # For example, rayResources: {"CPU": 0} can be used in the head podType to prevent Ray from scheduling tasks on the head.
+        # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+        rayResources: {}
+        # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+        nodeSelector: {}
+
+
+# Operator settings:
+
+# operatorOnly - If true, will only set up the Operator with this release,
+# without launching a Ray cluster.
+operatorOnly: false
+# clusterOnly - If true, will only create a RayCluster resource with this release,
+# without setting up the Operator.
+# (Useful when launching multiple Ray clusters.)
+clusterOnly: false
+# namespacedOperator - If true, the operator is scoped to the Release namespace
+# and only manages RayClusters in that namespace.
+# By default, the operator is cluster-scoped and runs in the default namespace.
+namespacedOperator: false
+# operatorNamepsace - If using a cluster-scoped operator (namespacedOperator: false), set the namespace
+# in which to launch the operator.
+operatorNamespace: default
+# operatorImage - For best stability, it's currently recommended to use the nightly ray image in the operator Deployment.
+# For an official ray release version, use `rayproject/ray:1.x.y`.
+# For the latest ray release version, `rayproject/ray:latest`.
+# You could also use a specific master commit, e.g. `rayproject/ray:38b64e`.
+# The nightly operator image is compatible with all Ray versions since 1.2.0
+operatorImage: rayproject/ray:nightly

@@ -129,7 +129,6 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
   // up to 20% of the total capacity.
   int64_t space_to_free =
       std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
-  RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
   RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "

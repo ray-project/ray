@@ -145,6 +145,21 @@ def test_get_next_unordered_timeout(init):
         pool.get_next_unordered(timeout=0.1)
 
 
+def test_multiple_returns(init):
+    @ray.remote
+    class Foo(object):
+        @ray.method(num_returns=2)
+        def bar(self):
+            return 1, 2
+
+    pool = ActorPool([Foo.remote() for _ in range(2)])
+    for _ in range(4):
+        pool.submit(lambda a, v: a.bar.remote(), None)
+
+    while pool.has_next():
+        assert pool.get_next(timeout=None) == [1, 2]
+
+
 def test_pop_idle(init):
     @ray.remote
     class MyActor:

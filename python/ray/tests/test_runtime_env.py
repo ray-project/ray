@@ -4,10 +4,13 @@ import sys
 import unittest
 import random
 import tempfile
+import requests
 from pathlib import Path
 import ray
 from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+                            run_string_as_driver_nonblocking,
+                            get_wheel_filename, get_master_wheel_url)
+import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
 from time import sleep
@@ -32,11 +35,13 @@ if not job_config.runtime_env:
 
 try:
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.util.connect("{address}", job_config=job_config)
+        ray.util.connect("{address}", job_config=job_config, namespace="")
     else:
         ray.init(address="{address}",
                  job_config=job_config,
-                 logging_level=logging.DEBUG)
+                 logging_level=logging.DEBUG,
+                 namespace=""
+)
 except ValueError:
     print("ValueError")
     sys.exit(0)
@@ -257,6 +262,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -272,6 +278,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -307,6 +314,7 @@ print(sum([int(v) for v in vals]))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -431,6 +439,21 @@ cache/
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
+def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = """
+print(ray.get_runtime_context().runtime_env["working_dir"])
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == working_dir
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -448,6 +471,9 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    # pinned uri will not be deleted
+    print(list(kv._internal_kv_list("")))
+    assert len(kv._internal_kv_list("pingcs://")) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -465,6 +491,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -482,6 +509,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     # It's a detached actors, so it should still be there
+    assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(PKG_DIR).iterdir())) == 2
     pkg_dir = [f for f in Path(PKG_DIR).glob("*") if f.is_dir()][0]
     import sys
@@ -492,6 +520,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -511,11 +540,11 @@ sleep(600)
     # waiting it to be up
     sleep(5)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the second one which should trigger an error
+    # Execute the second one which should work because Ray Client servers.
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "ERROR"
+    assert out.strip().split()[-1] == "1000"
     proc.kill()
     proc.wait()
 
@@ -540,7 +569,7 @@ sleep(600)
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "OK"
+    assert out.strip().split()[-1] == "OK", out
     proc.kill()
     proc.wait()
 
@@ -561,14 +590,14 @@ sleep(600)
     sleep(5)
     runtime_env = f"""
 {{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
-    # Execute the following cmd in the second one which should
-    # fail
+    # Execute the following cmd in the second one and ensure that
+    # it is able to run.
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     proc.kill()
     proc.wait()
-    assert out.strip().split()[-1] == "ERROR"
+    assert out.strip().split()[-1] == "OK"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -626,6 +655,27 @@ def test_init(shutdown_only):
         t = Test.remote()
         assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
+
+
+def test_get_wheel_filename():
+    ray_version = "2.0.0.dev0"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            filename = get_wheel_filename(sys_platform, ray_version,
+                                          py_version)
+            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+            url = f"{prefix}{filename}"
+            assert requests.head(url).status_code == 200
+
+
+def test_get_master_wheel_url():
+    ray_version = "2.0.0.dev0"
+    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            url = get_master_wheel_url(test_commit, sys_platform, ray_version,
+                                       py_version)
+            assert requests.head(url).status_code == 200
 
 
 if __name__ == "__main__":

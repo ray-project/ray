@@ -95,10 +95,16 @@ ray_files += [
 # in this directory
 extras = {
     "default": ["colorful"],
-    "serve": ["uvicorn", "requests", "pydantic>=1.8", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX"],
-    "k8s": ["kubernetes"]
+    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "k8s": ["kubernetes"],
+    "observability": [
+        "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+        "opentelemetry-exporter-otlp==1.1.0"
+    ]
 }
+if sys.version_info >= (3, 7, 0):
+    extras["k8s"].append("kopf")
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",
@@ -132,6 +138,7 @@ install_requires = [
     "numpy >= 1.16",
     "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
+    "pydantic >= 1.8",
     "pyyaml",
     "requests",
     "redis >= 3.5.0",

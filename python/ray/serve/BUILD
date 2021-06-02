@@ -5,13 +5,11 @@ py_library(
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )
 
-serve_tests_srcs = glob(["tests/*.py"],
-     exclude=["tests/test_serve.py",
-             ])
+serve_tests_srcs = glob(["tests/*.py"])
 
 py_test(
     name = "test_api",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -19,7 +17,7 @@ py_test(
 
 py_test(
     name = "test_api_new",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -27,7 +25,7 @@ py_test(
 
 py_test(
     name = "test_deploy",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -59,7 +57,7 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -75,7 +73,7 @@ py_test(
 
 py_test(
     name = "test_batching",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -169,7 +167,7 @@ py_test(
 
 py_test(
     name = "test_router",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "flaky"],
     deps = [":serve_lib"],
@@ -225,30 +223,22 @@ py_test(
 
 py_test(
     name = "test_fastapi",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
 
 # Runs test_api and test_failure with injected failures in the controller.
-# TODO(simon): Tests are disabled until #11683 is fixed.
-# py_test(
-#     name = "test_controller_crashes",
-#     size = "large",
-#     srcs = glob(["tests/test_controller_crashes.py",
-#                 "tests/test_api.py",
-#                 "tests/test_failure.py",
-#                 "**/conftest.py"],
-#                 exclude=["tests/test_serve.py"]),
-# )
-
 py_test(
-    name = "echo_full",
-    size = "small",
-    srcs = glob(["examples/*.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"]
+   name = "test_controller_crashes",
+   size = "medium",
+   srcs = glob(["tests/test_controller_crashes.py",
+               "tests/test_api.py",
+               "tests/test_failure.py",
+               "**/conftest.py"]),
+   tags = ["exclusive"],
+   deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -317,7 +307,7 @@ py_test(
 )
 
 # Disable the deployment tutorial test because it requires
-# ray start --head in the background.
+# ray start --head in the background
 # py_test(
     #name = "tutorial_deploy",
     #size = "small",

@@ -1,11 +1,79 @@
+import sys
+
 import pytest
 from ray.util.client import RayAPIStub
+from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
 from ray.test_utils import wait_for_condition
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
+from ray._raylet import ActorID, ObjectRef
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
+def test_client_object_ref_basics(ray_start_regular):
+    with ray_start_client_server_pair() as pair:
+        ray, server = pair
+        ref = ray.put("Hello World")
+        # Make sure ClientObjectRef is a subclass of ObjectRef
+        assert isinstance(ref, ClientObjectRef)
+        assert isinstance(ref, ObjectRef)
+
+        # Invalid ref format.
+        with pytest.raises(Exception):
+            ClientObjectRef(b"\0")
+
+        # Test __eq__()
+        id = b"\0" * 28
+        assert ClientObjectRef(id) == ClientObjectRef(id)
+        assert ClientObjectRef(id) != ref
+        assert ClientObjectRef(id) != ObjectRef(id)
+
+        assert ClientObjectRef(id).__repr__() == f"ClientObjectRef({id.hex()})"
+        assert ClientObjectRef(id).binary() == id
+        assert ClientObjectRef(id).hex() == id.hex()
+        assert not ClientObjectRef(id).is_nil()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
+def test_client_actor_ref_basics(ray_start_regular):
+    with ray_start_client_server_pair() as pair:
+        ray, server = pair
+
+        @ray.remote
+        class Counter:
+            def __init__(self):
+                self.acc = 0
+
+            def inc(self):
+                self.acc += 1
+
+            def get(self):
+                return self.acc
+
+        counter = Counter.remote()
+        ref = counter.actor_ref
+
+        # Make sure ClientActorRef is a subclass of ActorID
+        assert isinstance(ref, ClientActorRef)
+        assert isinstance(ref, ActorID)
+
+        # Invalid ref format.
+        with pytest.raises(Exception):
+            ClientActorRef(b"\0")
+
+        # Test __eq__()
+        id = b"\0" * 16
+        assert ClientActorRef(id) == ClientActorRef(id)
+        assert ClientActorRef(id) != ref
+        assert ClientActorRef(id) != ActorID(id)
+
+        assert ClientActorRef(id).__repr__() == f"ClientActorRef({id.hex()})"
+        assert ClientActorRef(id).binary() == id
+        assert ClientActorRef(id).hex() == id.hex()
+        assert not ClientActorRef(id).is_nil()
 
 
 def server_object_ref_count(server, n):
@@ -72,7 +140,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address)
+        real_ray.init(address=cluster.address, namespace="")
 
         def test_cond():
             return len(real_ray.state.objects()) == 0
@@ -134,7 +202,7 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address)
+        real_ray.init(address=cluster.address, namespace="")
 
         wait_for_condition(test_cond, timeout=10)
 
@@ -202,7 +270,7 @@ def test_named_actor_refcount(ray_start_regular):
 
         def connect_api():
             api = RayAPIStub()
-            api.connect("localhost:50051")
+            api.connect("localhost:50051", namespace="")
             api.get_actor("actor")
             return api
 

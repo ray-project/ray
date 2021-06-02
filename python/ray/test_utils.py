@@ -8,6 +8,7 @@ import sys
 import time
 import socket
 import math
+import traceback
 from typing import Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
@@ -282,7 +283,8 @@ def wait_until_succeeded_without_exception(func,
                                            exceptions,
                                            *args,
                                            timeout_ms=1000,
-                                           retry_interval_ms=100):
+                                           retry_interval_ms=100,
+                                           raise_last_ex=False):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -292,6 +294,7 @@ def wait_until_succeeded_without_exception(func,
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_last_ex: Raise the last exception when timeout.
 
     Return:
         Whether exception occurs within a timeout.
@@ -302,13 +305,20 @@ def wait_until_succeeded_without_exception(func,
 
     time_elapsed = 0
     start = time.time()
+    last_ex = None
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
-        except exceptions:
+        except exceptions as ex:
+            last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
+    if raise_last_ex:
+        ex_stack = traceback.format_exception(
+            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else []
+        ex_stack = "".join(ex_stack)
+        raise Exception(f"Timed out while testing, {ex_stack}")
     return False
 
 
@@ -527,3 +537,59 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+def get_wheel_filename(
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Returns the filename used for the nightly Ray wheel.
+
+    Args:
+        sys_platform (str): The platform as returned by sys.platform. Examples:
+            "darwin", "linux", "win32"
+        ray_version (str): The Ray version as returned by ray.__version__ or
+            `ray --version`.  Examples: "2.0.0.dev0"
+        py_version (str):
+            The major and minor Python versions concatenated.  Examples: "36",
+            "37", "38"
+    Returns:
+        The wheel file name.  Examples:
+            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    """
+    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
+                                              " '37', or '38'")
+
+    os_strings = {
+        "darwin": "macosx_10_13_x86_64"
+        if py_version == "38" else "macosx_10_13_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
+                                        " 'linux', or 'win32'")
+
+    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
+                      f"cp{py_version}{'m' if py_version != '38' else ''}"
+                      f"-{os_strings[sys_platform]}.whl")
+
+    return wheel_filename
+
+
+def get_master_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel from a specific commit."""
+
+    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+            f"{ray_commit}/{get_wheel_filename()}")
