@@ -16,10 +16,11 @@ class AutoscalerPrometheusMetrics:
         #          45 seconds, 1 minute, 1.5 minutes, 2 minutes,
         #          3 minutes, 4 minutes, 5 minutes, 6 minutes,
         #          8 minutes, 10 minutes, 12 minutes, 15 minutes
-        #          20 minutes, 30 minutes
+        #          20 minutes, 25 minutes, 30 minutes
+        # used for both worker launch time and worker update time
         histogram_buckets = [
             5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720,
-            900, 1200, 1800
+            900, 1200, 1500, 1800
         ]
         self.worker_launch_time: Histogram = Histogram(
             "worker_launch_time_seconds",
