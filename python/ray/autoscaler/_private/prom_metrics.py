@@ -61,6 +61,7 @@ class AutoscalerPrometheusMetrics:
             "Number of nodes that failed to be created due to an exception "
             "in the node provider's create_node method.",
             unit="nodes",
+            namespace="autoscaler",
             registry=self.registry)
         self.failed_updates: Counter = Counter(
             "failed_updates",
