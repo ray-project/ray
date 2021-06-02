@@ -141,6 +141,8 @@ class ProxyManager():
 
     def create_specific_server(self, client_id: str) -> None:
         with self.server_lock:
+            assert self.servers.get(client_id) is None, (
+                f"Server already created for Client: {client_id}")
             port = self._get_unused_port()
             server = SpecificServer(
                 port=port,
