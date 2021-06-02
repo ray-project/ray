@@ -6,7 +6,7 @@ import gym
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import (PRIO_WEIGHTS,
                                                 postprocess_nstep_and_prio)
-from ray.rllib.agents.dqn.dqn_torch_policy import \
+from ray.rllib.agents.dqn.dqn_torch_policy import adam_optimizer, \
     build_q_model_and_distribution, compute_q_values
 from ray.rllib.agents.dqn.r2d2_tf_policy import \
     get_distribution_inputs_and_class
@@ -230,12 +230,6 @@ class ComputeTDErrorMixin:
             return self._td_error
 
         self.compute_td_error = compute_td_error
-
-
-def adam_optimizer(policy: Policy,
-                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
-    return torch.optim.Adam(
-        policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:

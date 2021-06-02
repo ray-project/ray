@@ -146,12 +146,13 @@ cdef class GlobalStateAccessor:
             return c_string(result.get().data(), result.get().size())
         return None
 
-    def get_placement_group_by_name(self, placement_group_name):
+    def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         cdef unique_ptr[c_string] result
         cdef c_string cplacement_group_name = placement_group_name
+        cdef c_string cray_namespace = ray_namespace
         with nogil:
             result = self.inner.get().GetPlacementGroupByName(
-                cplacement_group_name)
+                cplacement_group_name, cray_namespace)
         if result:
             return c_string(result.get().data(), result.get().size())
         return None

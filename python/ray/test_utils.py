@@ -544,19 +544,52 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def get_wheel_filename() -> str:
-    """Returns the filename used for the Ray wheel of the current build."""
-    ray_version = ray.__version__
-    python_version = f"{sys.version_info.major}{sys.version_info.minor}"
+def get_wheel_filename(
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Returns the filename used for the nightly Ray wheel.
+
+    Args:
+        sys_platform (str): The platform as returned by sys.platform. Examples:
+            "darwin", "linux", "win32"
+        ray_version (str): The Ray version as returned by ray.__version__ or
+            `ray --version`.  Examples: "2.0.0.dev0"
+        py_version (str):
+            The major and minor Python versions concatenated.  Examples: "36",
+            "37", "38"
+    Returns:
+        The wheel file name.  Examples:
+            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    """
+    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
+                                              " '37', or '38'")
+
     os_strings = {
         "darwin": "macosx_10_13_x86_64"
-        if python_version == "38" else "macosx_10_13_intel",
+        if py_version == "38" else "macosx_10_13_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
 
-    wheel_filename = (
-        f"ray-{ray_version}-cp{python_version}-"
-        f"cp{python_version}{'m' if python_version != '38' else ''}"
-        f"-{os_strings[sys.platform]}.whl")
+    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
+                                        " 'linux', or 'win32'")
+
+    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
+                      f"cp{py_version}{'m' if py_version != '38' else ''}"
+                      f"-{os_strings[sys_platform]}.whl")
+
     return wheel_filename
+
+
+def get_master_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel from a specific commit."""
+
+    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+            f"{ray_commit}/{get_wheel_filename()}")

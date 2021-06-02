@@ -308,12 +308,12 @@ class GlobalState:
 
         return dict(result)
 
-    def get_placement_group_by_name(self, placement_group_name):
+    def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         self._check_connected()
 
         placement_group_info = (
             self.global_state_accessor.get_placement_group_by_name(
-                placement_group_name))
+                placement_group_name, ray_namespace))
         if placement_group_info is None:
             return None
         else:
