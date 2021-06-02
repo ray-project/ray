@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import click
+from watchgod import watch
 from ray.serve.config import DeploymentMode
 
 import ray
@@ -63,3 +64,22 @@ def start(http_host, http_port, http_location):
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
 def shutdown():
     serve.connect().shutdown()
+
+
+@cli.command(help="Run and reload a deployment script for development purposes.")
+@click.option(
+    "--filepath",
+    required=True,
+    type=str,
+    help="Filepath for a deployment script")
+@click.option(
+    "--verbose",
+    default=True,
+    required=False,
+    type=bool,
+    help="Enable verbose mode.")
+def run(filepath, verbose):
+    for _ in watch(filepath):
+        if verbose:
+            print("[SERVE] Deployment script is modified. Redeploying...\n")
+        exec(open(filepath).read())
