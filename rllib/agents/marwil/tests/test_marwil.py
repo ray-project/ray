@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -35,24 +35,33 @@ class TestMARWIL(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        data_file = os.path.join(rllib_dir, "tests/data/pendulum/large-expert-full-episodes.json")
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
+
+        config["model"]["fcnet_hiddens"] = [512, 512]#TODO
+        config["model"]["fcnet_activation"] = "relu"#TODO
+        config["lr"] = 3e-4 #TODO
+
+        config["num_workers"] = 1
+        config["replay_buffer_size"] = 100
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 2
+        config["evaluation_interval"] = 3
+        config["evaluation_num_episodes"] = 5
+        config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        num_iterations = 350
-        min_reward = 70.0
+        config["input_evaluation"] = []#TODO
+        num_iterations = 350000#TODO350
+        min_reward = -300#70.0
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v0")#CartPole-v0")
             learnt = False
             for i in range(num_iterations):
                 eval_results = trainer.train().get("evaluation")

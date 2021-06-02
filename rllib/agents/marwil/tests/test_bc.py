@@ -14,7 +14,7 @@ tf1, tf, tfv = try_import_tf()
 class TestBC(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -28,33 +28,43 @@ class TestBC(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        data_file = os.path.join(rllib_dir, "tests/data/pendulum/large-expert.json")
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
         config = marwil.BC_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        #config["train_batch_size"] = 0  # Run locally.
+
+        config["model"]["fcnet_hiddens"] = [512, 512]#TODO
+        config["model"]["fcnet_activation"] = "relu"#TODO
+        config["lr"] = 3e-4 #TODO
+
+        config["evaluation_interval"] = 3
         config["evaluation_num_workers"] = 1
+        config["evaluation_num_episodes"] = 5
+        config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        num_iterations = 350
-        min_reward = 70.0
+        num_iterations = 35000#TODO350
+        min_reward = -300.0
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v0")#CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                eval_results = trainer.train()["evaluation"]
-                print("iter={} R={}".format(
-                    i, eval_results["episode_reward_mean"]))
-                # Learn until good reward is reached on an actual live env.
-                if eval_results["episode_reward_mean"] > min_reward:
-                    print("learnt!")
-                    learnt = True
-                    break
+                eval_results = trainer.train().get("evaluation")
+                if eval_results:
+                    print("iter={} R={}".format(
+                        i, eval_results["episode_reward_mean"]))
+                    # Learn until good reward is reached in the actual env.
+                    if eval_results["episode_reward_mean"] > min_reward:
+                        print("learnt!")
+                        learnt = True
+                        break
 
             if not learnt:
                 raise ValueError(

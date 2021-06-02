@@ -3,8 +3,8 @@ pendulum-ppo:
     env: Pendulum-v0
     run: PPO
     stop:
-        episode_reward_mean: -500
-        timesteps_total: 400000
+        #episode_reward_mean: -500
+        timesteps_total: 40000000000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -17,6 +17,10 @@ pendulum-ppo:
         lr: 0.0003
         sgd_minibatch_size: 64
         num_sgd_iter: 6
+        batch_mode: complete_episodes
         model:
             fcnet_hiddens: [256, 256]
         observation_filter: MeanStdFilter
+
+        output: /tmp/out
+        output_max_file_size: 10485760
