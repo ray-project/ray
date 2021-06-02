@@ -32,7 +32,7 @@ MAX_SPECIFIC_SERVER_PORT = 24000
 CHECK_CHANNEL_TIMEOUT_S = 10
 
 LOGSTREAM_RETRIES = 5
-LOGSTREAM_RETRY_TIME = 2
+LOGSTREAM_RETRY_INTERVAL_SEC = 2
 
 
 def _get_client_id_from_context(context: Any) -> str:
@@ -432,10 +432,10 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 break
             logger.warning(
                 f"Retrying Logstream connection. {i+1} attempts failed.")
-            time.sleep(LOGSTREAM_RETRY_TIME)
+            time.sleep(LOGSTREAM_RETRY_INTERVAL_SEC)
 
         if channel is None:
-            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_code(grpc.StatusCode.UNAVAILABLE)
             return None
 
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)

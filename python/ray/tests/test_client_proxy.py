@@ -140,7 +140,7 @@ def test_delay_in_rewriting_environment(shutdown_only):
     a Client connecting.
     """
     proxier.LOGSTREAM_RETRIES = 3
-    proxier.LOGSTREAM_RETRY_TIME = 1
+    proxier.LOGSTREAM_RETRY_INTERVAL_SEC = 1
     ray_instance = ray.init()
 
     def delay_in_rewrite(input: JobConfig):
