@@ -201,22 +201,22 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
 
         The Location is stored as a Dict with following attributes:
         - primary_node_id:
-            The hex ID of the node who has the primary copy of the object.
-            It could be None if the object is pending resolve, inlined or
-            evicted.
+        The hex ID of the node who has the primary copy of the object.
+        It could be None if the object is pending resolve, inlined or
+        evicted.
         - object_size:
-            The size of data + metadata in bytes.
+        The size of data + metadata in bytes.
         - node_ids:
-            The hex IDs of the nodes that this object appeared on or was
-            evicted by.
+        The hex IDs of the nodes that this object appeared on or was
+        evicted by.
         - is_spilled:
-            Wether the object has been spilled.
+        Wether the object has been spilled.
         - spilled_url:
-            The spilled location, None if not spilled.
+        The spilled location, None if not spilled.
         - spilled_node_id:
-            The hex node ID which spilled the object. None if the object
-            is not spilled, or was spilled to a distributed external
-            storage.
+        The hex node ID which spilled the object. None if the object
+        is not spilled, or was spilled to a distributed external
+        storage.
 
     Raises:
         A RuntimeError is raised if the processes were not started by
