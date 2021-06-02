@@ -994,6 +994,9 @@ def test_actor_autocomplete(ray_start_regular_shared):
     methods = [fn for fn in dir(f) if not fn.startswith("_")]
     assert methods == ["method_one"]
 
+    all_methods = set(dir(f))
+    assert all_methods == {"__init__", "method_one", "__ray_terminate__"}
+
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
     assert set(method_options) == {"options", "remote"}
