@@ -9,6 +9,10 @@ unsupported_field_message = ("The field {} is not supported "
 
 
 def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare local cluster config for ingestion by cluster launcher and
+    autoscaler.
+    """
     config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
         if config.get("head_node"):
@@ -27,6 +31,8 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
+    # User should explicitly set the max number of workers for the coordinator
+    # to allocate.
     if "max_workers" not in config:
         cli_logger.error("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
@@ -66,13 +72,12 @@ def is_local_manual(provider_config: Dict[str, Any]) -> bool:
 
 def sync_state(config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Used to synchronize head and local cluster state files.
+    Used to synchronize head and local cluster state files, mostly to let the
+    head node know that the head node itself is non-terminated.
     """
     config = copy.deepcopy(config)
     cluster_name = config["cluster_name"]
-    lock_path = get_lock_path(cluster_name)
     state_path = get_state_path(cluster_name)
-    config["file_mounts"][lock_path] = lock_path
     config["file_mounts"][state_path] = state_path
     return config
 
