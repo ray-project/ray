@@ -70,6 +70,13 @@ class ClusterState:
                     if worker_ip not in list_of_node_ips:
                         del workers[worker_ip]
 
+                # Set external head ip, if provided by user.
+                # Useful if calling `ray up` from outside the network.
+                external_head_ip = provider_config.get("external_head_ip")
+                if external_head_ip:
+                    head_tags = workers[provider_config["head_ip"]]["tags"]
+                    head_tags["external_ip"] = external_head_ip
+
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug("ClusterState: "
@@ -200,7 +207,13 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
-        return socket.gethostbyname(node_id)
+        ip = self.node_tags(node_id).get("external_ip")
+        # If user has supplied an external ip, return that.
+        # (Useful when calling ray up from outside the network.)
+        if ip:
+            return ip
+        else:
+            return socket.gethostbyname(node_id)
 
     def internal_ip(self, node_id):
         return socket.gethostbyname(node_id)
