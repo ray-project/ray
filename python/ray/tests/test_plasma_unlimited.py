@@ -130,6 +130,30 @@ def test_task_unlimited():
         ray.shutdown()
 
 
+def test_task_unlimited_multiget_args():
+    try:
+        address = _init_ray()
+        # Too many refs to fit into memory.
+        refs = []
+        for _ in range(10):
+            refs.append(ray.put(np.zeros(200 * MB, dtype=np.uint8)))
+        x2 = ray.put(np.zeros(600 * MB, dtype=np.uint8))
+        x2p = ray.get(x2)
+        _check_spilled_mb(address, spilled=2000)
+
+        @ray.remote
+        def consume(refs):
+            # Should work without thrashing.
+            ray.get(refs)
+            return os.getpid()
+
+        ray.get([consume.remote(refs) for _ in range(1000)])
+        _check_spilled_mb(address, spilled=2000, restored=2000)
+        del x2p
+    finally:
+        ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     import sys
