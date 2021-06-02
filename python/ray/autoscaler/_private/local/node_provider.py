@@ -74,8 +74,8 @@ class ClusterState:
                 # Useful if calling `ray up` from outside the network.
                 external_head_ip = provider_config.get("external_head_ip")
                 if external_head_ip:
-                    head_tags = workers[provider_config["head_ip"]]["tags"]
-                    head_tags["external_ip"] = external_head_ip
+                    head = workers[provider_config["head_ip"]]
+                    head["external_ip"] = external_head_ip
 
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
@@ -207,11 +207,12 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
-        ip = self.node_tags(node_id).get("external_ip")
+        node_state = self.state.get()[node_id]
+        ext_ip = node_state.get("external_ip")
         # If user has supplied an external ip, return that.
         # (Useful when calling ray up from outside the network.)
-        if ip:
-            return ip
+        if ext_ip:
+            return ext_ip
         else:
             return socket.gethostbyname(node_id)
 
