@@ -47,7 +47,7 @@ def test_release_resources_race(shutdown_only):
         ray.get(refs)
         return os.getpid()
 
-    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    pids = set(ray.get([consume.remote(refs) for _ in range(100)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
 
