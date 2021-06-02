@@ -271,6 +271,7 @@ class StandardAutoscaler:
             for node_id in completed_nodes:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
+                    self.prom_metrics.successful_updates.inc()
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
                     self.load_metrics.mark_active(
@@ -278,6 +279,7 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.prom_metrics.failed_updates.inc()
                     self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
 
@@ -332,6 +334,7 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+        self.prom_metrics.updating_nodes.set(len(self.updaters))
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 

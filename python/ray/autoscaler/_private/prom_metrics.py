@@ -2,6 +2,7 @@ from prometheus_client import (
     CollectorRegistry,
     Counter,
     Gauge,
+    Histogram,
 )
 
 
@@ -11,6 +12,26 @@ class AutoscalerPrometheusMetrics:
     def __init__(self, registry: CollectorRegistry = None):
         self.registry: CollectorRegistry = registry or \
             CollectorRegistry(auto_describe=True)
+        # Buckets: 5 seconds, 10 seconds, 20 seconds, 30 seconds,
+        #          45 seconds, 1 minute, 1.5 minutes, 2 minutes,
+        #          3 minutes, 4 minutes, 5 minutes, 6 minutes,
+        #          8 minutes, 10 minutes, 12 minutes, 15 minutes
+        #          20 minutes, 30 minutes
+        self.worker_launch_time: Histogram = Histogram(
+            "worker_launch_time_seconds",
+            "Worker launch time. This is the time it takes for a call to "
+            "a node provider's create_node method to return. Note that "
+            "when nodes are launched in batches, the launch time for that "
+            "batch will be observed once for *each* node in that batch. For "
+            "example, if 8 nodes are launched in 3 minutes, a launch time "
+            "of 3 minutes will be observed 8 times.",
+            unit="seconds",
+            namespace="autoscaler",
+            registry=self.registry,
+            buckets=[
+                5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600,
+                720, 900, 1200, 1800
+            ])
         self.pending_nodes: Gauge = Gauge(
             "pending_nodes",
             "Number of nodes pending to be started.",
@@ -27,6 +48,30 @@ class AutoscalerPrometheusMetrics:
             "stopped_nodes",
             "Number of nodes stopped.",
             unit="nodes",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.updating_nodes: Gauge = Gauge(
+            "updating_nodes",
+            "Number of nodes in the process of updating.",
+            unit="nodes",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.failed_create_nodes: Counter = Counter(
+            "failed_create_nodes",
+            "Number of nodes that failed to be created due to an exception "
+            "in the node provider's create_node method.",
+            unit="nodes",
+            registry=self.registry)
+        self.failed_updates: Counter = Counter(
+            "failed_updates",
+            "Number of failed worker node updates.",
+            unit="updates",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.successful_updates: Counter = Counter(
+            "successful_updates",
+            "Number of succesfful worker node updates.",
+            unit="updates",
             namespace="autoscaler",
             registry=self.registry)
         self.running_workers: Gauge = Gauge(
