@@ -475,7 +475,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                        std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -489,10 +491,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_address The address of the object's owner.
+  /// \param[in] owner_address The address of the object's owner.
+  /// \param[in] serialized_object_status The serialized object status protobuf.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address);
+                                             const rpc::Address &owner_address,
+                                             const std::string &serialized_object_status);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -1037,7 +1041,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void InternalHeartbeat();
 
   /// Helper method to fill in object status reply given an object.
-  void PopulateObjectStatus(std::shared_ptr<RayObject> obj,
+  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///

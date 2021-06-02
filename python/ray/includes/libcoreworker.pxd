@@ -168,11 +168,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
-                              CAddress *owner_address)
+                              CAddress *owner_address,
+                              c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CAddress &owner_address)
+                const CAddress &owner_address,
+                const c_string &object_status)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,

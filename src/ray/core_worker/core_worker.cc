@@ -1005,7 +1005,7 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
 }
 
 void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
-                                  std::string *object_status) {
+                                  std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
@@ -1015,28 +1015,29 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "at https://github.com/ray-project/ray/issues/";
   RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id;
 
-  auto existing_object = memory_store_->Get(object_id);
+  // Optimization: if the object exists, serialize and inline its status. This also
+  // resolves some race conditions in resource release (#16025).
+  auto existing_object = memory_store_->GetIfExists(object_id);
   rpc::GetObjectStatusReply object_status;
   if (existing_object != nullptr) {
-    PopulateObjectStatus(existing_object, object_status);
+    PopulateObjectStatus(object_id, existing_object, &object_status);
   }
-  *object_status = object_status.SerializeAsString();
+  *serialized_object_status = object_status.SerializeAsString();
 }
 
-void CoreWorker::RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
-                                                       const ObjectID &outer_object_id,
-                                                       const rpc::Address &owner_address,
-                                                       const std::string &object_status) {
+void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
+    const ObjectID &object_id, const ObjectID &outer_object_id,
+    const rpc::Address &owner_address, const std::string &serialized_object_status) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
 
-  rpc::GetObjectStatusReply inline_status;
-  inline_status.ParseFromString(object_status);
+  rpc::GetObjectStatusReply object_status;
+  object_status.ParseFromString(serialized_object_status);
 
-  if (inline_status.has_object()) {
+  if (object_status.has_object()) {
     // We already have the inlined object status, process it immediately.
-    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), inline_status);
+    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), object_status);
   } else {
     // We will ask the owner about the object until the object is
     // created or we can no longer reach the owner.
@@ -2350,7 +2351,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
       if (is_freed) {
         reply->set_status(rpc::GetObjectStatusReply::FREED);
       } else {
-        PopulateObjectStatus(obj, reply);
+        PopulateObjectStatus(object_id, obj, reply);
       }
       send_reply_callback(Status::OK(), nullptr, nullptr);
     });
@@ -2359,7 +2360,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   RemoveLocalReference(object_id);
 }
 
-void CoreWorker::PopulateObjectStatus(std::shared_ptr<RayObject> obj,
+void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
+                                      std::shared_ptr<RayObject> obj,
                                       rpc::GetObjectStatusReply *reply) {
   // If obj is the concrete object value, it is small, so we
   // send the object back to the caller in the GetObjectStatus

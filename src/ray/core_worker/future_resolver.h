@@ -58,7 +58,7 @@ class FutureResolver {
   /// \param[in] status Any error code from the owner obtaining the object status.
   /// \param[in] object_status The object status.
   void ProcessResolvedObject(const ObjectID &object_id, const Status &status,
-                             const rpc::GetObjectStatusReply object_status);
+                             const rpc::GetObjectStatusReply &object_status);
 
  private:
   /// Used to store values of resolved futures.

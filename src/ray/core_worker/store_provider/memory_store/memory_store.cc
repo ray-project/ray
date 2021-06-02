@@ -154,6 +154,22 @@ void CoreWorkerMemoryStore::GetAsync(
   }
 }
 
+std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
+  std::shared_ptr<RayObject> ptr;
+  {
+    absl::MutexLock lock(&mu_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      ptr = iter->second;
+    }
+  }
+  // It's important for performance to run the callback outside the lock.
+  if (ptr != nullptr) {
+    ptr->SetAccessed();
+  }
+  return ptr;
+}
+
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);
@@ -318,27 +334,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   bool should_notify_raylet =
       (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
 
-  // Check if we should release resources to the Raylet on this blocking call.
-  // Don't release resources for very brief timeouts. TODO(ekl) we could potentially
-  // optimize this by asynchronously pinging the owners to see if the objects are
-  // really resolved. Then we can release resources as soon as we get an ack for all
-  // objects that they are truly pending.
-  if (should_notify_raylet &&
-      (timeout_ms == -1 ||
-       timeout_ms > RayConfig::instance().release_resources_timeout_milliseconds())) {
-    // We wait for a small grace period before releasing resources. This is needed
-    // since the status of object refs is resolved asynchronously when they are
-    // first deserialized, so even if the object is ready for get, for the first
-    // couple milliseconds upon deserialization of the ref, they don't have a status.
-    // See https://github.com/ray-project/ray/issues/16025 for more details.
-    if (!get_request->Wait(
-            RayConfig::instance().release_resources_timeout_milliseconds())) {
-      RAY_CHECK_OK(
-          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
-      if (timeout_ms > 0) {
-        timeout_ms -= RayConfig::instance().release_resources_timeout_milliseconds();
-      }
-    }
+  // Wait for remaining objects (or timeout).
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
   }
 
   bool done = false;
