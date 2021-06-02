@@ -157,11 +157,11 @@ def client(address: Optional[str] = None) -> ClientBuilder:
     * IP:Port -> Connects to a Ray Client Server at the given address.
     * module://inner_address -> load module.ClientBuilder & pass inner_address
     """
-    override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if override_address:
+    env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if env_address and address is None:
         logger.debug(
-            f"Using address ({override_address}) instead of "
-            f"({address}) because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set")
-        address = override_address
+            f"Using address ({env_address}) instead of auto-detection "
+            f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
+        address = env_address
 
     return _get_builder_from_address(address)
