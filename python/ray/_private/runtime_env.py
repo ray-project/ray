@@ -81,8 +81,9 @@ class RuntimeEnvDict:
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
-            self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
+            if "conda" in runtime_env_json or "pip" in runtime_env_json:
+                self._dict["working_dir"] = runtime_env_json["working_dir"]
+                working_dir = Path(self._dict["working_dir"])
         else:
             self._dict["working_dir"] = None
             working_dir = None
