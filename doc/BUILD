@@ -17,12 +17,12 @@ py_test(
     tags = ["exclusive"]
 )
 
-#py_test(
-#    name = "plot_pong_example",
-#    size = "large",
-#    srcs = ["examples/plot_pong_example.py"],
-#    tags = ["exclusive"]
-#)
+py_test(
+    name = "plot_pong_example",
+    size = "large",
+    srcs = ["examples/plot_pong_example.py"],
+    tags = ["exclusive"]
+)
 
 py_test(
     name = "progress_bar",

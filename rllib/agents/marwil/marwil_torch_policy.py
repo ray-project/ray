@@ -24,6 +24,8 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     state_values = model.value_function()
     advantages = train_batch[Postprocessing.ADVANTAGES]
     actions = train_batch[SampleBatch.ACTIONS]
+    # log\pi_\theta(a|s)
+    logprobs = action_dist.logp(actions)
 
     #rewards_plus_v = torch.cat(
     #    [train_batch[SampleBatch.REWARDS],
@@ -37,24 +39,42 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     #rollout[Postprocessing.VALUE_TARGETS] = discounted_returns
 
     # Advantage estimation.
-    #adv = advantages - state_values
-    adv_squared = torch.mean(torch.pow(adv, 2.0))
+    if policy.config["beta"] != 0.0:
+        #advantages = train_batch[Postprocessing.ADVANTAGES]
+        #state_values = model.value_function()
+        #adv = advantages - state_values
+        adv_squared = torch.mean(torch.pow(adv, 2.0))
 
-    # Value loss.
-    policy.v_loss = 0.0 #0.0 * adv_squared
+        #explained_var = explained_variance(advantages, state_values)
+        #policy.explained_variance = torch.mean(explained_var)
+        # Value loss.
+        policy.v_loss = 0.0 #0.0 * adv_squared
 
-    # Policy loss.
-    # Update averaged advantage norm.
-    policy.ma_adv_norm.add_(1e-7 * (adv_squared - policy.ma_adv_norm))
-    # Exponentially weighted advantages.
-    exp_advs = torch.exp(policy.config["beta"] *
-                         (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5)).detach()))
-    # log\pi_\theta(a|s)
-    logprobs = action_dist.logp(actions)
-    #policy.p_loss = -1.0 * torch.mean(exp_advs.detach() * logprobs)
-    policy.p_loss = -1.0 * torch.mean(exp_advs * logprobs)
+        # Policy loss.
+        # Update averaged advantage norm.
+        policy.ma_adv_norm.add_(1e-7 * (adv_squared - policy.ma_adv_norm))
+        # Exponentially weighted advantages.
+        exp_advs = torch.exp(policy.config["beta"] *
+                             (adv / (1e-8 + torch.pow(policy.ma_adv_norm,
+                                                      0.5)).detach()))
+        # log\pi_\theta(a|s)
+        #logprobs = action_dist.logp(actions)
+        # policy.p_loss = -1.0 * torch.mean(exp_advs.detach() * logprobs)
+        policy.p_loss = -1.0 * torch.mean(exp_advs * logprobs)
+
+        # Value loss.
+        policy.v_loss = 0.5 * adv_squared
+    else:
+        policy.explained_variance = 0.0
+        # Policy loss (simple BC loss term).
+        policy.p_loss = -1.0 * torch.mean(logprobs)
+        # Value loss.
+        policy.v_loss = 0.0
 
     # Combine both losses.
+    #policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
+    #    policy.v_loss
+
     policy.total_loss = policy.p_loss # + policy.config["vf_coeff"] * \
         #policy.v_loss
     explained_var = explained_variance(advantages, state_values)

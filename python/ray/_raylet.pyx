@@ -719,11 +719,6 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
-            ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "restore_spilled_objects_error",
-                traceback.format_exc() + exception_str,
-                job_id=None)
     return bytes_restored
 
 

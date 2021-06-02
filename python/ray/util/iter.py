@@ -1221,7 +1221,13 @@ class _NextValueNotReady(Exception):
 
     This is used internally to implement the union() of multiple blocking
     local generators."""
-    pass
+
+    def __init__(self):
+        # many generators use the _NextValueNotReady in spin-locks which
+        # do not yeild threads to waiting processing such as pytorch GPU
+        # scheduling, this leads to problems such the following:
+        # https://discuss.ray.io/t/very-slow-gradient-descent-on-remote-workers/1278/9
+        time.sleep(0.001)
 
 
 class _ActorSet(object):

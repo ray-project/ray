@@ -322,7 +322,7 @@ install_dependencies() {
   fi
 
   # Additional RLlib test dependencies.
-  if [ "${RLLIB_TESTING-}" = 1 ]; then
+  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'

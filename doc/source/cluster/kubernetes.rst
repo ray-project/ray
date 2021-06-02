@@ -74,7 +74,8 @@ with scaling allowed up to three workers.
 
   # Install a small Ray cluster with the default configuration
   # in a new namespace called "ray". Let's name the Helm release "example-cluster."
-  $ helm -n ray install example-cluster --create-namespace ./rayNAME: example-cluster
+  $ helm -n ray install example-cluster --create-namespace ./ray
+  NAME: example-cluster
   LAST DEPLOYED: Fri May 14 11:44:06 2021
   NAMESPACE: ray
   STATUS: deployed
@@ -154,7 +155,7 @@ on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``
   Connecting with Ray client requires using matching minor versions of Python (for example 3.7)
   on the server and client end, that is, on the Ray head node and in the environment where
   ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
-  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=1.3.0>`_.
+  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray>`_.
 
   Connecting with Ray client also requires matching Ray versions. To connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
 
@@ -218,12 +219,19 @@ then fetch its logs:
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
 
+.. _k8s-cleanup-basic:
+
 Cleanup
 -------
 
-To remove a Ray Helm release and the associated API resources, use `helm uninstall`_.
+To remove a Ray Helm release and the associated API resources, use `kubectl delete`_ and `helm uninstall`_.
+Note the order of the commands below.
 
 .. code-block:: shell
+
+  # First, delete the RayCluster custom resource.
+  $ kubectl -n ray delete raycluster example-cluster
+  raycluster.cluster.ray.io "example-cluster" deleted
 
   # Delete the Ray release.
   $ helm -n ray uninstall example-cluster
@@ -235,6 +243,8 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 
 Note that ``helm uninstall`` `does not delete`_ the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
+
+- :ref:`More details on resource cleanup<k8s-cleanup>`
 
 Next steps
 ----------
@@ -261,6 +271,7 @@ Questions or Issues?
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
+.. _`kubectl delete`: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#delete
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/

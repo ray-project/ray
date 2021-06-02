@@ -3,6 +3,8 @@
 Using MLflow with Tune
 ======================
 
+.. warning:: If you are using these MLflow integrations with :ref:`ray-client`, it is recommended that you setup a remote Mlflow tracking server instead of one that is backed by the local filesystem.
+
 `MLflow <https://mlflow.org/>`_ is an open source platform to manage the ML lifecycle, including experimentation,
 reproducibility, deployment, and a central model registry. It currently offers four components, including
 MLflow Tracking to record and query experiments, including code, data, config, and results.
