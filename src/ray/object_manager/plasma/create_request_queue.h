@@ -54,10 +54,12 @@ class CreateRequestQueue {
   /// \param client The client that sent the request. This is used as a key to
   /// drop this request if the client disconnects.
   /// \param create_callback A callback to attempt to create the object.
+  /// \param object_size Object size in bytes.
   /// \return A request ID that can be used to get the result.
   uint64_t AddRequest(const ObjectID &object_id,
                       const std::shared_ptr<ClientInterface> &client,
-                      const CreateObjectCallback &create_callback);
+                      const CreateObjectCallback &create_callback,
+                      const size_t object_size);
 
   /// Get the result of a request.
   ///
@@ -83,12 +85,13 @@ class CreateRequestQueue {
   /// \param client The client that sent the request. This is used as a key to
   /// drop this request if the client disconnects.
   /// \param create_callback A callback to attempt to create the object.
+  /// \param object_size Object size in bytes.
   /// \return The result of the call. This will return an out-of-memory error
   /// if there are other requests queued or there is not enough space left in
   /// the object store, this will return an out-of-memory error.
   std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(
       const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-      const CreateObjectCallback &create_callback);
+      const CreateObjectCallback &create_callback, size_t object_size);
 
   /// Process requests in the queue.
   ///
@@ -109,11 +112,12 @@ class CreateRequestQueue {
   struct CreateRequest {
     CreateRequest(const ObjectID &object_id, uint64_t request_id,
                   const std::shared_ptr<ClientInterface> &client,
-                  CreateObjectCallback create_callback)
+                  CreateObjectCallback create_callback, size_t object_size)
         : object_id(object_id),
           request_id(request_id),
           client(client),
-          create_callback(create_callback) {}
+          create_callback(create_callback),
+          object_size(object_size) {}
 
     // The ObjectID to create.
     const ObjectID object_id;
@@ -128,6 +132,8 @@ class CreateRequestQueue {
 
     // A callback to attempt to create the object.
     const CreateObjectCallback create_callback;
+
+    const size_t object_size;
 
     // The results of the creation call. These should be sent back to the
     // client once ready.

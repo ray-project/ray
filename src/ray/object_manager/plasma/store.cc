@@ -809,6 +809,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaCreateRequest: {
     const auto &object_id = GetCreateRequestObjectId(message);
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
+    const size_t object_size = request->data_size() + request->metadata_size();
 
     auto handle_create = [this, client, message](PlasmaObject *result) {
       return HandleCreateObjectRequest(client, message, result);
@@ -817,8 +818,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     if (request->try_immediately()) {
       RAY_LOG(DEBUG) << "Received request to create object " << object_id
                      << " immediately";
-      auto result_error =
-          create_request_queue_.TryRequestImmediately(object_id, client, handle_create);
+      auto result_error = create_request_queue_.TryRequestImmediately(
+          object_id, client, handle_create, object_size);
       const auto &result = result_error.first;
       const auto &error = result_error.second;
       if (SendCreateReply(client, object_id, result, error).ok() &&
@@ -826,7 +827,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
         static_cast<void>(client->SendFd(result.store_fd));
       }
     } else {
-      auto req_id = create_request_queue_.AddRequest(object_id, client, handle_create);
+      auto req_id =
+          create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
       RAY_LOG(DEBUG) << "Received create request for object " << object_id
                      << " assigned request ID " << req_id;
       ProcessCreateRequests();
@@ -955,18 +957,6 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   PlasmaObject result = {};
   PlasmaError error;
   bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
-  if (error == PlasmaError::OutOfMemory) {
-    // Logs are suppressed because there is only one OOM error per 10 seconds.
-    RAY_LOG(INFO) << "Out of memory error is reported to the client for an object id "
-                  << object_id << ". Object store current usage "
-                  << (PlasmaAllocator::Allocated() / 1e9) << " / "
-                  << (PlasmaAllocator::GetFootprintLimit() / 1e9)
-                  << " GB. Pinned unevictable objects after spilling: "
-                  << num_bytes_in_use_ / 1024 / 1024
-                  << " MB. Unsealed objects: " << num_bytes_unsealed_ / 1024 / 1024
-                  << " MB. Object size: "
-                  << (result.data_size + result.metadata_size) / 1024 / 1024 << " MB.";
-  }
   if (finished) {
     RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
     if (SendCreateReply(client, object_id, result, error).ok() &&
@@ -1042,6 +1032,8 @@ std::string PlasmaStore::DumpDebugInfo() const {
     }
   }
 
+  buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
+         << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- objects spillable: " << num_objects_spillable << "\n";
   buffer << "- bytes spillable: " << num_bytes_spillable << "\n";
   buffer << "- objects unsealed: " << num_objects_unsealed << "\n";
