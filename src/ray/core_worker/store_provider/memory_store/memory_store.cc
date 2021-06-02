@@ -317,7 +317,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
   bool should_notify_raylet =
       (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
-  bool done = false;
 
   // Check if we should release resources to the Raylet on this blocking call.
   // Don't release resources for very brief timeouts. TODO(ekl) we could potentially
@@ -332,8 +331,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // first deserialized, so even if the object is ready for get, for the first
     // couple milliseconds upon deserialization of the ref, they don't have a status.
     // See https://github.com/ray-project/ray/issues/16025 for more details.
-    if (!(done = get_request->Wait(
-              RayConfig::instance().release_resources_timeout_milliseconds()))) {
+    if (!(get_request->Wait(
+            RayConfig::instance().release_resources_timeout_milliseconds()))) {
       RAY_CHECK_OK(
           raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
       if (timeout_ms > 0) {
@@ -342,7 +341,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  // Wait for remaining objects (or timeout).
+  bool done = false;
   bool timed_out = false;
   Status signal_status = Status::OK();
   int64_t remaining_timeout = timeout_ms;
