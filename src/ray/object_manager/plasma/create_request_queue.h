@@ -172,6 +172,10 @@ class CreateRequestQueue {
   /// A callback to return the current time.
   const std::function<int64_t()> get_time_;
 
+  /// Whether to use the fallback allocator when out of memory.
+  bool plasma_unlimited_;
+
+  /// Sink for debug info.
   const std::function<std::string()> dump_debug_info_callback_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
@@ -197,9 +201,6 @@ class CreateRequestQueue {
 
   /// The time OOM timer first starts. It becomes -1 upon every creation success.
   int64_t oom_start_time_ns_ = -1;
-
-  /// Whether to use the fallback allocator when out of memory.
-  bool plasma_unlimited_;
 
   friend class CreateRequestQueueTest;
 };
