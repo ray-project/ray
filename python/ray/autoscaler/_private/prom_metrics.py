@@ -17,6 +17,10 @@ class AutoscalerPrometheusMetrics:
         #          3 minutes, 4 minutes, 5 minutes, 6 minutes,
         #          8 minutes, 10 minutes, 12 minutes, 15 minutes
         #          20 minutes, 30 minutes
+        histogram_buckets = [
+            5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720,
+            900, 1200, 1800
+        ]
         self.worker_launch_time: Histogram = Histogram(
             "worker_launch_time_seconds",
             "Worker launch time. This is the time it takes for a call to "
@@ -28,10 +32,16 @@ class AutoscalerPrometheusMetrics:
             unit="seconds",
             namespace="autoscaler",
             registry=self.registry,
-            buckets=[
-                5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600,
-                720, 900, 1200, 1800
-            ])
+            buckets=histogram_buckets)
+        self.worker_update_time: Histogram = Histogram(
+            "worker_update_time_seconds",
+            "Worker update time. This is the time between when an updater "
+            "thread begins executing and when it exits successfully. This "
+            "metric only observes times for successful updates.",
+            unit="seconds",
+            namespace="autoscaler",
+            registry=self.registry,
+            buckets=histogram_buckets)
         self.pending_nodes: Gauge = Gauge(
             "pending_nodes",
             "Number of nodes pending to be started.",

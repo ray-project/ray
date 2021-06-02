@@ -2335,6 +2335,7 @@ MemAvailable:   33000000 kB
 
         # Expect both updates to be successful, no nodes in updating state
         assert mock_metrics.successful_updates.inc.call_count == 2
+        assert mock_metrics.worker_update_time.observe.call_count == 2
         mock_metrics.updating_nodes.set.assert_called_with(0)
         assert not autoscaler.updaters
 
