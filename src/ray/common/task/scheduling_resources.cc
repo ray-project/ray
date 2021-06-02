@@ -166,6 +166,10 @@ FixedPoint ResourceSet::GetResource(const std::string &resource_name) const {
   return capacity;
 }
 
+bool ResourceSet::Contains(const std::string &resource_name) const {
+  return resource_capacity_.count(resource_name) != 0;
+}
+
 const ResourceSet ResourceSet::GetNumCpus() const {
   ResourceSet cpu_resource_set;
   const FixedPoint cpu_quantity = GetResource(kCPU_ResourceLabel);
@@ -733,10 +737,23 @@ void SchedulingResources::DeleteResource(const std::string &resource_name) {
   resources_load_.DeleteResource(resource_name);
 }
 
+const ResourceSet &SchedulingResources::GetNormalTaskResources() const {
+  return resources_normal_tasks_;
+}
+
+void SchedulingResources::SetNormalTaskResources(const ResourceSet &newset) {
+  resources_normal_tasks_ = newset;
+}
+
 std::string SchedulingResources::DebugString() const {
   std::stringstream result;
+
+  auto resources_available = resources_available_;
+  resources_available.SubtractResources(resources_normal_tasks_);
+
   result << "\n- total: " << resources_total_.ToString();
-  result << "\n- avail: " << resources_available_.ToString();
+  result << "\n- avail: " << resources_available.ToString();
+  result << "\n- normal_task_stolen: " << resources_normal_tasks_.ToString();
   return result.str();
 };
 

@@ -511,18 +511,17 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data,
-    bool need_whole_report /* = false*/) {
+void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-  if (need_whole_report || !last_heartbeat_resources->GetNormalTaskResources().IsEqual(
+  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
                                normal_task_resources)) {
     RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
     resources_data.set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+    auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
-    resources_data->set_resources_normal_task_timestamp(current_sys_time_ns());
+    resources_data.set_resources_normal_task_timestamp(current_sys_time_ns());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }

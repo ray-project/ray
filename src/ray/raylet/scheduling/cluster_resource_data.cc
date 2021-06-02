@@ -507,6 +507,24 @@ std::string TaskRequest::DebugString() const {
   return buffer.str();
 }
 
+TaskRequest &TaskRequest::operator+=(const TaskRequest &other) {
+  predefined_resources.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < other.predefined_resources.size(); i++) {
+    predefined_resources[i].demand += other.predefined_resources[i].demand;
+  }
+
+  for (auto &entry : other.custom_resources) {
+    auto iter = std::find_if(custom_resources.begin(), custom_resources.end(),
+                             [&entry](const auto &item) { return item.id == entry.id; });
+    if (iter != custom_resources.end()) {
+      iter->demand += entry.demand;
+    } else {
+      custom_resources.emplace_back(entry);
+    }
+  }
+  return *this;
+}
+
 bool TaskResourceInstances::IsEmpty() const {
   // Check whether all resource instances of a task are zero.
   for (const auto &predefined_resource : predefined_resources) {
@@ -571,4 +589,24 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
     }
   }
   return true;
+}
+
+std::unordered_map<std::string, double> TaskRequestToResourceMap(
+    const StringIdMap &string_to_int_map, const TaskRequest &task_request) {
+  std::unordered_map<std::string, double> resource_map;
+
+  for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
+    if (task_request.predefined_resources[i].demand > 0) {
+      resource_map[ResourceEnumToString(PredefinedResources(i))] =
+          task_request.predefined_resources[i].demand.Double();
+    }
+  }
+
+  for (auto &entry : task_request.custom_resources) {
+    if (entry.demand > 0) {
+      resource_map[string_to_int_map.Get(entry.id)] = entry.demand.Double();
+    }
+  }
+
+  return resource_map;
 }

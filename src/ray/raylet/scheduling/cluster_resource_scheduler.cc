@@ -991,6 +991,21 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
   }
 }
 
+int64_t ClusterResourceScheduler::GetIndexFromResourceName(
+    const std::string &resource_name) const {
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    return CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    return GPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    return OBJECT_STORE_MEM;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    return MEM;
+  } else {
+    return string_to_int_map_.Get(resource_name);
+  }
+}
+
 bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {

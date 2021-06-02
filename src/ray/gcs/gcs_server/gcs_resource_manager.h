@@ -123,6 +123,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
+  virtual std::string ToString() const { return ""; }
+
   std::string DebugString() const;
 
   /// Update the total resources and available resources of the specified node.
@@ -162,7 +164,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBatchData &buffer)
       LOCKS_EXCLUDED(resource_buffer_mutex_);
 
- private:
+ protected:
   /// Delete the scheduling resources of the specified node.
   ///
   /// \param node_id Id of a node.
@@ -220,7 +222,8 @@ class GcsResourceManagerEx : public GcsResourceManager {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManagerEx(instrumented_io_context &main_io_service,
                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                                bool redis_broadcast_enabled);
 
   virtual ~GcsResourceManagerEx() = default;
 

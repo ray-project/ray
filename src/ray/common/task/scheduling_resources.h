@@ -127,6 +127,12 @@ class ResourceSet {
   /// does not exist.
   FixedPoint GetResource(const std::string &resource_name) const;
 
+  /// Return ture if resource_capacity_ constains the specified resource label.
+  ///
+  /// \param resource_name: Resource name for which capacity is requested.
+  /// \return Return ture if resource_capacity_ constains the specified resource label.
+  bool Contains(const std::string &resource_name) const;
+
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
@@ -489,6 +495,17 @@ class SchedulingResources {
   /// \return Void.
   void DeleteResource(const std::string &resource_name);
 
+  /// \brief Get the resources used by normal tasks.
+  ///
+  /// \return Resources used by normal tasks.
+  const ResourceSet &GetNormalTaskResources() const;
+
+  /// \brief Set the amount of resources used by normal tasks.
+  ///
+  /// \param newset: The new resource set to update.
+  /// \return Void.
+  void SetNormalTaskResources(const ResourceSet &newset);
+
  private:
   /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;
@@ -496,6 +513,8 @@ class SchedulingResources {
   ResourceSet resources_available_;
   /// Resource load.
   ResourceSet resources_load_;
+  /// Resources of normal tasks.
+  ResourceSet resources_normal_tasks_;
 };
 
 }  // namespace ray
