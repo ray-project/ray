@@ -66,6 +66,12 @@ class AutoscalerPrometheusMetrics:
             unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
+        self.running_workers: Gauge = Gauge(
+            "running_workers",
+            "Number of worker nodes running.",
+            unit="nodes",
+            namespace="autoscaler",
+            registry=self.registry)
         self.failed_create_nodes: Counter = Counter(
             "failed_create_nodes",
             "Number of nodes that failed to be created due to an exception "
@@ -83,12 +89,6 @@ class AutoscalerPrometheusMetrics:
             "successful_updates",
             "Number of succesfful worker node updates.",
             unit="updates",
-            namespace="autoscaler",
-            registry=self.registry)
-        self.running_workers: Gauge = Gauge(
-            "running_workers",
-            "Number of worker nodes running.",
-            unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
         self.update_loop_exceptions: Counter = Counter(
