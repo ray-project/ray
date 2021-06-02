@@ -785,21 +785,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(core_worker.Put(buffers[i], {}, &ids[i]));
   }
-  std::vector<size_t> sizes{sizeof(array1) / 2 * 3, array2_size / 2 * 3};
-
-  // Test GetLocationFromOwner()
-  std::vector<std::shared_ptr<ObjectLocation>> location_results;
-  RAY_CHECK_OK(core_worker.GetLocationFromOwner(ids, -1, &location_results));
-  ASSERT_EQ(location_results.size(), ids.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    auto &location = location_results.at(i);
-    ASSERT_EQ(location->GetPrimaryNodeID(), core_worker.GetCurrentNodeId());
-    ASSERT_EQ(location->GetObjectSize(), sizes.at(i));
-    ASSERT_EQ(location->GetNodeIDs().size(), 1);
-    ASSERT_EQ(location->GetNodeIDs().at(0), core_worker.GetCurrentNodeId());
-    ASSERT_FALSE(location->IsSpilled());
-  }
-
+  
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Get(ids, -1, &results));
