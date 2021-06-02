@@ -1036,7 +1036,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id
 
   if (inline_status.has_object()) {
     // We already have the inlined object status, process it immediately.
-    future_resolver_->ProcessResolvedObject(object_id, owner_address, inline_status);
+    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), inline_status);
   } else {
     // We will ask the owner about the object until the object is
     // created or we can no longer reach the owner.
