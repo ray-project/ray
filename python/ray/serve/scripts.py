@@ -66,7 +66,8 @@ def shutdown():
     serve.connect().shutdown()
 
 
-@cli.command(help="Run and reload a deployment script for development purposes.")
+@cli.command(
+    help="Run and reload a deployment script for development purposes.")
 @click.option(
     "--filepath",
     required=True,
