@@ -26,7 +26,7 @@ def test_get_locations(ray_start_regular):
     for idx, obj_ref in enumerate(obj_refs):
         location = locations[obj_ref]
         assert location["primary_node_id"] == node_id.hex().encode("ascii")
-        # assert location["object_size() == sizes[idx]
+        assert location["object_size"] > sizes[idx]
         assert location["node_ids"] == [node_id.hex().encode("ascii")]
         assert not location["is_spilled"]
         assert location["spilled_url"] is None
