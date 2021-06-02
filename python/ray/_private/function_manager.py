@@ -4,6 +4,7 @@ import importlib
 import inspect
 import json
 import logging
+import os
 import sys
 import time
 import threading
@@ -179,30 +180,32 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
+                if os.environ.get("RAY_HIDE_UNPICKLE_ERROR") is None:
 
-                def f(*args, **kwargs):
-                    raise RuntimeError(
-                        "This function was not imported properly.")
+                    def f(*args, **kwargs):
+                        raise RuntimeError(
+                            "This function was not imported properly.")
 
-                # Use a placeholder method when function pickled failed
-                self._function_execution_info[job_id][function_id] = (
-                    FunctionExecutionInfo(
-                        function=f,
-                        function_name=function_name,
-                        max_calls=max_calls))
-                # If an exception was thrown when the remote function was
-                # imported, we record the traceback and notify the scheduler
-                # of the failure.
-                traceback_str = format_error_message(traceback.format_exc())
-                # Log the error message.
-                push_error_to_driver(
-                    self._worker,
-                    ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function "
-                    f"'{function_name}' with "
-                    f"function ID {function_id.hex()}. "
-                    f"Traceback:\n{traceback_str}",
-                    job_id=job_id)
+                    # Use a placeholder method when function pickled failed
+                    self._function_execution_info[job_id][function_id] = (
+                        FunctionExecutionInfo(
+                            function=f,
+                            function_name=function_name,
+                            max_calls=max_calls))
+                    # If an exception was thrown when the remote function was
+                    # imported, we record the traceback and notify the
+                    # scheduler of the failure.
+                    traceback_str = format_error_message(
+                        traceback.format_exc())
+                    # Log the error message.
+                    push_error_to_driver(
+                        self._worker,
+                        ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
+                        "Failed to unpickle the remote function "
+                        f"'{function_name}' with "
+                        f"function ID {function_id.hex()}. "
+                        f"Traceback:\n{traceback_str}",
+                        job_id=job_id)
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
