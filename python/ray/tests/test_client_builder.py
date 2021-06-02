@@ -1,3 +1,4 @@
+import os
 import pytest
 import subprocess
 import sys
@@ -210,6 +211,27 @@ def test_disconnect(call_ray_stop_only):
     ctx.disconnect()
     # Check idempotency
     ctx.disconnect()
-
     with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
+
+
+def test_address_resolution(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50055")
+    with ray.client("localhost:50055").connect():
+        assert ray.util.client.ray.is_connected()
+
+    try:
+        os.environ["RAY_ADDRESS"] = "local"
+        with ray.client("localhost:50055").connect():
+            # client(...) takes precedence of RAY_ADDRESS=local
+            assert ray.util.client.ray.is_connected()
+
+        ray.client(None).connect()
+        assert ray.worker.global_worker.node.is_head()
+
+    finally:
+        if os.environ["RAY_ADDRESS"]:
+            del os.environ["RAY_ADDRESS"]
+
+        server.stop(0)
+        subprocess.check_output("ray stop --force", shell=True)
