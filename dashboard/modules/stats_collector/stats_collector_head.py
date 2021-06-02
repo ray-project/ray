@@ -10,12 +10,10 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
 from ray.new_dashboard.utils import async_loop_forever
 from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource, DataOrganizer
 
@@ -42,16 +40,6 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-def actor_table_data_to_dict(message):
-    return dashboard_utils.message_to_dict(
-        message, {
-            "actorId", "parentId", "jobId", "workerId", "rayletId",
-            "actorCreationDummyObjectId", "callerId", "taskId", "parentTaskId",
-            "sourceActorId", "placementGroupId"
-        },
-        including_default_value_fields=True)
-
-
 class StatsCollector(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -59,7 +47,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         # JobInfoGcsServiceStub
         self._gcs_job_info_stub = None
         # ActorInfoGcsService
-        self._gcs_actor_info_stub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
@@ -165,98 +152,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
-    async def _update_actors(self):
-        # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
-
-        key = "{}:*".format(stats_collector_consts.ACTOR_CHANNEL)
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
-
-        def _process_actor_table_data(data):
-            actor_class = actor_classname_from_task_spec(
-                data.get("taskSpec", {}))
-            data["actorClass"] = actor_class
-
-        # Get all actor info.
-        while True:
-            try:
-                logger.info("Getting all actor info from GCS.")
-                request = gcs_service_pb2.GetAllActorInfoRequest()
-                reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=5)
-                if reply.status.code == 0:
-                    actors = {}
-                    for message in reply.actor_table_data:
-                        actor_table_data = actor_table_data_to_dict(message)
-                        _process_actor_table_data(actor_table_data)
-                        actors[actor_table_data["actorId"]] = actor_table_data
-                    # Update actors.
-                    DataSource.actors.reset(actors)
-                    # Update node actors and job actors.
-                    job_actors = {}
-                    node_actors = {}
-                    for actor_id, actor_table_data in actors.items():
-                        job_id = actor_table_data["jobId"]
-                        node_id = actor_table_data["address"]["rayletId"]
-                        job_actors.setdefault(job_id,
-                                              {})[actor_id] = actor_table_data
-                        # Update only when node_id is not Nil.
-                        if node_id != stats_collector_consts.NIL_NODE_ID:
-                            node_actors.setdefault(
-                                node_id, {})[actor_id] = actor_table_data
-                    DataSource.job_actors.reset(job_actors)
-                    DataSource.node_actors.reset(node_actors)
-                    logger.info("Received %d actor info from GCS.",
-                                len(actors))
-                    break
-                else:
-                    raise Exception(
-                        f"Failed to GetAllActorInfo: {reply.status.message}")
-            except Exception:
-                logger.exception("Error Getting all actor info from GCS.")
-                await asyncio.sleep(stats_collector_consts.
-                                    RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
-
-        # Receive actors from channel.
-        state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
-        async for sender, msg in receiver.iter():
-            try:
-                actor_id, actor_table_data = msg
-                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
-                    actor_table_data)
-                message = ray.gcs_utils.ActorTableData.FromString(
-                    pubsub_message.data)
-                actor_table_data = actor_table_data_to_dict(message)
-                _process_actor_table_data(actor_table_data)
-                # If actor is not new registered but updated, we only update
-                # states related fields.
-                if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
-                    actor_id = actor_id.decode("UTF-8")[len(
-                        ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
-                    actor_table_data_copy = dict(DataSource.actors[actor_id])
-                    for k in state_keys:
-                        actor_table_data_copy[k] = actor_table_data[k]
-                    actor_table_data = actor_table_data_copy
-                actor_id = actor_table_data["actorId"]
-                job_id = actor_table_data["jobId"]
-                node_id = actor_table_data["address"]["rayletId"]
-                # Update actors.
-                DataSource.actors[actor_id] = actor_table_data
-                # Update node actors (only when node_id is not Nil).
-                if node_id != stats_collector_consts.NIL_NODE_ID:
-                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                    node_actors[actor_id] = actor_table_data
-                    DataSource.node_actors[node_id] = node_actors
-                # Update job actors.
-                job_actors = dict(DataSource.job_actors.get(job_id, {}))
-                job_actors[actor_id] = actor_table_data
-                DataSource.job_actors[job_id] = job_actors
-            except Exception:
-                logger.exception("Error receiving actor info.")
-
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
@@ -335,9 +230,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_job_info_stub = \
             gcs_service_pb2_grpc.JobInfoGcsServiceStub(gcs_channel)
-        self._gcs_actor_info_stub = \
-            gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
 
-        await asyncio.gather(self._update_node_stats(), self._update_actors(),
-                             self._update_log_info(),
-                             self._update_error_info())
+        await asyncio.gather(
+            self._update_node_stats(), self._update_log_info(),
+            self._update_error_info())
