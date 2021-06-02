@@ -47,6 +47,10 @@ class AutoscalingConfigTest(unittest.TestCase):
                 if "aws/example-multi-node-type.yaml" in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
                     continue
+                if "local/defaults.yaml" in config_path:
+                    # As documented in the file, this is not a full
+                    # cluster-launching configuration.
+                    continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
                 config = prepare_config(config)
