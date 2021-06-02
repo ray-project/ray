@@ -485,7 +485,9 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
 
   // Queue is empty, but request would block. Check that we do not attempt to
   // retry the request.
-  auto oom_request = [&](PlasmaObject *result, bool fallback) { return PlasmaError::OutOfMemory; };
+  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+    return PlasmaError::OutOfMemory;
+  };
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request, 1234);
   ASSERT_EQ(result.first.data_size, 0);
   ASSERT_EQ(result.second, PlasmaError::OutOfMemory);

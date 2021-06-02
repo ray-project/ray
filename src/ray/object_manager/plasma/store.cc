@@ -315,11 +315,14 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   return error;
 }
 
-PlasmaError PlasmaStore::CreateObject(
-    const ObjectID &object_id, const NodeID &owner_raylet_id,
-    const std::string &owner_ip_address, int owner_port, const WorkerID &owner_worker_id,
-    int64_t data_size, int64_t metadata_size, fb::ObjectSource source, int device_num,
-    const std::shared_ptr<Client> &client, bool fallback_allocator, PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
+                                      const NodeID &owner_raylet_id,
+                                      const std::string &owner_ip_address, int owner_port,
+                                      const WorkerID &owner_worker_id, int64_t data_size,
+                                      int64_t metadata_size, fb::ObjectSource source,
+                                      int device_num,
+                                      const std::shared_ptr<Client> &client,
+                                      bool fallback_allocator, PlasmaObject *result) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
