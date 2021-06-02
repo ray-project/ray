@@ -90,6 +90,8 @@ message GetNamedActorInfoReply {
 }
 
 message GetAllActorInfoRequest {
+  // Whether or not to filter out actors which belong to dead jobs.
+  bool show_dead_jobs = 1;
 }
 
 message GetAllActorInfoReply {
@@ -496,6 +498,8 @@ message WaitPlacementGroupUntilReadyReply {
 message GetNamedPlacementGroupRequest {
   // Name of the placement group.
   string name = 1;
+  // Namespace to search.
+  string ray_namespace = 2;
 }
 
 message GetNamedPlacementGroupReply {

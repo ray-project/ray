@@ -112,7 +112,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     GetTimeoutError,
-    TaskCancelledError
+    TaskCancelledError,
+    AsyncioActorExit,
 )
 from ray._private.utils import decode
 from ray._private.client_mode_hook import (
@@ -304,8 +305,8 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
-            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
+                metadata_fields = metadata.split(b",")
                 if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
@@ -512,8 +513,9 @@ cdef execute_task(
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
-                except KeyboardInterrupt as e:
+                except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
+                except KeyboardInterrupt as e:
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
@@ -521,7 +523,6 @@ cdef execute_task(
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
-                exit_current_actor_if_asyncio()
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
@@ -718,11 +719,6 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
-            ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "restore_spilled_objects_error",
-                traceback.format_exc() + exception_str,
-                job_id=None)
     return bytes_restored
 
 

@@ -15,10 +15,26 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=150)
-parser.add_argument("--as-test", action="store_true")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):

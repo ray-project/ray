@@ -125,7 +125,7 @@ def check_legacy_fields(config: Dict[str, Any]) -> None:
     # log warning if non-empty worker_nodes field
     if "worker_nodes" in config and config["worker_nodes"]:
         cli_logger.warning(
-            "The `worker_nodes` field is deprecated and will be ignored."
+            "The `worker_nodes` field is deprecated and will be ignored. "
             "Use `available_node_types` instead.")
     if "available_node_types" not in config:
         cli_logger.error("`available_node_types` not specified in config")

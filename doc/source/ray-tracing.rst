@@ -56,7 +56,7 @@ For open-source users who want to experiment with tracing, Ray has a default tra
 
         .. code-block:: shell
 
-            $ ray start --head --tracing-startup-hook=ray.tests.tracing.enable_tracing:setup_tracing
+            $ ray start --head --tracing-startup-hook=ray.util.tracing.setup_local_tmp_tracing:setup_tracing
             $ python
             >>> ray.init(address="auto")
             >>> @ray.remote
@@ -69,7 +69,7 @@ For open-source users who want to experiment with tracing, Ray has a default tra
 
         .. code-block:: python
 
-            >>> ray.init(_tracing_startup_hook="ray.tests.tracing.enable_tracing:setup_tracing")
+            >>> ray.init(_tracing_startup_hook="ray.util.tracing.setup_local_tmp_tracing:setup_tracing")
             >>> @ray.remote
                 def my_function():
                     return 1
