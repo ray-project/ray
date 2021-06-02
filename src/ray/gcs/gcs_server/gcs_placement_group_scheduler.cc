@@ -57,8 +57,8 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     for (const auto &bundle : bundles) {
       schedule_map[bundle->BundleId()] = selected_nodes[index++];
     }
-  }
-  return std::make_pair(schedule_map, status);
+  }sd
+  return std::make_pair(status, schedule_map);
 }
 
 ScheduleResult GcsStrictPackStrategy::Schedule(
@@ -149,8 +149,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       bundles, GetScheduleContext(placement_group->GetPlacementGroupID()),
       gcs_resource_scheduler_);
 
-  const auto &result_status = scheduling_result.first;
-  const auto &selected_nodes = scheduling_result.second;
+  auto result_status = scheduling_result.first;
+  auto selected_nodes = scheduling_result.second;
 
   if (result_status != SUCCESSFUL) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()

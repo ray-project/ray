@@ -48,7 +48,7 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
-using ScheduleResult = std::pair<ScheduleMap, SchedulingResultStatus>;
+using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
 using BundleLocations =
     absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<BundleSpecification>>,
                         pair_hash>;
