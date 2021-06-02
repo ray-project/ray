@@ -98,7 +98,7 @@ class RayConfig {
     }
   }
 
-  bool env_float(const std::string &name, float default_value) {
+  float env_float(const std::string &name, float default_value) {
     auto value = getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
