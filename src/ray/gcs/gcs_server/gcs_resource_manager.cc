@@ -182,10 +182,10 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(data);
 
-  UpdateNodeResourceUsage(node_id, data);
-
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *resources_data);
+  
+  UpdateNodeResourceUsage(node_id, data);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
