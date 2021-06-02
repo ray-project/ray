@@ -25,12 +25,12 @@ namespace ray {
 
 namespace gcs {
 
-static int DoGetNextJobID(RedisContextWrapper *context) {
+static int DoGetNextJobID(redisContext *context) {
   int num_attempts = 0;
   redisReply *reply = nullptr;
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
     // Try to `INCR` "JobCounter" key to generate next job id in integer representation.
-    reply = context->Command("INCR JobCounter");
+    reply = reinterpret_cast<redisReply *>(redisCommand(context, "INCR JobCounter"));
     if (reply != nullptr && reply->type != REDIS_REPLY_NIL) {
       break;
     }
