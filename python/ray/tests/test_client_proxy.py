@@ -129,7 +129,7 @@ def test_prepare_runtime_init_req_fails():
     """
     put_req = ray_client_pb2.DataRequest(put=ray_client_pb2.PutRequest())
     with pytest.raises(AssertionError):
-        proxier.prepare_runtime_init_req(iter([put_req]))
+        proxier.prepare_runtime_init_req(put_req)
 
 
 def test_prepare_runtime_init_req_no_modification():
@@ -139,7 +139,7 @@ def test_prepare_runtime_init_req_no_modification():
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
-    req, new_config = proxier.prepare_runtime_init_req(iter([init_req]))
+    req, new_config = proxier.prepare_runtime_init_req(init_req)
     assert new_config.serialize() == job_config.serialize()
     assert isinstance(req, ray_client_pb2.DataRequest)
     assert pickle.loads(
@@ -160,7 +160,7 @@ def test_prepare_runtime_init_req_modified_job():
         return job_config
 
     proxier.ray_client_server_env_prep = modify_namespace
-    req, new_config = proxier.prepare_runtime_init_req(iter([init_req]))
+    req, new_config = proxier.prepare_runtime_init_req(init_req)
 
     assert new_config.ray_namespace == "test_value"
     assert pickle.loads(

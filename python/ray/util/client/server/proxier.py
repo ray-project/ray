@@ -325,6 +325,9 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
     Extract JobConfig and possibly mutate InitRequest before it is passed to
     the specific RayClient Server.
     """
+    init_type = init_request.WhichOneof("type")
+    assert init_type == "init", ("Received initial message of type "
+                                 f"{init_type}, not 'init'.")
     req = init_request.init
     job_config = JobConfig()
     if req.job_config:
@@ -366,9 +369,6 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
         logger.info(f"New data connection from client {client_id}: ")
         init_req = next(request_iterator)
-        init_type = init_req.WhichOneof("type")
-        assert init_type == "init", ("Received initial message of type "
-                                     f"{init_type}, not 'init'.")
         try:
             modified_init_req, job_config = prepare_runtime_init_req(init_req)
             if not self.proxy_manager.start_specific_server(
