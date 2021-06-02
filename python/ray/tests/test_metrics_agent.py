@@ -56,7 +56,9 @@ _AUTOSCALER_METRICS = [
     "autoscaler_node_launch_exceptions", "autoscaler_pending_nodes",
     "autoscaler_reset_exceptions", "autoscaler_running_workers",
     "autoscaler_started_nodes", "autoscaler_stopped_nodes",
-    "autoscaler_update_loop_exceptions"
+    "autoscaler_update_loop_exceptions", "autoscaler_worker_launch_time",
+    "autoscaler_updating_nodes", "autoscaler_successful_updates",
+    "autoscaler_failed_updates", "autoscaler_failed_create_nodes"
 ]
 
 
