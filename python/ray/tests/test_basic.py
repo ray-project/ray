@@ -33,12 +33,11 @@ def test_ignore_http_proxy(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    # This test fails if you set the timeout = 0. We set it to something
-    # higher than the default value of 10 to reduce flakiness.
+    # This test fails with the flag set to false.
     ray.init(
         num_cpus=2,
         object_store_memory=700e6,
-        _system_config={"release_resources_timeout_milliseconds": 100})
+        _system_config={"inline_object_status_in_refs": True})
     refs = []
     for _ in range(10):
         refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))

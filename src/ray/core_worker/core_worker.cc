@@ -1015,12 +1015,14 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "at https://github.com/ray-project/ray/issues/";
   RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id;
 
+  rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
   // resolves some race conditions in resource release (#16025).
-  auto existing_object = memory_store_->GetIfExists(object_id);
-  rpc::GetObjectStatusReply object_status;
-  if (existing_object != nullptr) {
-    PopulateObjectStatus(object_id, existing_object, &object_status);
+  if (RayConfig::instance().inline_object_status_in_refs()) {
+    auto existing_object = memory_store_->GetIfExists(object_id);
+    if (existing_object != nullptr) {
+      PopulateObjectStatus(object_id, existing_object, &object_status);
+    }
   }
   *serialized_object_status = object_status.SerializeAsString();
 }
