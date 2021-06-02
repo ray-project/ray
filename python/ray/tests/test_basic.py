@@ -30,12 +30,16 @@ def test_ignore_http_proxy(shutdown_only):
 
     assert ray.get(f.remote()) == 1
 
+
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    ray.init(num_cpus=2, object_store_memory=700e6)
+    ray.init(
+        num_cpus=2,
+        object_store_memory=700e6,
+        _system_config={"release_resources_timeout_milliseconds": 10})
     refs = []
     for _ in range(10):
-        refs.append(ray.put(np.zeros(200 * MB, dtype=np.uint8)))
+        refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
 
     @ray.remote
     def consume(refs):
