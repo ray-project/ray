@@ -44,6 +44,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_namespace():
     """
     Most of the "checks" in this test case rely on the fact that
@@ -108,6 +109,7 @@ def test_connect_to_cluster(ray_start_regular_shared):
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_local_clusters():
     """
     This tests the various behaviors of connecting to local clusters:
@@ -221,6 +223,8 @@ def test_module_lacks_client_builder():
         assert "does not have ClientBuilder" in str(exception)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_disconnect(call_ray_stop_only):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True)
@@ -254,6 +258,8 @@ def test_disconnect(call_ray_stop_only):
         ray.put(300)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_address_resolution(call_ray_stop_only):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=50055", shell=True)
