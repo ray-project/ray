@@ -1080,7 +1080,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Importance:** High
         * **Type:** Integer
         
- .. _cluster-configuration-object_store_memory:
+ .. _cluster-configuration-object-store-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
