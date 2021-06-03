@@ -12,7 +12,7 @@ class _NullLogSpan:
         pass
 
 
-PROFILING_ENABLED = "RAY_DISABLE_PROFILING" not in os.environ
+PROFILING_ENABLED = "RAY_PROFILING" in os.environ
 NULL_LOG_SPAN = _NullLogSpan()
 
 

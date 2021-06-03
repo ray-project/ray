@@ -2,8 +2,8 @@ import os
 import importlib
 import logging
 from dataclasses import dataclass
-from urllib.parse import urlparse
 import sys
+
 from typing import Any, Dict, Optional, Tuple
 
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
@@ -128,9 +128,10 @@ def _split_address(address: str) -> Tuple[str, str]:
     """
     if "://" not in address:
         address = "ray://" + address
-    url_object = urlparse(address)
-    module_string = url_object.scheme
-    inner_address = address.replace(module_string + "://", "", 1)
+    # NOTE: We use a custom splitting function instead of urllib because
+    # PEP allows "underscores" in a module names, while URL schemes do not
+    # allow them.
+    module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
 
 
@@ -151,7 +152,14 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
-    module = importlib.import_module(module_string)
+    try:
+        module = importlib.import_module(module_string)
+    except Exception:
+        raise RuntimeError(
+            f"Module: {module_string} does not exist.\n"
+            f"This module was parsed from Address: {address}") from None
+    assert "ClientBuilder" in dir(module), (f"Module: {module_string} does "
+                                            "not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 

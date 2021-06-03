@@ -134,9 +134,13 @@
               }
             }
           },
+          "sessionName": {
+            "type": "string"
+          },
           "required": [
             "jobs",
-            "actors"
+            "actors",
+            "sessionName"
           ]
         }
       },
