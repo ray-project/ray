@@ -167,8 +167,9 @@ Process WorkerPool::StartWorkerProcess(
   // without starting more.
   int starting_workers = 0;
   for (auto &entry : state.starting_worker_processes) {
-    if (entry.second.worker_type == worker_type)
+    if (entry.second.worker_type == worker_type) {
       starting_workers += entry.second.num_starting_workers;
+    }
   }
 
   // Here we consider both task workers and I/O workers.
