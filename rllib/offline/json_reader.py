@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+from typing import List
 from urllib.parse import urlparse
 
 try:
@@ -12,12 +13,12 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
+from ray.rllib.policy.policy import clip_action
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
     SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import FileType, SampleBatchType
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,18 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
+        # Clip actions if necessary.
+        if self.ioctx.config.get("clip_actions"):
+            if isinstance(batch, SampleBatch):
+                batch[SampleBatch.ACTIONS] = clip_action(
+                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
+                        "default_policy"].action_space_struct)
+            else:
+                for pid, b in batch.policy_batches:
+                    b[SampleBatch.ACTIONS] = clip_action(
+                        b[SampleBatch.ACTIONS],
+                        self.ioctx.worker.policy_map[pid].action_space_struct)
+
         return self._postprocess_if_needed(batch)
 
     def _postprocess_if_needed(self,

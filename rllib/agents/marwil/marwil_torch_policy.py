@@ -32,21 +32,21 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
         adv = accum_rewards - state_values
         adv_squared_mean = torch.mean(torch.pow(adv, 2.0))
 
-        #explained_var = explained_variance(advantages, state_values)
-        policy.explained_variance = 0.0  #not important right now: torch.mean(explained_var)
+        explained_var = explained_variance(accum_rewards, state_values)
+        policy.explained_variance = torch.mean(explained_var)
 
         # Policy loss.
         # Update averaged advantage norm.
-        policy.ma_adv_norm.add_(1e-8 * (adv_squared_mean - policy.ma_adv_norm))
+        policy._moving_average_sqd_adv_norm.add_(
+            1e-8 * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
         # Exponentially weighted advantages.
         exp_advs = torch.exp(
             policy.config["beta"] *
-            (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5))))
-        policy.p_loss = -1.0 * torch.mean(exp_advs.detach() * logprobs)
+            (adv / (1e-8 + torch.pow(policy._moving_average_sqd_adv_norm, 0.5))))
+        policy.p_loss = - torch.mean(exp_advs.detach() * logprobs)
         # Value loss.
         policy.v_loss = 0.5 * adv_squared_mean
     else:
-        policy.explained_variance = 0.0
         # Policy loss (simple BC loss term).
         policy.p_loss = -1.0 * torch.mean(logprobs)
         # Value loss.
@@ -55,93 +55,36 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     # Combine both losses.
     policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
         policy.v_loss
-
-    #explained_var = explained_variance(advantages, state_values)
-    #policy.explained_variance = torch.mean(explained_var)
-
-    return policy.total_loss
-
-
-def marwil_alternative_loss(policy: Policy, model: ModelV2,
-                            dist_class: ActionDistribution,
-                            train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
-    action_dist = dist_class(model_out, model)
-    actions = train_batch[SampleBatch.ACTIONS]
-    # log\pi_\theta(a|s)
-    logprobs = action_dist.logp(actions)
-
-    #rewards_plus_v = torch.cat(
-    #    [train_batch[SampleBatch.REWARDS],
-    #     state_values[-1].unsqueeze(0)])
-    #discounted_returns = discount_cumsum(rewards_plus_v,
-    #                                     gamma)[:-1].astype(np.float32)
-    #gamma = policy.config["gamma"]
-    #discounted_returns = scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]
-
-    #rollout[Postprocessing.VALUE_TARGETS] = discounted_returns
-
-    # Advantage estimation.
-    if policy.config["beta"] != 0.0:
-        state_values = model.value_function()
-        advantages = train_batch[Postprocessing.ADVANTAGES]
-        adv = advantages.detach() - state_values
-        #adv = advantages - state_values
-        adv_squared = torch.mean(torch.pow(adv, 2.0))
-
-        #explained_var = explained_variance(advantages, state_values)
-        #policy.explained_variance = torch.mean(explained_var)
-        # Value loss.
-        #policy.v_loss = 0.0 #0.0 * adv_squared
-
-        # Policy loss.
-        # Update averaged advantage norm.
-        policy.ma_adv_norm.add_(1e-8 * (adv_squared - policy.ma_adv_norm))
-        # Exponentially weighted advantages.
-        exp_advs = torch.exp(
-            policy.config["beta"] *
-            (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5)).detach()))
-        # log\pi_\theta(a|s)
-        policy.p_loss = -torch.mean(exp_advs.detach() * logprobs)
-
-        # Value loss.
-        policy.v_loss = 0.5 * adv_squared
-    else:
-        policy.explained_variance = 0.0
-        # Policy loss (simple BC loss term).
-        policy.p_loss = -1.0 * torch.mean(logprobs)
-        # Value loss.
-        policy.v_loss = 0.0
-
-    # Combine both losses.
-    #policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
-    #    policy.v_loss
-
-    policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
-        policy.v_loss
-    explained_var = explained_variance(advantages, state_values)
-    policy.explained_variance = torch.mean(explained_var)
 
     return policy.total_loss
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
-    return {
+    stats = {
         "policy_loss": policy.p_loss,
-        #"vf_loss": policy.v_loss,
         "total_loss": policy.total_loss,
-        "vf_explained_var": policy.explained_variance,
     }
+    if policy.config["beta"] != 0.0:
+        stats["moving_average_sqd_adv_norm"] = \
+            policy._moving_average_sqd_adv_norm
+        stats["vf_explained_var"] = policy.explained_variance
+        stats["vf_loss"] = policy.v_loss
+
+    return stats
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
-    # Create a var.
-    policy.ma_adv_norm = torch.tensor(
-        [100.0], dtype=torch.float32, requires_grad=False).to(policy.device)
     # Setup Value branch of our NN.
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+
+    # Not needed for pure BC.
+    if policy.config["beta"] != 0.0:
+        # Set up a torch-var for the squared moving avg. advantage norm.
+        policy._moving_average_sqd_adv_norm = torch.tensor(
+            [policy.config["moving_average_sqd_adv_norm_start"]],
+            dtype=torch.float32, requires_grad=False).to(policy.device)
 
 
 MARWILTorchPolicy = build_policy_class(

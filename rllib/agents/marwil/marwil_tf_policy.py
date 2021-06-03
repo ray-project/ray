@@ -141,7 +141,6 @@ class MARWILLoss:
             # Value function's loss term (MSE).
             self.v_loss = tf.constant(0.0)
             exp_advs = 1.0
-            self.explained_variance = tf.constant(0.0)
 
         self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
 
@@ -161,25 +160,34 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
-    return {
+    stats = {
         "policy_loss": policy.loss.p_loss,
-        "vf_loss": policy.loss.v_loss,
         "total_loss": policy.loss.total_loss,
-        "vf_explained_var": policy.loss.explained_variance,
     }
+    if policy.config["beta"] != 0.0:
+        stats["moving_average_sqd_adv_norm"] = \
+            policy._moving_average_sqd_adv_norm
+        stats["vf_explained_var"] = policy.explained_variance
+        stats["vf_loss"] = policy.loss.v_loss
+
+    return stats
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
+    # Setup Value branch of our NN.
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Set up a tf-var for the moving avg (do this here to make it work with
-    # eager mode); "c^2" in the paper.
-    policy._moving_average_sqd_adv_norm = get_variable(
-        100.0,
-        framework="tf",
-        tf_name="moving_average_of_advantage_norm",
-        trainable=False)
+
+    # Not needed for pure BC.
+    if policy.config["beta"] != 0.0:
+        # Set up a tf-var for the moving avg (do this here to make it work
+        # with eager mode); "c^2" in the paper.
+        policy._moving_average_sqd_adv_norm = get_variable(
+            policy.config["moving_average_sqd_adv_norm_start"],
+            framework="tf",
+            tf_name="moving_average_of_advantage_norm",
+            trainable=False)
 
 
 MARWILTFPolicy = build_tf_policy(
