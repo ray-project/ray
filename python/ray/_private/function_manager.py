@@ -170,11 +170,11 @@ class FunctionActorManager:
         # worker, deserialization may fail due to missing python imports.
         # So skip this function in this case.
         if runtime_env_hash != self._worker.runtime_env_hash:
-            logger.error("UNMATCHED runtime_env_hash = ", runtime_env_hash)
-            logger.error("UNMATCHED self._worker.runtime_env_hash = ",
+            logger.debug("Unmatched: runtime_env_hash=", runtime_env_hash)
+            logger.debug("self._worker.runtime_env_hash=",
                          self._worker.runtime_env_hash)
             return
-        logger.error("MATCHED runtime_env_hash = ", runtime_env_hash)
+        logger.debug("Matched: runtime_env_hash = ", runtime_env_hash)
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
