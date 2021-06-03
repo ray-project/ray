@@ -995,6 +995,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 }
 
 std::string PlasmaStore::GetDebugDump() const {
+  // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
   buffer << "========== Plasma store: =================\n";
   size_t num_objects_spillable = 0;
