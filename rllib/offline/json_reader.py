@@ -121,7 +121,7 @@ class JsonReader(InputReader):
                     batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
                         "default_policy"].action_space_struct)
             else:
-                for pid, b in batch.policy_batches:
+                for pid, b in batch.policy_batches.items():
                     b[SampleBatch.ACTIONS] = clip_action(
                         b[SampleBatch.ACTIONS],
                         self.ioctx.worker.policy_map[pid].action_space_struct)

@@ -27,12 +27,12 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
 
     # Advantage estimation.
     if policy.config["beta"] != 0.0:
-        accum_rewards = train_batch[Postprocessing.ADVANTAGES]
+        cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
         state_values = model.value_function()
-        adv = accum_rewards - state_values
+        adv = cumulative_rewards - state_values
         adv_squared_mean = torch.mean(torch.pow(adv, 2.0))
 
-        explained_var = explained_variance(accum_rewards, state_values)
+        explained_var = explained_variance(cumulative_rewards, state_values)
         policy.explained_variance = torch.mean(explained_var)
 
         # Policy loss.
