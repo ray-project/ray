@@ -237,9 +237,6 @@ class GcsResourceManagerEx : public GcsResourceManager {
                                    const rpc::ResourcesData &heartbeat) override;
 
   std::string ToString() const override;
-
- private:
-  int64_t latest_resources_normal_task_timestamp_;
 };
 
 }  // namespace gcs

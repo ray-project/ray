@@ -473,11 +473,8 @@ void GcsResourceManagerEx::UpdateNodeRealtimeResources(
   auto &scheduling_resoruces = iter->second;
   ResourceSet resources_normal_task(MapFromProtobuf(heartbeat.resources_normal_task()));
   if (heartbeat.resources_normal_task_changed() &&
-      heartbeat.resources_normal_task_timestamp() >
-          latest_resources_normal_task_timestamp_ &&
       !resources_normal_task.IsEqual(scheduling_resoruces.GetNormalTaskResources())) {
     scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
-    latest_resources_normal_task_timestamp_ = heartbeat.resources_normal_task_timestamp();
   }
 }
 

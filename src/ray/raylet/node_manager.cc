@@ -521,7 +521,6 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
-    resources_data.set_resources_normal_task_timestamp(current_sys_time_ns());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
