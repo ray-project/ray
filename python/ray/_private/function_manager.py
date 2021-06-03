@@ -165,8 +165,16 @@ class FunctionActorManager:
                  "job_id", "function_id", "runtime_env_hash", "function_name", "function",
                  "module", "max_calls"
              ])
-        function_id = ray.FunctionID(function_id_str)
         runtime_env_hash = int(runtime_env_hash)
+        # If the runtime env of the task does not match that of the current
+        # worker, deserialization may fail due to missing python imports.
+        # So skip this function in this case.
+        if runtime_env_hash != self._worker.runtime_env_hash:
+            logger.error("UNMATCHED runtime_env_hash = ", runtime_env_hash)
+            logger.error("UNMATCHED self._worker.runtime_env_hash = ", self._worker.runtime_env_hash)
+            return
+        logger.error("MATCHED runtime_env_hash = ", runtime_env_hash)
+        function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
@@ -177,8 +185,6 @@ class FunctionActorManager:
         # the temporary function above before the real function is ready.
         with self.lock:
             self._num_task_executions[job_id][function_id] = 0
-            if runtime_env_hash != self._worker.runtime_env_hash:
-                return
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
@@ -369,7 +375,6 @@ class FunctionActorManager:
             "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
-            "runtime_env_hash": self._worker.runtime_env_hash,
             "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
