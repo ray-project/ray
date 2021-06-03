@@ -163,16 +163,16 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   auto &state = GetStateForLanguage(language);
-  // If we are already starting up too many workers, then return without starting
-  // more.
+  // If we are already starting up too many workers of the same worker type, then return
+  // without starting more.
   int starting_workers = 0;
   for (auto &entry : state.starting_worker_processes) {
-    starting_workers += entry.second;
+    if (entry.second.worker_type == worker_type)
+      starting_workers += entry.second.num_starting_workers;
   }
 
   // Here we consider both task workers and I/O workers.
-  if (worker_type == rpc::WorkerType::WORKER &&
-      starting_workers >= maximum_startup_concurrency_) {
+  if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
@@ -321,7 +321,8 @@ Process WorkerPool::StartWorkerProcess(
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
-  state.starting_worker_processes.emplace(proc, workers_to_start);
+  state.starting_worker_processes.emplace(
+      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type});
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -483,8 +484,8 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 
   auto it = state.starting_worker_processes.find(process);
   if (it != state.starting_worker_processes.end()) {
-    it->second--;
-    if (it->second == 0) {
+    it->second.num_starting_workers--;
+    if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
@@ -933,7 +934,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.starting_worker_processes) {
-    num_usable_workers += entry.second;
+    num_usable_workers += entry.second.num_starting_workers;
   }
   // The number of workers total regardless of suitability for this task.
   int num_workers_total = 0;
@@ -1073,7 +1074,7 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
-      num_workers_started_or_registered += starting_process.second;
+      num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
