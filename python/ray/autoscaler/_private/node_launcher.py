@@ -40,6 +40,8 @@ class NodeLauncher(threading.Thread):
         worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
 
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
         launch_config = copy.deepcopy(config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
