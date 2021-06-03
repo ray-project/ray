@@ -205,7 +205,7 @@ class PlasmaStore {
 
   // NOTE(swang): This will iterate through all objects in the
   // object store, so it should be called sparingly.
-  std::string DumpDebugInfo() const;
+  std::string GetDebugDump() const;
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -322,6 +322,10 @@ class PlasmaStore {
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
+
+  /// Whether we have dumped debug information on OOM yet. This limits dump
+  /// (which can be expensive) to once per OOM event.
+  bool dumped_on_oom_ = false;
 };
 
 }  // namespace plasma
