@@ -134,9 +134,8 @@ def validate_config(config: TrainerConfigDict) -> None:
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
     if config["postprocess_inputs"] is False and config["beta"] > 0.0:
-        raise ValueError(
-            "`postprocess_inputs` must be True for MARWIL (to "
-            "calculate accum., discounted returns)!")
+        raise ValueError("`postprocess_inputs` must be True for MARWIL (to "
+                         "calculate accum., discounted returns)!")
 
 
 MARWILTrainer = build_trainer(

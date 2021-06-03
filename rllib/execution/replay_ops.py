@@ -34,16 +34,13 @@ class StoreToReplayBuffer:
             *,
             local_buffer: Optional[LocalReplayBuffer] = None,
             actors: Optional[List[ActorHandle]] = None,
-            #split_into_single_timesteps: bool = False,
     ):
         """
         Args:
-            local_buffer (LocalReplayBuffer): The local replay buffer to
+            local_buffer (LocalReplayBuffer): The local replay buffer to store
+                the data into.
             actors (Optional[List[ActorHandle]]): An optional list of replay
-                actors to use instead of the `local_buffer`.
-            #split_into_single_timesteps (bool): Whether to split up the SampleBatch
-            #    into single timestep batches before storing all of them into the
-            #    buffer. If False, will store the given SampleBatch as-is.
+                actors to use instead of `local_buffer`.
         """
         if bool(local_buffer) == bool(actors):
             raise ValueError(
@@ -58,10 +55,6 @@ class StoreToReplayBuffer:
             self.replay_actors = actors
 
     def __call__(self, batch: SampleBatchType):
-        #if self.split_into_single_timesteps:
-        #    batches = batch.split_by_timestep()
-        #else:
-        #    batches = [batch]
         if self.local_actor:
             self.local_actor.add_batch(batch)
         else:
@@ -127,33 +120,33 @@ class WaitUntilTimestepsElapsed:
 
 
 # TODO(ekl) deprecate this in favor of the replay_sequence_length option.
-#class SimpleReplayBuffer:
-#    """Simple replay buffer that operates over batches."""
+class SimpleReplayBuffer:
+    """Simple replay buffer that operates over batches."""
 
-#    def __init__(self,
-#                 num_slots: int,
-#                 replay_proportion: Optional[float] = None):
-#        """Initialize SimpleReplayBuffer.
-#
-#        Args:
-#            num_slots (int): Number of batches to store in total.
-#        """
-#        self.num_slots = num_slots
-#        self.replay_batches = []
-#        self.replay_index = 0
+    def __init__(self,
+                 num_slots: int,
+                 replay_proportion: Optional[float] = None):
+        """Initialize SimpleReplayBuffer.
 
-#    def add_batch(self, sample_batch: SampleBatchType) -> None:
-#        warn_replay_buffer_size(item=sample_batch, num_items=self.num_slots)
-#        if self.num_slots > 0:
-#            if len(self.replay_batches) < self.num_slots:
-#                self.replay_batches.append(sample_batch)
-#            else:
-#                self.replay_batches[self.replay_index] = sample_batch
-#                self.replay_index += 1
-#                self.replay_index %= self.num_slots
+        Args:
+            num_slots (int): Number of batches to store in total.
+        """
+        self.num_slots = num_slots
+        self.replay_batches = []
+        self.replay_index = 0
 
-#    def replay(self) -> SampleBatchType:
-#        return random.choice(self.replay_batches)
+    def add_batch(self, sample_batch: SampleBatchType) -> None:
+        warn_replay_buffer_size(item=sample_batch, num_items=self.num_slots)
+        if self.num_slots > 0:
+            if len(self.replay_batches) < self.num_slots:
+                self.replay_batches.append(sample_batch)
+            else:
+                self.replay_batches[self.replay_index] = sample_batch
+                self.replay_index += 1
+                self.replay_index %= self.num_slots
+
+    def replay(self) -> SampleBatchType:
+        return random.choice(self.replay_batches)
 
 
 class MixInReplay:

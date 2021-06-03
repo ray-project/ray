@@ -42,8 +42,9 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
         # Exponentially weighted advantages.
         exp_advs = torch.exp(
             policy.config["beta"] *
-            (adv / (1e-8 + torch.pow(policy._moving_average_sqd_adv_norm, 0.5))))
-        policy.p_loss = - torch.mean(exp_advs.detach() * logprobs)
+            (adv /
+             (1e-8 + torch.pow(policy._moving_average_sqd_adv_norm, 0.5))))
+        policy.p_loss = -torch.mean(exp_advs.detach() * logprobs)
         # Value loss.
         policy.v_loss = 0.5 * adv_squared_mean
     else:
@@ -84,7 +85,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         # Set up a torch-var for the squared moving avg. advantage norm.
         policy._moving_average_sqd_adv_norm = torch.tensor(
             [policy.config["moving_average_sqd_adv_norm_start"]],
-            dtype=torch.float32, requires_grad=False).to(policy.device)
+            dtype=torch.float32,
+            requires_grad=False).to(policy.device)
 
 
 MARWILTorchPolicy = build_policy_class(
