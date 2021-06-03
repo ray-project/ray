@@ -109,7 +109,7 @@ class MARWILLoss:
             self.v_loss = 0.5 * adv_squared
 
             # Perform moving averaging of advantage^2.
-            rate = policy["config"]["moving_average_sqd_adv_norm_update_rate"]
+            rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
 
             # Update averaged advantage norm.
             # Eager.
@@ -168,7 +168,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     if policy.config["beta"] != 0.0:
         stats["moving_average_sqd_adv_norm"] = \
             policy._moving_average_sqd_adv_norm
-        stats["vf_explained_var"] = policy.explained_variance
+        stats["vf_explained_var"] = policy.loss.explained_variance
         stats["vf_loss"] = policy.loss.v_loss
 
     return stats

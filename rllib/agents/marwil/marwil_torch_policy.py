@@ -37,7 +37,7 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
 
         # Policy loss.
         # Update averaged advantage norm.
-        rate = policy["config"]["moving_average_sqd_adv_norm_update_rate"]
+        rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
         policy._moving_average_sqd_adv_norm.add_(
             rate * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
         # Exponentially weighted advantages.
