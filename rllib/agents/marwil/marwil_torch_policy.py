@@ -37,8 +37,9 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
 
         # Policy loss.
         # Update averaged advantage norm.
+        rate = policy["config"]["moving_average_sqd_adv_norm_update_rate"]
         policy._moving_average_sqd_adv_norm.add_(
-            1e-8 * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
+            rate * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
         # Exponentially weighted advantages.
         exp_advs = torch.exp(
             policy.config["beta"] *
