@@ -121,8 +121,7 @@ def test_get_locations_multi_nodes(ray_start_cluster):
     for obj_ref in object_refs:
         location = locations[obj_ref]
         assert location["primary_node_id"] == worker_node_id
-        assert set(location["node_ids"]) == set(
-            [driver_node_id, worker_node_id])
+        assert set(location["node_ids"]) == {driver_node_id, worker_node_id}
         assert not location["is_spilled"]
         assert location["spilled_url"] is None
         assert location["spilled_node_id"] is None
