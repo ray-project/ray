@@ -7,18 +7,24 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray.gcs_utils
-import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
-    as stats_collector_consts
+from ray.new_dashboard.modules.node import node_consts
 import ray.new_dashboard.utils as dashboard_utils
+import ray.new_dashboard.consts as dashboard_consts
 from ray.new_dashboard.utils import async_loop_forever
 from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
+
+
+def gcs_node_info_to_dict(message):
+    return dashboard_utils.message_to_dict(
+        message, {"nodeId"}, including_default_value_fields=True)
 
 
 def node_stats_to_dict(message):
@@ -40,13 +46,12 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-class StatsCollector(dashboard_utils.DashboardHeadModule):
+class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
-        # JobInfoGcsServiceStub
-        self._gcs_job_info_stub = None
-        # ActorInfoGcsService
+        # NodeInfoGcsService
+        self._gcs_node_info_stub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
@@ -55,6 +60,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_id, node_info = change.old
             self._stubs.pop(node_id)
         if change.new:
+            # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
@@ -62,6 +68,66 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             channel = aiogrpc.insecure_channel(address, options=options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
+
+    async def _get_nodes(self):
+        """Read the client table.
+
+        Returns:
+            A dict of information about the nodes in the cluster.
+        """
+        request = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=2)
+        if reply.status.code == 0:
+            result = {}
+            for node_info in reply.node_info_list:
+                node_info_dict = gcs_node_info_to_dict(node_info)
+                result[node_info_dict["nodeId"]] = node_info_dict
+            return result
+        else:
+            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
+
+    async def _update_nodes(self):
+        # TODO(fyrestone): Refactor code for updating actor / node / job.
+        # Subscribe actor channel.
+        aioredis_client = self._dashboard_head.aioredis_client
+        while True:
+            try:
+                nodes = await self._get_nodes()
+
+                alive_node_ids = []
+                alive_node_infos = []
+                node_id_to_ip = {}
+                node_id_to_hostname = {}
+                for node in nodes.values():
+                    node_id = node["nodeId"]
+                    ip = node["nodeManagerAddress"]
+                    hostname = node["nodeManagerHostname"]
+                    node_id_to_ip[node_id] = ip
+                    node_id_to_hostname[node_id] = hostname
+                    assert node["state"] in ["ALIVE", "DEAD"]
+                    if node["state"] == "ALIVE":
+                        alive_node_ids.append(node_id)
+                        alive_node_infos.append(node)
+
+                agents = dict(DataSource.agents)
+                for node_id in alive_node_ids:
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
+                          f"{node_id}"
+                    agent_port = await aioredis_client.get(key)
+                    if agent_port:
+                        agents[node_id] = json.loads(agent_port)
+                for node_id in agents.keys() - set(alive_node_ids):
+                    agents.pop(node_id, None)
+
+                DataSource.node_id_to_ip.reset(node_id_to_ip)
+                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
+                DataSource.agents.reset(agents)
+                DataSource.nodes.reset(nodes)
+            except Exception:
+                logger.exception("Error updating nodes.")
+            finally:
+                await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/nodes")
     @dashboard_utils.aiohttp_cache
@@ -152,8 +218,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
-    @async_loop_forever(
-        stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
+    @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
         for node_id, stub in list(self._stubs.items()):
@@ -228,9 +293,9 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_job_info_stub = \
-            gcs_service_pb2_grpc.JobInfoGcsServiceStub(gcs_channel)
+        self._gcs_node_info_stub = \
+            gcs_service_pb2_grpc.NodeInfoGcsServiceStub(gcs_channel)
 
-        await asyncio.gather(
-            self._update_node_stats(), self._update_log_info(),
-            self._update_error_info())
+        await asyncio.gather(self._update_nodes(), self._update_node_stats(),
+                             self._update_log_info(),
+                             self._update_error_info())
