@@ -1776,4 +1776,4 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

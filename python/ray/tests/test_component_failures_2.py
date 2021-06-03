@@ -182,4 +182,4 @@ def test_get_address_info_after_raylet_died(ray_start_cluster_head):
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

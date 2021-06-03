@@ -389,4 +389,4 @@ def test_custom_metrics_validation(ray_start_regular_shared):
 if __name__ == "__main__":
     import sys
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

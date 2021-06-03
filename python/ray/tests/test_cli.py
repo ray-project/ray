@@ -524,4 +524,4 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

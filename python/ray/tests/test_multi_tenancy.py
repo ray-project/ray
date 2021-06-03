@@ -312,4 +312,4 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

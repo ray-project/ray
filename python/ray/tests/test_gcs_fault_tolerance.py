@@ -166,4 +166,4 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

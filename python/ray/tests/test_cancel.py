@@ -303,4 +303,4 @@ def test_recursive_cancel(shutdown_only, use_force):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

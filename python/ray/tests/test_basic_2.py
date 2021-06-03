@@ -723,4 +723,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     import pytest
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

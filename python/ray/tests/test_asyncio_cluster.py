@@ -31,4 +31,4 @@ async def test_asyncio_cluster_wait():
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

@@ -196,4 +196,4 @@ def test_global_gc_actors(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

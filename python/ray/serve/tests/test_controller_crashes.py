@@ -16,4 +16,4 @@ if __name__ == "__main__":
     print("Setting RAY_SERVE_INTENTIONALLY_CRASH=1")
     os.environ["RAY_SERVE_INTENTIONALLY_CRASH"] = "1"
 
-    sys.exit(pytest.main(["-v", "-s"] + serve_tests_files))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0"] + serve_tests_files))

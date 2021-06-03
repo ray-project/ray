@@ -259,4 +259,4 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

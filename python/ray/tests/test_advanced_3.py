@@ -809,4 +809,4 @@ def test_duplicated_arg(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

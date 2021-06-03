@@ -548,4 +548,4 @@ def test_experimental_package_github(shutdown_only):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

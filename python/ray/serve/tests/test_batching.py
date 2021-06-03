@@ -261,4 +261,4 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

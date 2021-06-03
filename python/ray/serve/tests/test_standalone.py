@@ -382,4 +382,4 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

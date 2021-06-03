@@ -114,4 +114,4 @@ def test_node_failure(ray_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

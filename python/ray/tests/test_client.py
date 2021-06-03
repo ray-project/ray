@@ -580,4 +580,4 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))

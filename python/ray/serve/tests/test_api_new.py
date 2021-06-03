@@ -245,4 +245,4 @@ def test_start_idempotent(serve_instance):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", "-ra", "--durations=0", __file__]))

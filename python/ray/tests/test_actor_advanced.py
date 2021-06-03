@@ -1257,4 +1257,4 @@ def test_actor_timestamps(ray_start_regular):
 if __name__ == "__main__":
     import pytest
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__]))
