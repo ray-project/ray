@@ -695,9 +695,8 @@ def get_or_create_head_node(config: Dict[str, Any],
 
         # If restarting Ray on a manually-managed on-prem cluster,
         # we need to sync local and head representations of cluster state.
-        # Presence of ray_start_commands indicates that we're restarting
-        # the cluster. If we're not restarting the cluster, syncing state will
-        # break the on prem cluster's autoscaler state.
+        # If we're not restarting the cluster (empty ray start cmds), don't
+        # sync to avoid breaking on-prem cluster autoscaler state.
         if ray_start_commands and is_local_manual(config["provider"]):
             # Add cluster state file to file mounts.
             config = sync_state(config)
