@@ -115,7 +115,7 @@ class MARWILLoss:
             if policy.config["framework"] in ["tf2", "tfe"]:
                 update_term = adv_squared - policy._moving_average_sqd_adv_norm
                 policy._moving_average_sqd_adv_norm.assign_add(
-                    1e-7 * update_term)
+                    1e-8 * update_term)
 
                 # Exponentially weighted advantages.
                 c = tf.math.sqrt(policy._moving_average_sqd_adv_norm)
@@ -124,7 +124,7 @@ class MARWILLoss:
             else:
                 update_adv_norm = tf1.assign_add(
                     ref=policy._moving_average_sqd_adv_norm,
-                    value=1e-7 *
+                    value=1e-8 *
                     (adv_squared - policy._moving_average_sqd_adv_norm))
 
                 # Exponentially weighted advantages.

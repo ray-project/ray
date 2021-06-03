@@ -3,8 +3,8 @@ from typing import Optional, Type
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
-    StoreToReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
@@ -83,7 +83,10 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: A local iterator over training metrics.
     """
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
-    replay_buffer = SimpleReplayBuffer(config["replay_buffer_size"])
+    replay_buffer = LocalReplayBuffer(
+        buffer_size=config["replay_buffer_size"],
+        replay_batch_size=config["train_batch_size"],
+    )
 
     store_op = rollouts \
         .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))

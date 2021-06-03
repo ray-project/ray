@@ -4,7 +4,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting, \
 from ray.rllib.execution.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay, \
-    SimpleReplayBuffer, MixInReplay
+    MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     ConcatBatches, SelectExperiences, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU, \
@@ -28,7 +28,7 @@ __all__ = [
     "Replay",
     "ReplayBuffer",
     "SelectExperiences",
-    "SimpleReplayBuffer",
+    #"SimpleReplayBuffer",
     "StandardMetricsReporting",
     "StandardizeFields",
     "StoreToReplayBuffer",
