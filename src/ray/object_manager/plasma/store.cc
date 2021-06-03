@@ -156,6 +156,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           [this]() { return GetDebugDump(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    PrintDebugDump();
+  }
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
@@ -941,13 +944,7 @@ void PlasmaStore::ProcessCreateRequests() {
     retry_after_ms = delay_on_oom_ms_;
 
     if (!dumped_on_oom_) {
-      auto num_pending_requests = create_request_queue_.NumPendingRequests();
-      auto num_pending_bytes = create_request_queue_.NumPendingBytes();
-      const auto dump = GetDebugDump();
-      RAY_LOG(INFO) << "Out-of-memory: " << num_pending_requests
-                    << " pending objects of total size "
-                    << num_pending_bytes / 1024 / 1024 << "MB\n"
-                    << dump;
+      RAY_LOG(INFO) << "Plasma store at capacity\n" << GetDebugDump();
       dumped_on_oom_ = true;
     }
   } else {
@@ -994,9 +991,17 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   return entry->ref_count == 1;
 }
 
+void PlasmaStore::PrintDebugDump() const {
+  RAY_LOG(INFO) << GetDebugDump();
+
+  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
+                               RayConfig::instance().asio_stats_print_interval_ms());
+}
+
 std::string PlasmaStore::GetDebugDump() const {
   // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
+
   buffer << "========== Plasma store: =================\n";
   size_t num_objects_spillable = 0;
   size_t num_bytes_spillable = 0;
@@ -1048,6 +1053,10 @@ std::string PlasmaStore::GetDebugDump() const {
 
   buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
          << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
+  auto num_pending_requests = create_request_queue_.NumPendingRequests();
+  auto num_pending_bytes = create_request_queue_.NumPendingBytes();
+  buffer << num_pending_requests << " pending objects of total size "
+         << num_pending_bytes / 1024 / 1024 << "MB\n";
   buffer << "- objects spillable: " << num_objects_spillable << "\n";
   buffer << "- bytes spillable: " << num_bytes_spillable << "\n";
   buffer << "- objects unsealed: " << num_objects_unsealed << "\n";

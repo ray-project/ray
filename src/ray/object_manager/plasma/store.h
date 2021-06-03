@@ -203,6 +203,8 @@ class PlasmaStore {
     callback(available);
   }
 
+  void PrintDebugDump() const;
+
   // NOTE(swang): This will iterate through all objects in the
   // object store, so it should be called sparingly.
   std::string GetDebugDump() const;
@@ -296,6 +298,9 @@ class PlasmaStore {
   /// serviceable because there is not enough memory. The request will be
   /// retried when this timer expires.
   std::shared_ptr<boost::asio::deadline_timer> create_timer_;
+
+  /// Timer for printing debug information.
+  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_;
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
