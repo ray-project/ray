@@ -140,7 +140,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Wheels are at in the ray/.whl directory, and the present file is
         # at ray/python/ray/workers.  Use relative paths to allow for
         # testing locally if needed.
-        return "ray[all]" + os.path.join(
+        return "ray[all]@" + os.path.join(
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
