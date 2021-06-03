@@ -1037,7 +1037,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   rpc::GetObjectStatusReply object_status;
   object_status.ParseFromString(serialized_object_status);
 
-  if (object_status.has_object()) {
+  if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
     // We already have the inlined object status, process it immediately.
     future_resolver_->ProcessResolvedObject(object_id, Status::OK(), object_status);
   } else {
