@@ -47,22 +47,8 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("Please supply a `head_ip` and list of `worker_ips`. "
                          "Alternatively, supply a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
-    max_specified = "max_workers" in config
-    min_specified = "min_workers" in config
-    if not max_specified and not min_specified:
-        # The most common use-case.
-        config["min_workers"] = num_ips
-        config["max_workers"] = num_ips
-    elif max_specified and not min_specified:
-        # Indicates intent to cap autoscaler usage.
-        # Infer conservative default.
-        config["min_workers"] = 0
-        cli_logger.warning("Inferring `min_workers:0`. Ray will start only on "
-                           "the head node. Ray may start on other nodes, "
-                           "according to workload.")
-    elif not max_specified and min_specified:
-        config["max_workers"] = num_ips
-
+    config.set_default("min_workers", num_ips)
+    config.set_default("max_workers", num_ips)
     return config
 
 

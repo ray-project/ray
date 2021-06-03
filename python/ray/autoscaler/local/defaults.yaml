@@ -45,5 +45,3 @@ available_node_types:
         resources: {}
         node_config: {}
 head_node_type: ray.head.default
-head_node: {}
-worker_nodes: {}
