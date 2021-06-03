@@ -34,6 +34,7 @@ def _export_bundle_reservation_check_method_if_needed():
 
 class PlacementGroup:
     """A handle to a placement group."""
+
     @staticmethod
     def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
@@ -315,8 +316,8 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """
     worker = ray.worker.global_worker
     worker.check_connected()
-    placement_group_id = placement_group.id if (placement_group
-                                                is not None) else None
+    placement_group_id = placement_group.id if (placement_group is
+                                                not None) else None
     return ray.state.state.placement_group_table(placement_group_id)
 
 

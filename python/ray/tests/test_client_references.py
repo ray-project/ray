@@ -157,11 +157,11 @@ def test_delete_ref_on_object_deletion(ray_start_regular):
         wait_for_condition(server_object_ref_count(server, 1), timeout=5)
 
 
-@pytest.mark.parametrize("ray_start_cluster", [{
-    "num_nodes": 1,
-    "do_init": False
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 1,
+        "do_init": False
+    }], indirect=True)
 def test_delete_actor_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:

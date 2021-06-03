@@ -153,6 +153,7 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
         A wrapper function that will ignore it's first `func` argument and
         pass `real_func` in its place. To be passed to `dask.local.get_async`.
     """
+
     def wrapper(func, args=(), kwds=None, callback=None):  # noqa: M511
         if not kwds:
             kwds = {}
@@ -167,16 +168,16 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
 
 
 def _rayify_task_wrapper(
-    key,
-    task_info,
-    dumps,
-    loads,
-    get_id,
-    pack_exception,
-    ray_presubmit_cbs,
-    ray_postsubmit_cbs,
-    ray_pretask_cbs,
-    ray_posttask_cbs,
+        key,
+        task_info,
+        dumps,
+        loads,
+        get_id,
+        pack_exception,
+        ray_presubmit_cbs,
+        ray_postsubmit_cbs,
+        ray_pretask_cbs,
+        ray_posttask_cbs,
 ):
     """
     The core Ray-Dask task execution wrapper, to be given to the thread pool's
@@ -221,13 +222,13 @@ def _rayify_task_wrapper(
 
 
 def _rayify_task(
-    task,
-    key,
-    deps,
-    ray_presubmit_cbs,
-    ray_postsubmit_cbs,
-    ray_pretask_cbs,
-    ray_posttask_cbs,
+        task,
+        key,
+        deps,
+        ray_presubmit_cbs,
+        ray_postsubmit_cbs,
+        ray_pretask_cbs,
+        ray_posttask_cbs,
 ):
     """
     Rayifies the given task, submitting it as a Ray task to the Ray cluster.
