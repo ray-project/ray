@@ -200,14 +200,9 @@ class ClientActorHandle(ClientStub):
         actor_ref: A reference to the running actor given to the client. This
           is a serialized version of the actual handle as an opaque token.
     """
-<<<<<<< HEAD
-
     def __init__(self,
                  actor_ref: ClientActorRef,
                  actor_class: Optional[ClientActorClass] = None):
-=======
-    def __init__(self, actor_ref: ClientActorRef):
->>>>>>> beddf93cd (Test basic Client{ObjectRef,ActorRef} in Windows.)
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
         if actor_class is not None:
@@ -311,8 +306,8 @@ class ActorOptionWrapper(OptionWrapper):
         actor_class = None
         if isinstance(self.remote_stub, ClientActorClass):
             actor_class = self.remote_stub
-        return ClientActorHandle(
-            ClientActorRef(ref_ids[0]), actor_class=actor_class)
+        return ClientActorHandle(ClientActorRef(ref_ids[0]),
+                                 actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
