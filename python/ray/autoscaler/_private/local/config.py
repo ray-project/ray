@@ -42,7 +42,7 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
     node_type = config["available_node_types"][NODE_TYPE]
-    node_type["min_workers"] = config.pop("min_workers", None) or 0
+    node_type["min_workers"] = config.pop("min_workers", 0)
     node_type["max_workers"] = config["max_workers"]
     return config
 
