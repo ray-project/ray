@@ -71,9 +71,5 @@ namespacedOperator: false
 # operatorNamepsace - If using a cluster-scoped operator (namespacedOperator: false), set the namespace
 # in which to launch the operator.
 operatorNamespace: default
-# operatorImage - For best stability, it's currently recommended to use the nightly ray image in the operator Deployment.
-# For an official ray release version, use `rayproject/ray:1.x.y`.
-# For the latest ray release version, `rayproject/ray:latest`.
-# You could also use a specific master commit, e.g. `rayproject/ray:38b64e`.
-# The nightly operator image is compatible with all Ray versions since 1.2.0
-operatorImage: rayproject/ray:nightly
+# operatorImage - The image used in the operator deployment.
+operatorImage: rayproject/ray:latest
