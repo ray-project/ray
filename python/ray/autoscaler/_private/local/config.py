@@ -7,7 +7,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 unsupported_field_message = ("The field {} is not supported "
                              "for on-premise clusters.")
 
-NODE_TYPE = "ray.node"
+LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
 
 def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
