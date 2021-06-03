@@ -99,8 +99,6 @@ def get_or_create_conda_env(conda_env_path: str,
     env_name = _get_conda_env_name(conda_env_path)
     if base_dir:
         env_name = f"{base_dir}/{env_name}"
-        logger.info("env name: ", env_name)
-        logger.info("envs: ", envs)
         if env_name not in envs:
             logger.info("=== Creating conda environment %s ===", env_name)
             exec_cmd(
