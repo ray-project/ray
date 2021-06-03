@@ -58,11 +58,30 @@ class SpecificServer:
         """
         Wait for the server to actually start up.
         """
-        self.process_handle_future.result(timeout=timeout)
-        return
+        res = self.process_handle_future.result(timeout=timeout)
+        if res is None:
+            # This is only set to none when server creation specifically fails.
+            raise RuntimeError("Server startup failed.")
 
-    def process_handle(self) -> ProcessInfo:
-        return self.process_handle_future.result()
+    def poll(self) -> Optional[int]:
+        try:
+            proc = self.process_handle_future.result(timeout=0.1)
+            if proc is not None:
+                return proc.process.poll()
+        except futures.TimeoutError:
+            return
+
+    def kill(self) -> None:
+        try:
+            proc = self.process_handle_future.result(timeout=0.1)
+            if proc is not None:
+                proc.process.kill()
+        except futures.TimeoutError:
+            # Server has not been started yet.
+            pass
+
+    def set_result(self, proc: Optional[ProcessInfo]) -> None:
+        self.process_handle_future.set_result(proc)
 
 
 def _match_running_client_server(command: List[str]) -> bool:
@@ -139,7 +158,7 @@ class ProxyManager():
         self._session_dir = connection_tuple["session_dir"]
         return self._session_dir
 
-    def create_specific_server(self, client_id: str) -> None:
+    def create_specific_server(self, client_id: str) -> SpecificServer:
         with self.server_lock:
             assert self.servers.get(client_id) is None, (
                 f"Server already created for Client: {client_id}")
@@ -150,6 +169,7 @@ class ProxyManager():
                 channel=grpc.insecure_channel(
                     f"localhost:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = server
+            return server
 
     def start_specific_server(self, client_id: str,
                               job_config: JobConfig) -> bool:
@@ -189,7 +209,7 @@ class ProxyManager():
             logger.debug(
                 "Waiting for Process to reach the actual client server.")
             time.sleep(0.5)
-        specific_server.process_handle_future.set_result(proc)
+        specific_server.set_result(proc)
         logger.info(f"SpecificServer started on port: {specific_server.port} "
                     f"with PID: {pid} for client: {client_id}")
         return proc.process.poll() is None
@@ -230,13 +250,7 @@ class ProxyManager():
         while True:
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
-                    try:
-                        specific_server.wait_ready(0.1)
-                    except futures.TimeoutError:
-                        continue
-                    poll_result = specific_server.process_handle(
-                    ).process.poll()
-                    if poll_result is not None:
+                    if specific_server.poll() is not None:
                         del self.servers[client_id]
                         # Port is available to use again.
                         self._free_ports.append(specific_server.port)
@@ -249,12 +263,7 @@ class ProxyManager():
         for platforms where fate sharing is not supported.
         """
         for server in self.servers.values():
-            try:
-                server.wait_ready(0.1)
-                server.process_handle().process.kill()
-            except futures.TimeoutError:
-                # Server has not been started yet.
-                pass
+            server.kill()
 
 
 class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
@@ -381,33 +390,37 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
 
         # Create Placeholder *before* reading the first request.
-        self.proxy_manager.create_specific_server(client_id)
-
-        logger.info(f"New data connection from client {client_id}: ")
-        modified_init_req, job_config = prepare_runtime_init_req(
-            request_iterator)
-
-        if not self.proxy_manager.start_specific_server(client_id, job_config):
-            logger.error(f"Server startup failed for client: {client_id}, "
-                         f"using JobConfig: {job_config}!")
-            context.set_code(grpc.StatusCode.ABORTED)
-            return None
-
-        channel = self.proxy_manager.get_channel(client_id)
-        if channel is None:
-            logger.error(f"Channel not found for {client_id}")
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            return None
-        stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+        server = self.proxy_manager.create_specific_server(client_id)
         try:
             with self.clients_lock:
                 self.num_clients += 1
+
+            logger.info(f"New data connection from client {client_id}: ")
+            modified_init_req, job_config = prepare_runtime_init_req(
+                request_iterator)
+
+            logger.info(f"NEXT STEP {client_id}: ")
+            if not self.proxy_manager.start_specific_server(
+                    client_id, job_config):
+                logger.error(f"Server startup failed for client: {client_id}, "
+                             f"using JobConfig: {job_config}!")
+                context.set_code(grpc.StatusCode.ABORTED)
+                return None
+
+            channel = self.proxy_manager.get_channel(client_id)
+            if channel is None:
+                logger.error(f"Channel not found for {client_id}")
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                return None
+            stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+
             new_iter = chain([modified_init_req], request_iterator)
             resp_stream = stub.Datapath(
                 new_iter, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 yield self.modify_connection_info_resp(resp)
         finally:
+            server.set_result(None)
             with self.clients_lock:
                 logger.debug(f"Client detached: {client_id}")
                 self.num_clients -= 1
@@ -422,7 +435,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
-        logger.debug(f"New data connection from client {client_id}: ")
+        logger.debug(f"New logstream connection from client {client_id}: ")
 
         channel = None
         # We need to retry a few times because the LogClient *may* connect
