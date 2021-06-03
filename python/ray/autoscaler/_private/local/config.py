@@ -20,6 +20,9 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
         if config.get(field):
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
+    # We use a config with a single node type for on-prem clusters.
+    # Resources internally detected by Ray are not overridden by the autoscaler
+    # (see NodeProvider.do_update)
     config["available_node_types"] = {
         NODE_TYPE: {
             "node_config": {},
@@ -42,6 +45,8 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
     node_type = config["available_node_types"][NODE_TYPE]
+    # The autoscaler no longer uses global `min_workers`.
+    # Move `min_workers` to the node_type config.
     node_type["min_workers"] = config.pop("min_workers", 0)
     node_type["max_workers"] = config["max_workers"]
     return config
@@ -57,6 +62,8 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     node_type = config["available_node_types"][NODE_TYPE]
     # Default to keeping all provided ips in the cluster.
     config.setdefault("max_workers", num_ips)
+    # The autoscaler no longer uses global `min_workers`.
+    # Move `min_workers` to the node_type config.
     node_type["min_workers"] = config.pop("min_workers", num_ips)
     node_type["max_workers"] = config["max_workers"]
     return config
