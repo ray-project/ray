@@ -51,6 +51,14 @@ def assert_no_thrashing(address):
         f"consumed: {consumed_bytes}, restored: {restored_bytes}")
 
 
+def assert_no_worker_blocking():
+    session_dir = ray.worker._global_node.get_session_dir_path()
+    raylet_out_file = f"{session_dir}/logs/raylet.out"
+    with open(raylet_out_file, "r") as f:
+        for line in f:
+            assert "have not registered to raylet within timeout" not in line, line  # noqa: E501
+
+
 def test_invalid_config_raises_exception(shutdown_only):
     # Make sure ray.init raises an exception before
     # it starts processes when invalid object spilling
@@ -391,7 +399,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
                                 is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
-        num_cpus=4,
+        num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
@@ -404,13 +412,13 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
 
     if is_async:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         class Actor:
             async def f(self):
                 return np.zeros(10 * 1024 * 1024)
     else:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         def f():
             return np.zeros(10 * 1024 * 1024)
 
@@ -435,6 +443,8 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(obj.shape)
         del obj
     assert_no_thrashing(address["redis_address"])
+
+    assert_no_worker_blocking()
 
 
 @pytest.mark.skipif(

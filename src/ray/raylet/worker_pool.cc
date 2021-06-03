@@ -171,7 +171,8 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   // Here we consider both task workers and I/O workers.
-  if (starting_workers >= maximum_startup_concurrency_) {
+  if (worker_type == rpc::WorkerType::WORKER &&
+      starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
