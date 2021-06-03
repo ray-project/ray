@@ -22,8 +22,8 @@ class AutoscalerPrometheusMetrics:
             5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720,
             900, 1200, 1500, 1800
         ]
-        self.worker_launch_time: Histogram = Histogram(
-            "worker_launch_time_seconds",
+        self.worker_create_node_time: Histogram = Histogram(
+            "worker_create_node_time_seconds",
             "Worker launch time. This is the time it takes for a call to "
             "a node provider's create_node method to return. Note that "
             "when nodes are launched in batches, the launch time for that "
@@ -67,6 +67,12 @@ class AutoscalerPrometheusMetrics:
             unit="nodes",
             namespace="autoscaler",
             registry=self.registry)
+        self.recovering_nodes: Gauge = Gauge(
+            "recovering_nodes",
+            "Number of nodes in the process of recovering.",
+            unit="nodes",
+            namespace="autoscaler",
+            registry=self.registry)
         self.running_workers: Gauge = Gauge(
             "running_workers",
             "Number of worker nodes running.",
@@ -90,6 +96,18 @@ class AutoscalerPrometheusMetrics:
             "successful_updates",
             "Number of succesfful worker node updates.",
             unit="updates",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.failed_recoveries: Counter = Counter(
+            "failed_recoveries",
+            "Number of failed node recoveries.",
+            unit="recoveries",
+            namespace="autoscaler",
+            registry=self.registry)
+        self.successful_recoveries: Counter = Counter(
+            "successful_recoveries",
+            "Number of successful node recoveries.",
+            unit="recoveries",
             namespace="autoscaler",
             registry=self.registry)
         self.update_loop_exceptions: Counter = Counter(

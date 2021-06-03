@@ -67,9 +67,9 @@ class NodeLauncher(threading.Thread):
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
             # took all nodes to launch for each node. For example, if 4
-            # nodes were launched in 25 seconds, we would observe the 25
-            # second launch time 4 times.
-            self.prom_metrics.worker_launch_time.observe(launch_time)
+            # nodes were created in 25 seconds, we would observe the 25
+            # second create time 4 times.
+            self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):

@@ -50,6 +50,8 @@ class NodeUpdater:
             or external ip.
         docker_config: Docker section of autoscaler yaml
         restart_only: Whether to skip setup commands & just restart ray
+        for_recovery: True if updater is for a recovering node. Only used for
+            metric tracking.
     """
 
     def __init__(self,
@@ -71,7 +73,8 @@ class NodeUpdater:
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None,
-                 restart_only=False):
+                 restart_only=False,
+                 for_recovery=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -111,6 +114,7 @@ class NodeUpdater:
         self.docker_config = docker_config
         self.restart_only = restart_only
         self.update_time = None
+        self.for_recovery = for_recovery
 
     def run(self):
         update_start_time = time.time()

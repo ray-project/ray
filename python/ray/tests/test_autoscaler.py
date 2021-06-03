@@ -897,7 +897,7 @@ class AutoscalingTest(unittest.TestCase):
         # started_nodes metric should have been incremented by 2
         assert mock_metrics.started_nodes.inc.call_count == 1
         mock_metrics.started_nodes.inc.assert_called_with(2)
-        assert mock_metrics.worker_launch_time.observe.call_count == 2
+        assert mock_metrics.worker_create_node_time.observe.call_count == 2
 
         autoscaler.update()
         self.waitForNodes(2)
@@ -944,7 +944,7 @@ class AutoscalingTest(unittest.TestCase):
                 "ray-legacy-worker-node-type (outdated)." in events), events
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
-        assert mock_metrics.worker_launch_time.observe.call_count == 5
+        assert mock_metrics.worker_create_node_time.observe.call_count == 5
 
     def testDynamicScaling(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1730,12 +1730,14 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
             max_failures=0,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
@@ -1749,9 +1751,11 @@ class AutoscalingTest(unittest.TestCase):
                 time.sleep(0.05)
                 autoscaler.update()
         assert not autoscaler.updaters
+        mock_metrics.recovering_nodes.set.assert_called_with(0)
         num_calls = len(runner.calls)
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
+        mock_metrics.recovering_nodes.set.assert_called_with(1)
         self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
         # Check the node removal event is generated.
@@ -2353,6 +2357,7 @@ MemAvailable:   33000000 kB
         num_calls = len(autoscaler.process_runner.calls)
         autoscaler.update()
         mock_metrics.updating_nodes.set.assert_called_with(2)
+        mock_metrics.recovering_nodes.set.assert_called_with(2)
         autoscaler.process_runner.ready_to_run.set()
         # Wait for updaters spawned by last autoscaler update to finish.
         self.waitFor(
@@ -2385,6 +2390,8 @@ MemAvailable:   33000000 kB
         assert autoscaler.num_failed_updates[1] == 1,\
             "Node one update failure not registered"
         assert mock_metrics.failed_updates.inc.call_count == 2
+        assert mock_metrics.failed_recoveries.inc.call_count == 2
+        assert mock_metrics.successful_recoveries.inc.call_count == 0
         # Completed-update-processing logic should have terminated node 1.
         assert self.provider.is_terminated(1), "Node 1 not terminated on time."
 
