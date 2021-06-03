@@ -166,6 +166,15 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
+message CheckAliveRequest {
+  int32 seq = 1;
+}
+
+message CheckAliveReply {
+  GcsStatus status = 1;
+  int32 seq = 2;
+}
+
 message GetInternalConfigRequest {
 }
 
@@ -233,6 +242,8 @@ message ReportResourceUsageReply {
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message GetObjectLocationsRequest {
