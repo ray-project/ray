@@ -70,10 +70,10 @@ available_node_types:
 head_node_type: ray-legacy-head-node-type
 head_start_ray_commands:
 - ray stop
-- ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+- ulimit -c unlimited; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 worker_start_ray_commands:
 - ray stop
-- ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
+- ray start --address=$RAY_HEAD_IP:6379
 cluster_synced_files: []
 idle_timeout_minutes: 5
 upscaling_speed: 1.0
