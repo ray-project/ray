@@ -4,8 +4,8 @@ pendulum-sac:
     env: Pendulum-v0
     run: SAC
     stop:
-        #episode_reward_mean: -300
-        timesteps_total: 1000000000
+        episode_reward_mean: -300
+        timesteps_total: 10000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -35,8 +35,5 @@ pendulum-sac:
         num_gpus: 0
         clip_actions: False
         normalize_actions: true
-        #evaluation_interval: 1
-        #metrics_smoothing_episodes: 5
-
-        output: /tmp/out
-        output_max_file_size: 10485760
+        evaluation_interval: 1
+        metrics_smoothing_episodes: 5
