@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 class _OpenTelemetryProxy:
+    """
+    This proxy makes it possible for tracing to be disabled when opentelemetry
+    is not installed on the cluster, but is installed locally.
+
+    The check for `opentelemetry`'s existence must happen where the functions
+    are executed because `opentelemetry` may be present where the functions
+    are pickled. This can happen when `ray[full]` is installed locally by `ray`
+    (no extra dependencies) is installed on the cluster.
+    """
     allowed_functions = {"trace", "context", "propagate", "Context"}
 
     def __getattr__(self, name):
@@ -71,9 +80,6 @@ class _OpenTelemetryProxy:
                     "tracing. See more at docs.ray.io/tracing.html")
 
 
-# NOTE: We proxy all Opentelemetry calls because we do not want to pickle the
-# Opentelemetry module because it may not be installed in the environment where
-# functions are executed.
 _opentelemetry = _OpenTelemetryProxy()
 _opentelemetry.try_all()
 
