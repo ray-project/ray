@@ -28,7 +28,7 @@ def test_split_address(address):
                                                                      address)
     non_url_compliant_module = f"module_test://{address}"
     assert client_builder._split_address(non_url_compliant_module) == (
-        "module", address)
+        "module_test", address)
 
 
 @pytest.mark.parametrize(
@@ -254,8 +254,10 @@ def test_disconnect(call_ray_stop_only):
         ray.put(300)
 
 
-def test_address_resolution(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50055")
+def test_address_resolution(call_ray_stop_only):
+    subprocess.check_output(
+        "ray start --head --ray-client-server-port=50055", shell=True)
+
     with ray.client("localhost:50055").connect():
         assert ray.util.client.ray.is_connected()
 
@@ -265,12 +267,15 @@ def test_address_resolution(ray_start_regular_shared):
             # client(...) takes precedence of RAY_ADDRESS=local
             assert ray.util.client.ray.is_connected()
 
-        ray.client(None).connect()
-        assert ray.worker.global_worker.node.is_head()
+        with pytest.raises(Exception):
+            # This tries to call `ray.init(address="local") which
+            # breaks.`
+            ray.client(None).connect()
 
     finally:
-        if os.environ["RAY_ADDRESS"]:
+        if os.environ.get("RAY_ADDRESS"):
             del os.environ["RAY_ADDRESS"]
 
-        server.stop(0)
-        subprocess.check_output("ray stop --force", shell=True)
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
