@@ -1049,6 +1049,66 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
+        
+.. _cluster-configuration-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        
+ .. _cluster-configuration-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.object_store_memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-node-docker:
 
@@ -1084,62 +1144,6 @@ Minimal configuration
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-minimal.yaml
             :language: yaml
             
-``available_node_types.<node_type_name>.node_type.resources.object_store_memory``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. tabs::
-    .. group-tab:: AWS
-
-        The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
-
-        * **Required:** No
-        * **Importance:** Low
-        * **Type:** Integer
-
-    .. group-tab:: Azure
-
-        The memory in bytes allocated for the object store on the node.
-
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
-
-    .. group-tab:: GCP
-
-        The memory in bytes allocated for the object store on the node.
-
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
-        
-``available_node_types.<node_type_name>.node_type.resources.memory``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. tabs::
-    .. group-tab:: AWS
-
-        The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
-
-        * **Required:** No
-        * **Importance:** Low
-        * **Type:** Integer
-
-    .. group-tab:: Azure
-
-        The memory in bytes allocated for python worker heap memory on the node.
-
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
-
-    .. group-tab:: GCP
-
-        The memory in bytes allocated for python worker heap memory on the node.
-
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
-
 .. _cluster-configuration-node-docker:
 
 ``available_node_types.<node_type_name>.docker``
