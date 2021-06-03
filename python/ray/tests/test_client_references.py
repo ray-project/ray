@@ -1,5 +1,3 @@
-import sys
-
 import pytest
 from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientActorRef, ClientObjectRef
