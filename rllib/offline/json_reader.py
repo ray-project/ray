@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import random
-from typing import List
+from typing import List, Optional
 from urllib.parse import urlparse
 
 try:
@@ -83,17 +83,6 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        # Clip actions if necessary.
-        if self.ioctx.config.get("clip_actions"):
-            if isinstance(batch, SampleBatch):
-                batch[SampleBatch.ACTIONS] = clip_action(
-                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
-                        "default_policy"].action_space_struct)
-            else:
-                for pid, b in batch.policy_batches:
-                    b[SampleBatch.ACTIONS] = clip_action(
-                        b[SampleBatch.ACTIONS],
-                        self.ioctx.worker.policy_map[pid].action_space_struct)
 
         return self._postprocess_if_needed(batch)
 
@@ -114,16 +103,29 @@ class JsonReader(InputReader):
             raise NotImplementedError(
                 "Postprocessing of multi-agent data not implemented yet.")
 
-    def _try_parse(self, line: str) -> SampleBatchType:
+    def _try_parse(self, line: str) -> Optional[SampleBatchType]:
         line = line.strip()
         if not line:
             return None
         try:
-            return _from_json(line)
+            batch = _from_json(line)
         except Exception:
             logger.exception("Ignoring corrupt json record in {}: {}".format(
                 self.cur_file, line))
             return None
+
+        # Clip actions, if necessary.
+        if self.ioctx.config.get("clip_actions"):
+            if isinstance(batch, SampleBatch):
+                batch[SampleBatch.ACTIONS] = clip_action(
+                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
+                        "default_policy"].action_space_struct)
+            else:
+                for pid, b in batch.policy_batches:
+                    b[SampleBatch.ACTIONS] = clip_action(
+                        b[SampleBatch.ACTIONS],
+                        self.ioctx.worker.policy_map[pid].action_space_struct)
+        return batch
 
     def read_all_files(self):
         for path in self.files:
