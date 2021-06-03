@@ -61,7 +61,7 @@ available_node_types:
     min_workers: 3
     node_config: {}
     resources: {}
-head_node_type: ray-legacy-head-node-type
+head_node_type: ray.node
 head_start_ray_commands:
 - ray stop
 - ulimit -c unlimited; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
@@ -73,10 +73,6 @@ idle_timeout_minutes: 5
 upscaling_speed: 1.0
 file_mounts: {}
 file_mounts_sync_continuously: false
-head_node:
-  placeholder: {}
-worker_nodes:
-  placeholder: {}
 head_setup_commands: []
 initialization_commands: []
 rsync_exclude: []
