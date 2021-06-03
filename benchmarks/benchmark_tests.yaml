@@ -1,0 +1,13 @@
+- name: single_node
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: single_node.yaml
+
+  run:
+    timeout: 600
+    prepare: sleep 0
+    script: python single_node/test_single_node.py

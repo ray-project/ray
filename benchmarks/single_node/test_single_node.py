@@ -13,6 +13,15 @@ MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
 MAX_RAY_GET_SIZE = 100 * 2**30
 
+def assert_no_leaks():
+    total = ray.cluster_resources()
+    current = ray.available_resources()
+    total.pop("memory")
+    total.pop("object_store_memory")
+    current.pop("memory")
+    current.pop("object_store_memory")
+    assert total == current, (total, current)
+
 
 def test_many_args():
     @ray.remote
@@ -132,8 +141,7 @@ test_many_args()
 args_end = perf_counter()
 
 time.sleep(5)
-assert ray.cluster_resources() == ray.available_resources(), (
-    ray.cluster_resources(), ray.available_resources())
+assert_no_leaks()
 print("Finished many args")
 
 returns_start = perf_counter()
@@ -141,8 +149,7 @@ test_many_returns()
 returns_end = perf_counter()
 
 time.sleep(5)
-assert ray.cluster_resources() == ray.available_resources(), (
-    ray.cluster_resources(), ray.available_resources())
+assert_no_leaks()
 print("Finished many returns")
 
 get_start = perf_counter()
@@ -150,8 +157,7 @@ test_ray_get_args()
 get_end = perf_counter()
 
 time.sleep(5)
-assert ray.cluster_resources() == ray.available_resources(), (
-    ray.cluster_resources(), ray.available_resources())
+assert_no_leaks()
 print("Finished ray.get on many objects")
 
 queued_start = perf_counter()
@@ -159,8 +165,7 @@ test_many_queued_tasks()
 queued_end = perf_counter()
 
 time.sleep(5)
-assert ray.cluster_resources() == ray.available_resources(), (
-    ray.cluster_resources(), ray.available_resources())
+assert_no_leaks()
 print("Finished queueing many tasks")
 
 large_object_start = perf_counter()
@@ -168,8 +173,7 @@ test_large_object()
 large_object_end = perf_counter()
 
 time.sleep(5)
-assert ray.cluster_resources() == ray.available_resources(), (
-    ray.cluster_resources(), ray.available_resources())
+assert_no_leaks()
 print("Done")
 
 args_time = args_end - args_start
