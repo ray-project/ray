@@ -99,7 +99,6 @@ sys.modules["pytorch_lightning"] = ChildClassMock()
 sys.modules["xgboost"] = ChildClassMock()
 sys.modules["xgboost.core"] = ChildClassMock()
 sys.modules["xgboost.callback"] = ChildClassMock()
-sys.modules["xgboost_ray"] = ChildClassMock()
 
 
 class SimpleClass(object):

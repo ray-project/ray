@@ -1,6 +1,8 @@
+import os
 import pytest
 import subprocess
 import sys
+from unittest.mock import patch, Mock
 
 import ray
 import ray.util.client.server.server as ray_client_server
@@ -24,6 +26,9 @@ def test_split_address(address):
     specified_other_module = f"module://{address}"
     assert client_builder._split_address(specified_other_module) == ("module",
                                                                      address)
+    non_url_compliant_module = f"module_test://{address}"
+    assert client_builder._split_address(non_url_compliant_module) == (
+        "module", address)
 
 
 @pytest.mark.parametrize(
@@ -181,6 +186,41 @@ assert len(ray._private.services.find_redis_address()) == 1
     subprocess.check_output("ray stop --force", shell=True)
 
 
+def test_non_existent_modules():
+    exception = None
+    try:
+        ray.client("badmodule://address")
+    except RuntimeError as e:
+        exception = e
+
+    assert exception is not None, "Bad Module did not raise RuntimeException"
+    assert "does not exist" in str(exception)
+
+
+def test_module_lacks_client_builder():
+    mock_importlib = Mock()
+
+    def mock_import_module(module_string):
+        if module_string == "ray":
+            return ray
+        else:
+            # Mock() does not have a `ClientBuilder` in its scope
+            return Mock()
+
+    mock_importlib.import_module = mock_import_module
+    with patch("ray.client_builder.importlib", mock_importlib):
+        assert isinstance(ray.client(""), ray.ClientBuilder)
+        assert isinstance(ray.client("ray://"), ray.ClientBuilder)
+        exception = None
+        try:
+            ray.client("othermodule://")
+        except AssertionError as e:
+            exception = e
+        assert exception is not None, ("Module without ClientBuilder did not "
+                                       "raise AssertionError")
+        assert "does not have ClientBuilder" in str(exception)
+
+
 def test_disconnect(call_ray_stop_only):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True)
@@ -210,6 +250,27 @@ def test_disconnect(call_ray_stop_only):
     ctx.disconnect()
     # Check idempotency
     ctx.disconnect()
-
     with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
+
+
+def test_address_resolution(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50055")
+    with ray.client("localhost:50055").connect():
+        assert ray.util.client.ray.is_connected()
+
+    try:
+        os.environ["RAY_ADDRESS"] = "local"
+        with ray.client("localhost:50055").connect():
+            # client(...) takes precedence of RAY_ADDRESS=local
+            assert ray.util.client.ray.is_connected()
+
+        ray.client(None).connect()
+        assert ray.worker.global_worker.node.is_head()
+
+    finally:
+        if os.environ["RAY_ADDRESS"]:
+            del os.environ["RAY_ADDRESS"]
+
+        server.stop(0)
+        subprocess.check_output("ray stop --force", shell=True)

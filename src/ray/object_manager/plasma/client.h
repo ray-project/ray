@@ -102,7 +102,7 @@ class PlasmaClient {
   Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
                 int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
                 uint64_t *retry_with_request_id, std::shared_ptr<Buffer> *data,
-                int device_num = 0);
+                plasma::flatbuf::ObjectSource source, int device_num = 0);
 
   /// Retry a previous Create call using the returned request ID.
   ///
@@ -146,7 +146,8 @@ class PlasmaClient {
   Status TryCreateImmediately(const ObjectID &object_id,
                               const ray::rpc::Address &owner_address, int64_t data_size,
                               const uint8_t *metadata, int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data, int device_num = 0);
+                              std::shared_ptr<Buffer> *data,
+                              plasma::flatbuf::ObjectSource source, int device_num = 0);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the

@@ -184,12 +184,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
-                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+                               CObjectID *object_id, shared_ptr[CBuffer] *data,
+                               c_bool created_by_worker)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
-                                  shared_ptr[CBuffer] *data)
+                                  shared_ptr[CBuffer] *data,
+                                  c_bool created_by_worker)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
