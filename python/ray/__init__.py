@@ -163,9 +163,8 @@ def _ray_user_setup_function():
         except Exception as e:
             # We still need to allow ray to be imported, even there is
             # something in the setup function.
-            logger.info(
-                f"Failed to run user setup function: {user_setup_fn}. "
-                f"Error message {e}")
+            logger.info(f"Failed to run user setup function: {user_setup_fn}. "
+                        f"Error message {e}")
 
 
 _ray_user_setup_function()
