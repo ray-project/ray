@@ -61,7 +61,7 @@ available_node_types:
     min_workers: 3
     node_config: {}
     resources: {}
-head_node_type: ray.node
+head_node_type: local.cluster.node
 head_start_ray_commands:
 - ray stop
 - ulimit -c unlimited; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
