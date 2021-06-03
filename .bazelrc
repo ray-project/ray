@@ -118,8 +118,9 @@ build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local
-test:ci --test_output=errors
+test:ci --test_output=all
 test:ci --test_verbose_timeout_warnings
+test:ci --test_summary=detailed
 
 aquery:get-toolchain --include_commandline=false
 aquery:get-toolchain --noimplicit_deps
