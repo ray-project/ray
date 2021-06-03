@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import platform
+import pytest
 
 import ray
 from ray.test_utils import wait_for_condition
@@ -36,6 +38,8 @@ def _check_spilled_mb(address, spilled=None, restored=None):
     wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_fallback_when_spilling_impossible_on_put():
     try:
         address = _init_ray()
@@ -51,6 +55,8 @@ def test_fallback_when_spilling_impossible_on_put():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_spilling_when_possible_on_put():
     try:
         address = _init_ray()
@@ -62,6 +68,8 @@ def test_spilling_when_possible_on_put():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_fallback_when_spilling_impossible_on_get():
     try:
         address = _init_ray()
@@ -81,6 +89,8 @@ def test_fallback_when_spilling_impossible_on_get():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_spilling_when_possible_on_get():
     try:
         address = _init_ray()
@@ -98,6 +108,8 @@ def test_spilling_when_possible_on_get():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_task_unlimited():
     try:
         address = _init_ray()
@@ -130,6 +142,8 @@ def test_task_unlimited():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_task_unlimited_multiget_args():
     try:
         address = _init_ray()
@@ -155,6 +169,5 @@ def test_task_unlimited_multiget_args():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
