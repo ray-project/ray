@@ -159,19 +159,20 @@ class FunctionActorManager:
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (job_id_str, function_id_str, runtime_env_hash, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(
-             key, [
-                 "job_id", "function_id", "runtime_env_hash", "function_name", "function",
-                 "module", "max_calls"
-             ])
+        (job_id_str, function_id_str, runtime_env_hash, function_name,
+         serialized_function, module,
+         max_calls) = self._worker.redis_client.hmget(key, [
+             "job_id", "function_id", "runtime_env_hash", "function_name",
+             "function", "module", "max_calls"
+         ])
         runtime_env_hash = int(runtime_env_hash)
         # If the runtime env of the task does not match that of the current
         # worker, deserialization may fail due to missing python imports.
         # So skip this function in this case.
         if runtime_env_hash != self._worker.runtime_env_hash:
             logger.error("UNMATCHED runtime_env_hash = ", runtime_env_hash)
-            logger.error("UNMATCHED self._worker.runtime_env_hash = ", self._worker.runtime_env_hash)
+            logger.error("UNMATCHED self._worker.runtime_env_hash = ",
+                         self._worker.runtime_env_hash)
             return
         logger.error("MATCHED runtime_env_hash = ", runtime_env_hash)
         function_id = ray.FunctionID(function_id_str)
