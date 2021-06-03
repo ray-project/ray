@@ -56,17 +56,10 @@ auth:
 docker: {}
 max_workers: 3
 available_node_types:
-  ray-legacy-head-node-type:
-    max_workers: 0
-    min_workers: 0
-    node_config:
-      placeholder: {}
-    resources: {}
-  ray-legacy-worker-node-type:
+  ray.node:
     max_workers: 3
     min_workers: 3
-    node_config:
-      placeholder: {}
+    node_config: {}
     resources: {}
 head_node_type: ray-legacy-head-node-type
 head_start_ray_commands:
