@@ -341,8 +341,8 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
-        self.log_client.close()
         self.data_client.close()
+        self.log_client.close()
         if self.channel:
             self.channel.close()
             self.channel = None
