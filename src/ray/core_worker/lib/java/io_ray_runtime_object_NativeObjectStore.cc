@@ -216,7 +216,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResol
   ray::rpc::Address address;
   address.ParseFromString(ownerAddressStr);
   // TODO(ekl) populate serialized object status from Java land.
-  ray::ray::GetObjectStatusReply object_status;
+  ray::rpc::GetObjectStatusReply object_status;
   auto serialized_status = object_status.SerializeAsString();
   ray::CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
       object_id, outer_objectId, address, serialized_status);
