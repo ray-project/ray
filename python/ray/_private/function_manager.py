@@ -168,10 +168,6 @@ class FunctionActorManager:
          ])
         runtime_env_hash = int(runtime_env_hash)
         worker_mode = int(worker_mode)
-        # If the runtime env of the task does not match that of the current
-        # worker, deserialization may fail due to missing python imports.
-        # So skip this function in this case.
-
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
@@ -342,18 +338,11 @@ class FunctionActorManager:
                                    "function that it does not have "
                                    "registered. You may have to restart "
                                    "Ray.")
-                is_actor_message = (f"self._worker.actor_id.is_nil"
-                                    f"is {self._worker.actor_id.is_nil()}")
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
-                        job_id=job_id)
-                    ray._private.utils.push_error_to_driver(
-                        self._worker,
-                        ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
-                        is_actor_message,
                         job_id=job_id)
                 warning_sent = True
             time.sleep(0.001)
