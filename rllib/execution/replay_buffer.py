@@ -379,6 +379,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         # Handle everything as if multiagent
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+
         with self.add_batch_timer:
             # Lockstep mode: Store under _ALL_POLICIES key (we will always
             # only sample from all policies at the same time).
