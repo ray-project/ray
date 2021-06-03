@@ -148,6 +148,7 @@ class FunctionActorManager:
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
                 "runtime_env_hash": self._worker.runtime_env_hash,
+                "worker_mode": self._worker.mode,
                 "function_name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
@@ -159,27 +160,39 @@ class FunctionActorManager:
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (job_id_str, function_id_str, runtime_env_hash, function_name,
-         serialized_function, module,
+        (job_id_str, function_id_str, runtime_env_hash, worker_mode,
+         function_name, serialized_function, module,
          max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "runtime_env_hash", "function_name",
-             "function", "module", "max_calls"
+             "job_id", "function_id", "runtime_env_hash", "worker_mode",
+             "function_name", "function", "module", "max_calls"
          ])
         runtime_env_hash = int(runtime_env_hash)
+        worker_mode = int(worker_mode)
         # If the runtime env of the task does not match that of the current
         # worker, deserialization may fail due to missing python imports.
         # So skip this function in this case.
-        if runtime_env_hash != self._worker.runtime_env_hash:
-            logger.debug("Unmatched: runtime_env_hash=", runtime_env_hash)
-            logger.debug("self._worker.runtime_env_hash=",
-                         self._worker.runtime_env_hash)
-            return
-        logger.debug("Matched: runtime_env_hash = ", runtime_env_hash)
+
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
+
+        # We should only deserialize the function if either
+        # 1. The function was broadcast from a driver for the same job, or
+        # 2. The runtime env hash received matches the current one.
+        # In any other case, we should return and skip deserialization,
+        # because the unpickling may fail due to missing dependencies.
+        if runtime_env_hash != self._worker.runtime_env_hash:
+            if not (worker_mode == ray.worker.SCRIPT_MODE
+                    and job_id == self._worker.current_job_id):
+                logger.debug(f"Unmatched: worker_mode={worker_mode}, "
+                             f"job_id={job_id}, "
+                             f"self.job_id={self._worker.current_job_id}, "
+                             f"runtime_env_hash={runtime_env_hash}, "
+                             "self._worker.runtime_env_hash="
+                             f"{self._worker.runtime_env_hash}")
+                return
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
@@ -329,11 +342,18 @@ class FunctionActorManager:
                                    "function that it does not have "
                                    "registered. You may have to restart "
                                    "Ray.")
+                is_actor_message = (f"self._worker.actor_id.is_nil"
+                                    f"is {self._worker.actor_id.is_nil()}")
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
+                        job_id=job_id)
+                    ray._private.utils.push_error_to_driver(
+                        self._worker,
+                        ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+                        is_actor_message,
                         job_id=job_id)
                 warning_sent = True
             time.sleep(0.001)
