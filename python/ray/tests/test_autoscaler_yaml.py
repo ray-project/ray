@@ -56,7 +56,7 @@ auth:
 docker: {}
 max_workers: 3
 available_node_types:
-  ray.node:
+  local.cluster.node:
     max_workers: 3
     min_workers: 3
     node_config: {}

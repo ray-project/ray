@@ -24,12 +24,12 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     # Resources internally detected by Ray are not overridden by the autoscaler
     # (see NodeProvider.do_update)
     config["available_node_types"] = {
-        NODE_TYPE: {
+        LOCAL_CLUSTER_NODE_TYPE: {
             "node_config": {},
             "resources": {}
         }
     }
-    config["head_node_type"] = NODE_TYPE
+    config["head_node_type"] = LOCAL_CLUSTER_NODE_TYPE
     if "coordinator_address" in config["provider"]:
         config = prepare_coordinator(config)
     else:
@@ -44,7 +44,7 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
     if "max_workers" not in config:
         cli_logger.abort("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
-    node_type = config["available_node_types"][NODE_TYPE]
+    node_type = config["available_node_types"][LOCAL_CLUSTER_NODE_TYPE]
     # The autoscaler no longer uses global `min_workers`.
     # Move `min_workers` to the node_type config.
     node_type["min_workers"] = config.pop("min_workers", 0)
@@ -59,7 +59,7 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("Please supply a `head_ip` and list of `worker_ips`. "
                          "Alternatively, supply a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
-    node_type = config["available_node_types"][NODE_TYPE]
+    node_type = config["available_node_types"][LOCAL_CLUSTER_NODE_TYPE]
     # Default to keeping all provided ips in the cluster.
     config.setdefault("max_workers", num_ips)
     # The autoscaler no longer uses global `min_workers`.
