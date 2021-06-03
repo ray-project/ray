@@ -40,7 +40,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     proc = pm._get_server_for_client(client)
     assert proc.port == 45000
 
-    proc.process_handle().process.wait(10)
+    proc.process_handle_future.result().process.wait(10)
     # Wait for reconcile loop
     time.sleep(2)
 
