@@ -132,7 +132,7 @@ RAY_CONFIG(bool, scheduler_hybrid_scheduling,
 RAY_CONFIG(float, scheduler_hybrid_threshold,
            getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
                ? 0.5
-               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+               : std::stof(getenv("RAY_SCHEDULER_HYBRID_THRESHOLD")))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
