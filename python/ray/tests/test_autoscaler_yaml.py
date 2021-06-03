@@ -271,6 +271,11 @@ class AutoscalingConfigTest(unittest.TestCase):
         del no_head_config["provider"]["head_ip"]
         with pytest.raises(ClickException):
             prepare_config(no_head_config)
+        for field in "head_node", "worker_nodes", "available_node_types":
+            faulty_config = copy.deepcopy(base_config)
+            faulty_config[field] = "This field shouldn't be in here."
+            with pytest.raises(ClickException):
+                prepare_config(faulty_config)
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \

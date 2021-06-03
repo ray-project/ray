@@ -17,7 +17,7 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     for field in "head_node", "worker_nodes", "available_node_types":
         if config.get(field):
             err_msg = unsupported_field_message.format(field)
-            cli_logger.error(err_msg)
+            cli_logger.abort(err_msg)
     if "coordinator_address" in config["provider"]:
         config = prepare_coordinator(config)
     else:
