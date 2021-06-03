@@ -151,6 +151,9 @@ class RuntimeEnvDict:
             else:
                 raise TypeError("runtime_env['pip'] must be of type str or "
                                 "List[str]")
+        # Working dir has been used to interpret pip/conda paths and is no
+        # longer needed.
+        self._dict["working_dir"] = None
 
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
