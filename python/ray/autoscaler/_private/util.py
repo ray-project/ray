@@ -183,8 +183,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return merged_config
 
 
-def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any],
-                                    is_local: bool) -> Dict[str, Any]:
+def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]
+                                    ) -> Dict[str, Any]:
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
