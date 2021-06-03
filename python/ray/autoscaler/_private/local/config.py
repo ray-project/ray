@@ -9,6 +9,7 @@ unsupported_field_message = ("The field {} is not supported "
 
 NODE_TYPE = "ray.node"
 
+
 def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Prepare local cluster config for ingestion by cluster launcher and
@@ -19,12 +20,12 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
         if config.get(field):
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
-    config["available_node_types"] = {NODE_TYPE:
-                                        {
-                                            "node_config":{},
-                                            "resources": {}
-                                        }
-                                      }
+    config["available_node_types"] = {
+        NODE_TYPE: {
+            "node_config": {},
+            "resources": {}
+        }
+    }
     config["head_node_type"] = NODE_TYPE
     if "coordinator_address" in config["provider"]:
         config = prepare_coordinator(config)

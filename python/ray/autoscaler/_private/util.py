@@ -152,7 +152,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
     fill_node_type_max_workers(with_defaults)
-    import pdb; pdb.set_trace()
+
     return with_defaults
 
 
