@@ -199,30 +199,30 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
         A dict maps from an object to its location. The dict excludes those
         objects whose location lookup failed.
 
-        The Location is stored as a Dict with following attributes:
+        The location is stored as a dict with following attributes:
 
-        - primary_node_id:
-        The hex ID of the node who has the primary copy of the object.
-        It could be None if the object is pending resolution.
-        - object_size:
-        The size of data + metadata in bytes.
-        - node_ids:
-        The hex IDs of the nodes that have an in memory copy of this
-        object.
-        - is_spilled:
-        Wether the object has been spilled.
-        - spilled_url:
-        The spilled location, None if not spilled.
-        - spilled_node_id:
-        The hex node ID which spilled the object. None if the object
-        is not spilled, or was spilled to a distributed external
-        storage.
+        - primary_node_id (Optional[str]): The hex ID of the node who has
+          the primary copy of the object. It could be None if the object
+          is pending resolution.
+
+        - object_size (int): The size of data + metadata in bytes.
+
+        - node_ids (List[str]): The hex IDs of the nodes that have an
+          in memory copy of this object.
+
+        - is_spilled (bool): Wether the object has been spilled.
+
+        - spilled_url (Optional[str]): The spilled location, None if not
+          spilled.
+
+        - spilled_node_id (Optional[str]): The hex node ID which spilled
+          the object. None if the object is not spilled or was spilled
+          to a distributed external storage.
 
     Raises:
-        A RuntimeError is raised if the processes were not started by
-            ray.init().
-        A ray.exceptions.GetTimeoutError is raised if it couldn't finish
-            the request in time.
+        RuntimeError: if the processes were not started by ray.init().
+        ray.exceptions.GetTimeoutError: if it couldn't finish the
+            request in time.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
