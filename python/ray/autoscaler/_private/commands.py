@@ -599,7 +599,7 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
-    head_node_config = copy.deepcopy(config["head_node"])
+    head_node_config = copy.deepcopy(config.get("head_node", {}))
     head_node_resources = None
     if "head_node_type" in config:
         head_node_type = config["head_node_type"]

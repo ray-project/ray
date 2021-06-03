@@ -40,7 +40,7 @@ class NodeLauncher(threading.Thread):
         worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
 
-        launch_config = copy.deepcopy(config["worker_nodes"])
+        launch_config = copy.deepcopy(config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
                 config["available_node_types"][node_type]["node_config"])
