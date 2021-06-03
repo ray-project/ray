@@ -10,7 +10,6 @@ auth: {}
 upscaling_speed: 1.0
 idle_timeout_minutes: 5
 
-# Docker use not recommended: ray down will not clean up Docker state.
 docker: {}
 
 # Defaults are empty to avoid any surprise changes to on-prem cluster's state.
