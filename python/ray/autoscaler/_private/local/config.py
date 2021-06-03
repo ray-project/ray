@@ -15,7 +15,7 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
-        if config.get("head_node"):
+        if config.get(field):
             err_msg = unsupported_field_message.format(field)
             cli_logger.error(err_msg)
     if "coordinator_address" in config["provider"]:
@@ -34,7 +34,7 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
     # User should explicitly set the max number of workers for the coordinator
     # to allocate.
     if "max_workers" not in config:
-        cli_logger.error("The field `max_workers` is required when using an "
+        cli_logger.abort("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
     config.setdefault("min_workers", 0)
     return config
@@ -42,9 +42,10 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
-    if "worker_ips" not in config["provider"]:
-        cli_logger.error("Please supply a list of `worker_ips` "
-                         "or a `coordinator_address`.")
+    if ("worker_ips" not in config["provider"]) or (
+            "head_ip" not in config["provider"]):
+        cli_logger.abort("Please supply a `head_ip` and list of `worker_ips`. "
+                         "Alternatively, supply a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
     max_specified = "max_workers" in config
     min_specified = "min_workers" in config
@@ -66,12 +67,15 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_local_manual(provider_config: Dict[str, Any]) -> bool:
+    """Is this a LocalNodeProvider that has manually specified IPs?"""
     return (provider_config["type"] == "local"
             and "coordinator_address" not in provider_config)
 
 
 def sync_state(config: Dict[str, Any]) -> Dict[str, Any]:
     """
+    Adds cluster state file to file mounts.
+
     Used to synchronize head and local cluster state files, mostly to let the
     head node know that the head node itself is non-terminated.
     """

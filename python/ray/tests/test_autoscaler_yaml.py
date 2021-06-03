@@ -9,6 +9,7 @@ import yaml
 import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
+from click.exceptions import ClickException
 
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
@@ -242,12 +243,16 @@ class AutoscalingConfigTest(unittest.TestCase):
         """
         local_config_path = os.path.join(
             RAY_PATH, "autoscaler/local/example-minimal-manual.yaml")
-        config = yaml.safe_load(open(local_config_path).read())
-        config["provider"]["head_ip"] = "xxx.yyy"
-        config["provider"]["worker_ips"] = ["aaa.bbb", "ccc.ddd", "eee.fff"]
-        config["auth"]["ssh_user"] = "user"
-        config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
-        prepared_config = prepare_config(config)
+        base_config = yaml.safe_load(open(local_config_path).read())
+        base_config["provider"]["head_ip"] = "xxx.yyy"
+        base_config["provider"]["worker_ips"] = [
+            "aaa.bbb", "ccc.ddd", "eee.fff"
+        ]
+        base_config["auth"]["ssh_user"] = "user"
+        base_config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
+
+        test_prepare_config = copy.deepcopy(base_config)
+        prepared_config = prepare_config(test_prepare_config)
         try:
             validate_config(prepared_config)
         except Exception:
@@ -257,6 +262,15 @@ class AutoscalingConfigTest(unittest.TestCase):
         synced_config = local_config.sync_state(prepared_config)
         state_path = "/tmp/cluster-minimal-manual.state"
         assert (synced_config["file_mounts"] == {state_path: state_path})
+
+        no_worker_config = copy.deepcopy(base_config)
+        del no_worker_config["provider"]["worker_ips"]
+        with pytest.raises(ClickException):
+            prepare_config(no_worker_config)
+        no_head_config = copy.deepcopy(base_config)
+        del no_head_config["provider"]["head_ip"]
+        with pytest.raises(ClickException):
+            prepare_config(no_head_config)
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
