@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
     if args.destination == "docker_login":
         handle_docker_login(resp)
-    elif args.destination in {"wheels", "logs"}:
+    else:
         paths = gather_paths(args.path)
         print("Planning to upload", paths)
         upload_paths(paths, resp, args.destination)
