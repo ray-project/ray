@@ -287,7 +287,7 @@ class WorkerPoolTest : public ::testing::Test {
           return execute_after(io_service_, task, delay_ms);
         },
         /*runtime_env_agent_factory=*/
-        [this](const std::string &ip_address, int port) {
+        [](const std::string &ip_address, int port) {
           return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
               new MockRuntimeEnvAgentClient());
         },
