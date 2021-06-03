@@ -47,8 +47,8 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("Please supply a `head_ip` and list of `worker_ips`. "
                          "Alternatively, supply a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
-    config.set_default("min_workers", num_ips)
-    config.set_default("max_workers", num_ips)
+    config.setdefault("min_workers", num_ips)
+    config.setdefault("max_workers", num_ips)
     return config
 
 
