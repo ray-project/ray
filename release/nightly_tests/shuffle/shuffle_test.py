@@ -13,17 +13,23 @@ if __name__ == "__main__":
         help="number of reducer actors used",
         default="200e6",
         type=str)
+    parser.add_argument(
+        "--no-streaming", help="Non streaming shuffle", action="store_true")
     args = parser.parse_args()
 
     start = time.time()
     success = 1
+    commands = [
+        "python", "-m", "ray.experimental.shuffle", "--ray-address={}".format(
+            os.environ["RAY_ADDRESS"]),
+        f"--num-partitions={args.num_partitions}",
+        f"--partition-size={args.partition_size}"
+    ]
+    if args.no_streaming:
+        commands.append("--no-streaming")
+
     try:
-        subprocess.check_call([
-            "python", "-m", "ray.experimental.shuffle",
-            "--ray-address={}".format(os.environ["RAY_ADDRESS"]),
-            f"--num-partitions={args.num_partitions}",
-            f"--partition-size={args.partition_size}"
-        ])
+        subprocess.check_call(commands)
     except Exception as e:
         print(f"The test failed with {e}")
         success = 0
