@@ -196,7 +196,7 @@ Resources
 
     :ref:`CPU <cluster-configuration-CPU>`: int
     :ref:`GPU <cluster-configuration-GPU>`: int
-    :ref:`object_store_memory <cluster-configuration-object_store_memory>`: int
+    :ref:`object_store_memory <cluster-configuration-object-store-memory>`: int
     :ref:`memory <cluster-configuration-memory>`: int
     <custom_resource1>: int
     <custom_resource2>: int
@@ -1053,7 +1053,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 .. _cluster-configuration-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.memory``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
     .. group-tab:: AWS
@@ -1080,10 +1080,10 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Importance:** High
         * **Type:** Integer
         
- .. _cluster-configuration-memory:
+ .. _cluster-configuration-object_store_memory:
 
-``available_node_types.<node_type_name>.node_type.resources.object_store_memory``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
     .. group-tab:: AWS
