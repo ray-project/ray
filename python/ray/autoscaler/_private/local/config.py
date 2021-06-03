@@ -57,7 +57,7 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     node_type = config["available_node_types"][NODE_TYPE]
     # Default to keeping all provided ips in the cluster.
     config.setdefault("max_workers", num_ips)
-    node_type["min_workers"] = config.pop("min_workers", None) or num_ips
+    node_type["min_workers"] = config.pop("min_workers", num_ips)
     node_type["max_workers"] = config["max_workers"]
     return config
 
