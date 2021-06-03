@@ -7,12 +7,16 @@ steps:
     PYTHON: "3.6"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
-    RAY_INSTALL_JAVA: "1"
+    # TODO(simon): Can't figure out how get the JDK working yet.
+    # RAY_INSTALL_JAVA: "1"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+
     # TODO(simon): These should be baked into macOS AMI.
-    - brew install openjdk@11 && brew link --force openjdk@11
-    - export PATH="/usr/local/opt/openjdk@11/bin:$PATH"
+    # TODO(simon): Can't figure out how get the JDK working yet.
+    # - brew install openjdk@11 && brew link --force openjdk@11
+    # - export PATH="/usr/local/opt/openjdk@11/bin:$PATH"
+
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
