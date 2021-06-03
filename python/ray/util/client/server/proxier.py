@@ -64,6 +64,7 @@ class SpecificServer:
             raise RuntimeError("Server startup failed.")
 
     def poll(self) -> Optional[int]:
+        """Check if the process has exited."""
         try:
             proc = self.process_handle_future.result(timeout=0.1)
             if proc is not None:
@@ -72,6 +73,7 @@ class SpecificServer:
             return
 
     def kill(self) -> None:
+        """Try to send a KILL signal to the process."""
         try:
             proc = self.process_handle_future.result(timeout=0.1)
             if proc is not None:
@@ -81,7 +83,9 @@ class SpecificServer:
             pass
 
     def set_result(self, proc: Optional[ProcessInfo]) -> None:
-        self.process_handle_future.set_result(proc)
+        """Set the result of the internal future if it is currently unset."""
+        if not self.process_handle_future.done():
+            self.process_handle_future.set_result(proc)
 
 
 def _match_running_client_server(command: List[str]) -> bool:
@@ -159,6 +163,10 @@ class ProxyManager():
         return self._session_dir
 
     def create_specific_server(self, client_id: str) -> SpecificServer:
+        """
+        Create, but not start a SpecificServer for a given client. This
+        method must be called once per client.
+        """
         with self.server_lock:
             assert self.servers.get(client_id) is None, (
                 f"Server already created for Client: {client_id}")
@@ -399,7 +407,6 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             modified_init_req, job_config = prepare_runtime_init_req(
                 request_iterator)
 
-            logger.info(f"NEXT STEP {client_id}: ")
             if not self.proxy_manager.start_specific_server(
                     client_id, job_config):
                 logger.error(f"Server startup failed for client: {client_id}, "
