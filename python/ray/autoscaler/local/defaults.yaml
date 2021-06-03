@@ -31,17 +31,3 @@ cluster_synced_files: []
 file_mounts_sync_continuously: false
 rsync_exclude: []
 rsync_filter: []
-
-
-# The following block is used internally;
-# it does not represent user configuration.
-available_node_types:
-    ray.head.default:
-        resources: {}
-        node_config: {}
-        min_workers: 0
-        max_workers: 0
-    ray.worker.default:
-        resources: {}
-        node_config: {}
-head_node_type: ray.head.default

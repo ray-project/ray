@@ -148,15 +148,15 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if is_local:
         config = prepare_local(config)
 
-    with_defaults = fillout_defaults(config, is_local)
+    with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
     fill_node_type_max_workers(with_defaults)
+    #import pdb; pdb.set_trace()
     return with_defaults
 
 
-def fillout_defaults(config: Dict[str, Any],
-                     is_local: bool = False) -> Dict[str, Any]:
+def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
 

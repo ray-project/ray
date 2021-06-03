@@ -7,6 +7,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 unsupported_field_message = ("The field {} is not supported "
                              "for on-premise clusters.")
 
+NODE_TYPE = "ray.node"
 
 def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -18,6 +19,13 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
         if config.get(field):
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
+    config["available_node_types"] = {NODE_TYPE:
+                                        {
+                                            "node_config":{},
+                                            "resources": {}
+                                        }
+                                      }
+    config["head_node_type"] = NODE_TYPE
     if "coordinator_address" in config["provider"]:
         config = prepare_coordinator(config)
     else:
@@ -36,7 +44,9 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
     if "max_workers" not in config:
         cli_logger.abort("The field `max_workers` is required when using an "
                          "automatically managed on-premise cluster.")
-    config.setdefault("min_workers", 0)
+    node_type = config["available_node_types"][NODE_TYPE]
+    node_type["min_workers"] = config.pop("min_workers", None) or 0
+    node_type["max_workers"] = config["max_workers"]
     return config
 
 
@@ -47,8 +57,11 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
         cli_logger.abort("Please supply a `head_ip` and list of `worker_ips`. "
                          "Alternatively, supply a `coordinator_address`.")
     num_ips = len(config["provider"]["worker_ips"])
-    config.setdefault("min_workers", num_ips)
+    node_type = config["available_node_types"][NODE_TYPE]
+    # Default to keeping all provided ips in the cluster.
     config.setdefault("max_workers", num_ips)
+    node_type["min_workers"] = config.pop("min_workers", None) or num_ips
+    node_type["max_workers"] = config["max_workers"]
     return config
 
 
