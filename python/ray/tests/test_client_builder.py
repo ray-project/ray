@@ -1,11 +1,13 @@
+import os
 import pytest
 import subprocess
 import sys
+from unittest.mock import patch, Mock
 
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
-from ray.test_utils import run_string_as_driver_nonblocking,\
+from ray.test_utils import run_string_as_driver_nonblocking, \
     wait_for_condition, run_string_as_driver
 
 from ray.cluster_utils import Cluster
@@ -186,8 +188,6 @@ assert len(ray._private.services.find_redis_address()) == 1
     subprocess.check_output("ray stop --force", shell=True)
 
 
-<<<<<<< HEAD
-=======
 def test_non_existent_modules():
     exception = None
     try:
@@ -225,7 +225,6 @@ def test_module_lacks_client_builder():
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
->>>>>>> 206802b96 ([client] Fix ClientBuilder for Local Clusters (#16204))
 def test_disconnect(call_ray_stop_only):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True)
@@ -258,8 +257,6 @@ def test_disconnect(call_ray_stop_only):
 
     with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
-<<<<<<< HEAD
-=======
 
 
 @pytest.mark.skipif(
@@ -289,4 +286,3 @@ def test_address_resolution(call_ray_stop_only):
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
->>>>>>> 206802b96 ([client] Fix ClientBuilder for Local Clusters (#16204))
