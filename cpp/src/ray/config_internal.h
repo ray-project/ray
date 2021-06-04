@@ -36,6 +36,8 @@ class ConfigInternal {
 
   std::string logs_dir = "";
 
+  std::string node_ip_address = "";
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
