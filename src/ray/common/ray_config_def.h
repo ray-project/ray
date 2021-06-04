@@ -114,7 +114,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
+RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", true))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
