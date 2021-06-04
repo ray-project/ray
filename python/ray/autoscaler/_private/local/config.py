@@ -69,7 +69,7 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def is_local_manual(provider_config: Dict[str, Any]) -> bool:
+def is_local_manual_node_provider(provider_config: Dict[str, Any]) -> bool:
     """Is this a LocalNodeProvider that has manually specified IPs?"""
     return (provider_config["type"] == "local"
             and "coordinator_address" not in provider_config)
