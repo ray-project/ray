@@ -35,6 +35,15 @@ bool ReferenceCounter::OwnObjects() const {
   return !object_id_refs_.empty();
 }
 
+bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    return it->second.owned_by_us;
+  }
+  return false;
+}
+
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
