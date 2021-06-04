@@ -1,10 +1,11 @@
 import argparse
-import os
 
-import anyscale
+import modin.pandas as pd
+import ray
 from xgboost_ray import RayDMatrix, RayParams, train
 
-FILENAME_CSV = "HIGGS.csv.gz"
+FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
+           "00280/HIGGS.csv.gz"
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -12,36 +13,20 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def download_higgs(target_file):
-    import urllib.request
-    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-          "00280/HIGGS.csv.gz"
-    print(f"Downloading HIGGS dataset to {target_file}")
-    urllib.request.urlretrieve(url, target_file)
-    return os.path.exists(target_file)
-
-
 def main():
-    # import ray
-    # import ray.util.client.server.server as ray_client_server
-    # server = ray_client_server.serve("localhost:25555")
-    # client = ray.client("localhost:25555")
-    # client.connect()
-    anyscale.connect()
+    if args.smoke_test:
+        ray.init()
+    else:
+        ray.init(address="auto")  # assumes ray is started with ray up
 
     print("Loading HIGGS data.")
 
-    if not os.path.exists(FILENAME_CSV):
-        download_higgs(FILENAME_CSV)
-
-    print("Reading HIGGS data.")
-
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    import modin.pandas as pd
 
-    nrows = 1000 if args.smoke_test else None
-    print("nrows: {}".format(nrows))
-    data = pd.read_csv(FILENAME_CSV, names=colnames, nrows=nrows)
+    if args.smoke_test:
+        data = pd.read_csv(FILE_URL, names=colnames, nrows=1000)
+    else:
+        data = pd.read_csv(FILE_URL, names=colnames)
 
     print("Loaded HIGGS data.")
 
@@ -64,7 +49,6 @@ def main():
             max_actor_restarts=1, num_actors=4, cpus_per_actor=2),
         num_boost_round=100,
         evals=evallist)
-    # server.stop(0)
 
 
 if __name__ == "__main__":

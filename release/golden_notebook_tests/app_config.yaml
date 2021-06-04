@@ -8,9 +8,10 @@ python:
     - pytest
     - xgboost_ray
     - dask
-    - modin
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y numpy ray || true
+  - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y modin || true
+  - pip3 install -U git+https://github.com/modin-project/modin

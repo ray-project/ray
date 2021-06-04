@@ -1,7 +1,7 @@
 - name: dask_xgboost_test
   owner:
     mail: "matt@anyscale.com"
-    slack: "@ml-team" # should we create these?
+    slack: "@ml-team"
 
   cluster:
     app_config: app_config.yaml
@@ -14,12 +14,12 @@
 - name: modin_xgboost_test
   owner:
     mail: "matt@anyscale.com"
-    slack: "@ml-team" # should we create these?
+    slack: "@ml-team"
 
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 900
+    timeout: 1800
     script: python workloads/modin_xgboost_test.py
