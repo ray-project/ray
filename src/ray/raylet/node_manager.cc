@@ -1500,6 +1500,9 @@ void NodeManager::HandleUpdateResourceUsage(
            "restarted, the network is heavily congested and is dropping, reordering, or "
            "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
+    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
+    // pull a full resource "snapshot" from gcs to make sure our state doesn't
+    // diverge from GCS.
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
