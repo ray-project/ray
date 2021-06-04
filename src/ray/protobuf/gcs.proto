@@ -391,9 +391,16 @@ message PubSubMessage {
   bytes data = 2;
 }
 
+message ResourceUpdate {
+  oneof resource_change_or_data {
+    NodeResourceChange change = 1;
+    ResourcesData data = 2;
+  }
+}
+
 message ResourceUsageBroadcastData {
   int64 seq_no = 1;
-  repeated ResourcesData batch = 2;
+  repeated ResourceUpdate batch = 2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
