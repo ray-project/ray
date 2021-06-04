@@ -72,7 +72,7 @@ class ClusterState:
 
                 # Set external head ip, if provided by user.
                 # Necessary if calling `ray up` from outside the network.
-                # Refer to LocalNodeProvider.external_ip.
+                # Refer to LocalNodeProvider.external_ip function.
                 external_head_ip = provider_config.get("external_head_ip")
                 if external_head_ip:
                     head = workers[provider_config["head_ip"]]
