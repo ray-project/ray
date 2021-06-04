@@ -289,8 +289,6 @@ class HeartbeatInfoGcsServiceHandler {
   virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
                                      ReportHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-  virtual void HandleCheckAlive(const CheckAliveRequest &request, CheckAliveReply *reply,
-                                SendReplyCallback send_reply_callback) = 0;
 };
 /// The `GrpcService` for `HeartbeatInfoGcsService`.
 class HeartbeatInfoGrpcService : public GrpcService {
@@ -308,7 +306,6 @@ class HeartbeatInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     HEARTBEAT_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
-    HEARTBEAT_INFO_SERVICE_RPC_HANDLER(CheckAlive);
   }
 
  private:

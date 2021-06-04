@@ -38,14 +38,3 @@ def set_http_proxy():
         os.environ["https_proxy"] = https_proxy
     else:
         del os.environ["https_proxy"]
-
-
-@pytest.fixture
-def fast_gcs_failure_detection():
-    os.environ["GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR"] = "2"
-    os.environ["GCS_CHECK_ALIVE_INTERVAL_SECONDS"] = "1"
-    os.environ["GCS_RETRY_CONNECT_INTERVAL_SECONDS"] = "1"
-    yield
-    os.environ.pop("GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR", None)
-    os.environ.pop("GCS_CHECK_ALIVE_INTERVAL_SECONDS", None)
-    os.environ.pop("GCS_RETRY_CONNECT_INTERVAL_SECONDS", None)
