@@ -106,6 +106,15 @@ class RayConfig {
       return std::stof(value);
     }
   }
+
+  float env_int64(const std::string &name, int64_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoll(value);
+    }
+  }
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
 };
