@@ -207,10 +207,17 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
+        """Returns an external ip if the user has supplied one.
+        Otherwise, use the same logic as internal_ip below.
+
+        This can be used to call ray up from outside the network, for example
+        if the Ray cluster exists in an AWS VPC and we're interacting with
+        the cluster from a laptop.
+
+        Useful for debugging the local node provider with cloud VMs."""
+
         node_state = self.state.get()[node_id]
         ext_ip = node_state.get("external_ip")
-        # If user has supplied an external ip, return that.
-        # (Useful when calling ray up from outside the network.)
         if ext_ip:
             return ext_ip
         else:

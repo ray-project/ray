@@ -19,6 +19,7 @@ provider:
     # You may need to supply a public ip for the head node if you need
     # to run `ray up` from outside of the Ray cluster's network
     # (e.g. the cluster is in an AWS VPC and you're starting ray from your laptop)
+    # This is useful when debugging the local node provider with cloud VMs.
     # external_head_ip: YOUR_HEAD_PUBLIC_IP
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
     # Optional when running automatic cluster management on prem. If you use a coordinator server,
