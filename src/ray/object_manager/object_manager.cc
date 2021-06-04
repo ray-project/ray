@@ -340,15 +340,10 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   auto object_url = get_spilled_object_url_(object_id);
 
   if (!object_url.empty()) {
-    if (RayConfig::instance().enable_spilled_object_push_optimization()) {
-      // Push the object directly from spilled object, bypassing
-      // local store restoration.
-      PushInternal(object_id, node_id, std::optional<std::string>(object_url));
-      return;
-    }
-    // Issue a restore request if the object is on local disk. This is only relevant
-    // if the local filesystem storage type is being used.
-    restore_spilled_object_(object_id, object_url, nullptr);
+    // Push the object directly from spilled object, bypassing
+    // local store restoration.
+    PushInternal(object_id, node_id, std::optional<std::string>(object_url));
+    return;
   }
   // Avoid setting duplicated timer for the same object and node pair.
   auto &nodes = unfulfilled_push_requests_[object_id];
@@ -380,8 +375,8 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   }
 }
 
-void ObjectManager::PushObject(const ObjectID &object_id, const NodeID &node_id,
-                               std::optional<std::string> spilled_url) {
+void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_id,
+                                 std::optional<std::string> spilled_url) {
   auto rpc_client = GetRpcClient(node_id);
   if (rpc_client) {
     std::shared_ptr<SpilledObject> spilled_object;
