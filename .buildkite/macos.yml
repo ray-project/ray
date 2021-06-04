@@ -18,7 +18,7 @@ steps:
     # TODO(simon): Can't figure out how get the JDK working yet.
     # - brew install openjdk@11 && brew link --force openjdk@11
     # - export PATH="/usr/local/opt/openjdk@11/bin:$PATH"
-
+    - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
