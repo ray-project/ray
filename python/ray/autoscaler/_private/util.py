@@ -144,7 +144,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Has a valid Docker configuration if provided.
     - Has max_worker set for each node type.
     """
-    is_local = config["provider"]["type"] == "local"
+    is_local = config.get("provider", {}).get("type") == "local"
     if is_local:
         config = prepare_local(config)
 
