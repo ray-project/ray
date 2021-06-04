@@ -239,12 +239,8 @@ def test_get_conda_env_dir(tmp_path):
 
 
 """
-Note(architkulkarni): For runtime_env tests that involve conda or pip installs,
-"opentelemetry-api==1.0.0rc1" and "opentelemetry-sdk==1.0.0rc1" must be
-included as dependencies, because they are installed in the CI's conda env but
-are not included in the Ray dependencies, so they cause an unpickling issue.
-
-Also, these tests only run on Buildkite in a special job that runs
+Note(architkulkarni):
+These tests only run on Buildkite in a special job that runs
 after the wheel is built, because the tests pass in the wheel as a dependency
 in the runtime env.  Buildkite only supports Linux for now.
 """
@@ -260,14 +256,9 @@ def test_conda_create_task(shutdown_only):
     ray.init()
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
 
@@ -295,14 +286,9 @@ def test_conda_create_job_config(shutdown_only):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
@@ -374,14 +360,9 @@ def test_conda_create_ray_client(call_ray_start):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
 
@@ -419,18 +400,11 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
 
     @ray.remote
     def f():
@@ -461,18 +435,11 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
 
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
 
@@ -489,16 +456,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_conda_input_filepath(tmp_path):
-    conda_dict = {
-        "dependencies": [
-            "pip", {
-                "pip": [
-                    "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                    "opentelemetry-sdk==1.0.0rc1"
-                ]
-            }
-        ]
-    }
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     d = tmp_path / "pip_requirements"
     d.mkdir()
     p = d / "environment.yml"
