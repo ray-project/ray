@@ -336,43 +336,14 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     PushInternal(object_id, node_id, std::optional<std::string>());
     return;
   }
-
   auto object_url = get_spilled_object_url_(object_id);
-
-  if (!object_url.empty()) {
-    // Push the object directly from spilled object, bypassing
-    // local store restoration.
-    PushInternal(object_id, node_id, std::optional<std::string>(object_url));
-    return;
+  if (object_url.empty()) {
+    RAY_LOG(WARNING) << "Attempting to push object " << object_id
+                     << " which is not local. It may have been evicted.";
   }
-  // Avoid setting duplicated timer for the same object and node pair.
-  auto &nodes = unfulfilled_push_requests_[object_id];
-  if (nodes.count(node_id) == 0) {
-    // If config_.push_timeout_ms < 0, we give an empty timer
-    // and the task will be kept infinitely.
-    std::unique_ptr<boost::asio::deadline_timer> timer;
-    if (config_.push_timeout_ms == 0) {
-      // The Push request fails directly when config_.push_timeout_ms == 0.
-      RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
-                       << " due to direct timeout setting. (0 ms timeout)";
-    } else if (config_.push_timeout_ms > 0) {
-      // Put the task into a queue and wait for the notification of Object added.
-      timer.reset(new boost::asio::deadline_timer(*main_service_));
-      auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
-      timer->expires_from_now(clean_push_period);
-      timer->async_wait(
-          [this, object_id, node_id](const boost::system::error_code &error) {
-            // Timer killing will receive the boost::asio::error::operation_aborted,
-            // we only handle the timeout event.
-            if (!error) {
-              HandlePushTaskTimeout(object_id, node_id);
-            }
-          });
-    }
-    if (config_.push_timeout_ms != 0) {
-      nodes.emplace(node_id, std::move(timer));
-    }
-  }
+  // Push the object directly from spilled object, bypassing
+  // local store restoration.
+  PushInternal(object_id, node_id, std::optional<std::string>(object_url));
 }
 
 void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_id,
