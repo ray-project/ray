@@ -87,6 +87,25 @@ class RayConfig {
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
     }
   }
+
+ private:
+  bool env_bool(const std::string &name, bool default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return value != std::string("0");
+    }
+  }
+
+  float env_float(const std::string &name, float default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stof(value);
+    }
+  }
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
 };
