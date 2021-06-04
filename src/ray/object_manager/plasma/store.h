@@ -331,6 +331,9 @@ class PlasmaStore {
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
   bool dumped_on_oom_ = false;
+
+  /// A running total of the objects that have ever been created on this node.
+  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

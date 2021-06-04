@@ -375,6 +375,7 @@ PlasmaError PlasmaStore::CreateObject(
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
   num_objects_unsealed_++;
   num_bytes_unsealed_ += data_size + metadata_size;
+  num_bytes_created_total_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
 
@@ -1057,6 +1058,7 @@ std::string PlasmaStore::GetDebugDump() const {
 
   buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
          << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
+  buffer << "- num bytes created total: " << num_bytes_created_total_ << "\n";
   auto num_pending_requests = create_request_queue_.NumPendingRequests();
   auto num_pending_bytes = create_request_queue_.NumPendingBytes();
   buffer << num_pending_requests << " pending objects of total size "
