@@ -3,6 +3,7 @@ import pickle
 import pytest
 import sys
 import time
+from unittest.mock import patch
 
 import grpc
 import ray
@@ -148,13 +149,50 @@ def test_delay_in_rewriting_environment(shutdown_only):
         time.sleep(6)
         return input
 
-    proxier.ray_client_server_env_prep = delay_in_rewrite
-
     server = proxier.serve_proxier("localhost:25010",
                                    ray_instance["redis_address"],
                                    ray_instance["session_dir"])
 
-    run_string_as_driver(check_connection)
+    with patch.object(proxier, "ray_client_server_env_prep", delay_in_rewrite):
+        run_string_as_driver(check_connection)
+    server.stop(0)
+
+
+get_error = """
+import ray
+error = None
+try:
+    ray.client("localhost:25030").connect()
+except Exception as e:
+    error = e
+
+assert error is not None, "Connect did not fail!"
+assert "Init Failure From Server" in str(error), "Incorrect Error Message"
+assert "WEIRD_ERROR" in str(error), "Incorrect Error Message"
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+def test_startup_error_yields_clean_result(shutdown_only):
+    """
+    Check that an error while preparing the environment yields an actionable,
+    clear error on the *client side*.
+    """
+    ray_instance = ray.init()
+
+    def raise_not_rewrite(input: JobConfig):
+        raise RuntimeError("WEIRD_ERROR")
+
+    server = proxier.serve_proxier("localhost:25030",
+                                   ray_instance["redis_address"],
+                                   ray_instance["session_dir"])
+
+    with patch.object(proxier, "ray_client_server_env_prep",
+                      raise_not_rewrite):
+        run_string_as_driver(get_error)
+
     server.stop(0)
 
 
@@ -165,7 +203,7 @@ def test_prepare_runtime_init_req_fails():
     """
     put_req = ray_client_pb2.DataRequest(put=ray_client_pb2.PutRequest())
     with pytest.raises(AssertionError):
-        proxier.prepare_runtime_init_req(iter([put_req]))
+        proxier.prepare_runtime_init_req(put_req)
 
 
 def test_prepare_runtime_init_req_no_modification():
@@ -175,7 +213,7 @@ def test_prepare_runtime_init_req_no_modification():
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
-    req, new_config = proxier.prepare_runtime_init_req(iter([init_req]))
+    req, new_config = proxier.prepare_runtime_init_req(init_req)
     assert new_config.serialize() == job_config.serialize()
     assert isinstance(req, ray_client_pb2.DataRequest)
     assert pickle.loads(
@@ -195,8 +233,8 @@ def test_prepare_runtime_init_req_modified_job():
         job_config.set_ray_namespace("test_value")
         return job_config
 
-    proxier.ray_client_server_env_prep = modify_namespace
-    req, new_config = proxier.prepare_runtime_init_req(iter([init_req]))
+    with patch.object(proxier, "ray_client_server_env_prep", modify_namespace):
+        req, new_config = proxier.prepare_runtime_init_req(init_req)
 
     assert new_config.ray_namespace == "test_value"
     assert pickle.loads(

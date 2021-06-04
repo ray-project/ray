@@ -97,9 +97,8 @@ class DataClient:
                 # here.
                 logger.info("Server disconnected from data channel")
             else:
-                logger.error(
-                    f"Got Error from data channel -- shutting down: {e}")
-                raise e
+                logger.exception(
+                    "Got Error from data channel -- shutting down:")
 
     def close(self) -> None:
         if self.request_queue is not None:
