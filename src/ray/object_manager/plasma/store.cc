@@ -156,7 +156,10 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           [this]() { return GetDebugDump(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms > 0 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     PrintDebugDump();
   }
 }
