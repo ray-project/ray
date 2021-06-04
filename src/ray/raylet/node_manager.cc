@@ -1497,7 +1497,8 @@ void NodeManager::HandleUpdateResourceUsage(
   if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
-           "restarted, the network is heavily congested. Expected seq#: "
+           "restarted, the network is heavily congested and is dropping, reordering, or "
+           "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
