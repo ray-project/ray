@@ -93,7 +93,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  if (next_request_it->second.num_object_sizes_missing > 0) {
+  if (next_request_it->second.num_object_sizes_missing > 0 &&
+      !RayConfig::instance().plasma_unlimited()) {
     // There is at least one object size missing. We should not activate the
     // bundle, since it may put us over the available capacity.
     return false;
@@ -193,7 +194,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
 
     // Activate the next worker request if we have space.
-    if (num_bytes_being_pulled_ < num_bytes_available_) {
+    // TODO(ekl) consider throttling wait requests based on `num_returns`.
+    if (num_bytes_being_pulled_ < num_bytes_available_ ||
+        RayConfig::instance().plasma_unlimited()) {
       worker_requests_remaining = ActivateNextPullBundleRequest(
           worker_request_bundles_, &highest_worker_req_id_being_pulled_,
           &objects_to_pull);
@@ -231,7 +234,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // If we are still over capacity, deactivate requests starting from the back
   // of the worker request queue.
   while (num_bytes_being_pulled_ > num_bytes_available_ &&
-         highest_worker_req_id_being_pulled_ != 0) {
+         highest_worker_req_id_being_pulled_ != 0 &&
+         !RayConfig::instance().plasma_unlimited()) {
     RAY_LOG(DEBUG) << "Deactivating worker request "
                    << highest_worker_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -246,7 +250,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // It should always be possible to stay under the available memory by
   // canceling all requests.
-  RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+  if (!RayConfig::instance().plasma_unlimited()) {
+    RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+  }
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {

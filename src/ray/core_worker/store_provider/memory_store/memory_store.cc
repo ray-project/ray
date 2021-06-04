@@ -154,6 +154,22 @@ void CoreWorkerMemoryStore::GetAsync(
   }
 }
 
+std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
+  std::shared_ptr<RayObject> ptr;
+  {
+    absl::MutexLock lock(&mu_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      ptr = iter->second;
+    }
+  }
+  // It's important for performance to run the callback outside the lock.
+  if (ptr != nullptr) {
+    ptr->SetAccessed();
+  }
+  return ptr;
+}
+
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);

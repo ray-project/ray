@@ -90,6 +90,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Return true if the worker owns any object.
   bool OwnObjects() const;
 
+  /// Return true if the object is owned by us.
+  bool OwnedByUs(const ObjectID &object_id) const;
+
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
   /// any owner information, since we don't know how it was created.
