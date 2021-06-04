@@ -1557,6 +1557,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       debugger_breakpoint, task_options.serialized_runtime_env,
                       override_environment_variables);
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
   } else {

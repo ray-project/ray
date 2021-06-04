@@ -833,7 +833,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
       auto req_id =
           create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
       RAY_LOG(DEBUG) << "Received create request for object " << object_id
-                     << " assigned request ID " << req_id;
+                     << " assigned request ID " << req_id << ", " << object_size << " bytes";
       ProcessCreateRequests();
       ReplyToCreateClient(client, object_id, req_id);
     }
