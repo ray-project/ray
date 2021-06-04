@@ -26,10 +26,12 @@ namespace plasma {
 
 uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
                                         const std::shared_ptr<ClientInterface> &client,
-                                        const CreateObjectCallback &create_callback) {
+                                        const CreateObjectCallback &create_callback,
+                                        size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  queue_.emplace_back(new CreateRequest(object_id, req_id, client, create_callback));
+  queue_.emplace_back(
+      new CreateRequest(object_id, req_id, client, create_callback, object_size));
   return req_id;
 }
 
@@ -57,7 +59,7 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
 
 std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback) {
+    const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
 
   if (!queue_.empty()) {
@@ -66,7 +68,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     return {result, PlasmaError::OutOfMemory};
   }
 
-  auto req_id = AddRequest(object_id, client, create_callback);
+  auto req_id = AddRequest(object_id, client, create_callback, object_size);
   if (!ProcessRequests().ok()) {
     // If the request was not immediately fulfillable, finish it.
     if (!queue_.empty()) {
@@ -80,17 +82,26 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
-  request->error = request->create_callback(&request->result);
-  return request->error != PlasmaError::OutOfMemory;
+Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
+                                          bool fallback_allocator) {
+  request->error = request->create_callback(&request->result, fallback_allocator);
+  if (request->error == PlasmaError::OutOfMemory) {
+    return Status::ObjectStoreFull("");
+  } else if (request->error == PlasmaError::TransientOutOfMemory) {
+    return Status::TransientObjectStoreFull("");
+  } else {
+    return Status::OK();
+  }
 }
 
 Status CreateRequestQueue::ProcessRequests() {
+  // Suppress OOM dump to once per grace period.
+  bool logged_oom = false;
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto create_ok = ProcessRequest(*request_it);
+    auto status = ProcessRequest(*request_it, /*fallback_allocator=*/false);
     auto now = get_time_();
-    if (create_ok) {
+    if (status.ok()) {
       FinishRequest(request_it);
       // Reset the oom start time since the creation succeeds.
       oom_start_time_ns_ = -1;
@@ -102,17 +113,40 @@ Status CreateRequestQueue::ProcessRequests() {
       if (oom_start_time_ns_ == -1) {
         oom_start_time_ns_ = now;
       }
-      if (spill_objects_callback_()) {
-        return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
+      auto grace_period_ns = oom_grace_period_ns_;
+      if (plasma_unlimited_) {
+        // Use a faster timeout in unlimited allocation mode to avoid excess latency.
+        grace_period_ns = std::min(grace_period_ns, (int64_t)2e9);
+      }
+      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
+        oom_start_time_ns_ = -1;
+        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
+      } else if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
-        // Raise OOM. In this case, the request will be marked as OOM.
-        // We don't return so that we can process the next entry right away.
-        FinishRequest(request_it);
+        if (plasma_unlimited_) {
+          // Trigger the fallback allocator.
+          RAY_CHECK_OK(ProcessRequest(*request_it, /*fallback_allocator=*/true));
+          // Note that we don't reset oom_start_time_ns_ until we complete a
+          // "normal" allocation.
+          FinishRequest(request_it);
+        } else {
+          std::string dump = "";
+          if (dump_debug_info_callback_ && !logged_oom) {
+            dump = dump_debug_info_callback_();
+            logged_oom = true;
+          }
+          RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+                        << (*request_it)->object_id << " of size "
+                        << (*request_it)->object_size / 1024 / 1024 << "MB\n"
+                        << dump;
+          // Raise OOM. In this case, the request will be marked as OOM.
+          // We don't return so that we can process the next entry right away.
+          FinishRequest(request_it);
+        }
       }
     }
   }

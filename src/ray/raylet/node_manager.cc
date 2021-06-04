@@ -251,9 +251,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           std::make_shared<pubsub::Subscriber>(self_node_id_, config.node_manager_address,
                                                config.node_manager_port,
                                                worker_rpc_pool_)),
-      last_local_gc_ns_(absl::GetCurrentTimeNanos()),
+      high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
+      local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
+      local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
+      global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
-      local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
         return DeleteLocalURI(uri, cb);
@@ -519,20 +521,27 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
 
+  // If plasma store is under high pressure, we should try to schedule a global gc.
+  bool plasma_high_pressure =
+      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
+  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
+    TriggerGlobalGC();
+  }
+
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
     resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
+    global_gc_throttler_.RunNow();
   }
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
-  auto now = absl::GetCurrentTimeNanos();
-  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
-      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
+  if ((should_local_gc_ ||
+       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
+      local_gc_throttler_.AbleToRun()) {
     DoLocalGC();
     should_local_gc_ = false;
-    last_local_gc_ns_ = now;
   }
 }
 
@@ -579,6 +588,7 @@ void NodeManager::DoLocalGC() {
           }
         });
   }
+  local_gc_run_time_ns_ = absl::GetCurrentTimeNanos();
 }
 
 void NodeManager::HandleRequestObjectSpillage(
@@ -701,7 +711,8 @@ void NodeManager::WarnResourceDeadlock() {
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
-        << "if this Ray cluster is expected to auto-scale.";
+        << "if this Ray cluster is expected to auto-scale or if you specified a "
+        << "runtime_env for this task or actor because it takes time to install.";
     auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
@@ -1259,6 +1270,10 @@ void NodeManager::DisconnectClient(
 }
 
 void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  // TODO: Add caching layer for performance
+  if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+    return cb(true);
+  }
   auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
   // Format of URI must be: scheme://path
   std::string sep = "://";
@@ -1484,7 +1499,6 @@ void NodeManager::HandleUpdateResourceUsage(
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // RAY_LOG(ERROR) << "Resource report requested";
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
 
@@ -1661,7 +1675,8 @@ void NodeManager::MarkObjectsAsFailed(
     Status status;
     status = store_client_.TryCreateImmediately(
         object_id, ref.owner_address(), 0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data,
+        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }

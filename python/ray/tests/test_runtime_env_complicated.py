@@ -1,14 +1,18 @@
 import os
+from ray.workers.setup_runtime_env import inject_dependencies
 import pytest
 import sys
 import unittest
+import yaml
 
 import subprocess
 
 from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
+from ray._private.runtime_env import RuntimeEnvDict
 from ray.job_config import JobConfig
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.fixture(scope="session")
@@ -56,9 +60,60 @@ def conda_envs():
     ray.shutdown()
 
 
+check_remote_client_conda = """
+import ray
+context = ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).\\
+connect()
+@ray.remote
+def get_tf_version():
+    import tensorflow as tf
+    return tf.__version__
+
+assert ray.get(get_tf_version.remote()) == "{tf_version}"
+context.disconnect()
+"""
+
+
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
+                                                     call_ray_start):
+    @ray.remote
+    def get_tf_version():
+        import tensorflow as tf
+        return tf.__version__
+
+    @ray.remote
+    class TfVersionActor:
+        def get_tf_version(self):
+            import tensorflow as tf
+            return tf.__version__
+
+    tf_versions = ["2.2.0", "2.3.0"]
+    for i, tf_version in enumerate(tf_versions):
+        runtime_env = {"conda": f"tf-{tf_version}"}
+        with ray.client("localhost:24001").env(runtime_env).connect():
+            assert ray.get(get_tf_version.remote()) == tf_version
+            actor_handle = TfVersionActor.remote()
+            assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
+
+            # Ensure that we can have a second client connect using the other
+            # conda environment.
+            other_tf_version = tf_versions[(i + 1) % 2]
+            run_string_as_driver(
+                check_remote_client_conda.format(tf_version=other_tf_version))
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -77,6 +132,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -96,6 +152,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -125,6 +182,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
 
@@ -178,6 +236,237 @@ def test_get_conda_env_dir(tmp_path):
         # Env tf2 still should exist.
         env_dir = get_conda_env_dir("tf2")
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
+
+
+"""
+Note(architkulkarni):
+These tests only run on Buildkite in a special job that runs
+after the wheel is built, because the tests pass in the wheel as a dependency
+in the runtime env.  Buildkite only supports Linux for now.
+"""
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_conda_create_task(shutdown_only):
+    """Tests dynamic creation of a conda env in a task's runtime env."""
+    ray.init()
+    runtime_env = {
+        "conda": {
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
+        }
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_conda_create_job_config(shutdown_only):
+    """Tests dynamic conda env creation in a runtime env in the JobConfig."""
+
+    runtime_env = {
+        "conda": {
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
+        }
+    }
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
+
+
+def test_inject_dependencies():
+    num_tests = 4
+    conda_dicts = [None] * num_tests
+    outputs = [None] * num_tests
+
+    conda_dicts[0] = {}
+    outputs[0] = {
+        "dependencies": ["python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[1] = {"dependencies": ["blah"]}
+    outputs[1] = {
+        "dependencies": ["blah", "python=7.8", "pip", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[2] = {"dependencies": ["blah", "pip"]}
+    outputs[2] = {
+        "dependencies": ["blah", "pip", "python=7.8", {
+            "pip": ["ray==1.2.3"]
+        }]
+    }
+
+    conda_dicts[3] = {"dependencies": ["blah", "pip", {"pip": ["some_pkg"]}]}
+    outputs[3] = {
+        "dependencies": [
+            "blah", "pip", {
+                "pip": ["ray==1.2.3", "some_pkg"]
+            }, "python=7.8"
+        ]
+    }
+
+    for i in range(num_tests):
+        output = inject_dependencies(conda_dicts[i], "7.8", ["ray==1.2.3"])
+        error_msg = (f"failed on input {i}."
+                     f"Output: {output} \n"
+                     f"Expected output: {outputs[i]}")
+        assert (output == outputs[i]), error_msg
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_conda_create_ray_client(call_ray_start):
+    """Tests dynamic conda env creation in RayClient."""
+
+    runtime_env = {
+        "conda": {
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
+        }
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with ray.client("localhost:24001").env(runtime_env).connect():
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed on the test machine
+            import pip_install_test  # noqa
+        assert ray.get(f.remote())
+
+    with ray.client("localhost:24001").connect():
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_task(shutdown_only, pip_as_str, tmp_path):
+    """Tests pip installs in the runtime env specified in the job config."""
+
+    ray.init()
+    if pip_as_str:
+        d = tmp_path / "pip_requirements"
+        d.mkdir()
+        p = d / "requirements.txt"
+        requirements_txt = """
+        pip-install-test==0.5
+        """
+        p.write_text(requirements_txt)
+        runtime_env = {"pip": str(p)}
+    else:
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize("pip_as_str", [True, False])
+def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
+    """Tests dynamic installation of pip packages in a task's runtime env."""
+
+    if pip_as_str:
+        d = tmp_path / "pip_requirements"
+        d.mkdir()
+        p = d / "requirements.txt"
+        requirements_txt = """
+        pip-install-test==0.5
+        """
+        p.write_text(requirements_txt)
+        runtime_env = {"pip": str(p)}
+    else:
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
+
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+def test_conda_input_filepath(tmp_path):
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+    d = tmp_path / "pip_requirements"
+    d.mkdir()
+    p = d / "environment.yml"
+
+    p.write_text(yaml.dump(conda_dict))
+
+    runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
+
+    output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
+    assert output_conda_dict == conda_dict
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

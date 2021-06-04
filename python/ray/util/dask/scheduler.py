@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 
 import ray
-from ray.util.client.common import ClientObjectRef
 
 from dask.core import istask, ishashable, _execute_task
 from dask.system import CPU_COUNT
@@ -370,9 +369,8 @@ def ray_get_unpack(object_refs):
     if isinstance(object_refs, tuple):
         object_refs = list(object_refs)
 
-    if isinstance(object_refs, list) and any(
-            not isinstance(x, (ray.ObjectRef, ClientObjectRef))
-            for x in object_refs):
+    if isinstance(object_refs, list) and any(not isinstance(x, ray.ObjectRef)
+                                             for x in object_refs):
         # We flatten the object references before calling ray.get(), since Dask
         # loves to nest collections in nested tuples and Ray expects a flat
         # list of object references. We repack the results after ray.get()

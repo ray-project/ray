@@ -106,27 +106,29 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory,
-           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
-               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
+           env_bool("RAY_PREALLOCATE_PLASMA_MEMORY", false))
+
+/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
+/// in /tmp, creating a new file per object. This degrades performance since filesystem
+/// backed objects are written to disk, but allows Ray to operate with degraded
+/// performance instead of crashing. Note that memory admission control is still in play,
+/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
+/// spilling).
+RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
 /// many tasks to the same node.
 RAY_CONFIG(bool, scheduler_loadbalance_spillback,
-           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
-               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
+           env_bool("RAY_SCHEDULER_LOADBALANCE_SPILLBACK", false))
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling,
-           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
-               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, env_bool("RAY_SCHEDULER_HYBRID", true))
 
 RAY_CONFIG(float, scheduler_hybrid_threshold,
-           getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
-               ? 0.5
-               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+           env_float("RAY_SCHEDULER_HYBRID_THRESHOLD", 0.5))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -164,6 +166,10 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
+// Whether to inline object status in serialized references.
+// See https://github.com/ray-project/ray/issues/16025 for more details.
+RAY_CONFIG(bool, inline_object_status_in_refs, true)
 
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
@@ -265,11 +271,17 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
+/// The threshold to trigger a global gc
+RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
+
+/// The min amount of time between triggering global_gc in raylet
+RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -326,9 +338,7 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart,
-           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
-               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+RAY_CONFIG(bool, enable_worker_prestart, env_bool("RAY_ENABLE_WORKER_PRESTART", true))
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -420,3 +430,7 @@ RAY_CONFIG(int, publish_batch_size, 5000)
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
+
+// This is the minimum time an actor will remain in the actor table before
+// being garbage collected when a job finishes.
+RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
