@@ -699,7 +699,8 @@ def get_or_create_head_node(config: Dict[str, Any],
         # we need to sync local and head representations of cluster state.
         # If we're not restarting the cluster (empty ray start cmds), don't
         # sync to avoid breaking on-prem cluster autoscaler state.
-        if ray_start_commands and is_local_manual_node_provider(
+        restarting_ray = len(ray_start_commands) > 0
+        if restarting_ray and is_local_manual_node_provider(
                 config["provider"]):
             # Add cluster state file to file mounts.
             config = sync_state(config)
