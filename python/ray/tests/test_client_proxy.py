@@ -133,8 +133,8 @@ assert ray.util.client.ray.worker.log_client.log_thread.is_alive()
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform != "linux",
+    reason="PSUtil does not work the same on windows & MacOS if flaky.")
 def test_delay_in_rewriting_environment(shutdown_only):
     """
     Check that a delay in `ray_client_server_env_prep` does not break
