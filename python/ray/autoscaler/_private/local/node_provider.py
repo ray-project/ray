@@ -213,7 +213,7 @@ class LocalNodeProvider(NodeProvider):
 
         This can be used to call ray up from outside the network, for example
         if the Ray cluster exists in an AWS VPC and we're interacting with
-        the cluster from a laptop.
+        the cluster from a laptop (where using an internal_ip will not work).
 
         Useful for debugging the local node provider with cloud VMs."""
 
