@@ -119,7 +119,8 @@ class _LocalClientBuilder(ClientBuilder):
                 sys.version_info[0], sys.version_info[1], sys.version_info[2]),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=None)
+            protocol_version=None,
+            _num_clients=1)
 
 
 def _split_address(address: str) -> Tuple[str, str]:

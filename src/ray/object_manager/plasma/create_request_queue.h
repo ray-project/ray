@@ -31,17 +31,20 @@ namespace plasma {
 
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback = std::function<PlasmaError(PlasmaObject *result)>;
+  using CreateObjectCallback =
+      std::function<PlasmaError(PlasmaObject *result, bool fallback_allocator)>;
 
   CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time,
-                     std::function<std::string()> dump_debug_info_callback = nullptr)
+                     std::function<std::string()> dump_debug_info_callback = nullptr,
+                     bool plasma_unlimited = RayConfig::instance().plasma_unlimited())
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
         get_time_(get_time),
+        plasma_unlimited_(plasma_unlimited),
         dump_debug_info_callback_(dump_debug_info_callback) {}
 
   /// Add a request to the queue. The caller should use the returned request ID
@@ -144,7 +147,7 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
+  Status ProcessRequest(std::unique_ptr<CreateRequest> &request, bool fallback_allocator);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
@@ -169,6 +172,10 @@ class CreateRequestQueue {
   /// A callback to return the current time.
   const std::function<int64_t()> get_time_;
 
+  /// Whether to use the fallback allocator when out of memory.
+  bool plasma_unlimited_;
+
+  /// Sink for debug info.
   const std::function<std::string()> dump_debug_info_callback_;
 
   /// Queue of object creation requests to respond to. Requests will be placed

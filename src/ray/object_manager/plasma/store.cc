@@ -198,7 +198,8 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
 uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
                                      ptrdiff_t *offset,
                                      const std::shared_ptr<Client> &client,
-                                     bool is_create, PlasmaError *error) {
+                                     bool is_create, bool fallback_allocator,
+                                     PlasmaError *error) {
   // First free up space from the client's LRU queue if quota enforcement is on.
   std::vector<ObjectID> client_objects_to_evict;
   bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
@@ -257,6 +258,19 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     }
   }
 
+  // Fallback to allocating from the filesystem.
+  if (pointer == nullptr && RayConfig::instance().plasma_unlimited() &&
+      fallback_allocator) {
+    RAY_LOG(ERROR)
+        << "Shared memory store full, falling back to allocating from filesystem: "
+        << size;
+    pointer = reinterpret_cast<uint8_t *>(
+        PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
+    if (pointer == nullptr) {
+      RAY_LOG(FATAL) << "Plasma fallback allocator failed, likely out of disk space.";
+    }
+  }
+
   if (pointer != nullptr) {
     GetMallocMapinfo(pointer, fd, map_size, offset);
     RAY_CHECK(*fd != INVALID_FD);
@@ -274,6 +288,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
+                                                   bool fallback_allocator,
                                                    PlasmaObject *object) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
@@ -292,7 +307,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                     &device_num);
   auto error = CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
                             owner_worker_id, data_size, metadata_size, source, device_num,
-                            client, object);
+                            client, fallback_allocator, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
@@ -300,11 +315,14 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   return error;
 }
 
-PlasmaError PlasmaStore::CreateObject(
-    const ObjectID &object_id, const NodeID &owner_raylet_id,
-    const std::string &owner_ip_address, int owner_port, const WorkerID &owner_worker_id,
-    int64_t data_size, int64_t metadata_size, fb::ObjectSource source, int device_num,
-    const std::shared_ptr<Client> &client, PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
+                                      const NodeID &owner_raylet_id,
+                                      const std::string &owner_ip_address, int owner_port,
+                                      const WorkerID &owner_worker_id, int64_t data_size,
+                                      int64_t metadata_size, fb::ObjectSource source,
+                                      int device_num,
+                                      const std::shared_ptr<Client> &client,
+                                      bool fallback_allocator, PlasmaObject *result) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_id << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
@@ -322,7 +340,8 @@ PlasmaError PlasmaStore::CreateObject(
 
   if (device_num == 0) {
     PlasmaError error = PlasmaError::OK;
-    pointer = AllocateMemory(total_size, &fd, &map_size, &offset, client, true, &error);
+    pointer = AllocateMemory(total_size, &fd, &map_size, &offset, client,
+                             /*is_create=*/true, fallback_allocator, &error);
     if (!pointer) {
       return error;
     }
@@ -539,9 +558,12 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       RAY_CHECK(!entry->pointer);
 
       PlasmaError error = PlasmaError::OK;
+      // TODO(ekl) this is dead code (we don't use the plasma eviction path).
+      // We should remove this.
       entry->pointer =
           AllocateMemory(entry->data_size + entry->metadata_size, &entry->fd,
-                         &entry->map_size, &entry->offset, client, false, &error);
+                         &entry->map_size, &entry->offset, client, /*is_create=*/false,
+                         /*fallback_allocator=*/true, &error);
       if (entry->pointer) {
         // TODO(suquark): Not sure if this old behavior is still compatible
         // with our current object spilling mechanics.
@@ -811,8 +833,9 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    auto handle_create = [this, client, message](PlasmaObject *result) {
-      return HandleCreateObjectRequest(client, message, result);
+    auto handle_create = [this, client, message](PlasmaObject *result,
+                                                 bool fallback_allocator) {
+      return HandleCreateObjectRequest(client, message, fallback_allocator, result);
     };
 
     if (request->try_immediately()) {
