@@ -590,6 +590,9 @@ def get_master_wheel_url(
         py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
-
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
     return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
-            f"{ray_commit}/{get_wheel_filename()}")
+            f"{ray_commit}/{filename}")
