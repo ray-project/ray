@@ -40,6 +40,7 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
+#include "ray/object_manager/spilled_object.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -141,25 +142,6 @@ class ObjectManager : public ObjectManagerInterface,
   void HandleFreeObjects(const rpc::FreeObjectsRequest &request,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Send object to remote object manager
-  ///
-  /// Object will be transfered as a sequence of chunks, small object(defined in config)
-  /// contains only one chunk
-  /// \param push_id Unique push id to indicate this push request
-  /// \param object_id Object id
-  /// \param owner_address The address of the object's owner
-  /// \param node_id The id of the receiver.
-  /// \param data_size Data size
-  /// \param metadata_size Metadata size
-  /// \param chunk_index Chunk index of this object chunk, start with 0
-  /// \param rpc_client Rpc client used to send message to remote object manager
-  /// \param on_complete Callback to run on completion.
-  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                       const rpc::Address &owner_address, const NodeID &node_id,
-                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                       std::function<void(const Status &)> on_complete);
 
   /// Receive an object chunk from a remote object manager. Small object may
   /// fit in one chunk.
@@ -418,6 +400,41 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
+
+  /// The internal implementation of Push. If spilled_url is set, it pushes the
+  /// object from the spilled file bypassing local storage. Otherwise it
+  /// pushes from local objects.
+  /// It may choose to ignore the Push call (e.g., if Push is called twice in a row
+  /// on the same object, the second one might be ignored).
+  ///
+  /// \param object_id The object's object id.
+  /// \param node_id The remote node's id.
+  /// \param spilled_url The optional spilled_url.
+  /// \return Void
+  void PushInternal(const ObjectID &object_id, const NodeID &node_id,
+                    std::optional<std::string> spilled_url);
+
+  /// Send object to remote object manager. If spilled_object is not null, it pushes
+  /// from the spilled objects. Otherwise it uses local object from buffer_pool_.
+  ///
+  /// Object will be transfered as a sequence of chunks, small object(defined in config)
+  /// contains only one chunk
+  /// \param push_id Unique push id to indicate this push request
+  /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
+  /// \param node_id The id of the receiver.
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param chunk_index Chunk index of this object chunk, start with 0
+  /// \param rpc_client Rpc client used to send message to remote object manager
+  /// \param spilled_object The object in local spilled file.
+  /// \param on_complete Callback to run on completion.
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const rpc::Address &owner_address, const NodeID &node_id,
+                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::shared_ptr<SpilledObject> spilled_object,
+                       std::function<void(const Status &)> on_complete);
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
