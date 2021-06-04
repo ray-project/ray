@@ -367,10 +367,12 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast(
-    rpc::ResourceUsageBatchData &buffer) {
+    rpc::ResourceUsageBroadcastData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
   if (!resources_buffer_.empty()) {
-    GetResourceUsageBatchForBroadcast_Locked(buffer);
+    for (auto &resources : resources_buffer_) {
+      buffer.add_batch()->Swap(&resources.second);
+    }
     resources_buffer_.clear();
   }
 }

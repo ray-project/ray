@@ -259,7 +259,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
         return DeleteLocalURI(uri, cb);
-      }) {
+      }),
+      next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
@@ -1490,9 +1491,25 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(
     const rpc::UpdateResourceUsageRequest &request, rpc::UpdateResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  ResourceUsageBatchData batch;
-  batch.ParseFromString(request.serialized_resource_usage_batch());
-  ResourceUsageBatchReceived(batch);
+  rpc::ResourceUsageBroadcastData resource_usage_batch;
+  resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
+
+  if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
+    RAY_LOG(WARNING)
+        << "Raylet may have missed a resource broadcast. This either means that GCS has "
+           "restarted, the network is heavily congested. Expected seq#: "
+        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
+  }
+  next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
+
+  for (const auto &resource_usage : resource_usage_batch.batch()) {
+    const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
+    if (node_id == self_node_id_) {
+      // Skip messages from self.
+      continue;
+    }
+    UpdateResourceUsage(node_id, resource_usage);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

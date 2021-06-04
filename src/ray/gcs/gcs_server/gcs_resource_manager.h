@@ -155,7 +155,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
   ///
   /// \param buffer return parameter
-  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBatchData &buffer)
+  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBroadcastData &buffer)
       LOCKS_EXCLUDED(resource_buffer_mutex_);
 
  private:

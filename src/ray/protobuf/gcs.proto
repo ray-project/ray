@@ -391,6 +391,11 @@ message PubSubMessage {
   bytes data = 2;
 }
 
+message ResourceUsageBroadcastData {
+  int64 seq_no = 1;
+  repeated ResourcesData batch = 2;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
