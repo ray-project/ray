@@ -48,6 +48,11 @@ def setup(input_args):
             assert conda_dict is not None
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
+            ray_pip = current_ray_pip_specifier()
+            if ray_pip and not runtime_env.get("_skip_inject_ray"):
+                extra_pip_dependencies = [ray_pip]
+            else:
+                extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              [current_ray_pip_specifier()])
             # Locking to avoid multiple processes installing concurrently
