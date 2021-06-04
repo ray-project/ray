@@ -408,10 +408,10 @@ if __name__ == "__main__":
     build_type = args.build_type
     is_buildkite = build_type == BUILDKITE
     if build_type == BUILDKITE:
-        if os.environ.get("BUILDKITE_PULL_REQUEST"):
-            build_type = PR
-        else:
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
             build_type = MERGE
+        else:
+            build_type = PR
     if build_type == HUMAN:
         _configure_human_version()
     if (build_type in {HUMAN, MERGE} or is_buildkite
