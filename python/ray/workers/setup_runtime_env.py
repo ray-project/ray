@@ -49,7 +49,10 @@ def setup(input_args):
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
             ray_pip = current_ray_pip_specifier()
-            extra_pip_dependencies = [ray_pip] if ray_pip else []
+            if ray_pip and not runtime_env.get("_skip_inject_ray"):
+                extra_pip_dependencies = [ray_pip]
+            else:
+                extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              extra_pip_dependencies)
             # Locking to avoid multiple processes installing concurrently
@@ -155,7 +158,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Running on a nightly wheel.
         return get_master_wheel_url()
     else:
-        return f"ray[all]=={ray.__version__}"
+        return f"ray=={ray.__version__}"
 
 
 def inject_dependencies(

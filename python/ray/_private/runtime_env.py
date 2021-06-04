@@ -179,6 +179,13 @@ class RuntimeEnvDict:
             if self._dict.get("pip") or self._dict.get("conda"):
                 self._dict["_ray_commit"] = ray.__commit__
 
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if "_skip_inject_ray" in runtime_env_json:
+            self._dict["_skip_inject_ray"] = runtime_env_json[
+                "_skip_inject_ray"]
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker

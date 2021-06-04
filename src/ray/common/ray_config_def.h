@@ -368,7 +368,7 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(std::string, object_spilling_config, "")
+RAY_CONFIG(string_type, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
