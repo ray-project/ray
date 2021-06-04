@@ -47,7 +47,7 @@ class WorkerGroupInterface:
         """See TorchTrainer.get_local_operator."""
         raise NotImplementedError
 
-    def get_model(self):
+    def get_model(self, to_cpu=False):
         """See TorchTrainer.get_model."""
         raise NotImplementedError
 
@@ -256,9 +256,9 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             "workers are remote. Set use_local to True in"
             "TorchTrainer to access a local operator.")
 
-    def get_model(self):
+    def get_model(self, to_cpu=False):
         ready, _ = ray.wait(
-            [r.get_models.remote() for r in self.remote_workers])
+            [r.get_models.remote(to_cpu) for r in self.remote_workers])
         models = ray.get(ready[0])
         return models
 
@@ -502,8 +502,11 @@ class LocalWorkerGroup(WorkerGroupInterface):
     def get_local_operator(self):
         return self.local_worker.training_operator
 
-    def get_model(self):
-        return self.local_worker.models
+    def get_model(self, to_cpu=False):
+        models = self.local_worker.models
+        if to_cpu:
+            models = [m.cpu() for m in models]
+        return models
 
     def load_state_dict(self, state_dict, blocking=False):
         # This is not the most efficient because you have to wait for

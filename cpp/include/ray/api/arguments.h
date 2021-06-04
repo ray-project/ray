@@ -6,8 +6,6 @@
 
 #include <msgpack.hpp>
 
-#include "ray/common/task/task_util.h"
-
 namespace ray {
 namespace api {
 

@@ -221,7 +221,7 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
             RayConfig::instance().object_manager_push_timeout_ms();
-        if (object_store_memory < 0) {
+        if (object_store_memory <= 0) {
           RAY_LOG(FATAL) << "Object store memory should be set.";
         }
         object_manager_config.object_store_memory = object_store_memory;

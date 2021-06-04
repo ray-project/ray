@@ -313,6 +313,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   int64_t GetMemoryCapacity() const { return config_.object_store_memory; }
 
+  double GetUsedMemoryPercentage() const {
+    return static_cast<double>(used_memory_) / config_.object_store_memory;
+  }
+
  private:
   friend class TestObjectManager;
 

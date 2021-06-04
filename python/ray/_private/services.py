@@ -1824,7 +1824,8 @@ def start_monitor(redis_address,
                   redis_password=None,
                   fate_share=None,
                   max_bytes=0,
-                  backup_count=0):
+                  backup_count=0,
+                  monitor_ip=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1840,7 +1841,8 @@ def start_monitor(redis_address,
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-
+        monitor_ip (str): IP address of the machine that the monitor will be
+            run on. Can be excluded, but required for autoscaler metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1855,6 +1857,8 @@ def start_monitor(redis_address,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:
         command.append("--redis-password=" + redis_password)
+    if monitor_ip:
+        command.append("--monitor-ip=" + monitor_ip)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
