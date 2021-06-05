@@ -269,8 +269,15 @@ class StandardAutoscaler:
         if completed_nodes:
             failed_nodes = []
             for node_id in completed_nodes:
-                if self.updaters[node_id].exitcode == 0:
+                updater = self.updaters[node_id]
+                if updater.exitcode == 0:
                     self.num_successful_updates[node_id] += 1
+                    self.prom_metrics.successful_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.successful_recoveries.inc()
+                    if updater.update_time:
+                        self.prom_metrics.worker_update_time.observe(
+                            updater.update_time)
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
                     self.load_metrics.mark_active(
@@ -278,6 +285,9 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.prom_metrics.failed_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.failed_recoveries.inc()
                     self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
 
@@ -332,6 +342,12 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+        self.prom_metrics.updating_nodes.set(len(self.updaters))
+        num_recovering = 0
+        for updater in self.updaters.values():
+            if updater.for_recovery:
+                num_recovering += 1
+        self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 
@@ -621,7 +637,8 @@ class StandardAutoscaler:
             use_internal_ip=True,
             is_head_node=False,
             docker_config=self.config.get("docker"),
-            node_resources=self._node_resources(node_id))
+            node_resources=self._node_resources(node_id),
+            for_recovery=True)
         updater.start()
         self.updaters[node_id] = updater
 
