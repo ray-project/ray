@@ -41,13 +41,15 @@ class NodeLauncher(threading.Thread):
         worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
 
-        launch_config = copy.deepcopy(config["worker_nodes"])
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
+        launch_config = copy.deepcopy(config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
                 config["available_node_types"][node_type]["node_config"])
         launch_hash = hash_launch_conf(launch_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, node_type))
-        node_config = copy.deepcopy(config["worker_nodes"])
+        node_config = copy.deepcopy(config.get("worker_nodes", {}))
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER,

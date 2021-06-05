@@ -6,6 +6,7 @@ import json
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
     _get_node_provider
+from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
@@ -55,12 +56,14 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "provider": {
                 "type": "local",
                 "head_ip": "0.0.0.0:2",
-                "worker_ips": ["0.0.0.0:1"]
+                "worker_ips": ["0.0.0.0:1"],
+                "external_head_ip": "0.0.0.0.3"
             },
         }
         provider_config = cluster_config["provider"]
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False)
+        assert node_provider.external_ip("0.0.0.0:2") == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
         expected_workers[provider_config["head_ip"]] = {
@@ -68,6 +71,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             },
             "state": "terminated",
+            "external_ip": "0.0.0.0.3"
         }
         expected_workers[provider_config["worker_ips"][0]] = {
             "tags": {
@@ -76,8 +80,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "state": "terminated",
         }
 
-        state_save_path = "/tmp/cluster-{}.state".format(
+        state_save_path = local_config.get_state_path(
             cluster_config["cluster_name"])
+
         assert os.path.exists(state_save_path)
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
