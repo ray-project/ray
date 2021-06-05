@@ -27,14 +27,14 @@ class SpilledObject {
   SpilledObject(const std::string &object_url, uint64_t chunk_size);
   uint64_t GetDataSize() const;
   uint64_t GetMetadataSize() const;
-  const rpc::Address &SpilledObject::GetOwnerAddress() const;
+  const rpc::Address &GetOwnerAddress() const;
   uint64_t GetNumChunks() const;
   std::string GetChunk(uint64_t chunk_index) const;
 
  private:
   void ParseObjectURL(const std::string &object_url);
   void ReadObjectHeader();
-  std::string ReadFromFile(int64_t offset, int64_t length);
+  std::string ReadFromFile(int64_t offset, int64_t length) const;
   uint64_t ToUint64(const std::string &s) const;
 
  private:

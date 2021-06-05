@@ -354,7 +354,7 @@ void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_i
     std::shared_ptr<SpilledObject> spilled_object;
     if (spilled_url.has_value()) {
       spilled_object =
-          std::make_shared<SpilledObject>(object_url, config_.object_chunk_size);
+          std::make_shared<SpilledObject>(spilled_url.value(), config_.object_chunk_size);
     }
 
     uint64_t data_size;
@@ -449,6 +449,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
       return;
     }
 
+    RAY_CHECK(chunk_info.chunk_index == chunk_index);
     push_request.set_data(chunk_info.data, chunk_info.buffer_length);
   }
 
@@ -470,7 +471,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 
   if (!spilled_object) {
     // Do this regardless of whether it failed or succeeded.
-    buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
+    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
   }
 }
 
