@@ -2,6 +2,7 @@ from typing import Any, Optional, Dict
 import copy
 import logging
 import threading
+import time
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
@@ -60,7 +61,15 @@ class NodeLauncher(threading.Thread):
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
+        launch_start_time = time.time()
         self.provider.create_node(node_config, node_tags, count)
+        launch_time = time.time() - launch_start_time
+        for _ in range(count):
+            # Note: when launching multiple nodes we observe the time it
+            # took all nodes to launch for each node. For example, if 4
+            # nodes were created in 25 seconds, we would observe the 25
+            # second create time 4 times.
+            self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
@@ -74,6 +83,7 @@ class NodeLauncher(threading.Thread):
                 self._launch_node(config, count, node_type)
             except Exception:
                 self.prom_metrics.node_launch_exceptions.inc()
+                self.prom_metrics.failed_create_nodes.inc(count)
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)
