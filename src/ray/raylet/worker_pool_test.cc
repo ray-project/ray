@@ -78,10 +78,9 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(
-            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {},
-            [this]() { return current_time_ms_; }, false, "", ""),
+      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
+                   []() {}, [this]() { return current_time_ms_; }, false, "", ""),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -90,11 +89,11 @@ class WorkerPoolMock : public WorkerPool {
                  const WorkerCommandMap &worker_commands,
                  int num_initial_python_workers_for_first_job,
                  bool worker_process_in_container_enabled)
-      : WorkerPool(
-            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT,
-            num_initial_python_workers_for_first_job, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
-            {}, nullptr, worker_commands, []() {}, [this]() { return current_time_ms_; },
-            worker_process_in_container_enabled, "", ""),
+      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT,
+                   num_initial_python_workers_for_first_job, MAXIMUM_STARTUP_CONCURRENCY,
+                   0, 0, {}, nullptr, worker_commands, []() {},
+                   [this]() { return current_time_ms_; },
+                   worker_process_in_container_enabled, "", ""),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -1078,8 +1077,8 @@ TEST_F(ContainerWorkerPoolTest, RegisterDriver) {
 TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
   auto task_id = TaskID::ForDriverTask(JOB_ID);
   auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
-  std::unordered_map<std::string, FractionalResourceQuantity> resource_map = {
-      {"cpu", FractionalResourceQuantity(1.0)}};
+  std::unordered_map<std::string, ray::FractionalResourceQuantity> resource_map = {
+      {"cpu", ray::FractionalResourceQuantity(1.0)}};
   TaskSpecification task_spec =
       ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
                       ResourceSet(resource_map));
@@ -1089,7 +1088,7 @@ TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
   worker_pool_->HandleJobStarted(JOB_ID, job_config);
   ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
   ASSERT_EQ(worker_pool_->GetContainerWorkerCount(), 1);
-  std::unordered_map<std::string, FractionalResourceQuantity> resource_map1 = {
+  std::unordered_map<std::string, ray::FractionalResourceQuantity> resource_map1 = {
       {"cpu", 2.0}};
   TaskSpecification task_spec1 =
       ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
