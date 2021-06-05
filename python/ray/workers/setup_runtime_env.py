@@ -14,7 +14,8 @@ import ray
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
-from ray.test_utils import get_wheel_filename, get_master_wheel_url
+from ray.test_utils import (get_wheel_filename, get_master_wheel_url,
+                            get_release_wheel_url)
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -158,7 +159,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Running on a nightly wheel.
         return get_master_wheel_url()
     else:
-        return f"ray=={ray.__version__}"
+        return get_release_wheel_url()
 
 
 def inject_dependencies(
