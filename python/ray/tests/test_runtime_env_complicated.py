@@ -425,7 +425,7 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
-def test_pip_ray_serve(shutdown_only, pip_as_str, tmp_path):
+def test_pip_ray_serve(shutdown_only):
     """Tests that ray[serve] can be included as a pip dependency."""
 
     runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
