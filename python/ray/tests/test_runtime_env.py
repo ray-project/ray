@@ -7,9 +7,9 @@ import tempfile
 import requests
 from pathlib import Path
 import ray
-from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking,
-                            get_wheel_filename, get_master_wheel_url)
+from ray.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, get_wheel_filename,
+    get_master_wheel_url, get_release_wheel_url)
 import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
@@ -675,7 +675,21 @@ def test_get_master_wheel_url():
         for py_version in ["36", "37", "38"]:
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
                                        py_version)
-            assert requests.head(url).status_code == 200
+            assert requests.head(url).status_code == 200, url
+
+
+def test_get_release_wheel_url():
+    test_commits = {
+        "1.4.0rc1": "e7c7f6371a69eb727fa469e4cd6f4fbefd143b4c",
+        "1.3.0": "0b4b444fadcdc23226e11fef066b982175804232",
+        "1.2.0": "1b1a2496ca51b745c07c79fb859946d3350d471b"
+    }
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            for version, commit in test_commits.items():
+                url = get_release_wheel_url(commit, sys_platform, version,
+                                            py_version)
+                assert requests.head(url).status_code == 200, url
 
 
 if __name__ == "__main__":
