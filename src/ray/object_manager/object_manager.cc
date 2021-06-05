@@ -333,21 +333,22 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << node_id << " of object "
                  << object_id;
   if (local_objects_.count(object_id) > 0) {
-    PushInternal(object_id, node_id, std::optional<std::string>());
+    PushInternal(object_id, node_id, absl::optional<std::string>());
     return;
   }
   auto object_url = get_spilled_object_url_(object_id);
   if (object_url.empty()) {
     RAY_LOG(WARNING) << "Attempting to push object " << object_id
                      << " which is not local. It may have been evicted.";
+    return;
   }
   // Push the object directly from spilled object, bypassing
   // local store restoration.
-  PushInternal(object_id, node_id, std::optional<std::string>(object_url));
+  PushInternal(object_id, node_id, absl::optional<std::string>(object_url));
 }
 
 void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_id,
-                                 std::optional<std::string> spilled_url) {
+                                 absl::optional<std::string> spilled_url) {
   auto rpc_client = GetRpcClient(node_id);
   if (rpc_client) {
     std::shared_ptr<SpilledObject> spilled_object;
@@ -355,20 +356,30 @@ void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_i
       spilled_object =
           std::make_shared<SpilledObject>(object_url, config_.object_chunk_size);
     }
-    const ObjectInfo &object_info = spilled_object
-                                        ? spilled_object->GetObjectInfo()
-                                        : local_objects_[object_id].object_info;
-    uint64_t data_size =
-        static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-    uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-    uint64_t num_chunks = spilled_object ? spilled_object->GetNumChunks()
-                                         : buffer_pool_.GetNumChunks(data_size);
 
+    uint64_t data_size;
+    uint64_t metadata_size;
+    uint64_t num_chunks;
     rpc::Address owner_address;
-    owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
-    owner_address.set_ip_address(object_info.owner_ip_address);
-    owner_address.set_port(object_info.owner_port);
-    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+
+    if (spilled_object) {
+      data_size = spilled_object->GetDataSize() + spilled_object->GetMetadataSize();
+      metadata_size = spilled_object->GetMetadataSize();
+      num_chunks = spilled_object->GetNumChunks();
+      owner_address = spilled_object->GetOwnerAddress();
+
+    } else {
+      const ObjectInfo &object_info = local_objects_[object_id].object_info;
+      data_size =
+          static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+      metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+      num_chunks = buffer_pool_.GetNumChunks(data_size);
+
+      owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+      owner_address.set_ip_address(object_info.owner_ip_address);
+      owner_address.set_port(object_info.owner_port);
+      owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+    }
 
     RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
                    << ", number of chunks: " << num_chunks

@@ -14,7 +14,9 @@
 
 #pragma once
 
-#include "ray/object_manager/common.h"
+#include <string>
+
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -23,9 +25,28 @@ namespace ray {
 class SpilledObject {
  public:
   SpilledObject(const std::string &object_url, uint64_t chunk_size);
-  const ObjectInfo &GetObjectInfo() const;
+  uint64_t GetDataSize() const;
+  uint64_t GetMetadataSize() const;
+  const rpc::Address &SpilledObject::GetOwnerAddress() const;
   uint64_t GetNumChunks() const;
   std::string GetChunk(uint64_t chunk_index) const;
+
+ private:
+  void ParseObjectURL(const std::string &object_url);
+  void ReadObjectHeader();
+  std::string ReadFromFile(int64_t offset, int64_t length);
+  uint64_t ToUint64(const std::string &s) const;
+
+ private:
+  std::string file_path_;
+  uint64_t object_offset_;
+  uint64_t total_size_;
+  uint64_t data_offset_;
+  uint64_t data_size_;
+  uint64_t metadata_offset_;
+  uint64_t metadata_size_;
+  rpc::Address owner_address_;
+  uint64_t chunk_size_;
 };
 
 }  // namespace ray

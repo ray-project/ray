@@ -412,7 +412,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param spilled_url The optional spilled_url.
   /// \return Void
   void PushInternal(const ObjectID &object_id, const NodeID &node_id,
-                    std::optional<std::string> spilled_url);
+                    absl::optional<std::string> spilled_url);
 
   /// Send object to remote object manager. If spilled_object is not null, it pushes
   /// from the spilled objects. Otherwise it uses local object from buffer_pool_.
