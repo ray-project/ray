@@ -14,10 +14,12 @@ import ray.cluster_utils
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_container(shutdown_only):
     container_image = "rayproject/ray-nest-container:nightly-py36-cpu"
-    ray.init(job_config=ray.job_config.JobConfig(worker_container_image=container_image),
-             _system_config={
-                 "worker_process_in_container_enabled": True ,
-             })
+    ray.init(
+        job_config=ray.job_config.JobConfig(
+            worker_container_image=container_image),
+        _system_config={
+            "worker_process_in_container_enabled": True,
+        })
 
     @ray.remote
     class Counter(object):
@@ -36,15 +38,18 @@ def test_actor_in_container(shutdown_only):
     result = ray.get(a1.get_counter.remote())
     assert result == 1
 
+
 # Raylet runs in container image "rayproject/ray-nest-container:nightly-py36-cpu"
 # Ray job run in container image "rayproject/ray-nest-container:nightly-py36-cpu-pandas"
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_heterogeneous_image(shutdown_only):
     container_image = "rayproject/ray-nest-container:nightly-py36-cpu-pandas"
-    ray.init(job_config=ray.job_config.JobConfig(worker_container_image=container_image),
-             _system_config={
-                 "worker_process_in_container_enabled": True ,
-             })
+    ray.init(
+        job_config=ray.job_config.JobConfig(
+            worker_container_image=container_image),
+        _system_config={
+            "worker_process_in_container_enabled": True,
+        })
 
     @ray.remote
     class HeterogeneousActor(object):
@@ -59,6 +64,7 @@ def test_actor_in_heterogeneous_image(shutdown_only):
     h1 = HeterogeneousActor.options().remote()
     pandas_result = ray.get(h1.run_pandas.remote())
     assert pandas_result == 5
+
 
 if __name__ == "__main__":
     import pytest
