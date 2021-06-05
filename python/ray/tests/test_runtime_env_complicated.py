@@ -443,6 +443,7 @@ def test_pip_ray_serve(shutdown_only, pip_as_str, tmp_path):
     assert "ModuleNotFoundError" in str(excinfo.value)
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
+
 @pytest.mark.skipif(
     os.environ.get("CI") is None,
     reason="This test is only run on CI because it uses the built Ray wheel.")
