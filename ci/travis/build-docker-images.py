@@ -402,8 +402,8 @@ if __name__ == "__main__":
         choices=["ray", "ray_ml", "ray_nest_container"],
         default=["ray", "ray_ml"],
         nargs="*",
-        help=
-        "Which docker image to build. Must be in (ray, ray_ml, ray_nest_container)"
+        help="Which docker image to build. Must be in "
+             "(ray, ray_ml, ray_nest_container)"
     )
     parser.set_defaults(base=True)
 

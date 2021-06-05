@@ -39,8 +39,8 @@ def test_actor_in_container(shutdown_only):
     assert result == 1
 
 
-# Raylet runs in container image "rayproject/ray-nest-container:nightly-py36-cpu"
-# Ray job run in container image "rayproject/ray-nest-container:nightly-py36-cpu-pandas"
+# Raylet runs in container image "ray-nest-container:nightly-py36-cpu"
+# Ray job run in container image "ray-nest-container:nightly-py36-cpu-pandas"
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_heterogeneous_image(shutdown_only):
     container_image = "rayproject/ray-nest-container:nightly-py36-cpu-pandas"
