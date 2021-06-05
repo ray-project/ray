@@ -51,7 +51,7 @@ def setup(input_args):
                                       sys.version_info[:3]))  # like 3.6.10
             ray_pip = current_ray_pip_specifier()
             if ray_pip and not runtime_env.get("_skip_inject_ray"):
-                extra_pip_dependencies = [ray_pip]
+                extra_pip_dependencies = [ray_pip, "ray[default]"]
             else:
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
@@ -157,9 +157,9 @@ def current_ray_pip_specifier() -> Optional[str]:
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
-        return "ray[default]@" + get_master_wheel_url()
+        return get_master_wheel_url()
     else:
-        return "ray[default]@" + get_release_wheel_url()
+        return get_release_wheel_url()
 
 
 def inject_dependencies(
