@@ -164,6 +164,7 @@ py_test_module_list(
   files = [
     "test_failure_2.py",
     "test_failure_3.py",
+    "test_failure_4.py",
     "test_reference_counting_2.py",
     "test_object_spilling.py",
   ],
