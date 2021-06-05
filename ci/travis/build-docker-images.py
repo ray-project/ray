@@ -294,8 +294,6 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         for py_version in PY_MATRIX.keys():
             full_image = f"rayproject/{image}"
 
-            DOCKER_CLIENT.api.get_image("")
-
             # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
                 image=f"{full_image}:nightly{py_version}-cpu",

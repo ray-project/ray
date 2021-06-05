@@ -1,7 +1,6 @@
 #include "ray/util/filesystem.h"
 
 #include <stdlib.h>
-#include <sys/stat.h>
 
 #include "ray/util/logging.h"
 
@@ -10,6 +9,7 @@
 #endif
 
 #ifdef __linux__
+#include <sys/stat.h>
 #include <linux/limits.h>
 #include <unistd.h>
 #endif
