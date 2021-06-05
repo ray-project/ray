@@ -9,8 +9,8 @@
 #endif
 
 #ifdef __linux__
-#include <sys/stat.h>
 #include <linux/limits.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
