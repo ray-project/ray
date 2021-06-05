@@ -294,6 +294,8 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         for py_version in PY_MATRIX.keys():
             full_image = f"rayproject/{image}"
 
+            DOCKER_CLIENT.api.get_image("")
+
             # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
                 image=f"{full_image}:nightly{py_version}-cpu",
@@ -397,23 +399,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to build base-deps & ray-deps")
     parser.add_argument("--no-build-base", dest="base", action="store_false")
-    parser.add_argument(
-        "--build-images",
-        choices=["ray", "ray_ml", "ray_nest_container"],
-        default=["ray", "ray_ml"],
-        nargs="*",
-        help="Which docker image to build. Must be in "
-             "(ray, ray_ml, ray_nest_container)"
-    )
     parser.set_defaults(base=True)
+    parser.add_argument(
+        "--only-build-nest-container",
+        dest="only_build_nest_container",
+        action="store_true",
+        help="Whether only to build ray-nest-container")
+    parser.set_defaults(only_build_nest_container=False)
 
     args = parser.parse_args()
     py_versions = args.py_versions
     py_versions = py_versions if isinstance(py_versions,
                                             list) else [py_versions]
-    build_images = args.build_images
-    build_images = build_images if isinstance(build_images,
-                                              list) else [build_images]
     for key in set(PY_MATRIX.keys()):
         if key[1:].upper() not in py_versions:
             PY_MATRIX.pop(key)
@@ -445,18 +442,17 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
-        if "ray" in build_images:
-            build_ray()
-        if "ray_ml" in build_images:
-            build_ray_ml()
-        if "ray_nest_container" in build_images:
+        if args.only_build_nest_container:
             build_ray_nest_container()
-
-        if build_type in {MERGE, PR}:
-            valid_branch = _valid_branch()
-            if (not valid_branch) and is_merge:
-                print(f"Invalid Branch found: {_get_branch()}")
-            push_and_tag_images(base_images_built, valid_branch and is_merge)
+            # TODO Currently don't push ray_nest_container
+        else:
+            build_ray()
+            build_ray_ml()
+            if build_type in {MERGE, PR}:
+                valid_branch = _valid_branch()
+                if (not valid_branch) and is_merge:
+                    print(f"Invalid Branch found: {_get_branch()}")
+                push_and_tag_images(base_images_built, valid_branch and is_merge)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)
