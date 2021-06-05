@@ -572,7 +572,9 @@ class StandardAutoscaler:
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
 
-        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
+        launch_config = copy.deepcopy(self.config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
                 self.config["available_node_types"][node_type]["node_config"])

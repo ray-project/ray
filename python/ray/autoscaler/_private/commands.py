@@ -53,6 +53,8 @@ from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.local.config import is_local_manual_node_provider
+from ray.autoscaler._private.local.config import sync_state
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.util import format_info_string, \
     format_info_string_no_node_types
@@ -597,7 +599,9 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
-    head_node_config = copy.deepcopy(config["head_node"])
+    head_node_config = copy.deepcopy(config.get("head_node", {}))
+    # The above `head_node` field is deprecated in favor of per-node-type
+    # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
     if "head_node_type" in config:
         head_node_type = config["head_node_type"]
@@ -690,6 +694,17 @@ def get_or_create_head_node(config: Dict[str, Any],
         else:
             setup_commands = config["head_setup_commands"]
             ray_start_commands = config["head_start_ray_commands"]
+
+        # If restarting Ray on a manually-managed on-prem cluster,
+        # we need to upload the local cluster state file to the head node.
+        # If we're not restarting the cluster (empty ray start cmds), don't
+        # sync to avoid breaking the currently running on-prem cluster
+        # autoscaler state.
+        restarting_ray = len(ray_start_commands) > 0
+        if restarting_ray and is_local_manual_node_provider(
+                config["provider"]):
+            # Add cluster state file to file mounts.
+            config = sync_state(config)
 
         if not no_restart:
             warn_about_bad_start_command(ray_start_commands,
