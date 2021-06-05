@@ -560,7 +560,6 @@ cc_library(
         [
             "src/ray/raylet/**/*.h",
             "src/ray/core_worker/common.h",
-            "src/ray/common/task/scheduling_resources.h",
         ],
     ),
     copts = COPTS,

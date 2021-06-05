@@ -1077,8 +1077,7 @@ TEST_F(ContainerWorkerPoolTest, RegisterDriver) {
 TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
   auto task_id = TaskID::ForDriverTask(JOB_ID);
   auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
-  std::unordered_map<std::string, ray::FractionalResourceQuantity> resource_map = {
-      {"cpu", ray::FractionalResourceQuantity(1.0)}};
+  std::unordered_map<std::string, FixedPoint> resource_map = {{"cpu", FixedPoint(1.0)}};
   TaskSpecification task_spec =
       ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
                       ResourceSet(resource_map));
@@ -1088,8 +1087,7 @@ TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
   worker_pool_->HandleJobStarted(JOB_ID, job_config);
   ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
   ASSERT_EQ(worker_pool_->GetContainerWorkerCount(), 1);
-  std::unordered_map<std::string, ray::FractionalResourceQuantity> resource_map1 = {
-      {"cpu", 2.0}};
+  std::unordered_map<std::string, FixedPoint> resource_map1 = {{"cpu", 2.0}};
   TaskSpecification task_spec1 =
       ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
                       ResourceSet(resource_map1));

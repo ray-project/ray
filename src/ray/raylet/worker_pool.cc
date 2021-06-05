@@ -462,15 +462,13 @@ Process WorkerPool::StartContainerProcess(
       session_dir_ + "/worker_container/" + pid_file_random.Hex() + ".txt";
   argv.emplace_back("--pidfile=" + container_pid_file_path);
   if (!worker_resource.IsEmpty()) {
-    const ray::FractionalResourceQuantity cpu_quantity =
-        worker_resource.GetResource(kCPU_ResourceLabel);
-    if (cpu_quantity.ToDouble() > 0) {
-      argv.emplace_back("--cpus=" + std::to_string(cpu_quantity.ToDouble()));
+    const FixedPoint cpu_quantity = worker_resource.GetResource(kCPU_ResourceLabel);
+    if (cpu_quantity.Double() > 0) {
+      argv.emplace_back("--cpus=" + std::to_string(cpu_quantity.Double()));
     }
-    const ray::FractionalResourceQuantity memory_quantity =
-        worker_resource.GetResource(kMemory_ResourceLabel);
-    if (memory_quantity.ToDouble() > 0) {
-      argv.emplace_back("--memory=" + std::to_string(memory_quantity.ToDouble()) + "b");
+    const FixedPoint memory_quantity = worker_resource.GetResource(kMemory_ResourceLabel);
+    if (memory_quantity.Double() > 0) {
+      argv.emplace_back("--memory=" + std::to_string(memory_quantity.Double()) + "b");
     }
   }
   // inherite environment
