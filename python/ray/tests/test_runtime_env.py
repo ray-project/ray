@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import unittest
 import random
 import tempfile
 import requests
