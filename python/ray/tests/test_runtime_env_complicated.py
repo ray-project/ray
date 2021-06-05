@@ -391,7 +391,7 @@ def test_conda_create_ray_client(call_ray_start):
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_task(shutdown_only, pip_as_str, tmp_path):
-    """Tests pip installs in the runtime env specified in the job config."""
+    """Tests pip installs in the runtime env specified in f.options()."""
 
     ray.init()
     if pip_as_str:
@@ -419,6 +419,29 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     assert "ModuleNotFoundError" in str(excinfo.value)
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_pip_ray_serve(shutdown_only, pip_as_str, tmp_path):
+    """Tests that ray[serve] can be included as a pip dependency."""
+
+    runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 @pytest.mark.skipif(
     os.environ.get("CI") is None,
