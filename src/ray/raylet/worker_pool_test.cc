@@ -1054,6 +1054,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
+#ifdef __linux__
 class ContainerWorkerPoolTest : public WorkerPoolTest {
  public:
   ContainerWorkerPoolTest() : WorkerPoolTest() {
@@ -1095,6 +1096,7 @@ TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
   ASSERT_EQ(worker_pool_->GetContainerWorkerCount(), 2);
   worker_pool_->HandleJobFinished(JOB_ID);
 }
+#endif
 
 }  // namespace raylet
 

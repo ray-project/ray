@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include "ray/util/logging.h"
 
@@ -12,6 +11,7 @@
 
 #ifdef __linux__
 #include <linux/limits.h>
+#include <unistd.h>
 #endif
 
 namespace ray {
