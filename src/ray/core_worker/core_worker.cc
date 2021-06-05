@@ -2849,7 +2849,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
                       [this, is_idle]() {
                         // If the worker is idle, we exit.
                         if (is_idle) {
-                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
                         }
                       },
                       // We need to kill it regardless if the RPC failed.
