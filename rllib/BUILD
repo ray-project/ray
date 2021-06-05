@@ -1397,6 +1397,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_client",
+    tags = ["tests_dir", "tests_dir_C"],
+    size = "large",
+    srcs = ["tests/test_client.py"]
+)
+
+py_test(
     name = "tests/test_dependency_tf",
     tags = ["tests_dir", "tests_dir_D"],
     size = "small",
