@@ -153,9 +153,15 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           spill_objects_callback, object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
-          [this]() { return DumpDebugInfo(); }) {
+          [this]() { return GetDebugDump(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms > 0 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    PrintDebugDump();
+  }
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
@@ -388,6 +394,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
   num_objects_unsealed_++;
   num_bytes_unsealed_ += data_size + metadata_size;
+  num_bytes_created_total_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
 
@@ -853,7 +860,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
       auto req_id =
           create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
       RAY_LOG(DEBUG) << "Received create request for object " << object_id
-                     << " assigned request ID " << req_id;
+                     << " assigned request ID " << req_id << ", " << object_size
+                     << " bytes";
       ProcessCreateRequests();
       ReplyToCreateClient(client, object_id, req_id);
     }
@@ -962,6 +970,13 @@ void PlasmaStore::ProcessCreateRequests() {
   uint32_t retry_after_ms = 0;
   if (!status.ok()) {
     retry_after_ms = delay_on_oom_ms_;
+
+    if (!dumped_on_oom_) {
+      RAY_LOG(INFO) << "Plasma store at capacity\n" << GetDebugDump();
+      dumped_on_oom_ = true;
+    }
+  } else {
+    dumped_on_oom_ = false;
   }
 
   if (retry_after_ms > 0) {
@@ -1004,8 +1019,17 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   return entry->ref_count == 1;
 }
 
-std::string PlasmaStore::DumpDebugInfo() const {
+void PlasmaStore::PrintDebugDump() const {
+  RAY_LOG(INFO) << GetDebugDump();
+
+  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
+                               RayConfig::instance().asio_stats_print_interval_ms());
+}
+
+std::string PlasmaStore::GetDebugDump() const {
+  // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
+
   buffer << "========== Plasma store: =================\n";
   size_t num_objects_spillable = 0;
   size_t num_bytes_spillable = 0;
@@ -1057,6 +1081,11 @@ std::string PlasmaStore::DumpDebugInfo() const {
 
   buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
          << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
+  buffer << "- num bytes created total: " << num_bytes_created_total_ << "\n";
+  auto num_pending_requests = create_request_queue_.NumPendingRequests();
+  auto num_pending_bytes = create_request_queue_.NumPendingBytes();
+  buffer << num_pending_requests << " pending objects of total size "
+         << num_pending_bytes / 1024 / 1024 << "MB\n";
   buffer << "- objects spillable: " << num_objects_spillable << "\n";
   buffer << "- bytes spillable: " << num_bytes_spillable << "\n";
   buffer << "- objects unsealed: " << num_objects_unsealed << "\n";
