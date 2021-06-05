@@ -4,8 +4,9 @@
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
 #include <ray/api/actor_task_caller.h>
-#include <ray/api/exec_funcs.h>
+#include <ray/api/logging.h>
 #include <ray/api/object_ref.h>
+#include <ray/api/ray_config.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
@@ -15,13 +16,21 @@
 #include <boost/callable_traits.hpp>
 #include <memory>
 #include <msgpack.hpp>
+#include <mutex>
 
-#include "ray/core.h"
 namespace ray {
 namespace api {
 class Ray {
  public:
-  /// Initialize Ray runtime.
+  /// Initialize Ray runtime with config.
+  static void Init(RayConfig &config);
+
+  /// Initialize Ray runtime with config and command-line arguments.
+  /// If a parameter is explicitly set in command-line arguments, the parameter value will
+  /// be overwritten.
+  static void Init(RayConfig &config, int *argc, char ***argv);
+
+  /// Initialize Ray runtime with default config.
   static void Init();
 
   /// Shutdown Ray runtime.
@@ -80,7 +89,7 @@ class Ray {
   static std::once_flag is_inited_;
 
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
   template <typename FuncType>
   static TaskCaller<FuncType> TaskInternal(FuncType &func);
@@ -98,9 +107,9 @@ namespace ray {
 namespace api {
 
 template <typename T>
-inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
+inline static std::vector<std::string> ObjectRefsToObjectIDs(
     const std::vector<ObjectRef<T>> &object_refs) {
-  std::vector<ObjectID> object_ids;
+  std::vector<std::string> object_ids;
   for (auto it = object_refs.begin(); it != object_refs.end(); it++) {
     object_ids.push_back(it->ID());
   }
@@ -120,7 +129,7 @@ inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<std::string> &ids) {
   auto result = ray::internal::RayRuntime()->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
@@ -157,13 +166,15 @@ inline WaitResult<T> Ray::Wait(const std::vector<ObjectRef<T>> &objects, int num
 template <typename FuncType>
 inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
   RemoteFunctionHolder remote_func_holder(func);
-  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
+                              std::move(remote_func_holder));
 }
 
 template <typename FuncType>
 inline ActorCreator<FuncType> Ray::CreateActorInternal(FuncType &create_func) {
   RemoteFunctionHolder remote_func_holder(create_func);
-  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
+  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
+                                std::move(remote_func_holder));
 }
 
 /// Normal task.
