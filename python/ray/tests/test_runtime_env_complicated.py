@@ -427,7 +427,7 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_pip_ray_serve(shutdown_only):
     """Tests that ray[serve] can be included as a pip dependency."""
-
+    ray.init()
     runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
 
     @ray.remote
