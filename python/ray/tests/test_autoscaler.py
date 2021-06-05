@@ -372,7 +372,7 @@ class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
-        _DEFAULT_CONFIGS["mock"] = _DEFAULT_CONFIGS["local"]
+        _DEFAULT_CONFIGS["mock"] = _DEFAULT_CONFIGS["aws"]
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
