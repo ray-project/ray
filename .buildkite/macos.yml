@@ -1,6 +1,4 @@
-
-steps:
-- label: ":mac: :apple:"
+common: &common
   env:
     BUILDKITE: "true"
     CI: "true"
@@ -11,25 +9,33 @@ steps:
     LANG: en_US.UTF-8
     # TODO(simon): Can't figure out how get the JDK working yet.
     # RAY_INSTALL_JAVA: "1"
+
+steps:
+- label: ":mac: :apple: Core+Libraries"
+  <<: *common
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-
-    # TODO(simon): These should be baked into macOS AMI.
-    # TODO(simon): Can't figure out how get the JDK working yet.
-    # - brew install openjdk@11 && brew link --force openjdk@11
-    # - export PATH="/usr/local/opt/openjdk@11/bin:$PATH"
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
-
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -core_worker_test
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-flaky python/ray/serve/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/..
-    - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+
+- label: ":mac: :apple: Medium A-J"
+  <<: *common
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (which bazel && bazel clean) || true;
+    - . ./ci/travis/ci.sh init
+    - . ./ci/travis/ci.sh build
+    - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky python/ray/tests/...
+
 
     # The follow is running in Travis for now.
-    # - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky python/ray/tests/...
+    # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
     # - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
     # - bazel test --config=ci $(./scripts/bazel_export_options)
     #       --test_tag_filters=-kubernetes,-jenkins_only,flaky
