@@ -157,9 +157,9 @@ def current_ray_pip_specifier() -> Optional[str]:
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
-        return get_master_wheel_url()
+        return "ray[default]@" + get_master_wheel_url()
     else:
-        return get_release_wheel_url()
+        return "ray[default]@" + get_release_wheel_url()
 
 
 def inject_dependencies(
