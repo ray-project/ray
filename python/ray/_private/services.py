@@ -1475,10 +1475,7 @@ def start_raylet(redis_address,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
         f"--session-dir={session_dir}",
-        # When worker runs in container, the worker_path in container may
-        # different from Raylet environment
-        "-m",
-        "ray.workers.default_worker",
+        worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
