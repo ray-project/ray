@@ -80,6 +80,23 @@ class InvalidValuesTest(unittest.TestCase):
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
+    def testBlendSearch(self):
+        from ray.tune.suggest.flaml import BlendSearch
+
+        np.random.seed(1000)  # At least one nan, inf, -inf and float
+
+        out = tune.run(
+            _invalid_objective,
+            search_alg=BlendSearch(),
+            config=self.config,
+            metric='_metric',
+            mode="max",
+            num_samples=8,
+            reuse_actors=False)
+
+        best_trial = out.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
+
     def testBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
 
@@ -87,6 +104,23 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=TuneBOHB(seed=1000),
             config=self.config,
+            mode="max",
+            num_samples=8,
+            reuse_actors=False)
+
+        best_trial = out.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
+
+    def testCFO(self):
+        from ray.tune.suggest.flaml import CFO
+
+        np.random.seed(1000)  # At least one nan, inf, -inf and float
+
+        out = tune.run(
+            _invalid_objective,
+            search_alg=CFO(),
+            config=self.config,
+            metric='_metric',
             mode="max",
             num_samples=8,
             reuse_actors=False)
