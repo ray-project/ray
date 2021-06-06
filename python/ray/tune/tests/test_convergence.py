@@ -77,8 +77,8 @@ class ConvergenceTest(unittest.TestCase):
 
     def testConvergenceBlendSearch(self):
         from ray.tune.suggest.flaml import BlendSearch
-        np.random.seed(0)
 
+        np.random.seed(0)
         searcher = BlendSearch()
         analysis = self._testConvergence(searcher, patience=10)
 
@@ -86,8 +86,8 @@ class ConvergenceTest(unittest.TestCase):
 
     def testConvergenceCFO(self):
         from ray.tune.suggest.flaml import CFO
-        np.random.seed(0)
 
+        np.random.seed(0)
         searcher = CFO()
         analysis = self._testConvergence(searcher, patience=10)
 

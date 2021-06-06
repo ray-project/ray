@@ -83,8 +83,6 @@ class InvalidValuesTest(unittest.TestCase):
     def testBlendSearch(self):
         from ray.tune.suggest.flaml import BlendSearch
 
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
-
         out = tune.run(
             _invalid_objective,
             search_alg=BlendSearch(),
@@ -113,8 +111,6 @@ class InvalidValuesTest(unittest.TestCase):
 
     def testCFO(self):
         from ray.tune.suggest.flaml import CFO
-
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
 
         out = tune.run(
             _invalid_objective,
