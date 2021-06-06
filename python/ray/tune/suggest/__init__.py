@@ -37,6 +37,14 @@ def create_searcher(
         from ray.tune.suggest.ax import AxSearch
         return AxSearch
 
+    def _import_blendsearch_search():
+        from ray.tune.suggest.flaml import BlendSearch
+        return BlendSearch
+
+    def _import_cfo_search():
+        from ray.tune.suggest.flaml import CFO
+        return CFO
+
     def _import_dragonfly_search():
         from ray.tune.suggest.dragonfly import DragonflySearch
         return DragonflySearch
@@ -91,6 +99,8 @@ def create_searcher(
         "zoopt": _import_zoopt_search,
         "sigopt": _import_sigopt_search,
         "hebo": _import_hebo_search,
+        "blendsearch": _import_blendsearch_search,
+        'cfo': _import_cfo_search,
     }
     search_alg = search_alg.lower()
     if search_alg not in SEARCH_ALG_IMPORT:
