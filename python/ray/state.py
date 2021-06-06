@@ -308,12 +308,12 @@ class GlobalState:
 
         return dict(result)
 
-    def get_placement_group_by_name(self, placement_group_name):
+    def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         self._check_connected()
 
         placement_group_info = (
             self.global_state_accessor.get_placement_group_by_name(
-                placement_group_name))
+                placement_group_name, ray_namespace))
         if placement_group_info is None:
             return None
         else:
@@ -518,6 +518,11 @@ class GlobalState:
                     new_event["name"] = event["extra_data"]["name"]
 
                 all_events.append(new_event)
+
+        if not all_events:
+            logger.warning(
+                "No profiling events found. Ray profiling must be enabled "
+                "by setting RAY_PROFILING=1.")
 
         if filename is not None:
             with open(filename, "w") as outfile:
@@ -845,6 +850,9 @@ def objects(object_ref=None):
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
+
+    Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
+    variable prior to starting Ray.
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

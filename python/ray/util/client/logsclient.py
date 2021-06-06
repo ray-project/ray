@@ -57,9 +57,8 @@ class LogstreamClient:
                 logger.info("Server disconnected from logs channel")
             else:
                 # Some other, unhandled, gRPC error
-                logger.error(
+                logger.exception(
                     f"Got Error from logger channel -- shutting down: {e}")
-                raise e
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.

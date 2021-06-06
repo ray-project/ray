@@ -1,0 +1,14 @@
+- name: horovod_test
+  owner:
+    mail: "rliaw@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl.yaml
+
+  run:
+    timeout: 90000
+    script: python workloads/horovod_test.py
+    time_key: last_update
+    max_update_delay: 120

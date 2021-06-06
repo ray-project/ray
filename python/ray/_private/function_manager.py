@@ -195,14 +195,11 @@ class FunctionActorManager:
                 # of the failure.
                 traceback_str = format_error_message(traceback.format_exc())
                 # Log the error message.
-                push_error_to_driver(
-                    self._worker,
-                    ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function "
-                    f"'{function_name}' with "
-                    f"function ID {function_id.hex()}. "
-                    f"Traceback:\n{traceback_str}",
-                    job_id=job_id)
+                logger.debug("Failed to unpickle the remote function "
+                             f"'{function_name}' with "
+                             f"function ID {function_id.hex()}. "
+                             f"Job ID:{job_id}."
+                             f"Traceback:\n{traceback_str}. ")
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python

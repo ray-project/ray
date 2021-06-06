@@ -67,10 +67,6 @@ TaskRequest ResourceMapToTaskRequest(
 
   task_request.predefined_resources.resize(PredefinedResources_MAX);
   task_request.custom_resources.resize(resource_map.size());
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    task_request.predefined_resources[0].demand = 0;
-    task_request.predefined_resources[0].soft = false;
-  }
 
   size_t i = 0;
   for (auto const &resource : resource_map) {
@@ -86,7 +82,6 @@ TaskRequest ResourceMapToTaskRequest(
       string_to_int_map.Insert(resource.first);
       task_request.custom_resources[i].id = string_to_int_map.Get(resource.first);
       task_request.custom_resources[i].demand = resource.second;
-      task_request.custom_resources[i].soft = false;
       i++;
     }
   }
@@ -129,7 +124,6 @@ TaskRequest TaskResourceInstances::ToTaskRequest() const {
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
     task_req.custom_resources[i].id = it->first;
-    task_req.custom_resources[i].soft = false;
     task_req.custom_resources[i].demand = 0;
     for (size_t j = 0; j < it->second.size(); j++) {
       task_req.custom_resources[i].demand += it->second[j];
@@ -214,20 +208,18 @@ bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
 
     const auto &resource = this->predefined_resources[i].available;
     const auto &demand = task_req.predefined_resources[i].demand;
-    bool is_soft = task_req.predefined_resources[i].soft;
 
-    if (resource < demand && !is_soft) {
+    if (resource < demand) {
       return false;
     }
   }
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    bool is_soft = task_req_custom_resource.soft;
     auto it = this->custom_resources.find(task_req_custom_resource.id);
-    if (it == this->custom_resources.end() && !is_soft) {
+    if (it == this->custom_resources.end()) {
       return false;
-    } else if (task_req_custom_resource.demand > it->second.available && !is_soft) {
+    } else if (task_req_custom_resource.demand > it->second.available) {
       return false;
     }
   }
@@ -245,20 +237,18 @@ bool NodeResources::IsFeasible(const TaskRequest &task_req) const {
     }
     const auto &resource = this->predefined_resources[i].total;
     const auto &demand = task_req.predefined_resources[i].demand;
-    bool is_soft = task_req.predefined_resources[i].soft;
 
-    if (resource < demand && !is_soft) {
+    if (resource < demand) {
       return false;
     }
   }
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    bool is_soft = task_req_custom_resource.soft;
     auto it = this->custom_resources.find(task_req_custom_resource.id);
-    if (it == this->custom_resources.end() && !is_soft) {
+    if (it == this->custom_resources.end()) {
       return false;
-    } else if (task_req_custom_resource.demand > it->second.total && !is_soft) {
+    } else if (task_req_custom_resource.demand > it->second.total) {
       return false;
     }
   }
@@ -492,16 +482,14 @@ std::string TaskRequest::DebugString() const {
   std::stringstream buffer;
   buffer << " {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << "(" << this->predefined_resources[i].demand << ":"
-           << this->predefined_resources[i].soft << ") ";
+    buffer << "(" << this->predefined_resources[i].demand << ") ";
   }
   buffer << "}";
 
   buffer << "  [";
   for (size_t i = 0; i < this->custom_resources.size(); i++) {
     buffer << this->custom_resources[i].id << ":"
-           << "(" << this->custom_resources[i].demand << ":"
-           << this->custom_resources[i].soft << ") ";
+           << "(" << this->custom_resources[i].demand << ") ";
   }
   buffer << "]" << std::endl;
   return buffer.str();

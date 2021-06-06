@@ -1005,8 +1005,8 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   return owner_address;
 }
 
-void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
-                                  rpc::Address *owner_address) {
+void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                                  std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
@@ -1015,18 +1015,37 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
   RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id;
+
+  rpc::GetObjectStatusReply object_status;
+  // Optimization: if the object exists, serialize and inline its status. This also
+  // resolves some race conditions in resource release (#16025).
+  if (RayConfig::instance().inline_object_status_in_refs()) {
+    auto existing_object = memory_store_->GetIfExists(object_id);
+    if (existing_object != nullptr) {
+      PopulateObjectStatus(object_id, existing_object, &object_status);
+    }
+  }
+  *serialized_object_status = object_status.SerializeAsString();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const ObjectID &outer_object_id,
-    const rpc::Address &owner_address) {
+    const rpc::Address &owner_address, const std::string &serialized_object_status) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
 
-  // We will ask the owner about the object until the object is
-  // created or we can no longer reach the owner.
-  future_resolver_->ResolveFutureAsync(object_id, owner_address);
+  rpc::GetObjectStatusReply object_status;
+  object_status.ParseFromString(serialized_object_status);
+
+  if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
+    // We already have the inlined object status, process it immediately.
+    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), object_status);
+  } else {
+    // We will ask the owner about the object until the object is
+    // created or we can no longer reach the owner.
+    future_resolver_->ResolveFutureAsync(object_id, owner_address);
+  }
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -1087,7 +1106,8 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const size_t data_size,
                                const std::vector<ObjectID> &contained_object_ids,
-                               ObjectID *object_id, std::shared_ptr<Buffer> *data) {
+                               ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                               bool created_by_worker) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
@@ -1099,9 +1119,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
        static_cast<int64_t>(data_size) < max_direct_call_object_size_)) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    auto status =
-        plasma_store_provider_->Create(metadata, data_size, *object_id,
-                                       /* owner_address = */ rpc_address_, data);
+    auto status = plasma_store_provider_->Create(metadata, data_size, *object_id,
+                                                 /* owner_address = */ rpc_address_, data,
+                                                 created_by_worker);
     if (!status.ok() || !data) {
       reference_counter_->RemoveOwnedObject(*object_id);
       return status;
@@ -1113,14 +1133,14 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const size_t data_size, const ObjectID &object_id,
                                   const rpc::Address &owner_address,
-                                  std::shared_ptr<Buffer> *data) {
+                                  std::shared_ptr<Buffer> *data, bool created_by_worker) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
     return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
-                                          data);
+                                          data, created_by_worker);
   }
 }
 
@@ -1557,6 +1577,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       debugger_breakpoint, task_options.serialized_runtime_env,
                       override_environment_variables);
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
   } else {
@@ -1982,8 +2003,9 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
         static_cast<int64_t>(data_size) < max_direct_call_object_size_) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
     } else {
-      RAY_RETURN_NOT_OK(
-          CreateExisting(metadata, data_size, object_id, owner_address, &data_buffer));
+      RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
+                                       &data_buffer,
+                                       /*created_by_worker=*/true));
       object_already_exists = !data_buffer;
     }
   }
@@ -2335,41 +2357,47 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
       if (is_freed) {
         reply->set_status(rpc::GetObjectStatusReply::FREED);
       } else {
-        // If obj is the concrete object value, it is small, so we
-        // send the object back to the caller in the GetObjectStatus
-        // reply, bypassing a Plasma put and object transfer. If obj
-        // is an indicator that the object is in Plasma, we set an
-        // in_plasma indicator on the message, and the caller will
-        // have to facilitate a Plasma object transfer to get the
-        // object value.
-        auto *object = reply->mutable_object();
-        if (obj->HasData()) {
-          const auto &data = obj->GetData();
-          object->set_data(data->Data(), data->Size());
-        }
-        if (obj->HasMetadata()) {
-          const auto &metadata = obj->GetMetadata();
-          object->set_metadata(metadata->Data(), metadata->Size());
-        }
-        for (const auto &nested_id : obj->GetNestedIds()) {
-          object->add_nested_inlined_ids(nested_id.Binary());
-        }
-        reply->set_status(rpc::GetObjectStatusReply::CREATED);
-        // Set locality data.
-        const auto &locality_data = reference_counter_->GetLocalityData(object_id);
-        if (locality_data.has_value()) {
-          for (const auto &node_id : locality_data.value().nodes_containing_object) {
-            reply->add_node_ids(node_id.Binary());
-          }
-          reply->set_object_size(locality_data.value().object_size);
-        }
+        PopulateObjectStatus(object_id, obj, reply);
       }
       send_reply_callback(Status::OK(), nullptr, nullptr);
     });
   }
 
   RemoveLocalReference(object_id);
-}  // namespace ray
+}
+
+void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
+                                      std::shared_ptr<RayObject> obj,
+                                      rpc::GetObjectStatusReply *reply) {
+  // If obj is the concrete object value, it is small, so we
+  // send the object back to the caller in the GetObjectStatus
+  // reply, bypassing a Plasma put and object transfer. If obj
+  // is an indicator that the object is in Plasma, we set an
+  // in_plasma indicator on the message, and the caller will
+  // have to facilitate a Plasma object transfer to get the
+  // object value.
+  auto *object = reply->mutable_object();
+  if (obj->HasData()) {
+    const auto &data = obj->GetData();
+    object->set_data(data->Data(), data->Size());
+  }
+  if (obj->HasMetadata()) {
+    const auto &metadata = obj->GetMetadata();
+    object->set_metadata(metadata->Data(), metadata->Size());
+  }
+  for (const auto &nested_id : obj->GetNestedIds()) {
+    object->add_nested_inlined_ids(nested_id.Binary());
+  }
+  reply->set_status(rpc::GetObjectStatusReply::CREATED);
+  // Set locality data.
+  const auto &locality_data = reference_counter_->GetLocalityData(object_id);
+  if (locality_data.has_value()) {
+    for (const auto &node_id : locality_data.value().nodes_containing_object) {
+      reply->add_node_ids(node_id.Binary());
+    }
+    reply->set_object_size(locality_data.value().object_size);
+  }
+}
 
 void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
@@ -2823,7 +2851,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
                       [this, is_idle]() {
                         // If the worker is idle, we exit.
                         if (is_idle) {
-                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
                         }
                       },
                       // We need to kill it regardless if the RPC failed.
