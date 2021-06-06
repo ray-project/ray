@@ -27,7 +27,7 @@ def easy_objective(config):
         time.sleep(0.1)
 
 
-def run_optuna_tune(smoke_test=False):
+def run_cfo_tune(smoke_test=False):
     algo = CFO()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
@@ -68,4 +68,4 @@ if __name__ == "__main__":
     else:
         ray.init(configure_logging=False)
 
-    run_optuna_tune(smoke_test=args.smoke_test)
+    run_cfo_tune(smoke_test=args.smoke_test)

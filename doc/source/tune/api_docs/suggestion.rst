@@ -177,7 +177,7 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 BOHB (tune.suggest.bohb.TuneBOHB)
 ---------------------------------
 
-BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is backed by the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
+BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
@@ -203,7 +203,7 @@ In order to use this search algorithm, you will need to install ``flaml``:
 
 .. code-block:: bash
 
-    $ pip install flaml
+    $ pip install flaml[blendsearch]
 
 See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
 
