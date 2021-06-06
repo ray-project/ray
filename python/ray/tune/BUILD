@@ -375,11 +375,29 @@ py_test(
 )
 
 py_test(
+    name = "blendsearch_example",
+    size = "small",
+    srcs = ["examples/blendsearch_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "bohb_example",
     size = "small",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
+)
+
+py_test(
+    name = "cfo_example",
+    size = "small",
+    srcs = ["examples/cfo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(
