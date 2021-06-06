@@ -93,6 +93,24 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
+# Test non streaming shuffle in a single node with a large number of partition.
+- name: dask_on_ray_10gb_sort
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: dask_on_ray/dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
+
+  run:
+    timeout: 3000
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000 --npartitions 10 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
 #
 # Multi node shuffle
 #
