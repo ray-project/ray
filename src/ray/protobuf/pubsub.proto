@@ -59,6 +59,12 @@ message WorkerRefRemovedMessage {
 ///
 /// Subscribe
 ///
+
+/// Command is a set of instructions that can be operated on a publisher.
+/// NOTE(sang): In our pubsub module design, there's no broker,
+/// and publisher is identical to the broker unlike the conventional pubsub systems.
+/// This includes operations such as Subscribe or Unsubscribe. The terminology
+/// has come from Redis' pubsub (e.g., SUB command, UNSUB command).
 message Command {
   /// The channel type for this command.
   ChannelType channel_type = 1;
@@ -74,6 +80,12 @@ message Command {
 message UnsubscribeMessage {
 }
 
+/// Each of subscribe command needs to include request body because in Ray's pubsub
+/// module, it doesn't subscribe the same data structure (like for Redis,
+/// it is a table, but Ray has multiple data structures that can be subscribed).
+/// So, the publisher needs to have some business logic depending on subscribe
+/// messages' request body. For example, WaitForRefRemoved subscription
+/// needs to include some of ref count related request body.
 message SubMessage {
   /// Subscribe message is one of other protobuf messages.
   /// It needs messages with different payloads because the publisher
