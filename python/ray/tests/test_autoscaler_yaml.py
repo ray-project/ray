@@ -14,7 +14,6 @@ from click.exceptions import ClickException
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
-from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
