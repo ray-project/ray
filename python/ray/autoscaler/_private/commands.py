@@ -53,7 +53,6 @@ from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
-from ray.autoscaler._private.local.config import is_local_manual_node_provider
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.util import format_info_string, \
     format_info_string_no_node_types
