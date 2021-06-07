@@ -17,6 +17,7 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 from datetime import datetime
@@ -42,6 +43,7 @@ MOCK_MODULES = [
     "horovod.ray",
     "kubernetes",
     "mlflow",
+    "modin",
     "mxnet",
     "mxnet.model",
     "psutil",
@@ -98,6 +100,7 @@ sys.modules["pytorch_lightning"] = ChildClassMock()
 sys.modules["xgboost"] = ChildClassMock()
 sys.modules["xgboost.core"] = ChildClassMock()
 sys.modules["xgboost.callback"] = ChildClassMock()
+sys.modules["xgboost_ray"] = ChildClassMock()
 
 
 class SimpleClass(object):
@@ -152,13 +155,22 @@ extensions = [
     'versionwarning.extension',
 ]
 
-versionwarning_admonition_type = "tip"
+versionwarning_admonition_type = "note"
+versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+
+SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
+               "?utm_source=anyscale&utm_medium=docs&utm_campaign=raysummit")
 
 versionwarning_messages = {
-    "latest": (
-        "This document is for the latest pip release. "
-        'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    ),
+    # Re-enable this after Ray Summit.
+    # "latest": (
+    #     "This document is for the latest pip release. "
+    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    # ),
+    "master": (f'<a href="{SUMMIT_LINK}">Join the global Ray '
+               "community at Ray Summit 2021</a> "
+               "to learn about new Ray features and hear how "
+               "users are scaling machine learning applications with Ray!"),
 }
 
 versionwarning_body_selector = "#main-content"

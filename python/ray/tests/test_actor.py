@@ -974,5 +974,33 @@ def test_return_actor_handle_from_actor(ray_start_regular_shared):
     assert ray.get(inner.ping.remote()) == "pong"
 
 
+def test_actor_autocomplete(ray_start_regular_shared):
+    """
+    Test that autocomplete works with actors by checking that the builtin dir()
+    function works as expected.
+    """
+
+    @ray.remote
+    class Foo:
+        def method_one(self) -> None:
+            pass
+
+    class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
+
+    assert set(class_calls) == {"method_one", "options", "remote"}
+
+    f = Foo.remote()
+
+    methods = [fn for fn in dir(f) if not fn.startswith("_")]
+    assert methods == ["method_one"]
+
+    all_methods = set(dir(f))
+    assert all_methods == {"__init__", "method_one", "__ray_terminate__"}
+
+    method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
+
+    assert set(method_options) == {"options", "remote"}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

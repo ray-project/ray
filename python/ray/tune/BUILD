@@ -34,11 +34,19 @@ py_test(
 )
 
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    deps = [":tune_lib"],
+    tags = ["client", "py37", "exclusive"]
+)
+
+py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -46,7 +54,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster_searcher.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -278,7 +286,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
 )
 
 py_test(
@@ -404,6 +412,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_horovod.py"],
     tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
+)
+
+py_test(
+    name = "test_horovod_client",
+    size = "medium",
+    srcs = ["tests/test_horovod_client.py"],
+    tags = ["exclusive", "client", "py37"],
     deps = [":tune_lib"],
 )
 

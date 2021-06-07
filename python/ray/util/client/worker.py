@@ -34,7 +34,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
+from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -77,24 +77,21 @@ class Worker:
               at least once.  For infinite retries, catch the ConnectionError
               exception.
         """
-        self.metadata = metadata if metadata else []
+        self._client_id = make_client_id()
+        self.metadata = [("client_id", self._client_id)] + (metadata if
+                                                            metadata else [])
         self.channel = None
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
-        self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
 
-        grpc_options = [
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=grpc_options)
+                conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=grpc_options)
+                conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -344,8 +341,8 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
-        self.log_client.close()
         self.data_client.close()
+        self.log_client.close()
         if self.channel:
             self.channel.close()
             self.channel = None
@@ -443,20 +440,26 @@ class Worker:
         """
         if self.server is not None:
             logger.debug("Pinging server.")
-            result = self.get_cluster_info(
-                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            result = self.get_cluster_info(ray_client_pb2.ClusterInfoType.PING)
             return result is not None
         return False
 
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
+    def _call_init(self, init_request: ray_client_pb2.InitRequest) -> None:
+        init_resp = self.data_client.Init(init_request)
+        if not init_resp.ok:
+            raise ConnectionAbortedError(
+                f"Init Failure From Server:\n{init_resp.msg}")
+        return
+
     def _server_init(self, job_config: JobConfig):
         """Initialize the server"""
         try:
             if job_config is None:
                 init_req = ray_client_pb2.InitRequest()
-                self.data_client.Init(init_req)
+                self._call_init(init_req)
                 return
 
             import ray._private.runtime_env as runtime_env
@@ -467,10 +470,7 @@ class Worker:
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
-                init_resp = self.data_client.Init(init_req)
-                if not init_resp.ok:
-                    logger.error("Init failed due to: ", init_resp.msg)
-                    raise IOError(init_resp.msg)
+                self._call_init(init_req)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 runtime_env.PKG_DIR = old_dir
                 prep_req = ray_client_pb2.PrepRuntimeEnvRequest()

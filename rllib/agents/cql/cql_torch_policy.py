@@ -14,6 +14,7 @@ from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
     build_sac_model_and_action_dist, optimizer_fn, ComputeTDErrorMixin, \
     TargetNetworkMixin, setup_late_mixins, action_distribution_fn
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -88,11 +89,6 @@ def cql_loss(policy: Policy, model: ModelV2,
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    policy_optimizer = policy._optimizers[0]
-    critic1_optimizer = policy._optimizers[1]
-    critic2_optimizer = policy._optimizers[2]
-    alpha_optimizer = policy._optimizers[3]
-
     model_out_t, _ = model({
         "obs": obs,
         "is_training": True,
@@ -120,9 +116,9 @@ def cql_loss(policy: Policy, model: ModelV2,
                    (log_pis_t + model.target_entropy).detach()).mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
-        alpha_optimizer.zero_grad()
+        policy.alpha_optim.zero_grad()
         alpha_loss.backward()
-        alpha_optimizer.step()
+        policy.alpha_optim.step()
 
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = torch.exp(model.log_alpha)
@@ -135,7 +131,14 @@ def cql_loss(policy: Policy, model: ModelV2,
     else:
 
         def bc_log(model, obs, actions):
-            z = atanh(actions)
+            # Stabilize input to atanh.
+            normed_actions = \
+                (actions - action_dist_t.low) / \
+                (action_dist_t.high - action_dist_t.low) * 2.0 - 1.0
+            save_normed_actions = torch.clamp(
+                normed_actions, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+            z = atanh(save_normed_actions)
+
             logits = model.get_policy_output(obs)
             mean, log_std = torch.chunk(logits, 2, dim=-1)
             # Mean Clamping for Stability
@@ -153,9 +156,9 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
-        policy_optimizer.zero_grad()
+        policy.actor_optim.zero_grad()
         actor_loss.backward(retain_graph=True)
-        policy_optimizer.step()
+        policy.actor_optim.step()
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
@@ -259,13 +262,14 @@ def cql_loss(policy: Policy, model: ModelV2,
         critic_loss.append(critic_loss_2 + min_qf2_loss)
 
     if obs.shape[0] == policy.config["train_batch_size"]:
-        critic1_optimizer.zero_grad()
+        policy.critic_optims[0].zero_grad()
         critic_loss[0].backward(retain_graph=True)
-        critic1_optimizer.step()
+        policy.critic_optims[0].step()
 
-        critic2_optimizer.zero_grad()
-        critic_loss[1].backward(retain_graph=False)
-        critic2_optimizer.step()
+        if twin_q:
+            policy.critic_optims[1].zero_grad()
+            critic_loss[1].backward(retain_graph=False)
+            policy.critic_optims[1].step()
 
     # Save for stats function.
     policy.q_t = q_t_selected
@@ -278,12 +282,17 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.log_alpha_value = model.log_alpha
     policy.alpha_value = alpha
     policy.target_entropy = model.target_entropy
-    # CQL Stats
+    # CQL Stats.
     policy.cql_loss = cql_loss
     if use_lagrange:
         policy.log_alpha_prime_value = model.log_alpha_prime[0]
         policy.alpha_prime_value = alpha_prime
         policy.alpha_prime_loss = alpha_prime_loss
+
+        if obs.shape[0] == policy.config["train_batch_size"]:
+            policy.alpha_prime_optim.zero_grad()
+            alpha_prime_loss.backward()
+            policy.alpha_prime_optim.step()
 
     # Return all loss terms corresponding to our optimizers.
     if use_lagrange:
@@ -335,7 +344,11 @@ def compute_gradients_fn(policy, postprocessed_batch):
     batches = [policy._lazy_tensor_dict(postprocessed_batch)]
     model = policy.model
     policy._loss(policy, model, policy.dist_class, batches[0])
-    return [None, dict()]
+    stats = {
+        LEARNER_STATS_KEY: policy._convert_to_non_torch_type(
+            cql_stats(policy, batches[0]))
+    }
+    return [None, stats]
 
 
 def apply_gradients_fn(policy, gradients):

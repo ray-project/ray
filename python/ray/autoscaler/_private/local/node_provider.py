@@ -12,6 +12,8 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
 )
 from ray.autoscaler._private.local.config import bootstrap_local
+from ray.autoscaler._private.local.config import get_lock_path
+from ray.autoscaler._private.local.config import get_state_path
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,14 @@ class ClusterState:
                 for worker_ip in list(workers):
                     if worker_ip not in list_of_node_ips:
                         del workers[worker_ip]
+
+                # Set external head ip, if provided by user.
+                # Necessary if calling `ray up` from outside the network.
+                # Refer to LocalNodeProvider.external_ip function.
+                external_head_ip = provider_config.get("external_head_ip")
+                if external_head_ip:
+                    head = workers[provider_config["head_ip"]]
+                    head["external_ip"] = external_head_ip
 
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
@@ -158,9 +168,11 @@ class LocalNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         if cluster_name:
+            lock_path = get_lock_path(cluster_name)
+            state_path = get_state_path(cluster_name)
             self.state = ClusterState(
-                "/tmp/cluster-{}.lock".format(cluster_name),
-                "/tmp/cluster-{}.state".format(cluster_name),
+                lock_path,
+                state_path,
                 provider_config,
             )
             self.use_coordinator = False
@@ -196,7 +208,21 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
-        return socket.gethostbyname(node_id)
+        """Returns an external ip if the user has supplied one.
+        Otherwise, use the same logic as internal_ip below.
+
+        This can be used to call ray up from outside the network, for example
+        if the Ray cluster exists in an AWS VPC and we're interacting with
+        the cluster from a laptop (where using an internal_ip will not work).
+
+        Useful for debugging the local node provider with cloud VMs."""
+
+        node_state = self.state.get()[node_id]
+        ext_ip = node_state.get("external_ip")
+        if ext_ip:
+            return ext_ip
+        else:
+            return socket.gethostbyname(node_id)
 
     def internal_ip(self, node_id):
         return socket.gethostbyname(node_id)

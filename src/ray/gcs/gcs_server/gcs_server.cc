@@ -80,8 +80,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
 
+  // Init KV Manager
+  InitKVManager();
+
+  // Init RuntimeENv manager
+  InitRuntimeEnvManager();
+
   // Init gcs job manager.
-  InitGcsJobManager();
+  InitGcsJobManager(gcs_init_data);
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
@@ -100,9 +106,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init stats handler.
   InitStatsHandler();
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
@@ -204,19 +207,20 @@ void GcsServer::InitGcsResourceScheduler() {
       std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
 }
 
-void GcsServer::InitGcsJobManager() {
+void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  gcs_job_manager_.reset(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
+                                                     *runtime_env_manager_);
+  gcs_job_manager_->Initialize(gcs_init_data);
   // Register service.
-  job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *gcs_job_manager_));
+  job_info_service_ =
+      std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
   rpc_server_.RegisterService(*job_info_service_);
 }
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  auto actor_schedule_strategy =
-      std::make_shared<GcsRandomActorScheduleStrategy>(gcs_node_manager_);
-  auto scheduler = std::make_shared<GcsActorScheduler>(
+  auto scheduler = std::make_shared<RayletBasedActorScheduler>(
       main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsActor> actor) {
@@ -230,15 +234,30 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
-      raylet_client_pool_, actor_schedule_strategy,
+      raylet_client_pool_,
       /*client_factory=*/
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_,
+      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+      },
+      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
+      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
+        boost::asio::deadline_timer timer(main_service_);
+        timer.expires_from_now(delay);
+        timer.async_wait([fn](const boost::system::error_code &error) {
+          if (error != boost::asio::error::operation_aborted) {
+            fn();
+          } else {
+            RAY_LOG(WARNING)
+                << "The GCS actor metadata garbage collector timer failed to fire. This "
+                   "could old actor metadata not being properly cleaned up. For more "
+                   "information, check logs/gcs_server.err and logs/gcs_server.out";
+          }
+        });
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -259,7 +278,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       *gcs_resource_scheduler_, raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_);
+      main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
+      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -345,6 +365,32 @@ void GcsServer::InitKVManager() {
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
+}
+
+void GcsServer::InitRuntimeEnvManager() {
+  runtime_env_manager_ =
+      std::make_unique<RuntimeEnvManager>([this](const std::string &uri, auto cb) {
+        std::string sep = "://";
+        auto pos = uri.find(sep);
+        if (pos == std::string::npos || pos + sep.size() == uri.size()) {
+          RAY_LOG(ERROR) << "Invalid uri: " << uri;
+          cb(false);
+        } else {
+          auto scheme = uri.substr(0, pos);
+          if (scheme != "gcs") {
+            // Skip other uri
+            cb(true);
+          } else {
+            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
+              if (deleted_num == 0) {
+                cb(false);
+              } else {
+                cb(true);
+              }
+            });
+          }
+        }
+      });
 }
 
 void GcsServer::InitGcsWorkerManager() {

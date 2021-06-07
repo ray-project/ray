@@ -82,6 +82,7 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::WorkerContext":
         c_bool CurrentActorIsAsync()
+        const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::ActorHandle":
@@ -129,12 +130,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
-        CRayStatus AllocateReturnObjects(
-            const c_vector[CObjectID] &object_ids,
-            const c_vector[size_t] &data_sizes,
-            const c_vector[shared_ptr[CBuffer]] &metadatas,
-            const c_vector[c_vector[CObjectID]] &contained_object_ids,
-            c_vector[shared_ptr[CRayObject]] *return_objects)
+        CRayStatus AllocateReturnObject(
+            const CObjectID &object_id,
+            const size_t &data_size,
+            const shared_ptr[CBuffer] &metadata,
+            const c_vector[CObjectID] &contained_object_id,
+            shared_ptr[CRayObject] *return_object)
+        CRayStatus SealReturnObject(
+            const CObjectID& return_id,
+            shared_ptr[CRayObject] return_object
+        )
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
@@ -163,11 +168,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
-                              CAddress *owner_address)
+                              CAddress *owner_address,
+                              c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CAddress &owner_address)
+                const CAddress &owner_address,
+                const c_string &object_status)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
@@ -179,12 +186,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
-                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+                               CObjectID *object_id, shared_ptr[CBuffer] *data,
+                               c_bool created_by_worker)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
-                                  shared_ptr[CBuffer] *data)
+                                  shared_ptr[CBuffer] *data,
+                                  c_bool created_by_worker)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
@@ -281,6 +290,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         c_bool connect_on_start
+        int runtime_env_hash
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod
