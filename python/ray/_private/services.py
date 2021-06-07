@@ -286,7 +286,7 @@ def wait_for_node(redis_address,
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for nodes to startup.")
+    raise TimeoutError("Timed out while waiting for node to startup.")
 
 
 def get_address_info_from_redis_helper(redis_address,

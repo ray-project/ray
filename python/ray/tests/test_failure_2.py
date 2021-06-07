@@ -531,7 +531,7 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
     cluster = ray_start_cluster_head
     redis_port = int(cluster.address.split(":")[1])
     # Reuse redis port to make node manager grpc server fail to start.
-    with pytest.raises(TimeoutError):
+    with pytest.raises(Exception):
         cluster.add_node(wait=False, node_manager_port=redis_port)
     p = log_pubsub
     cnt = 0
