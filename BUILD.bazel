@@ -886,6 +886,20 @@ cc_test(
 )
 
 cc_test(
+    name = "spilled_object_test",
+    srcs = [
+        "src/ray/object_manager/test/spilled_object_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+        "@boost//:endian",
+    ],
+)
+
+
+cc_test(
     name = "create_request_queue_test",
     srcs = [
         "src/ray/object_manager/test/create_request_queue_test.cc",

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <string>
 
 #include "absl/types/optional.h"
@@ -44,18 +46,24 @@ class SpilledObject {
   static bool ParseObjectURL(const std::string &object_url, std::string &file_path,
                              uint64_t &object_offset, uint64_t &total_size);
 
-  static bool ParseObjectHeader(const std::string &file_path, uint64_t object_offset,
+  static bool ParseObjectHeader(std::istream &is, uint64_t object_offset,
                                 uint64_t &data_offset, uint64_t &data_size,
                                 uint64_t &metadata_offset, uint64_t &metadata_size,
                                 rpc::Address &owner_address);
 
-  static bool ReadUINT64(std::ifstream &is, uint64_t &output);
+  static bool ReadUINT64(std::istream &is, uint64_t &output);
   static uint64_t ToUINT64(const std::string &s);
 
   bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const;
   bool ReadFromMetadataSection(uint64_t offset, uint64_t size, char *output) const;
 
  private:
+  /// Test helper
+  FRIEND_TEST(SpilledObjectTest, ParseObjectURL);
+  FRIEND_TEST(SpilledObjectTest, ToUINT64);
+  FRIEND_TEST(SpilledObjectTest, ReadUINT64);
+  FRIEND_TEST(SpilledObjectTest, ParseObjectHeader);
+
   const std::string file_path_;
   const uint64_t total_size_;
   const uint64_t data_offset_;
