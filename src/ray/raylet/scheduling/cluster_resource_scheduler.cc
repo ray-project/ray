@@ -145,20 +145,19 @@ bool ClusterResourceScheduler::IsFeasible(const TaskRequest &task_req,
                                           const NodeResources &resources) const {
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (task_req.predefined_resources[i].demand >
-        resources.predefined_resources[i].total) {
+    if (task_req.predefined_resources[i] > resources.predefined_resources[i].total) {
       return false;
     }
   }
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.id);
+    auto it = resources.custom_resources.find(task_req_custom_resource.first);
 
     if (it == resources.custom_resources.end()) {
       return false;
     }
-    if (task_req_custom_resource.demand > it->second.total) {
+    if (task_req_custom_resource.second > it->second.total) {
       return false;
     }
   }
@@ -173,8 +172,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (task_req.predefined_resources[i].demand >
-        resources.predefined_resources[i].available) {
+    if (task_req.predefined_resources[i] > resources.predefined_resources[i].available) {
       // A hard constraint has been violated, so we cannot schedule
       // this task request.
       return -1;
@@ -183,14 +181,14 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.id);
+    auto it = resources.custom_resources.find(task_req_custom_resource.first);
 
     if (it == resources.custom_resources.end()) {
       // Requested resource doesn't exist at this node.
       // This is a hard constraint so cannot schedule this task request.
       return -1;
     } else {
-      if (task_req_custom_resource.demand > it->second.available) {
+      if (task_req_custom_resource.second > it->second.available) {
         // Resource constraint is violated.
         return -1;
       }
@@ -363,14 +361,14 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources->predefined_resources[i].available =
         std::max(FixedPoint(0), resources->predefined_resources[i].available -
-                                    task_req.predefined_resources[i].demand);
+                                    task_req.predefined_resources[i]);
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    auto it = resources->custom_resources.find(task_req_custom_resource.id);
+    auto it = resources->custom_resources.find(task_req_custom_resource.first);
     if (it != resources->custom_resources.end()) {
       it->second.available =
-          std::max(FixedPoint(0), it->second.available - task_req_custom_resource.demand);
+          std::max(FixedPoint(0), it->second.available - task_req_custom_resource.second);
     }
   }
   return true;
@@ -748,8 +746,8 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
 
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (task_req.predefined_resources[i].demand > 0) {
-      if (!AllocateResourceInstances(task_req.predefined_resources[i].demand,
+    if (task_req.predefined_resources[i] > 0) {
+      if (!AllocateResourceInstances(task_req.predefined_resources[i],
                                      local_resources_.predefined_resources[i].available,
                                      &task_allocation->predefined_resources[i])) {
         // Allocation failed. Restore node's local resources by freeing the resources
@@ -761,11 +759,11 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   }
 
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    auto it = local_resources_.custom_resources.find(task_req_custom_resource.id);
+    auto it = local_resources_.custom_resources.find(task_req_custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {
-      if (task_req_custom_resource.demand > 0) {
+      if (task_req_custom_resource.second > 0) {
         std::vector<FixedPoint> allocation;
-        bool success = AllocateResourceInstances(task_req_custom_resource.demand,
+        bool success = AllocateResourceInstances(task_req_custom_resource.second,
                                                  it->second.available, &allocation);
         // Even if allocation failed we need to remember partial allocations to correctly
         // free resources.
