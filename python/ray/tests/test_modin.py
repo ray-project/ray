@@ -26,9 +26,9 @@ from numpy.testing import assert_array_equal
 from modin.utils import to_pandas
 from pandas.testing import (assert_series_equal, assert_frame_equal,
                             assert_extension_array_equal, assert_index_equal)
-import subprocess
 from packaging import version
 import ray
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 # Versions of modin prior to 0.9.1 are incompatible with ray
 # client. See https://github.com/modin-project/modin/pull/2851
@@ -43,15 +43,13 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(params=[False, True], autouse=True, scope="module")
 def run_ray_client(request):
     if request.param:
-        port = "50051"
-        # Kill any lingering ray processes from previous tests
-        subprocess.check_output(["ray", "stop", "--force"])
-        subprocess.check_output(
-            ["ray", "start", "--head", "--ray-client-server-port", port])
-        ray.util.connect(f"localhost:{port}")
-    yield
-    ray.shutdown()
-    subprocess.check_output(["ray", "stop", "--force"])
+        with ray_start_client_server() as client:
+            yield client
+    else:
+        # Run without ray client (do nothing)
+        yield
+        # Cleanup before moving rerunning tests with client
+        ray.shutdown()
 
 
 random_state = np.random.RandomState(seed=42)
@@ -207,23 +205,6 @@ def df_equals(df1, df2):
     else:
         if df1 != df2:
             np.testing.assert_almost_equal(df1, df2)
-
-
-def sort_index_for_equal_values(series, ascending=False):
-    if series.index.dtype == np.float64:
-        # HACK: workaround for pandas bug:
-        # https://github.com/pandas-dev/pandas/issues/34455
-        series.index = series.index.astype("str")
-    res = series.groupby(
-        series,
-        sort=False).apply(lambda df: df.sort_index(ascending=ascending))
-    if res.index.nlevels > series.index.nlevels:
-        # Sometimes GroupBy adds an extra level with 'by' to the result index.
-        # GroupBy is very inconsistent about when it's doing this, so that's
-        # why this clumsy if-statement is used.
-        res.index = res.index.droplevel(0)
-    res.name = series.name
-    return res
 
 
 @pytest.mark.parametrize("data", test_data_values, ids=test_data_keys)
@@ -808,30 +789,6 @@ def test_unique():
         pandas.Series(pandas.Categorical(list("baabc"))))
     assert_array_equal(modin_result, pandas_result)
     assert modin_result.shape == pandas_result.shape
-
-
-@pytest.mark.parametrize("normalize, bins, dropna", [(True, 3, False)])
-def test_value_counts(normalize, bins, dropna):
-    # We sort indices for Modin and pandas result because of issue #1650
-    values = np.array([3, 1, 2, 3, 4, np.nan])
-    modin_result = sort_index_for_equal_values(
-        pd.value_counts(values, normalize=normalize, ascending=False), False)
-    pandas_result = sort_index_for_equal_values(
-        pandas.value_counts(values, normalize=normalize, ascending=False),
-        False)
-    df_equals(modin_result, pandas_result)
-
-    modin_result = sort_index_for_equal_values(
-        pd.value_counts(values, bins=bins, ascending=False), False)
-    pandas_result = sort_index_for_equal_values(
-        pandas.value_counts(values, bins=bins, ascending=False), False)
-    df_equals(modin_result, pandas_result)
-
-    modin_result = sort_index_for_equal_values(
-        pd.value_counts(values, dropna=dropna, ascending=True), True)
-    pandas_result = sort_index_for_equal_values(
-        pandas.value_counts(values, dropna=dropna, ascending=True), True)
-    df_equals(modin_result, pandas_result)
 
 
 def test_to_datetime():
