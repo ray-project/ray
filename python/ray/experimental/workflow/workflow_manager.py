@@ -171,8 +171,11 @@ class Workflow:
         return output
 
     def __reduce__(self):
-        raise Exception("Workflow is not supposed to be serialized by pickle."
-                        "Maybe you are passing it to a Ray remote function?")
+        raise ValueError(
+            "Workflow is not supposed to be serialized by pickle. "
+            "Maybe you are passing it to a Ray remote function, "
+            "returning it from a Ray remote function, or using "
+            "'ray.put()' with it?")
 
 
 class _CaptureWorkflowInputs:
