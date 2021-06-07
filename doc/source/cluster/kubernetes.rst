@@ -47,8 +47,8 @@ Installing the Ray Operator with Helm
 -------------------------------------
 Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
 
-Currently, the `Ray Helm chart`_ is available on the the master branch of the Ray GitHub repo.
-The chart will be published to a public Helm repo as part of each Ray release, starting with the upcoming Ray 1.4.0.
+The `Ray Helm chart`_ is available as part of the Ray GitHub repository.
+The chart will be published to a public Helm repository as part of a future Ray release.
 
 Preparation
 ~~~~~~~~~~~
