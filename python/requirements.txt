@@ -58,7 +58,7 @@ lxml
 # Modin tests require a version with this fix: 
 # https://github.com/modin-project/modin/pull/2851
 # Can replace with modin>=0.10 once 0.10 is released.
-git+git://github.com/modin-project/modin@51658b4
+git+git://github.com/modin-project/modin.git@51658b49b54ce89f1277f8b73bdef4cf909e53fd#egg=modin
 moto
 mypy
 networkx
