@@ -248,9 +248,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Failed to validate local/example-minimal-manual.yaml")
         expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
         assert prepared_config == expected_prepared
-        synced_config = local_config.sync_state(prepared_config)
-        state_path = "/tmp/cluster-minimal-manual.state"
-        assert (synced_config["file_mounts"] == {state_path: state_path})
 
         no_worker_config = copy.deepcopy(base_config)
         del no_worker_config["provider"]["worker_ips"]

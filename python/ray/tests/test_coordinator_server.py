@@ -1,4 +1,5 @@
 import os
+import random
 import unittest
 import socket
 import json
@@ -51,14 +52,17 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
         Test the general use case and if num_workers increase/decrease.
         """
-
+        # Use a random head_ip so that the state file is regenerated each time
+        # this test is run. (Otherwise the test will fail spuriously when run a
+        # second time.)
+        head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
             "min_workers": 0,
             "max_workers": 0,
             "provider": {
                 "type": "local",
-                "head_ip": "0.0.0.0:2",
+                "head_ip": head_ip,
                 "worker_ips": ["0.0.0.0:1"],
                 "external_head_ip": "0.0.0.0.3"
             },
@@ -66,7 +70,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         provider_config = cluster_config["provider"]
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False)
-        assert node_provider.external_ip("0.0.0.0:2") == "0.0.0.0.3"
+        assert node_provider.external_ip(head_ip) == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
         expected_workers[provider_config["head_ip"]] = {
