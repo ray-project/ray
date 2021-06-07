@@ -93,7 +93,6 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
             result = resp.json()
             all_events = result["data"]["events"]
             job_events = all_events[job_id]
-            print(len(job_events))
             assert len(job_events) >= test_count * 2
             source_messages = {}
             for e in job_events:
@@ -102,7 +101,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
                 source_messages.setdefault(source_type, set()).add(message)
             assert len(source_messages[source_type_gcs]) >= test_count
             assert len(source_messages[source_type_raylet]) >= test_count
-            data = set(str(i) for i in range(test_count))
+            data = {str(i) for i in range(test_count)}
             assert data & source_messages[source_type_gcs] == data
             assert data & source_messages[source_type_raylet] == data
             return True
