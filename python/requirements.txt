@@ -32,7 +32,7 @@ flask
 gym
 lz4
 opencv-python-headless==4.3.0.36
-pandas == 1.2.4
+pandas
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
