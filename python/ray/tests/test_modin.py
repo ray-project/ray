@@ -48,7 +48,7 @@ def run_ray_client(request):
     else:
         # Run without ray client (do nothing)
         yield
-        # Cleanup before moving rerunning tests with client
+        # Cleanup state before rerunning tests with client
         ray.shutdown()
 
 
