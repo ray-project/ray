@@ -45,7 +45,7 @@ class DataSource:
     job_actors = Dict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
-    # {job id hex(str): event list}
+    # {job id hex(str): {event id(str): event dict}}
     events = Dict()
     # {node ip (str): log entries by pid
     # (dict from pid to list of latest log entries)}
