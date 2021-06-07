@@ -1265,7 +1265,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // Everything else is now deleted.
-  for (size_t i = 1; i < spilled_urls_size; i++) {
+  for (size_t i = 1; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
