@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include "absl/types/optional.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -24,29 +25,45 @@ namespace ray {
 /// This class is thread safe.
 class SpilledObject {
  public:
-  SpilledObject(const std::string &object_url, uint64_t chunk_size);
+  static absl::optional<SpilledObject> CreateSpilledObject(const std::string &object_url,
+                                                           uint64_t chunk_size);
+
   uint64_t GetDataSize() const;
   uint64_t GetMetadataSize() const;
   const rpc::Address &GetOwnerAddress() const;
+
   uint64_t GetNumChunks() const;
-  std::string GetChunk(uint64_t chunk_index) const;
+  absl::optional<std::string> GetChunk(uint64_t chunk_index) const;
 
  private:
-  void ParseObjectURL(const std::string &object_url);
-  void ReadObjectHeader();
-  std::string ReadFromFile(int64_t offset, int64_t length) const;
-  uint64_t ToUint64(const std::string &s) const;
+  SpilledObject(std::string file_path, uint64_t total_size, uint64_t data_offset,
+                const uint64_t data_size, const uint64_t metadata_offset,
+                const uint64_t metadata_size, const rpc::Address owner_address,
+                const uint64_t chunk_size);
+
+  static bool ParseObjectURL(const std::string &object_url, std::string &file_path,
+                             uint64_t &object_offset, uint64_t total_size);
+
+  static bool ParseObjectHeader(const std::string &file_path, uint64_t object_offset,
+                                uint64_t &data_offset, uint64_t &data_size,
+                                uint64_t &metadata_offset, uint64_t &metadata_size,
+                                rpc::Address &owner_address);
+
+  static uint64_t ToUINT64(const std::string &s);
+  static bool ReadUINT64(std::ifstream &is, uint64_t &output);
+
+  bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const;
+  bool ReadFromMetadataSection(uint64_t offset, uint64_t size, char *output) const;
 
  private:
-  std::string file_path_;
-  uint64_t object_offset_;
-  uint64_t total_size_;
-  uint64_t data_offset_;
-  uint64_t data_size_;
-  uint64_t metadata_offset_;
-  uint64_t metadata_size_;
-  rpc::Address owner_address_;
-  uint64_t chunk_size_;
+  const std::string file_path_;
+  const uint64_t total_size_;
+  const uint64_t data_offset_;
+  const uint64_t data_size_;
+  const uint64_t metadata_offset_;
+  const uint64_t metadata_size_;
+  const rpc::Address owner_address_;
+  const uint64_t chunk_size_;
 };
 
 }  // namespace ray

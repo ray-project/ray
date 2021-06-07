@@ -353,8 +353,15 @@ void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_i
   if (rpc_client) {
     std::shared_ptr<SpilledObject> spilled_object;
     if (spilled_url.has_value()) {
+      auto optional_spilled_object = SpilledObject::CreateSpilledObject(
+          spilled_url.value(), config_.object_chunk_size);
+      if (!optional_spilled_object.has_value()) {
+        RAY_LOG(WARNING) << "Failed to load splled object " << object_id
+                         << ". It may have been evicted.";
+        return;
+      }
       spilled_object =
-          std::make_shared<SpilledObject>(spilled_url.value(), config_.object_chunk_size);
+          std::make_shared<SpilledObject>(std::move(optional_spilled_object.value()));
     }
 
     uint64_t data_size;
@@ -367,7 +374,6 @@ void ObjectManager::PushInternal(const ObjectID &object_id, const NodeID &node_i
       metadata_size = spilled_object->GetMetadataSize();
       num_chunks = spilled_object->GetNumChunks();
       owner_address = spilled_object->GetOwnerAddress();
-
     } else {
       const ObjectInfo &object_info = local_objects_[object_id].object_info;
       data_size =
@@ -432,7 +438,14 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 
   if (spilled_object) {
     // Get data from spilled object.
-    push_request.set_data(spilled_object->GetChunk(chunk_index));
+    auto optional_chunk = spilled_object->GetChunk(chunk_index);
+    if (!optional_chunk.has_value()) {
+      RAY_LOG(WARNING) << "Attempting to push object " << object_id
+                       << " which is not local. It may have been evicted.";
+      on_complete(Status::IOError("Failed to read spilled object"));
+      return;
+    }
+    push_request.set_data(std::move(optional_chunk.value()));
   } else {
     // Get data from local buffer pool.
     std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =

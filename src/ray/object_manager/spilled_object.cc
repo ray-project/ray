@@ -20,11 +20,43 @@
 #include "ray/util/logging.h"
 
 namespace ray {
+namespace {
+const size_t UINT64_size = sizeof(uint64_t);
+}
 
-SpilledObject::SpilledObject(const std::string &object_url, uint64_t chunk_size) {
-  ParseObjectURL(object_url);
-  ReadObjectHeader();
-  chunk_size_ = chunk_size;
+/* static */ absl::optional<SpilledObject> SpilledObject::CreateSpilledObject(
+    const std::string &object_url, uint64_t chunk_size) {
+  std::string file_path;
+  uint64_t object_offset = 0;
+  uint64_t total_size = 0;
+
+  if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, total_size)) {
+    RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
+    return absl::optional<SpilledObject>();
+  }
+
+  uint64_t data_offset = 0;
+  uint64_t data_size = 0;
+  uint64_t metadata_offset = 0;
+  uint64_t metadata_size = 0;
+  rpc::Address owner_address;
+
+  if (!SpilledObject::ParseObjectHeader(file_path, object_offset, data_offset, data_size,
+                                        metadata_offset, metadata_size, owner_address)) {
+    RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
+    return absl::optional<SpilledObject>();
+  }
+
+  if (total_size != (data_size + metadata_size)) {
+    RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url
+                     << ": data size (" << data_size << ") + metadata size ("
+                     << metadata_size << ") != total size (" << total_size << ").";
+    return absl::optional<SpilledObject>();
+  }
+
+  return absl::optional<SpilledObject>(SpilledObject(
+      std::move(file_path), total_size, data_offset, data_size, metadata_offset,
+      metadata_size, std::move(owner_address), chunk_size));
 }
 
 uint64_t SpilledObject::GetDataSize() const { return data_size_; }
@@ -37,49 +69,106 @@ uint64_t SpilledObject::GetNumChunks() const {
   return (total_size_ + chunk_size_ - 1) / chunk_size_;
 }
 
-std::string SpilledObject::GetChunk(uint64_t chunk_index) const {
-  auto start_offset = chunk_index * chunk_size_;
-  auto length = std::min(chunk_size_, total_size_ - start_offset);
-  if (start_offset + length <= data_size_) {
-    // read from data section
-    return ReadFromFile(data_offset_ + start_offset, length);
-  }
-  if (start_offset >= data_size_) {
-    // read from metadata section
-    return ReadFromFile(metadata_offset_ + (start_offset - data_size_), length);
+absl::optional<std::string> SpilledObject::GetChunk(uint64_t chunk_index) const {
+  auto cur_chunk_offset = chunk_index * chunk_size_;
+  auto cur_chunk_size = std::min(chunk_size_, total_size_ - cur_chunk_offset);
+
+  std::string result(cur_chunk_size, '\0');
+  size_t result_offset = 0;
+
+  if (cur_chunk_offset < data_size_) {
+    auto offset = cur_chunk_offset;
+    auto size = std::min(data_size_ - cur_chunk_offset, cur_chunk_size);
+    if (!ReadFromDataSection(offset, size, &result[result_offset])) {
+      return absl::optional<std::string>();
+    }
+    result_offset = size;
   }
 
-  std::string result;
-  result.append(ReadFromFile(data_offset_ + start_offset, data_size_ - start_offset));
-  result.append(ReadFromFile(metadata_offset_, length - (data_size_ - start_offset)));
-  return result;
+  if (cur_chunk_offset + cur_chunk_size > data_size_) {
+    auto offset = std::max(cur_chunk_offset, data_size_) - data_size_;
+    auto size = std::min(cur_chunk_offset + cur_chunk_size - data_size_, cur_chunk_size);
+    if (!ReadFromMetadataSection(offset, size, &result[result_offset])) {
+      return absl::optional<std::string>();
+    }
+  }
+  return absl::optional<std::string>(std::move(result));
 }
 
-void SpilledObject::ParseObjectURL(const std::string &object_url) {
+SpilledObject::SpilledObject(std::string file_path, uint64_t total_size,
+                             uint64_t data_offset, const uint64_t data_size,
+                             const uint64_t metadata_offset, const uint64_t metadata_size,
+                             const rpc::Address owner_address, const uint64_t chunk_size)
+    : file_path_(std::move(file_path)),
+      total_size_(total_size),
+      data_offset_(data_offset),
+      data_size_(data_size),
+      metadata_offset_(metadata_offset),
+      metadata_size_(metadata_size),
+      owner_address_(std::move(owner_address)),
+      chunk_size_(chunk_size) {}
+
+/* static */ bool SpilledObject::ParseObjectURL(const std::string &object_url,
+                                                std::string &file_path,
+                                                uint64_t &object_offset,
+                                                uint64_t total_size) {
   static const std::regex object_url_pattern("(.*)\\?offset=(\\d+)&size=(\\d+)");
   std::smatch match_groups;
-  RAY_DCHECK(std::regex_match(object_url, match_groups, object_url_pattern));
-  RAY_DCHECK(match_groups.size() == 4);
-  file_path_ = match_groups[1].str();
-  object_offset_ = std::stoi(match_groups[2].str());
-  total_size_ = std::stoi(match_groups[3].str());
+  if (!std::regex_match(object_url, match_groups, object_url_pattern) ||
+      match_groups.size() != 4) {
+    return false;
+  }
+  file_path = match_groups[1].str();
+  try {
+    object_offset = std::stoi(match_groups[2].str());
+    total_size = std::stoi(match_groups[3].str());
+  } catch (...) {
+    return false;
+  }
+  return true;
 }
 
-void SpilledObject::ReadObjectHeader() {
-  auto offset = object_offset_;
-  auto address_size = ToUint64(ReadFromFile(offset, 8));
-  offset += 8;
-  metadata_size_ = ToUint64(ReadFromFile(offset, 8));
-  offset += 8;
-  data_size_ = ToUint64(ReadFromFile(offset, 8));
-  offset += 8;
-  owner_address_.ParseFromString(ReadFromFile(offset, address_size));
-  metadata_offset_ = offset + address_size;
-  data_offset_ = metadata_offset_ + metadata_size_;
+/* static */
+bool SpilledObject::ParseObjectHeader(const std::string &file_path,
+                                      uint64_t object_offset, uint64_t &data_offset,
+                                      uint64_t &data_size, uint64_t &metadata_offset,
+                                      uint64_t &metadata_size,
+                                      rpc::Address &owner_address) {
+  std::ifstream is(file_path, std::ios::binary);
+  if (!is.seekg(object_offset)) {
+    return false;
+  }
+
+  uint64_t address_size = 0;
+  if (!ReadUINT64(is, address_size) || !ReadUINT64(is, metadata_size) ||
+      !ReadUINT64(is, data_size)) {
+    return false;
+  }
+
+  std::string address_str(address_size, '\0');
+  if (!is.read(&address_str[0], address_size)) {
+    return false;
+  }
+  owner_address.ParseFromString(address_str);
+
+  metadata_offset = object_offset + UINT64_size * 3 + address_size;
+  data_offset = metadata_offset + metadata_size;
+  return true;
 }
 
-uint64_t SpilledObject::ToUint64(const std::string &s) const {
-  RAY_CHECK(s.size() == 8);
+/* static */
+bool SpilledObject::ReadUINT64(std::ifstream &is, uint64_t &output) {
+  std::string buff(UINT64_size, '\0');
+  if (!is.read(&buff[0], UINT64_size)) {
+    return false;
+  }
+  output = SpilledObject::ToUINT64(buff);
+  return true;
+}
+
+/* static */
+uint64_t SpilledObject::ToUINT64(const std::string &s) {
+  RAY_CHECK(s.size() == UINT64_size);
   uint64_t result = 0;
   for (size_t i = 0; i < s.size(); i++) {
     result = result << 8;
@@ -88,12 +177,15 @@ uint64_t SpilledObject::ToUint64(const std::string &s) const {
   return result;
 }
 
-std::string SpilledObject::ReadFromFile(int64_t offset, int64_t length) const {
+bool SpilledObject::ReadFromDataSection(uint64_t offset, uint64_t size,
+                                        char *output) const {
   std::ifstream is(file_path_, std::ios::binary);
-  is.seekg(offset);
-  std::string str(length, '\0');
-  RAY_CHECK(is.read(&str[0], length));
-  return str;
+  return is.seekg(data_offset_ + offset) && is.read(output, size);
 }
 
+bool SpilledObject::ReadFromMetadataSection(uint64_t offset, uint64_t size,
+                                            char *output) const {
+  std::ifstream is(file_path_, std::ios::binary);
+  return is.seekg(metadata_offset_ + offset) && is.read(output, size);
+}
 }  // namespace ray
