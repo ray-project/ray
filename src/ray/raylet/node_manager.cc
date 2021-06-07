@@ -534,7 +534,9 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
-  FillNormalTaskResourceUsage(resources_data);
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+    FillNormalTaskResourceUsage(resources_data);
+  }
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =

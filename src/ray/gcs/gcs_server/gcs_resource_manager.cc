@@ -55,30 +55,10 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-
+  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
-    auto iter = cluster_scheduling_resources_.find(node_id);
-    if (iter != cluster_scheduling_resources_.end()) {
-      const auto &total_resources = iter->second.GetTotalResources();
-      for (auto &entry : request.resources()) {
-        if (!total_resources.Contains(entry.first)) {
-          changed_resources->emplace(entry.first, entry.second.resource_capacity());
-        }
-      }
-
-      if (changed_resources->empty()) {
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-        RAY_LOG(DEBUG) << "Changed resources is empty, return directly, node id = "
-                       << node_id;
-        return;
-      }
-    }
-  } else {
-    for (const auto &entry : request.resources()) {
-      changed_resources->emplace(entry.first, entry.second.resource_capacity());
-    }
+  for (const auto &entry : request.resources()) {
+    changed_resources->emplace(entry.first, entry.second.resource_capacity());
   }
 
   auto iter = cluster_scheduling_resources_.find(node_id);

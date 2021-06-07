@@ -127,12 +127,6 @@ class ResourceSet {
   /// does not exist.
   FixedPoint GetResource(const std::string &resource_name) const;
 
-  /// Return ture if resource_capacity_ constains the specified resource label.
-  ///
-  /// \param resource_name: Resource name for which capacity is requested.
-  /// \return Return ture if resource_capacity_ constains the specified resource label.
-  bool Contains(const std::string &resource_name) const;
-
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
@@ -513,7 +507,7 @@ class SchedulingResources {
   ResourceSet resources_available_;
   /// Resource load.
   ResourceSet resources_load_;
-  /// Resources of normal tasks.
+  /// Resources used by normal tasks.
   ResourceSet resources_normal_tasks_;
 };
 
