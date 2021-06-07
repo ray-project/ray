@@ -15,16 +15,19 @@
 #include "ray/object_manager/spilled_object.h"
 
 #include <boost/endian/conversion.hpp>
+#include <fstream>
 
+#include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/util/filesystem.h"
 
 namespace ray {
 
 TEST(SpilledObjectTest, ParseObjectURL) {
   auto assert_parse_success =
       [](const std::string &object_url, const std::string &expected_file_path,
-         uint64_t expected_object_offset, uint64_t expected_total_size) {
+         uint64_t expected_object_offset, uint64_t expected_object_size) {
         std::string actual_file_path;
         uint64_t actual_offset = 0;
         uint64_t actual_size = 0;
@@ -32,7 +35,7 @@ TEST(SpilledObjectTest, ParseObjectURL) {
                                                   actual_offset, actual_size));
         ASSERT_EQ(expected_file_path, actual_file_path);
         ASSERT_EQ(expected_object_offset, actual_offset);
-        ASSERT_EQ(expected_total_size, actual_size);
+        ASSERT_EQ(expected_object_size, actual_size);
       };
 
   auto assert_parse_fail = [](const std::string &object_url) {
@@ -119,9 +122,9 @@ TEST(SpilledObjectTest, ParseObjectHeader) {
     uint64_t actual_metadata_size = 0;
     rpc::Address actual_owner_address;
     std::istringstream is(str);
-    SpilledObject::ParseObjectHeader(is, object_offset, actual_data_offset,
-                                     actual_data_size, actual_metadata_offset,
-                                     actual_metadata_size, actual_owner_address);
+    ASSERT_TRUE(SpilledObject::ParseObjectHeader(
+        is, object_offset, actual_data_offset, actual_data_size, actual_metadata_offset,
+        actual_metadata_size, actual_owner_address));
     std::string address_str;
     owner_address.SerializeToString(&address_str);
     ASSERT_EQ(object_offset + 24 + address_str.size(), actual_metadata_offset);
@@ -149,6 +152,136 @@ TEST(SpilledObjectTest, ParseObjectHeader) {
       }
     }
   }
+
+  auto assert_parse_failure = [](uint64_t object_offset, uint64_t truncate_size) {
+    std::string data("data");
+    std::string metadata("metadata");
+    rpc::Address owner_address;
+    auto str = ContructObjectString(object_offset, data, metadata, owner_address);
+    str = str.substr(0, truncate_size);
+    uint64_t actual_data_offset = 0;
+    uint64_t actual_data_size = 0;
+    uint64_t actual_metadata_offset = 0;
+    uint64_t actual_metadata_size = 0;
+    rpc::Address actual_owner_address;
+    std::istringstream is(str);
+    ASSERT_FALSE(SpilledObject::ParseObjectHeader(
+        is, object_offset, actual_data_offset, actual_data_size, actual_metadata_offset,
+        actual_metadata_size, actual_owner_address));
+  };
+
+  std::string address_str;
+  rpc::Address owner_address;
+  owner_address.SerializeToString(&address_str);
+  for (uint64_t truncate_len = 98; truncate_len < 124 + address_str.size();
+       truncate_len++) {
+    assert_parse_failure(100, truncate_len);
+  }
+}
+
+TEST(SpilledObjectTest, Getters) {
+  rpc::Address owner_address;
+  owner_address.set_raylet_id("nonsense");
+  SpilledObject obj("path", 8 /* object_size */, 2 /* data_offset */, 3 /* data_size */,
+                    4 /* metadata_offset */, 5 /* metadata_size */, owner_address,
+                    6 /* chunk_size */);
+  ASSERT_EQ(3, obj.GetDataSize());
+  ASSERT_EQ(5, obj.GetMetadataSize());
+  ASSERT_EQ(owner_address.raylet_id(), obj.GetOwnerAddress().raylet_id());
+  ASSERT_EQ(2, obj.GetNumChunks());
+}
+
+TEST(SpilledObjectTest, GetNumChunks) {
+  auto assert_get_num_chunks = [](uint64_t data_size, uint64_t chunk_size,
+                                  uint64_t expected_num_chunks) {
+    rpc::Address owner_address;
+    owner_address.set_raylet_id("nonsense");
+    SpilledObject obj("path", 100 /* object_size */, 2 /* data_offset */,
+                      data_size /* data_size */, 4 /* metadata_offset */,
+                      0 /* metadata_size */, owner_address, chunk_size /* chunk_size */);
+
+    ASSERT_EQ(expected_num_chunks, obj.GetNumChunks());
+  };
+
+  assert_get_num_chunks(11 /* data_size */, 1 /* chunk_size */,
+                        11 /* expected_num_chunks */);
+  assert_get_num_chunks(1 /* data_size */, 11 /* chunk_size */,
+                        1 /* expected_num_chunks */);
+  assert_get_num_chunks(0 /* data_size */, 11 /* chunk_size */,
+                        0 /* expected_num_chunks */);
+  assert_get_num_chunks(9 /* data_size */, 2 /* chunk_size */,
+                        5 /* expected_num_chunks */);
+  assert_get_num_chunks(10 /* data_size */, 2 /* chunk_size */,
+                        5 /* expected_num_chunks */);
+  assert_get_num_chunks(11 /* data_size */, 2 /* chunk_size */,
+                        6 /* expected_num_chunks */);
+}
+
+namespace {
+std::string CreateSpilledObjectOnTmp(uint64_t object_offset, std::string data,
+                                     std::string metadata, rpc::Address owner_address,
+                                     bool skip_write = false) {
+  auto str = ContructObjectString(object_offset, data, metadata, owner_address);
+  std::string tmp_file = ray::JoinPaths(
+      ray::GetUserTempDir(), "spilled_object_test" + ObjectID::FromRandom().Hex());
+
+  std::ofstream f(tmp_file, std::ios::binary);
+  if (!skip_write) {
+    RAY_CHECK(f.write(str.c_str(), str.size()));
+  }
+  f.close();
+  return absl::StrFormat("%s?offset=%d&size=%d", tmp_file, object_offset,
+                         str.size() - object_offset);
+}
+}  // namespace
+
+TEST(SpilledObjectTest, CreateSpilledObject) {
+  auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
+                                             ray::rpc::Address());
+  ASSERT_FALSE(
+      SpilledObject::CreateSpilledObject(object_url, 0 /* chunk_size */).has_value());
+  ASSERT_FALSE(SpilledObject::CreateSpilledObject("ill_formatted_url", 1 /* chunk_size */)
+                   .has_value());
+  auto optional_object =
+      SpilledObject::CreateSpilledObject(object_url, 2 /* chunk_size */);
+  ASSERT_TRUE(optional_object.has_value());
+
+  auto object_url1 = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
+                                              ray::rpc::Address(), true /* skip_write */);
+  ASSERT_FALSE(
+      SpilledObject::CreateSpilledObject(object_url1, 2 /* chunk_size */).has_value());
+}
+
+namespace {
+void AssertGetChunkWorks(std::string metadata, std::string data,
+                         std::vector<uint64_t> chunk_sizes) {
+  std::string expected_output = data + metadata;
+  chunk_sizes.push_back(expected_output.size());
+  auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, data, metadata,
+                                             ray::rpc::Address());
+  for (auto chunk_size : chunk_sizes) {
+    auto optional_object = SpilledObject::CreateSpilledObject(object_url, chunk_size);
+    ASSERT_TRUE(optional_object.has_value());
+    std::string actual_output_by_chunks;
+    for (auto i = 0; i < optional_object->GetNumChunks(); i++) {
+      auto chunk = optional_object->GetChunk(i);
+      ASSERT_TRUE(chunk.has_value());
+      ASSERT_GE(chunk_size, chunk->size());
+      if (i + 1 != optional_object->GetNumChunks()) {
+        ASSERT_EQ(chunk_size, chunk->size());
+      }
+      actual_output_by_chunks.append(chunk.value());
+    }
+    ASSERT_EQ(expected_output, actual_output_by_chunks);
+  }
+}
+}  // namespace
+
+TEST(SpilledObjectTest, GetChunk) {
+  AssertGetChunkWorks("meta", "alotofdata", {1, 2, 3, 5, 100});
+  AssertGetChunkWorks("alotofactualmeta", "meh", {1, 2, 3, 5, 100});
+  AssertGetChunkWorks("", "weonlyhavedata", {1, 2, 3, 5, 100});
+  AssertGetChunkWorks("weonlyhavemetadata", "", {1, 2, 3, 5, 100});
 }
 }  // namespace ray
 

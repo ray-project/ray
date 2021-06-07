@@ -26,11 +26,16 @@ const size_t UINT64_size = sizeof(uint64_t);
 
 /* static */ absl::optional<SpilledObject> SpilledObject::CreateSpilledObject(
     const std::string &object_url, uint64_t chunk_size) {
+  if (chunk_size == 0) {
+    RAY_LOG(WARNING) << "chunk_size can't be 0.";
+    return absl::optional<SpilledObject>();
+  }
+
   std::string file_path;
   uint64_t object_offset = 0;
-  uint64_t total_size = 0;
+  uint64_t object_size = 0;
 
-  if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, total_size)) {
+  if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, object_size)) {
     RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
     return absl::optional<SpilledObject>();
   }
@@ -49,15 +54,8 @@ const size_t UINT64_size = sizeof(uint64_t);
     return absl::optional<SpilledObject>();
   }
 
-  if (total_size != (data_size + metadata_size)) {
-    RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url
-                     << ": data size (" << data_size << ") + metadata size ("
-                     << metadata_size << ") != total size (" << total_size << ").";
-    return absl::optional<SpilledObject>();
-  }
-
   return absl::optional<SpilledObject>(SpilledObject(
-      std::move(file_path), total_size, data_offset, data_size, metadata_offset,
+      std::move(file_path), object_size, data_offset, data_size, metadata_offset,
       metadata_size, std::move(owner_address), chunk_size));
 }
 
@@ -68,17 +66,22 @@ uint64_t SpilledObject::GetMetadataSize() const { return metadata_size_; }
 const rpc::Address &SpilledObject::GetOwnerAddress() const { return owner_address_; }
 
 uint64_t SpilledObject::GetNumChunks() const {
-  return (total_size_ + chunk_size_ - 1) / chunk_size_;
+  return (data_size_ + metadata_size_ + chunk_size_ - 1) / chunk_size_;
 }
 
 absl::optional<std::string> SpilledObject::GetChunk(uint64_t chunk_index) const {
+  // The spilled file stores metadata before data. But the GetChunk needs to
+  // return data before metadata. We achieve by first read from data section,
+  // then read from metadata section.
   auto cur_chunk_offset = chunk_index * chunk_size_;
-  auto cur_chunk_size = std::min(chunk_size_, total_size_ - cur_chunk_offset);
+  auto cur_chunk_size =
+      std::min(chunk_size_, data_size_ + metadata_size_ - cur_chunk_offset);
 
   std::string result(cur_chunk_size, '\0');
   size_t result_offset = 0;
 
   if (cur_chunk_offset < data_size_) {
+    // read from data section.
     auto offset = cur_chunk_offset;
     auto size = std::min(data_size_ - cur_chunk_offset, cur_chunk_size);
     if (!ReadFromDataSection(offset, size, &result[result_offset])) {
@@ -88,6 +91,7 @@ absl::optional<std::string> SpilledObject::GetChunk(uint64_t chunk_index) const 
   }
 
   if (cur_chunk_offset + cur_chunk_size > data_size_) {
+    // read from metadata section.
     auto offset = std::max(cur_chunk_offset, data_size_) - data_size_;
     auto size = std::min(cur_chunk_offset + cur_chunk_size - data_size_, cur_chunk_size);
     if (!ReadFromMetadataSection(offset, size, &result[result_offset])) {
@@ -97,12 +101,12 @@ absl::optional<std::string> SpilledObject::GetChunk(uint64_t chunk_index) const 
   return absl::optional<std::string>(std::move(result));
 }
 
-SpilledObject::SpilledObject(std::string file_path, uint64_t total_size,
-                             uint64_t data_offset, const uint64_t data_size,
-                             const uint64_t metadata_offset, const uint64_t metadata_size,
-                             const rpc::Address owner_address, const uint64_t chunk_size)
+SpilledObject::SpilledObject(std::string file_path, uint64_t object_size,
+                             uint64_t data_offset, uint64_t data_size,
+                             uint64_t metadata_offset, uint64_t metadata_size,
+                             rpc::Address owner_address, uint64_t chunk_size)
     : file_path_(std::move(file_path)),
-      total_size_(total_size),
+      object_size_(object_size),
       data_offset_(data_offset),
       data_size_(data_size),
       metadata_offset_(metadata_offset),
@@ -113,7 +117,7 @@ SpilledObject::SpilledObject(std::string file_path, uint64_t total_size,
 /* static */ bool SpilledObject::ParseObjectURL(const std::string &object_url,
                                                 std::string &file_path,
                                                 uint64_t &object_offset,
-                                                uint64_t &total_size) {
+                                                uint64_t &object_size) {
   static const std::regex object_url_pattern("^(.*)\\?offset=(\\d+)&size=(\\d+)$");
   std::smatch match_groups;
   if (!std::regex_match(object_url, match_groups, object_url_pattern) ||
@@ -123,7 +127,7 @@ SpilledObject::SpilledObject(std::string file_path, uint64_t total_size,
   file_path = match_groups[1].str();
   try {
     object_offset = std::stoi(match_groups[2].str());
-    total_size = std::stoi(match_groups[3].str());
+    object_size = std::stoi(match_groups[3].str());
   } catch (...) {
     return false;
   }
