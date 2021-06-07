@@ -1,10 +1,9 @@
+import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
-import asyncio
-import concurrent.futures
 from dataclasses import dataclass
 import grpc
 import os
@@ -14,7 +13,6 @@ from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
 from typing import Any
-from typing import Callable
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -52,87 +50,9 @@ GRPC_OPTIONS = [
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-
-class ClientBaseRef:
-    def __init__(self, id: bytes):
-        self.id = None
-        if not isinstance(id, bytes):
-            raise TypeError("ClientRefs must be created with bytes IDs")
-        self.id: bytes = id
-        ray.call_retain(id)
-
-    def binary(self):
-        return self.id
-
-    def hex(self):
-        return self.id.hex()
-
-    def __eq__(self, other):
-        return isinstance(other, ClientBaseRef) and self.id == other.id
-
-    def __repr__(self):
-        return "%s(%s)" % (
-            type(self).__name__,
-            self.id.hex(),
-        )
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __del__(self):
-        if ray.is_connected() and self.id is not None:
-            ray.call_release(self.id)
-
-
-class ClientObjectRef(ClientBaseRef):
-    def __await__(self):
-        return self.as_future().__await__()
-
-    def as_future(self) -> asyncio.Future:
-        return asyncio.wrap_future(self.future())
-
-    def future(self) -> concurrent.futures.Future:
-        fut = concurrent.futures.Future()
-
-        def set_value(data: Any) -> None:
-            """Schedules a callback to set the exception or result
-            in the Future."""
-
-            if isinstance(data, Exception):
-                fut.set_exception(data)
-            else:
-                fut.set_result(data)
-
-        self._on_completed(set_value)
-
-        # Prevent this object ref from being released.
-        fut.object_ref = self
-        return fut
-
-    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
-        """Register a callback that will be called after Object is ready.
-        If the ObjectRef is already ready, the callback will be called soon.
-        The callback should take the result as the only argument. The result
-        can be an exception object in case of task error.
-        """
-        from ray.util.client.client_pickler import loads_from_server
-
-        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
-            """Converts from a GetResponse proto to a python object."""
-            obj = resp.get
-            data = None
-            if not obj.valid:
-                data = loads_from_server(resp.get.error)
-            else:
-                data = loads_from_server(resp.get.data)
-
-            py_callback(data)
-
-        ray._register_callback(self, deserialize_obj)
-
-
-class ClientActorRef(ClientBaseRef):
-    pass
+# Aliases for compatibility.
+ClientObjectRef = raylet.ClientObjectRef
+ClientActorRef = raylet.ClientActorRef
 
 
 class ClientStub:
