@@ -32,7 +32,7 @@ flask
 gym
 lz4
 opencv-python-headless==4.3.0.36
-# pandas
+pandas>=1.0.5
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
@@ -58,7 +58,7 @@ lxml
 # Modin tests require a version with this fix: 
 # https://github.com/modin-project/modin/pull/2851
 # Can replace with modin>=0.10 once 0.10 is released.
-git+git://github.com/modin-project/modin.git@51658b49b54ce89f1277f8b73bdef4cf909e53fd#egg=modin
+git+git://github.com/modin-project/modin.git@51658b49b54ce89f1277f8b73bdef4cf909e53fd#egg=modin; python_version >= '3.7'
 moto
 mypy
 networkx
