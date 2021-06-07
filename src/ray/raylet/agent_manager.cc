@@ -102,8 +102,9 @@ void AgentManager::StartAgent() {
 void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
                                     CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO) << "No available agent connection. Retry to create runtime env "
-                  << serialized_runtime_env << " later.";
+    RAY_LOG(INFO)
+        << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv "
+        << serialized_runtime_env << " later.";
     delay_executor_([this, serialized_runtime_env,
                      callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
                     RayConfig::instance().agent_retry_interval_ms());
@@ -127,7 +128,6 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
           RAY_LOG(ERROR) << "Failed to create the runtime env: " << serialized_runtime_env
                          << ", status = " << status
                          << ", maybe there are some network problems, retry it later.";
-          runtime_env_agent_client_.reset();
           delay_executor_(
               [this, serialized_runtime_env, callback] {
                 CreateRuntimeEnv(serialized_runtime_env, callback);
@@ -140,8 +140,9 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
 void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
                                     DeleteRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO) << "No available agent connection. Retry to delete runtime env "
-                  << serialized_runtime_env << " later.";
+    RAY_LOG(INFO)
+        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv "
+        << serialized_runtime_env << " later.";
     delay_executor_([this, serialized_runtime_env,
                      callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
                     RayConfig::instance().agent_retry_interval_ms());
@@ -165,7 +166,6 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
           RAY_LOG(ERROR) << "Failed to delete the runtime env: " << serialized_runtime_env
                          << ", status = " << status
                          << ", maybe there are some network problems, retry it later.";
-          runtime_env_agent_client_.reset();
           delay_executor_(
               [this, serialized_runtime_env, callback] {
                 CreateRuntimeEnv(serialized_runtime_env, callback);

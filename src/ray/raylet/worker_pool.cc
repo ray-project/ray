@@ -876,8 +876,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       }
 
       // create runtime env.
-      if (!(task_spec.SerializedRuntimeEnv() == "{}" ||
-            task_spec.SerializedRuntimeEnv() == "")) {
+      if (task_spec.HasRuntimeEnv()) {
         create_runtime_env = true;
         state.tasks_to_pending_runtime_envs[task_spec.TaskId()] =
             task_spec.SerializedRuntimeEnv();
@@ -936,8 +935,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
 
-      if (!(task_spec.SerializedRuntimeEnv() == "{}" ||
-            task_spec.SerializedRuntimeEnv() == "")) {
+      if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         create_runtime_env = true;
         agent_manager_->CreateRuntimeEnv(
@@ -972,9 +970,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      !(task_spec.SerializedRuntimeEnv() == "{}" ||
-        task_spec.SerializedRuntimeEnv() == "")) {
+      task_spec.OverrideEnvironmentVariables().size() > 0 || task_spec.HasRuntimeEnv()) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
