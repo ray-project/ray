@@ -4,19 +4,12 @@ import json
 import os
 import socket
 import logging
-from typing import Any
-from typing import Dict
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_NAME,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE
-)
+from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_WORKER,
+                                 NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
+                                 STATUS_UP_TO_DATE)
 from ray.autoscaler._private.local.config import bootstrap_local
 from ray.autoscaler._private.local.config import get_lock_path
 from ray.autoscaler._private.local.config import get_state_path
@@ -267,7 +260,8 @@ class LocalNodeProvider(NodeProvider):
         return bootstrap_local(cluster_config)
 
 
-def record_local_head_state_if_needed(local_provider):
+def record_local_head_state_if_needed(
+        local_provider: LocalNodeProvider) -> None:
     """This function is called on the Ray head from StandardAutoscaler.reset
     to record the head node's own existence in the cluster state file.
     """
@@ -285,4 +279,3 @@ def record_local_head_state_if_needed(local_provider):
         local_provider.create_node(node_config={}, tags=head_tags, count=1)
 
         assert head_ip in local_provider.non_terminated_nodes({})
-
