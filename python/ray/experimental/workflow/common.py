@@ -1,4 +1,4 @@
-from typing import Tuple, List, Optional, Callable
+from typing import Tuple, List, Optional, Callable, Set
 import uuid
 
 import ray
@@ -65,6 +65,22 @@ class Workflow:
         self._output = output
         self._executed = True
         return output
+
+    def _visit_workflow_dag(self, visited_workflows: Set["Workflow"]):
+        visited_workflows.add(self)
+        for w in self._input_workflows:
+            if w not in visited_workflows:
+                w._visit_workflow_dag(visited_workflows)
+
+    def get_metadata(self):
+        f = self._original_function
+        return {
+            "id": self.id,
+            "name": f.__module__ + "." + f.__qualname__,
+            "input_placeholder": self._input_placeholder.hex(),
+            "input_object_refs": [r.hex() for r in self._input_object_refs],
+            "input_workflows": [w.id for w in self._input_workflows],
+        }
 
     def __reduce__(self):
         raise ValueError(

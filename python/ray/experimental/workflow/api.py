@@ -5,7 +5,7 @@ import uuid
 
 import ray
 from ray.experimental.workflow.workflow_manager import (
-    WorkflowStepFunction, Workflow, resolve_object_ref)
+    WorkflowStepFunction, Workflow, resolve_object_ref, _commit_workflow)
 from ray.experimental.workflow import workflow_context
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     try:
         workflow_context.init_workflow_step_context(workflow_id,
                                                     workflow_root_dir)
-        rref = entry_workflow.execute()
+        rref = _commit_workflow(entry_workflow)
         logger.info(f"Workflow job {workflow_id} started.")
         # TODO(suquark): although we do not return the resolved object to user,
         # the object was resolved temporarily to the driver script.

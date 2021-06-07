@@ -114,3 +114,39 @@ def workflow_args_resolving_context(
     finally:
         _resolve_workflow_outputs = _resolve_workflow_outputs_bak
         _resolve_objectrefs = _resolve_objectrefs_bak
+
+
+class _KeepInputs:
+    def __init__(self, resolve_function, index: int):
+        self._resolve_function = resolve_function
+        self._index = index
+
+    def __reduce__(self):
+        return self._resolve_function, (self._index, )
+
+
+@contextlib.contextmanager
+def workflow_args_keeping_context() -> None:
+    """
+    This context only read workflow arguments. Workflows and objectrefs inside
+    are untouched and can be serialized again properly.
+    """
+    global _resolve_workflow_outputs, _resolve_objectrefs
+    _resolve_workflow_outputs_bak = _resolve_workflow_outputs
+    _resolve_objectrefs_bak = _resolve_objectrefs
+
+    # we must capture the old functions to prevent self-referencing.
+    def _keep_workflow_outputs(index: int):
+        return _KeepInputs(_resolve_workflow_outputs_bak, index)
+
+    def _keep_objectrefs(index: int):
+        return _KeepInputs(_resolve_objectrefs_bak, index)
+
+    _resolve_workflow_outputs = _keep_workflow_outputs
+    _resolve_objectrefs = _keep_objectrefs
+
+    try:
+        yield
+    finally:
+        _resolve_workflow_outputs = _resolve_workflow_outputs_bak
+        _resolve_objectrefs = _resolve_objectrefs_bak

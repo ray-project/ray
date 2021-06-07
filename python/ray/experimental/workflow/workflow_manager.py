@@ -9,8 +9,7 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (
     RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
-
-StepArgType = Union[RRef, Any]
+from ray.experimental.workflow import storage
 
 
 def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
@@ -100,9 +99,8 @@ class WorkflowStepFunction:
             # free references to potentially save memory
             del resolved_object_refs
 
-            output = func(*args, **kwargs)
-            if isinstance(output, Workflow):
-                output = output.execute()
+            _output = func(*args, **kwargs)
+            output = _commit_workflow(_output)
             return output
 
         self.func = func
@@ -149,3 +147,12 @@ class WorkflowStepFunction:
         raise TypeError("Workflow steps cannot be called directly. Instead "
                         f"of running '{self.step.__name__}()', "
                         f"try '{self.step.__name__}.step()'.")
+
+
+def _commit_workflow(output: Union[Workflow, Any]):
+    if isinstance(output, Workflow):
+        storage.save_workflow_dag(output)
+        output = output.execute()
+    else:
+        storage.save_workflow_output(output)
+    return output
