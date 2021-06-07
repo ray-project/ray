@@ -573,7 +573,7 @@ sleep(600)
     proc.wait()
 
 
-@pytest.mark.skipif(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
     # start job_config=something
     # start job_config=something else
@@ -599,7 +599,7 @@ sleep(600)
     assert out.strip().split()[-1] == "OK"
 
 
-@pytest.mark.skipif(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_util_without_job_config(shutdown_only):
     from ray.cluster_utils import Cluster
 
@@ -635,7 +635,7 @@ print(ray.get([run.remote()])[0])
         os.chdir(old_dir)
 
 
-@pytest.mark.skipif(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_init(shutdown_only):
     with tempfile.TemporaryDirectory() as tmp_dir:
         old_dir = os.getcwd()
