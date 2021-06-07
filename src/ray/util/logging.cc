@@ -148,7 +148,7 @@ class SpdLogMessage final {
                 str_.str());
     logger->flush();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      std::exit(1);
+      std::_Exit(EXIT_FAILURE);
     }
   }
 
@@ -177,7 +177,7 @@ class CerrLog {
     }
     if (severity_ == RayLogLevel::FATAL) {
       PrintBackTrace();
-      std::exit(1);
+      std::_Exit(EXIT_FAILURE);
     }
   }
 
