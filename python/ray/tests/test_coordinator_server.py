@@ -8,11 +8,14 @@ from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
     _get_node_provider
 from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import \
+    record_local_head_state_if_needed
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, TAG_RAY_CLUSTER_NAME,
                                  TAG_RAY_NODE_NAME, NODE_KIND_WORKER,
-                                 NODE_KIND_HEAD)
+                                 NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+                                 TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
 import pytest
 
 
@@ -107,6 +110,26 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             provider_config, cluster_config["cluster_name"], use_cache=False)
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
+
+        # Test record_local_head_state_if_needed
+        head_ip = cluster_config["provider"]["head_ip"]
+        cluster_name = cluster_config["cluster_name"]
+        node_provider = _get_node_provider(
+            provider_config, cluster_config["cluster_name"], use_cache=False)
+        assert head_ip not in node_provider.non_terminated_nodes({})
+        record_local_head_state_if_needed(node_provider)
+        assert head_ip in node_provider.non_terminated_nodes({})
+        expected_head_tags = {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: local_config.LOCAL_CLUSTER_NODE_TYPE,
+            TAG_RAY_NODE_NAME: "ray-{}-head".format(cluster_name),
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }
+        assert node_provider.node_tags(head_ip) == expected_head_tags
+        # Repeat and verify nothing has changed.
+        record_local_head_state_if_needed(node_provider)
+        assert head_ip in node_provider.non_terminated_nodes({})
+        assert node_provider.node_tags(head_ip) == expected_head_tags
 
     def testOnPremCoordinatorStateInit(self):
         """If OnPremCoordinatorState __init__ generates correct state file.
