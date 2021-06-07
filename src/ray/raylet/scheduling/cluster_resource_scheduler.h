@@ -55,7 +55,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
-  int64_t GetIndexFromResourceName(const std::string &resource_name) const;
 
   /// Add a new node or overwrite the resources of an existing node.
   ///

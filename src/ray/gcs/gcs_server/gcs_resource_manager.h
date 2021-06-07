@@ -164,7 +164,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBatchData &buffer)
       LOCKS_EXCLUDED(resource_buffer_mutex_);
 
- protected:
+ private:
   /// Delete the scheduling resources of the specified node.
   ///
   /// \param node_id Id of a node.
