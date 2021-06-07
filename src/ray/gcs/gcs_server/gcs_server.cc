@@ -190,15 +190,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
-    gcs_resource_manager_ = std::make_shared<GcsResourceManagerEx>(
-        main_service_, gcs_pub_sub_, gcs_table_storage_,
-        !config_.grpc_based_resource_broadcast);
-  } else {
-    gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-        main_service_, gcs_pub_sub_, gcs_table_storage_,
-        !config_.grpc_based_resource_broadcast);
-  }
+  gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
+      main_service_, gcs_pub_sub_, gcs_table_storage_,
+      !config_.grpc_based_resource_broadcast);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.

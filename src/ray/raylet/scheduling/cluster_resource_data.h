@@ -85,8 +85,6 @@ class TaskRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
-
-  TaskRequest &operator+=(const TaskRequest &other);
 };
 
 // Data structure specifying the capacity of each instance of each resource
@@ -239,7 +237,3 @@ NodeResources ResourceMapToNodeResources(
 TaskRequest ResourceMapToTaskRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map);
-
-/// Convert a TaskRequest to a map of resources.
-std::unordered_map<std::string, double> TaskRequestToResourceMap(
-    const StringIdMap &string_to_int_map, const TaskRequest &task_request);

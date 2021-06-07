@@ -1097,7 +1097,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
-  TaskRequest total_normal_task_request;
+  std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
+  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1113,22 +1114,21 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_label = absl::AsciiStrToUpper(task_id.JobId().Hex());
-      auto resource_idx =
-          cluster_resource_scheduler_->GetIndexFromResourceName(resource_label);
       auto task_request = allocated_instances->ToTaskRequest();
-      auto iter = std::find_if(
-          task_request.custom_resources.begin(), task_request.custom_resources.end(),
-          [resource_idx](const auto &resource) { return resource.id == resource_idx; });
-      if (iter != task_request.custom_resources.end()) {
-        task_request.custom_resources.erase(iter);
+      for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
+        if (task_request.predefined_resources[i].demand > 0) {
+          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
+              task_request.predefined_resources[i].demand;
+        }
       }
-      total_normal_task_request += task_request;
+      for (auto &entry : task_request.custom_resources) {
+        if (entry.demand > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.id)] += entry.demand;
+        }
+      }
     }
   }
-
-  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
-  return TaskRequestToResourceMap(string_id_map, total_normal_task_request);
+  return total_normal_task_resources;
 }
 
 }  // namespace raylet
