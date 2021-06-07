@@ -42,15 +42,15 @@ class SpilledObject {
                 const uint64_t chunk_size);
 
   static bool ParseObjectURL(const std::string &object_url, std::string &file_path,
-                             uint64_t &object_offset, uint64_t total_size);
+                             uint64_t &object_offset, uint64_t &total_size);
 
   static bool ParseObjectHeader(const std::string &file_path, uint64_t object_offset,
                                 uint64_t &data_offset, uint64_t &data_size,
                                 uint64_t &metadata_offset, uint64_t &metadata_size,
                                 rpc::Address &owner_address);
 
-  static uint64_t ToUINT64(const std::string &s);
   static bool ReadUINT64(std::ifstream &is, uint64_t &output);
+  static uint64_t ToUINT64(const std::string &s);
 
   bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const;
   bool ReadFromMetadataSection(uint64_t offset, uint64_t size, char *output) const;

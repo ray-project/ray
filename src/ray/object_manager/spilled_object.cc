@@ -111,7 +111,7 @@ SpilledObject::SpilledObject(std::string file_path, uint64_t total_size,
 /* static */ bool SpilledObject::ParseObjectURL(const std::string &object_url,
                                                 std::string &file_path,
                                                 uint64_t &object_offset,
-                                                uint64_t total_size) {
+                                                uint64_t &total_size) {
   static const std::regex object_url_pattern("(.*)\\?offset=(\\d+)&size=(\\d+)");
   std::smatch match_groups;
   if (!std::regex_match(object_url, match_groups, object_url_pattern) ||
