@@ -1898,6 +1898,7 @@ filegroup(
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
+        "//src/ray/protobuf:event_py_proto",
     ],
 )
 
