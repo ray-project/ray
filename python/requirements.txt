@@ -55,8 +55,8 @@ gym
 gym-minigrid
 kubernetes
 lxml
-# Newer version of modin need pandas 1.2.4 which isn't available for python 3.6
-modin; python_version < '3.7' # Use latest compatible version for python 3.6 
+# Newer versions of modin need pandas 1.2.4 which isn't available for python 3.6
+modin==0.8.0; python_version < '3.7' # Use last compatible version for python 3.6 
 # Modin tests require a version with this fix: 
 # https://github.com/modin-project/modin/pull/2851
 # Can replace with modin>=0.10 once 0.10 is released.
