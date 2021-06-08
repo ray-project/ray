@@ -268,7 +268,7 @@ void AssertGetChunkWorks(std::string metadata, std::string data,
     auto optional_object = SpilledObject::CreateSpilledObject(object_url, chunk_size);
     ASSERT_TRUE(optional_object.has_value());
     std::string actual_output_by_chunks;
-    for (auto i = 0; i < optional_object->GetNumChunks(); i++) {
+    for (uint64_t i = 0; i < optional_object->GetNumChunks(); i++) {
       auto chunk = optional_object->GetChunk(i);
       ASSERT_TRUE(chunk.has_value());
       ASSERT_GE(chunk_size, chunk->size());
