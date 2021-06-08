@@ -71,6 +71,8 @@ def workflow_args_serialization_context(
         return i
 
     # override the default ObjectRef serializer
+    # TODO(suquark): We are using Ray internal APIs to access serializers.
+    # This is only a workaround. We need alternatives later.
     ray_objectref_reducer_backup = ray.cloudpickle.CloudPickler.dispatch[
         ray.ObjectRef]
     register_serializer(
