@@ -25,32 +25,41 @@ namespace ray {
 
 namespace gcs {
 
-/// Run redis command and store the result in `reply`. Return true if the number of
-/// attemps didn't reach `redis_db_connect_retries`.
-static bool RunRedisCommandWithRetries(redisReply *reply， string command) {
+/// Run redis command using specified context and store the result in `reply`. Return true
+/// if the number of attemps didn't reach `redis_db_connect_retries`.
+static bool RunRedisCommandWithRetries(
+    redisContext *context, const char *command, redisReply **reply,
+    const std::function<bool(const redisReply *)> &condition) {
   int num_attempts = 0;
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
-    // Try to read the number of Redis shards from the primary shard. If the
-    // entry is present, exit.
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, command));
-    if (reply != nullptr && reply->type != REDIS_REPLY_NIL) {
+    // Try to execute the command.
+    *reply = reinterpret_cast<redisReply *>(redisCommand(context, command));
+    RAY_LOG(INFO) << "wangtao " << (*reply)->type;
+    if (condition(*reply)) {
       break;
     }
 
     // Sleep for a little, and try again if the entry isn't there yet.
-    freeReplyObject(reply);
+    freeReplyObject(*reply);
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
+  RAY_LOG(INFO) << "wangtao 48 " << (*reply)->type;
   return num_attempts < RayConfig::instance().redis_db_connect_retries();
 }
 
 static int DoGetNextJobID(redisContext *context) {
   redisReply *reply = nullptr;
-  bool exceed_max_retries = RunRedisCommandWithRetries(reply, "INCR JobCounter");
+  bool under_retry_limit = RunRedisCommandWithRetries(
+      context, "INCR JobCounter", &reply, [](const redisReply *reply) {
+        return reply != nullptr && reply->type != REDIS_REPLY_NIL;
+      });
+  if (reply == nullptr) {
+    RAY_LOG(INFO) << "wangtao 58 ";
+  }
   RAY_CHECK(reply);
-  RAY_CHECK(exceed_max_retries) << "No entry found for JobCounter";
+  RAY_CHECK(under_retry_limit) << "No entry found for JobCounter";
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER)
       << "Expected integer, found Redis type " << reply->type << " for JobCounter";
   freeReplyObject(reply);
@@ -60,24 +69,12 @@ static int DoGetNextJobID(redisContext *context) {
 static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
                            std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
-  int num_attempts = 0;
   redisReply *reply = nullptr;
-  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
-    // Try to read the number of Redis shards from the primary shard. If the
-    // entry is present, exit.
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET NumRedisShards"));
-    if (reply->type != REDIS_REPLY_NIL) {
-      break;
-    }
-
-    // Sleep for a little, and try again if the entry isn't there yet.
-    freeReplyObject(reply);
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    num_attempts++;
-  }
-  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
-      << "No entry found for NumRedisShards";
+  bool under_retry_limit = RunRedisCommandWithRetries(
+      context, "GET NumRedisShards", &reply, [](const redisReply *reply) {
+        return reply != nullptr && reply->type != REDIS_REPLY_NIL;
+      });
+  RAY_CHECK(under_retry_limit) << "No entry found for NumRedisShards";
   RAY_CHECK(reply->type == REDIS_REPLY_STRING)
       << "Expected string, found Redis type " << reply->type << " for NumRedisShards";
   int num_redis_shards = atoi(reply->str);
@@ -86,26 +83,13 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
   freeReplyObject(reply);
 
   // Get the addresses of all of the Redis shards.
-  num_attempts = 0;
-  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
-    // Try to read the Redis shard locations from the primary shard. If we find
-    // that all of them are present, exit.
-    reply =
-        reinterpret_cast<redisReply *>(redisCommand(context, "LRANGE RedisShards 0 -1"));
-    if (static_cast<int>(reply->elements) == num_redis_shards) {
-      break;
-    }
-
-    // Sleep for a little, and try again if not all Redis shard addresses have
-    // been added yet.
-    freeReplyObject(reply);
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    num_attempts++;
-  }
-  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
-      << "Expected " << num_redis_shards << " Redis shard addresses, found "
-      << reply->elements;
+  under_retry_limit = RunRedisCommandWithRetries(
+      context, "LRANGE RedisShards 0 -1", &reply,
+      [&num_redis_shards](const redisReply *reply) {
+        return static_cast<int>(reply->elements) == num_redis_shards;
+      });
+  RAY_CHECK(under_retry_limit) << "Expected " << num_redis_shards
+                               << " Redis shard addresses, found " << reply->elements;
 
   // Parse the Redis shard addresses.
   for (size_t i = 0; i < reply->elements; ++i) {
