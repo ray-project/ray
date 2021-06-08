@@ -16,7 +16,7 @@ steps:
 - label: ":mac: :apple: Core+Libraries"
   <<: *common
   commands:
-    - cleanup() { ./ci/travis/upload_build_info.sh }; trap cleanup EXIT
+    - ./ci/travis/upload_build_info.sh
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
@@ -28,7 +28,7 @@ steps:
 - label: ":mac: :apple: Medium A-J"
   <<: *common
   commands:
-    - cleanup() { ./ci/travis/upload_build_info.sh }; trap cleanup EXIT
+    - ./ci/travis/upload_build_info.sh
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
