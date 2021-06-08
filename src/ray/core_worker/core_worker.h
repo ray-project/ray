@@ -909,6 +909,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::PubsubLongPollingReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  // Implements gRPC server handler.
+  void HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+                                rpc::PubsubCommandBatchReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   /// Implements gRPC server handler.
   void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                rpc::WaitForRefRemovedReply *reply,
@@ -1133,12 +1138,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   std::vector<ObjectID> *pinned_ids);
 
   // SANG-TODO Docstring
-  void ProcessSubscribeForObjectEviction(const rpc::WorkerObjectEvictionSubMessage &message);
+  void ProcessSubscribeForObjectEviction(
+      const rpc::WorkerObjectEvictionSubMessage &message);
 
   // void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
-  using Commands =
-      ::google::protobuf::RepeatedPtrField<rpc::Command>;
+  using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// SANG-TODO Docstring.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);

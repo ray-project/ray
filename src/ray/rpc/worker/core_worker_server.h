@@ -34,6 +34,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, SubscribeForObjectEviction)     \
   RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PubsubCommandBatch)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, AddObjectLocationOwner)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoveObjectLocationOwner)      \
@@ -58,6 +59,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SubscribeForObjectEviction)     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocationOwner)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocationOwner)      \

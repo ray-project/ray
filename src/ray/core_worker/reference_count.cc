@@ -797,8 +797,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   // Send the borrower a message about this object. The borrower responds once
   // it is no longer using the object ID.
   conn->WaitForRefRemoved(
-      request, [this, object_id, addr](const Status &status,
-                                       const rpc::WaitForRefRemovedReply &reply) {
+      request, [this, request, object_id, addr](
+                   const Status &status, const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
                        << addr.port << " of object " << object_id;
         // If the message is published, this callback will be invoked.
@@ -834,6 +834,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
         absl::MutexLock lock(&mutex_);
         auto sub_message = std::make_unique<rpc::SubMessage>();
+        sub_message->mutable_worker_ref_removed_message();
         object_status_subscriber_->Subscribe(
             std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
             addr.ToProto(), object_id.Binary(), message_published_callback,

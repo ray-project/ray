@@ -147,6 +147,11 @@ class CoreWorkerClientInterface {
                                  const ClientCallback<PubsubLongPollingReply> &callback) {
   }
 
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const PubsubCommandBatchRequest &request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) {}
+
   virtual void AddObjectLocationOwner(
       const AddObjectLocationOwnerRequest &request,
       const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
@@ -242,6 +247,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubCommandBatch, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
                          override)

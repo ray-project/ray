@@ -2420,17 +2420,20 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
 }
 
-void CoreWorker::ProcessSubscribeForObjectEviction(const rpc::WorkerObjectEvictionSubMessage &message) {
+void CoreWorker::ProcessSubscribeForObjectEviction(
+    const rpc::WorkerObjectEvictionSubMessage &message) {
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(INFO) << "The SubscribeForObjectEviction message is for " << intended_worker_id << ", but the current worker id is " << worker_context_.GetWorkerID() << ". This will be no-op.";
+    RAY_LOG(INFO) << "The SubscribeForObjectEviction message is for "
+                  << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ". This will be no-op.";
     return;
   }
 
   const auto subscriber_node_id =
       NodeID::FromBinary(message.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
+  auto unpin_object = [this](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
 
     rpc::PubMessage pub_message;
@@ -2441,8 +2444,6 @@ void CoreWorker::ProcessSubscribeForObjectEviction(const rpc::WorkerObjectEvicti
 
     object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                       pub_message, object_id.Binary());
-    object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());
@@ -2454,11 +2455,10 @@ void CoreWorker::ProcessSubscribeForObjectEviction(const rpc::WorkerObjectEvicti
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+  if (!reference_counter_->SetDeleteCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
-    // subscription.
-    object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
+    // subscription & publish the message so that the subscriber knows it.
+    unpin_object(object_id);
     std::ostringstream stream;
     stream << "Reference for object " << object_id << " has already been freed.";
     RAY_LOG(DEBUG) << stream.str();
@@ -2471,6 +2471,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     rpc::SendReplyCallback send_reply_callback) {
   // TODO(swang): Drop requests from raylets that executed an older version of
   // the task.
+  RAY_CHECK(false);
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -2517,21 +2518,28 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   }
 }
 
-void CoreWorker::ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id) {
+void CoreWorker::ProcessPubsubCommands(const Commands &commands,
+                                       const NodeID &subscriber_id) {
   for (const auto &command : commands) {
     if (command.has_unsubscribe_message()) {
-      object_status_publisher_->UnregisterSubscription(command.channel_type(), subscriber_id, command.key_id());
+      object_status_publisher_->UnregisterSubscription(command.channel_type(),
+                                                       subscriber_id, command.key_id());
       break;
     }
 
-    RAY_CHECK(command.has_subscribe_message()) << "Invalid command has received. If you see this message, please report to Ray Github.";
+    RAY_CHECK(command.has_subscribe_message())
+        << "Invalid command has received. If you see this message, please report to Ray "
+           "Github.";
 
     if (command.subscribe_message().has_worker_object_eviction_message()) {
-      ProcessSubscribeForObjectEviction(command.subscribe_message().worker_object_eviction_message());
+      ProcessSubscribeForObjectEviction(
+          command.subscribe_message().worker_object_eviction_message());
     } else if (command.subscribe_message().has_worker_ref_removed_message()) {
       // HandleWaitForRefRemoved()
     } else {
-      RAY_LOG(FATAL) << "Invalid command type " << command.channel_type() << " has received. If you see this message, please report to Ray Github.";
+      RAY_CHECK(false)
+          << "Invalid command type " << command.channel_type()
+          << " has received. If you see this message, please report to Ray Github.";
     }
   }
 }
@@ -2540,10 +2548,17 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  ProcessPubsubCommands(request.commands(), subscriber_id);
-  RAY_LOG(DEBUG) << "Got long polling request from a node " << subscriber_id;
+  RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
   object_status_publisher_->ConnectToSubscriber(subscriber_id, reply,
                                                 std::move(send_reply_callback));
+}
+
+void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+                                          rpc::PubsubCommandBatchReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  ProcessPubsubCommands(request.commands(), subscriber_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
