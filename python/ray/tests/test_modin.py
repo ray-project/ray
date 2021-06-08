@@ -22,8 +22,6 @@ import pandas
 import numpy as np
 from numpy.testing import assert_array_equal
 import ray
-from ray.tests.modin_test_utils import df_equals, test_data_values, \
-    test_data_keys
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 modin_compatible_version = sys.version_info >= (3, 7, 0)
@@ -34,6 +32,8 @@ pytestmark = pytest.mark.skipif(
     reason="Newer versions of Modin require Python 3.7+")
 
 if modin_compatible_version:
+    from ray.tests.modin_test_utils import df_equals, test_data_values, \
+        test_data_keys
     import modin.pandas as pd
 
 
