@@ -79,15 +79,11 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   return job_table_data;
 }
 
-int GlobalStateAccessor::GetNextJobID() {
-  int id;
-  std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID([&id, &promise](const int job_id) {
-    id = job_id;
-    promise.set_value(true);
-  }));
-  promise.get_future().get();
-  return id;
+JobID GlobalStateAccessor::GetNextJobID() {
+  std::promise<JobID> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+      [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+  return promise.get_future().get();
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {

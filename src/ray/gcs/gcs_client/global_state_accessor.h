@@ -54,7 +54,7 @@ class GlobalStateAccessor {
   /// Get next job id from GCS Service.
   ///
   /// \return Next job id.
-  int GetNextJobID();
+  JobID GetNextJobID();
 
   /// Get all node information from GCS.
   ///

@@ -143,8 +143,7 @@ public class GcsClient {
   }
 
   public JobId nextJobId() {
-    int jobCounter = globalStateAccessor.getNextJobID();
-    return JobId.fromInt(jobCounter);
+    return JobId.fromByteBuffer(globalStateAccessor.getNextJobID());
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */

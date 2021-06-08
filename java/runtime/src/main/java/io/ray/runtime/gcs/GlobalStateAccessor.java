@@ -54,7 +54,7 @@ public class GlobalStateAccessor {
   }
 
   /** Returns next job id. */
-  public int getNextJobID() {
+  public ByteBuffer getNextJobID() {
     // Get next job id from GCS.
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
@@ -142,7 +142,7 @@ public class GlobalStateAccessor {
 
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
-  private native int nativeGetNextJobID(long nativePtr);
+  private native ByteBuffer nativeGetNextJobID(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 

@@ -187,7 +187,7 @@ class JobInfoAccessor {
   ///
   /// \param done Callback that will be called when request successfully.
   /// \return Status
-  virtual Status AsyncGetNextJobID(const ItemCallback<int> &callback) = 0;
+  virtual Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) = 0;
 
  protected:
   JobInfoAccessor() = default;

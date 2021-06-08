@@ -49,7 +49,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  Status AsyncGetNextJobID(const ItemCallback<int> &callback) override;
+  Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) override;
 
  private:
   /// Save the fetch data operation in this function, so we can call it again when GCS
