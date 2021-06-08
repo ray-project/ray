@@ -250,3 +250,12 @@ py_test_module_list(
   tags = ["exclusive", "client_tests"],
   deps = ["//:ray_lib"],
 )
+
+py_test_module_list(
+  files = [
+    "test_actor_in_container.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["worker-nest-container"],
+)
