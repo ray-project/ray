@@ -78,7 +78,7 @@ TEST(SpilledObjectTest, ReadUINT64) {
       '\x00', '\x00',  // little endian of 1
       '\xff', '\xff', '\xff', '\xff', '\xff', '\xff',
       '\xff', '\xff',                                 // little endian of 2^64 - 1
-      '\xff', '\xff', '\xff', '\xff', '\xff', '\xff'  // ill format
+      '\xff', '\xff', '\xff', '\xff', '\xff', '\xff'  // malformed
   });
   uint64_t output{100};
   ASSERT_TRUE(SpilledObject::ReadUINT64(s1, output));
@@ -238,9 +238,10 @@ std::string CreateSpilledObjectOnTmp(uint64_t object_offset, std::string data,
 TEST(SpilledObjectTest, CreateSpilledObject) {
   auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
                                              ray::rpc::Address());
+  // 0 chunk_size.
   ASSERT_FALSE(
       SpilledObject::CreateSpilledObject(object_url, 0 /* chunk_size */).has_value());
-  ASSERT_FALSE(SpilledObject::CreateSpilledObject("ill_formatted_url", 1 /* chunk_size */)
+  ASSERT_FALSE(SpilledObject::CreateSpilledObject("malformatted_url", 1 /* chunk_size */)
                    .has_value());
   auto optional_object =
       SpilledObject::CreateSpilledObject(object_url, 2 /* chunk_size */);
@@ -248,6 +249,7 @@ TEST(SpilledObjectTest, CreateSpilledObject) {
 
   auto object_url1 = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
                                               ray::rpc::Address(), true /* skip_write */);
+  // file corrupted.
   ASSERT_FALSE(
       SpilledObject::CreateSpilledObject(object_url1, 2 /* chunk_size */).has_value());
 }
@@ -259,6 +261,9 @@ void AssertGetChunkWorks(std::string metadata, std::string data,
   chunk_sizes.push_back(expected_output.size());
   auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, data, metadata,
                                              ray::rpc::Address());
+
+  // check that we can reconstruct the output by concatinating chunks with different
+  // chunk_size, and the size of chunk is expected.
   for (auto chunk_size : chunk_sizes) {
     auto optional_object = SpilledObject::CreateSpilledObject(object_url, chunk_size);
     ASSERT_TRUE(optional_object.has_value());
