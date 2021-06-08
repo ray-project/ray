@@ -92,7 +92,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   void AddSpilledUrl(
       const rpc::AddSpilledUrlRequest &request,
       const rpc::ClientCallback<rpc::AddSpilledUrlReply> &callback) override {
-    object_urls.emplace(ObjectID::FromBinary(request.object_id()), request.spilled_url());
+    for (const auto &url : request.spilled_urls()) {
+      object_urls.emplace(ObjectID::FromBinary(url.object_id()), url.spilled_url());
+    }
     spilled_url_callbacks.push_back(callback);
   }
 
@@ -434,7 +436,9 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   }
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -498,7 +502,9 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -556,7 +562,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -611,7 +619,9 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < urls.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -702,7 +712,9 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < urls.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -1000,7 +1012,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -1058,7 +1072,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -1087,11 +1103,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
-  // Make sure the object delete queue is blocked when there are spilling objects.
-  rpc::Address owner_address;
-  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
   std::vector<ObjectID> object_ids;
-  std::vector<std::unique_ptr<RayObject>> objects;
 
   // Objects are pinned.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
@@ -1100,10 +1112,14 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
     auto object =
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    std::vector<std::unique_ptr<RayObject>> objects;
     objects.push_back(std::move(object));
+    // Generate a random owner for each object (break batching for this test).
+    rpc::Address owner_address;
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    manager.PinObjects({object_id}, std::move(objects), owner_address);
+    manager.WaitForObjectFree(owner_address, {object_id});
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
 
   // Objects are spilled.
   std::vector<ObjectID> object_ids_to_spill;
@@ -1122,7 +1138,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < 1; i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -1194,7 +1212,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      if (i == 0) {
+        ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+      }
     } else {
       ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
     }
@@ -1266,7 +1286,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
 
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
