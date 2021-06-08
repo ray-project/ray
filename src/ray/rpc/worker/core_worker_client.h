@@ -137,11 +137,6 @@ class CoreWorkerClientInterface {
       const WaitForActorOutOfScopeRequest &request,
       const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
-  /// Notify the owner of an object that the object has been pinned.
-  virtual void SubscribeForObjectEviction(
-      const SubscribeForObjectEvictionRequest &request,
-      const ClientCallback<SubscribeForObjectEvictionReply> &callback) {}
-
   /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
                                  const ClientCallback<PubsubLongPollingReply> &callback) {
@@ -241,9 +236,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
-                         override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, SubscribeForObjectEviction, grpc_client_,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)

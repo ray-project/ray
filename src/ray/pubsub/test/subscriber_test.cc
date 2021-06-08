@@ -24,8 +24,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {
-    requests_.push(request);
     long_polling_callbacks.push_back(callback);
+  }
+
+  void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) override {
+    requests_.push(request);
   }
 
   bool ReplyLongPolling(rpc::ChannelType channel_type, std::vector<ObjectID> &object_ids,
@@ -48,17 +53,17 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   int GetNumberOfInFlightLongPollingRequests() { return long_polling_callbacks.size(); }
 
-  std::shared_ptr<rpc::PubsubLongPollingRequest> PopRequest() {
+  std::shared_ptr<rpc::PubsubCommandBatchRequest> PopRequest() {
     if (requests_.empty()) {
       return nullptr;
     }
-    auto r = std::make_shared<rpc::PubsubLongPollingRequest>(requests_.front());
+    auto r = std::make_shared<rpc::PubsubCommandBatchRequest>(requests_.front());
     requests_.pop();
     return r;
   }
 
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
-  std::queue<rpc::PubsubLongPollingRequest> requests_;
+  std::queue<rpc::PubsubCommandBatchRequest> requests_;
 };
 
 namespace pubsub {
