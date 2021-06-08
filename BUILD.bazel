@@ -899,7 +899,6 @@ cc_test(
     ],
 )
 
-
 cc_test(
     name = "create_request_queue_test",
     srcs = [
