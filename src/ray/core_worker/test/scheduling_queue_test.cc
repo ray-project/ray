@@ -39,7 +39,8 @@ class MockWaiter : public DependencyWaiter {
 TEST(SchedulingQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
@@ -59,7 +60,8 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj3 = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
@@ -84,7 +86,8 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
@@ -101,7 +104,8 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 TEST(SchedulingQueueTest, TestOutOfOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
@@ -118,7 +122,8 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
@@ -140,7 +145,8 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  ActorSchedulingQueue queue(io_service, waiter);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
+  ActorSchedulingQueue queue(io_service, waiter, context);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
