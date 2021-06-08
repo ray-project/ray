@@ -41,7 +41,6 @@ py_test_module_list(
     "test_global_state.py",
     "test_healthcheck.py",
     "test_mldataset.py",
-    "test_modin.py"
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -66,6 +65,7 @@ py_test_module_list(
     "test_memory_scheduling.py",
     "test_plasma_unlimited.py",
     "test_metrics.py",
+    "test_modin.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multi_node_3.py",
