@@ -19,6 +19,33 @@ def _resolve_objectrefs(index: int) -> ray.ObjectRef:
 @contextlib.contextmanager
 def workflow_args_serialization_context(
         workflows: List[Workflow], object_refs: List[ray.ObjectRef]) -> None:
+    """
+    This serialization context reduces workflow input arguments to three
+    parts:
+
+    1. A workflow input placeholder. It is an object without 'Workflow' and
+       'ObjectRef' object. They are replaced with integer indices. During
+       deserialization, we can refill the placeholder with a list of
+       'Workflow' and a list of 'ObjectRef'. This provides us great
+       flexibility, for example, during recovery we can plug an alternative
+       list of 'Workflow' and 'ObjectRef', since we lose the original ones.
+    2. A list of 'Workflow'. There is no duplication in it.
+    3. A list of 'ObjectRef'. There is no duplication in it.
+
+    We do not allow duplication because in the arguments duplicated workflows
+    and object refs are shared by reference. So when deserialized, we also
+    want them to be shared by reference. See
+    "tests/test_object_deref.py:deref_shared" as an example.
+
+    The deduplication works like this:
+        Inputs: [A B A B C C A]
+        Output List: [A B C]
+        Index in placeholder: [0 1 0 1 2 2 0]
+
+    Args:
+        workflows: Workflow list output.
+        object_refs: ObjectRef list output.
+    """
     workflow_deduplicator: Dict[Workflow, int] = {}
     objectref_deduplicator: Dict[ray.ObjectRef, int] = {}
 
