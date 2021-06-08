@@ -79,7 +79,7 @@ class SubscriberTest : public ::testing::Test {
     object_failed_to_subscribe_.clear();
     subscriber_ =
         std::make_shared<Subscriber>(self_node_id_, self_node_address_, self_node_port_,
-                                     /*command_max_batch_size*/ 3, client_pool);
+                                     /*max_command_batch_size*/ 3, client_pool);
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -337,7 +337,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchSingleEntry) {
 
 TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
   ///
-  /// Verify the command batch works as expected when there's a single publisher.
+  /// Verify the command batch works when there are multiple entries in the FIFO order.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
   auto failure_callback = []() {};
@@ -392,7 +392,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
 
 TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
   ///
-  /// Verify the command batch works as expected when there's a single publisher.
+  /// Verify when there are multi batches, they are sent properly.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
   auto failure_callback = []() {};

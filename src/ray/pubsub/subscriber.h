@@ -248,12 +248,12 @@ class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
-                      const int64_t command_max_batch_size,
+                      const int64_t max_command_batch_size,
                       rpc::CoreWorkerClientPool &publisher_client_pool)
       : subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
-        command_max_batch_size_(command_max_batch_size),
+        max_command_batch_size_(max_command_batch_size),
         publisher_client_pool_(publisher_client_pool),
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
@@ -350,12 +350,12 @@ class Subscriber : public SubscriberInterface {
   const int subscriber_port_;
 
   /// The command batch size for the subscriber.
-  const int64_t command_max_batch_size_;
+  const int64_t max_command_batch_size_;
 
   /// Commands queue. Commands are reported in FIFO order to the publisher. This
   /// guarantees the ordering of commands because they are delivered only by a single RPC
   /// (long polling request).
-  std::queue<std::shared_ptr<rpc::Command>> commands_;
+  std::queue<std::unique_ptr<rpc::Command>> commands_;
 
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;

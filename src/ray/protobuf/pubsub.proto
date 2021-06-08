@@ -18,9 +18,9 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-/// Each of channel is prefixed by the name of components.
+/// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,
-/// there is a prefix worker.
+/// they have the prefix WORKER_.
 enum ChannelType {
   /// A channel for object eviction.
   WORKER_OBJECT_EVICTION = 0;
