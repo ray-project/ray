@@ -125,9 +125,10 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
           }
 
         } else {
-          RAY_LOG(ERROR) << "Failed to create the runtime env: " << serialized_runtime_env
-                         << ", status = " << status
-                         << ", maybe there are some network problems, retry it later.";
+          RAY_LOG(ERROR)
+              << "Failed to create the runtime env: " << serialized_runtime_env
+              << ", status = " << status
+              << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
               [this, serialized_runtime_env, callback] {
                 CreateRuntimeEnv(serialized_runtime_env, callback);
@@ -163,9 +164,10 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
           }
 
         } else {
-          RAY_LOG(ERROR) << "Failed to delete the runtime env: " << serialized_runtime_env
-                         << ", status = " << status
-                         << ", maybe there are some network problems, retry it later.";
+          RAY_LOG(ERROR)
+              << "Failed to delete the runtime env: " << serialized_runtime_env
+              << ", status = " << status
+              << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
               [this, serialized_runtime_env, callback] {
                 DeleteRuntimeEnv(serialized_runtime_env, callback);
