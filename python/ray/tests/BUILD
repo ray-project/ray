@@ -258,4 +258,6 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive", "worker-nest-container"],
+  # Now we run this test in a container which has installed ray
+  deps = [],
 )
