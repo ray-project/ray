@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:1.3.0"
+base_image: "anyscale/ray:1.4-rc2"
 env_vars: { }
 debian_packages:
   - curl

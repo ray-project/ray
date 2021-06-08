@@ -14,10 +14,7 @@ args = parser.parse_args()
 
 
 def main():
-    if args.smoke_test:
-        ray.init()
-    else:
-        ray.init(address="auto")  # assumes ray is started with ray up
+    ray.client("anyscale://").connect()
 
     print("Loading HIGGS data.")
 
