@@ -1,6 +1,6 @@
 import copy
-import threading
 from six.moves import queue
+import threading
 import time
 from typing import Dict
 
