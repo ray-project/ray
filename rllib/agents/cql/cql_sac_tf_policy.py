@@ -117,9 +117,9 @@ def q_values_repeat(model, obs, actions, twin=False):
     num_repeat = action_shape // obs_shape
     obs_temp = tf.tile(obs, [num_repeat, 1])
     if twin:
-        preds = model.get_twin_q_values(obs_temp, actions)
-    else:
         preds = model.get_q_values(obs_temp, actions)
+    else:
+        preds = model.get_twin_q_values(obs_temp, actions)
     preds = tf.reshape(preds, [obs_shape, num_repeat, 1])
     return preds
 
