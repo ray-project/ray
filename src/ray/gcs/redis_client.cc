@@ -34,7 +34,6 @@ static bool RunRedisCommandWithRetries(
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
     // Try to execute the command.
     *reply = reinterpret_cast<redisReply *>(redisCommand(context, command));
-    RAY_LOG(INFO) << "wangtao " << (*reply)->type;
     if (condition(*reply)) {
       break;
     }
@@ -45,7 +44,6 @@ static bool RunRedisCommandWithRetries(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
-  RAY_LOG(INFO) << "wangtao 48 " << (*reply)->type;
   return num_attempts < RayConfig::instance().redis_db_connect_retries();
 }
 
@@ -55,9 +53,6 @@ static int DoGetNextJobID(redisContext *context) {
       context, "INCR JobCounter", &reply, [](const redisReply *reply) {
         return reply != nullptr && reply->type != REDIS_REPLY_NIL;
       });
-  if (reply == nullptr) {
-    RAY_LOG(INFO) << "wangtao 58 ";
-  }
   RAY_CHECK(reply);
   RAY_CHECK(under_retry_limit) << "No entry found for JobCounter";
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER)
