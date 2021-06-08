@@ -220,9 +220,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  auto actor_schedule_strategy =
-      std::make_shared<GcsRandomActorScheduleStrategy>(gcs_node_manager_);
-  auto scheduler = std::make_shared<GcsActorScheduler>(
+  auto scheduler = std::make_shared<RayletBasedActorScheduler>(
       main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsActor> actor) {
@@ -236,7 +234,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
-      raylet_client_pool_, actor_schedule_strategy,
+      raylet_client_pool_,
       /*client_factory=*/
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -280,7 +278,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       *gcs_resource_scheduler_, raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_);
+      main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
+      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.

@@ -82,7 +82,7 @@ install_miniconda() {
       msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
     esac
 
-    local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
+    local miniconda_version="Miniconda3-py37_4.9.2" miniconda_platform="" exe_suffix=".sh"
     case "${OSTYPE}" in
       linux*) miniconda_platform=Linux;;
       darwin*) miniconda_platform=MacOSX;;
@@ -116,8 +116,12 @@ install_miniconda() {
       darwin*)
         # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
         local miniconda_dir="/usr/local/miniconda"
-        sudo mkdir -p -- "${miniconda_dir}"
-        sudo chown -R "${USER}" "${miniconda_dir}"
+        if [ -n "$BUILDKITE" ]; then
+          mkdir -p -- "${miniconda_dir}"
+        else
+          sudo mkdir -p -- "${miniconda_dir}"
+          sudo chown -R "${USER}" "${miniconda_dir}"
+        fi
         ;;
     esac
   fi
@@ -222,6 +226,8 @@ install_upgrade_pip() {
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
       "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
+
+    "${python}" -m ensurepip
   fi
 }
 
@@ -235,20 +241,28 @@ install_node() {
 
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
-  elif [ -n "${BUILDKITE-}" ] ; then
-    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-  else
-    # Install the latest version of Node.js in order to build the dashboard.
-    (
-      set +x # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
-      npm config set loglevel warn  # make NPM quieter
-    )
+    return
   fi
+
+  if [ -n "${BUILDKITE-}" ] ; then
+    if [[ "${OSTYPE}" = darwin* ]]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+    else
+      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      return
+    fi
+  fi
+
+  # Install the latest version of Node.js in order to build the dashboard.
+  (
+    set +x # suppress set -x since it'll get very noisy here
+    . "${HOME}/.nvm/nvm.sh"
+    nvm install node
+    nvm use --silent node
+    npm config set loglevel warn  # make NPM quieter
+  )
 }
 
 install_toolchains() {
@@ -279,6 +293,7 @@ install_dependencies() {
   fi
 
   # Install modules needed in all jobs.
+  alias pip="python -m pip"
   pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
