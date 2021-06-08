@@ -8,7 +8,10 @@ RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"
 
-mkdir -p /tmp/bazel_event_logs
+# Cleanup old entries, this is needed in macOS shared environment.
+rm -rf /tmp/bazel_event_logs
+mkdir /tmp/bazel_event_logs
+
 ./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
 if [[ -z "${BUILDKITE}" ]]; then
