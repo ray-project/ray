@@ -227,45 +227,32 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
 
     Returns:
         A Dict with following attributes:
-        - primary_node_id:
-            The hex ID of the node who has the primary copy of the object.
-            It could be None if the object is pending resolution.
+        - node_ids:
+            The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
-        - node_ids:
-            The hex IDs of the nodes that have an in memory copy of this
-            object.
-        - is_spilled:
-            Wether the object has been spilled.
-        - spilled_url:
-            The spilled location, None if not spilled.
-        - spilled_node_id:
-            The hex node ID which spilled the object. None if the object
-            is not spilled, or was spilled to a distributed external
-            storage.
     """
-    primary_node_id = None if c_object_location.GetPrimaryNodeID().IsNil() \
-        else c_object_location.GetPrimaryNodeID().Hex().decode("ascii")
     object_size = c_object_location.GetObjectSize()
-    is_spilled = c_object_location.IsSpilled()
-    spilled_url = c_object_location.GetSpilledURL() if is_spilled else None
-    spilled_node_id = None if c_object_location.GetSpilledNodeID().IsNil() \
-        else c_object_location.GetSpilledNodeID().Hex().decode("ascii")
-    node_ids = []
+
+    node_ids = set([])
     c_node_ids = c_object_location.GetNodeIDs()
     for i in range(c_node_ids.size()):
         node_id = c_node_ids[i].Hex().decode("ascii")
-        # skip if the node has a spilled copy.
-        if node_id == spilled_node_id:
-            continue
-        node_ids.append(node_id)
+        node_ids.add(node_id)
+
+    # add primary_node_id into node_ids
+    if not c_object_location.GetPrimaryNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
+
+    # add spilled_node_id into node_ids
+    if not c_object_location.GetSpilledNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
+
     return {
-        "primary_node_id": primary_node_id,
+        "node_ids": list(node_ids),
         "object_size": object_size,
-        "node_ids": node_ids,
-        "is_spilled": is_spilled,
-        "spilled_url": spilled_url,
-        "spilled_node_id": spilled_node_id
     }
 
 

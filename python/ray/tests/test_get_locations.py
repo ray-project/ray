@@ -34,12 +34,8 @@ def test_get_locations(ray_start_regular):
     assert len(locations) == 2
     for idx, obj_ref in enumerate(obj_refs):
         location = locations[obj_ref]
-        assert location["primary_node_id"] == node_id.hex()
         assert location["object_size"] > sizes[idx]
         assert location["node_ids"] == [node_id.hex()]
-        assert not location["is_spilled"]
-        assert location["spilled_url"] is None
-        assert location["spilled_node_id"] is None
 
 
 def test_get_locations_inlined(ray_start_regular):
@@ -49,11 +45,8 @@ def test_get_locations_inlined(ray_start_regular):
     locations = ray.experimental.get_object_locations(obj_refs)
     for idx, obj_ref in enumerate(obj_refs):
         location = locations[obj_ref]
-        assert location["primary_node_id"] == node_id.hex()
         assert location["node_ids"] == [node_id.hex()]
-        assert not location["is_spilled"]
-        assert location["spilled_url"] is None
-        assert location["spilled_node_id"] is None
+        assert location["object_size"] > 0
 
 
 @pytest.mark.skipif(
@@ -80,11 +73,8 @@ def test_spilled_locations(ray_start_cluster):
     locations = ray.experimental.get_object_locations(object_refs)
     for obj_ref in object_refs:
         location = locations[obj_ref]
-        assert location["primary_node_id"] == node_id.hex()
-        assert location["node_ids"] == []
-        assert location["is_spilled"]
-        assert location["spilled_url"] is not None
-        assert location["spilled_node_id"] == node_id.hex()
+        assert location["node_ids"] == [node_id.hex()]
+        assert location["object_size"] > 0
 
 
 @pytest.mark.skipif(
@@ -120,11 +110,8 @@ def test_get_locations_multi_nodes(ray_start_cluster):
     locations = ray.experimental.get_object_locations(object_refs)
     for obj_ref in object_refs:
         location = locations[obj_ref]
-        assert location["primary_node_id"] == worker_node_id
         assert set(location["node_ids"]) == {driver_node_id, worker_node_id}
-        assert not location["is_spilled"]
-        assert location["spilled_url"] is None
-        assert location["spilled_node_id"] is None
+        assert location["object_size"] > 0
 
 
 def test_location_pending(ray_start_cluster):
@@ -142,8 +129,7 @@ def test_location_pending(ray_start_cluster):
     object_ref = task.remote()
     locations = ray.experimental.get_object_locations([object_ref])
     location = locations[object_ref]
-    assert location["primary_node_id"] is None
     assert location["node_ids"] == []
-    assert not location["is_spilled"]
-    assert location["spilled_url"] is None
-    assert location["spilled_node_id"] is None
+    # TODO(chenshen): this is a result of converting int -1 to unsigned int;
+    # should be fix by https://github.com/ray-project/ray/issues/16321
+    assert location["object_size"] == 2**64 - 1
