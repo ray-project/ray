@@ -50,7 +50,10 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
+/// Whether to enable Ray event stats collection.
+/// TODO(ekl) this seems to segfault Java unit tests when on by default?
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
+           env_bool("RAY_EVENT_STATS", false))
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -368,7 +371,7 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(std::string, object_spilling_config, "")
+RAY_CONFIG(string_type, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -422,7 +425,8 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
 /// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
-RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms,
+           env_int64_t("RAY_EVENT_STATS_INTERVAL_MS", -1))
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

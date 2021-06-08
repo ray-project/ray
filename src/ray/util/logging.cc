@@ -148,8 +148,7 @@ class SpdLogMessage final {
                 str_.str());
     logger->flush();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      // For keeping same action with glog, process will be abort if it's fatal log.
-      std::abort();
+      std::_Exit(EXIT_FAILURE);
     }
   }
 
@@ -178,7 +177,7 @@ class CerrLog {
     }
     if (severity_ == RayLogLevel::FATAL) {
       PrintBackTrace();
-      std::abort();
+      std::_Exit(EXIT_FAILURE);
     }
   }
 

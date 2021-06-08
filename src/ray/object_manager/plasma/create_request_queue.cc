@@ -32,6 +32,7 @@ uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
   fulfilled_requests_[req_id] = nullptr;
   queue_.emplace_back(
       new CreateRequest(object_id, req_id, client, create_callback, object_size));
+  num_bytes_pending_ += object_size;
   return req_id;
 }
 
@@ -161,6 +162,8 @@ void CreateRequestQueue::FinishRequest(
   RAY_CHECK(it != fulfilled_requests_.end());
   RAY_CHECK(it->second == nullptr);
   it->second = std::move(request);
+  RAY_CHECK(num_bytes_pending_ >= it->second->object_size);
+  num_bytes_pending_ -= it->second->object_size;
   queue_.erase(request_it);
 }
 
@@ -169,6 +172,8 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
   for (auto it = queue_.begin(); it != queue_.end();) {
     if ((*it)->client == client) {
       fulfilled_requests_.erase((*it)->request_id);
+      RAY_CHECK(num_bytes_pending_ >= (*it)->object_size);
+      num_bytes_pending_ -= (*it)->object_size;
       it = queue_.erase(it);
     } else {
       it++;
