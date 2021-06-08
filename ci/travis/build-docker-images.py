@@ -450,7 +450,8 @@ if __name__ == "__main__":
                 valid_branch = _valid_branch()
                 if (not valid_branch) and is_merge:
                     print(f"Invalid Branch found: {_get_branch()}")
-                push_and_tag_images(base_images_built, valid_branch and is_merge)
+                push_and_tag_images(base_images_built, valid_branch
+                                    and is_merge)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)

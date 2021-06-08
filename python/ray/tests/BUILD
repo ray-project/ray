@@ -257,5 +257,5 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["worker-nest-container"],
+  tags = ["exclusive", "worker-nest-container"],
 )
