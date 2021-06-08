@@ -35,6 +35,21 @@ if modin_compatible_version:
     from ray.tests.modin_test_utils import df_equals
     import modin.pandas as pd
 
+
+# Module scoped fixture. Will first run all tests without ray
+# client, then rerun all tests with a single ray client session.
+@pytest.fixture(params=[False, True], autouse=True, scope="module")
+def run_ray_client(request):
+    if request.param:
+        with ray_start_client_server() as client:
+            yield client
+    else:
+        # Run without ray client (do nothing)
+        yield
+        # Cleanup state before rerunning tests with client
+        ray.shutdown()
+
+
 random_state = np.random.RandomState(seed=42)
 
 # Size of test dataframes
@@ -72,20 +87,6 @@ for col in test_data["float_nan_data"]:
 
 test_data_values = list(test_data.values())
 test_data_keys = list(test_data.keys())
-
-
-# Module scoped fixture. Will first run all tests without ray
-# client, then rerun all tests with a single ray client session.
-@pytest.fixture(params=[False, True], autouse=True, scope="module")
-def run_ray_client(request):
-    if request.param:
-        with ray_start_client_server() as client:
-            yield client
-    else:
-        # Run without ray client (do nothing)
-        yield
-        # Cleanup state before rerunning tests with client
-        ray.shutdown()
 
 
 @pytest.mark.parametrize("data", test_data_values, ids=test_data_keys)
