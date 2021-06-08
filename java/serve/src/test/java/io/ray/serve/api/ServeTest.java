@@ -9,7 +9,7 @@ public class ServeTest {
 
   @Test
   public void replicaContextTest() {
-    
+
     ReplicaContext preContext = Serve.INTERNAL_REPLICA_CONTEXT;
     ReplicaContext replicaContext;
 
@@ -21,7 +21,7 @@ public class ServeTest {
     } catch (RayServeException e) {
 
     }
-    
+
     // Test context setting and getting.
     String backendTag = "backendTag";
     String replicaTag = "replicaTag";
@@ -36,7 +36,5 @@ public class ServeTest {
     Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
 
     Serve.INTERNAL_REPLICA_CONTEXT = preContext;
-
   }
-
 }

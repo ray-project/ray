@@ -3,9 +3,7 @@ package io.ray.serve;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * The meta data of request.
- */
+/** The meta data of request. */
 public class RequestMetadata implements Serializable {
 
   private static final long serialVersionUID = -8925036926565326811L;
@@ -59,5 +57,4 @@ public class RequestMetadata implements Serializable {
   public void setHttpHeaders(Map<String, String> httpHeaders) {
     this.httpHeaders = httpHeaders;
   }
-
 }

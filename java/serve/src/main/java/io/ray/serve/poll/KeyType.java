@@ -4,9 +4,7 @@ import java.io.Serializable;
 import java.util.Objects;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 
-/**
- * Key type of long poll.
- */
+/** Key type of long poll. */
 public class KeyType implements Serializable {
 
   private static final long serialVersionUID = -8838552786234630401L;
@@ -55,5 +53,4 @@ public class KeyType implements Serializable {
   public String toString() {
     return ReflectionToStringBuilder.toString(this);
   }
-
 }

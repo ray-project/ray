@@ -9,14 +9,12 @@ import java.util.function.Function;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
-/**
- * Tool class for reflection.
- */
+/** Tool class for reflection. */
 public class ReflectUtil {
 
   /**
    * Get types of the parameters in input array, and make the types into a new array.
-   * 
+   *
    * @param parameters The input parameter array
    * @return Type array corresponding to the input parameter array
    */
@@ -37,7 +35,7 @@ public class ReflectUtil {
    * Get a constructor whose each parameter's type is the most closed to the corresponding input
    * parameter in terms of Java inheritance system, while {@link Class#getConstructor(Class...)}
    * returns the one based on class's equal.
-   * 
+   *
    * @param targetClass the constructor's class
    * @param parameters the input parameters
    * @return a matching constructor of the target class
@@ -46,15 +44,15 @@ public class ReflectUtil {
   @SuppressWarnings("rawtypes")
   public static Constructor getConstructor(Class targetClass, Object... parameters)
       throws NoSuchMethodException {
-    return reflect(targetClass.getConstructors(), (candidate) -> true, ".<init>", targetClass,
-        parameters);
+    return reflect(
+        targetClass.getConstructors(), (candidate) -> true, ".<init>", targetClass, parameters);
   }
 
   /**
    * Get a method whose each parameter's type is the most closed to the corresponding input
    * parameter in terms of Java inheritance system, while {@link Class#getMethod(String, Class...)}
    * returns the one based on class's equal.
-   * 
+   *
    * @param targetClass the constructor's class
    * @param name the specified method's name
    * @param parameters the input parameters
@@ -64,8 +62,11 @@ public class ReflectUtil {
   @SuppressWarnings("rawtypes")
   public static Method getMethod(Class targetClass, String name, Object... parameters)
       throws NoSuchMethodException {
-    return reflect(targetClass.getMethods(),
-        (candidate) -> StringUtils.equals(name, candidate.getName()), "." + name, targetClass,
+    return reflect(
+        targetClass.getMethods(),
+        (candidate) -> StringUtils.equals(name, candidate.getName()),
+        "." + name,
+        targetClass,
         parameters);
   }
 
@@ -75,7 +76,7 @@ public class ReflectUtil {
    * subinterface of, the type of the corresponding input parameter. This method returns the result
    * whose each parameter's type is the most closed to the corresponding input parameter in terms of
    * Java inheritance system.
-   * 
+   *
    * @param <T> the type of result which extends {@link Executable}
    * @param candidates a set of candidates
    * @param filter the filter deciding whether to select the input candidate
@@ -86,13 +87,19 @@ public class ReflectUtil {
    * @throws NoSuchMethodException if a matching method is not found
    */
   @SuppressWarnings("rawtypes")
-  private static <T extends Executable> T reflect(T[] candidates, Function<T, Boolean> filter,
-      String message, Class targetClass, Object... parameters) throws NoSuchMethodException {
+  private static <T extends Executable> T reflect(
+      T[] candidates,
+      Function<T, Boolean> filter,
+      String message,
+      Class targetClass,
+      Object... parameters)
+      throws NoSuchMethodException {
     Class[] parameterTypes = getParameterTypes(parameters);
     T result = null;
     for (int i = 0; i < candidates.length; i++) {
       T candidate = candidates[i];
-      if (filter.apply(candidate) && assignable(parameterTypes, candidate.getParameterTypes())
+      if (filter.apply(candidate)
+          && assignable(parameterTypes, candidate.getParameterTypes())
           && (result == null
               || assignable(candidate.getParameterTypes(), result.getParameterTypes()))) {
         result = candidate;
@@ -130,7 +137,7 @@ public class ReflectUtil {
 
   /**
    * It is copied from {@link Class#argumentTypesToString(Class[])}.
-   * 
+   *
    * @param argTypes array of Class object
    * @return Formatted string of the input Class array.
    */
@@ -152,7 +159,7 @@ public class ReflectUtil {
 
   /**
    * Get a string representing the specified class's all methods.
-   * 
+   *
    * @param targetClass the input class
    * @return the formatted string of the specified class's all methods.
    */
@@ -171,5 +178,4 @@ public class ReflectUtil {
     }
     return methodStrings;
   }
-
 }

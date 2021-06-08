@@ -25,7 +25,7 @@ public class ReplicaConfigTest {
 
     expectIllegalArgumentException(
         () -> new ReplicaConfig(backendDef, null, getRayActorOptions("name", dummy)));
-    
+
     expectIllegalArgumentException(
         () -> new ReplicaConfig(backendDef, null, getRayActorOptions("max_restarts", dummy)));
 
@@ -50,7 +50,6 @@ public class ReplicaConfigTest {
     replicaConfig =
         new ReplicaConfig(backendDef, null, getRayActorOptions("object_store_memory", 2.0));
     Assert.assertEquals(replicaConfig.getResource().get("object_store_memory").doubleValue(), 2.0);
-
   }
 
   private void expectIllegalArgumentException(Validator validator) {
@@ -67,5 +66,4 @@ public class ReplicaConfigTest {
     rayActorOptions.put(key, value);
     return rayActorOptions;
   }
-
 }

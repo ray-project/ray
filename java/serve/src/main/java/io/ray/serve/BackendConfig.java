@@ -4,11 +4,9 @@ import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 
-/**
- * Configuration options for a backend, to be set by the user.
- */
+/** Configuration options for a backend, to be set by the user. */
 public class BackendConfig implements Serializable {
-  
+
   private static final long serialVersionUID = 244486384449779141L;
 
   /**
@@ -85,6 +83,4 @@ public class BackendConfig implements Serializable {
   public void setExperimentalGracefulShutdownTimeoutS(long experimentalGracefulShutdownTimeoutS) {
     this.experimentalGracefulShutdownTimeoutS = experimentalGracefulShutdownTimeoutS;
   }
-
-
 }

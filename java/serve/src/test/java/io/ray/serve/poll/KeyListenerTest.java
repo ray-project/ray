@@ -15,7 +15,5 @@ public class KeyListenerTest {
     keyListener.notifyChanged(a);
 
     Assert.assertEquals(a[0], 1);
-
   }
-
 }

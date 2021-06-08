@@ -13,9 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The asynchronous long polling client.
- */
+/** The asynchronous long polling client. */
 public class LongPollClient {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LongPollClient.class);
@@ -46,20 +44,23 @@ public class LongPollClient {
       this.snapshotIds.put(keyType, -1);
     }
     this.objectSnapshots = new ConcurrentHashMap<>();
-    this.pollThread = new Thread(() -> {
-      while (true) {
-        try {
-          pollNext();
-        } catch (RayActorException e) {
-          LOGGER.debug("LongPollClient failed to connect to host. Shutting down.");
-          break;
-        } catch (RayTaskException e) {
-          LOGGER.error("LongPollHost errored", e);
-        } catch (Throwable e) {
-          LOGGER.error("LongPollClient failed to update object of key {}", snapshotIds, e);
-        }
-      }
-    }, "backend-poll-thread");
+    this.pollThread =
+        new Thread(
+            () -> {
+              while (true) {
+                try {
+                  pollNext();
+                } catch (RayActorException e) {
+                  LOGGER.debug("LongPollClient failed to connect to host. Shutting down.");
+                  break;
+                } catch (RayTaskException e) {
+                  LOGGER.error("LongPollHost errored", e);
+                } catch (Throwable e) {
+                  LOGGER.error("LongPollClient failed to update object of key {}", snapshotIds, e);
+                }
+              }
+            },
+            "backend-poll-thread");
   }
 
   public void start() {
@@ -70,28 +71,25 @@ public class LongPollClient {
     pollThread.start();
   }
 
-  /**
-   * Poll the update.
-   */
+  /** Poll the update. */
   @SuppressWarnings("unchecked")
   public void pollNext() {
-    currentRef = ((PyActorHandle) hostActor)
-        .task(PyActorMethod.of(Constants.CONTROLLER_LISTEN_FOR_CHANGE_METHOD), snapshotIds)
-        .remote();
+    currentRef =
+        ((PyActorHandle) hostActor)
+            .task(PyActorMethod.of(Constants.CONTROLLER_LISTEN_FOR_CHANGE_METHOD), snapshotIds)
+            .remote();
     processUpdate((Map<KeyType, UpdatedObject>) currentRef.get());
-
   }
 
   public void processUpdate(Map<KeyType, UpdatedObject> updates) {
 
     LOGGER.debug("LongPollClient received updates for keys: {}", updates.keySet());
-    
+
     for (Map.Entry<KeyType, UpdatedObject> entry : updates.entrySet()) {
       objectSnapshots.put(entry.getKey(), entry.getValue().getObjectSnapshot());
       snapshotIds.put(entry.getKey(), entry.getValue().getSnapshotId());
       keyListeners.get(entry.getKey()).notifyChanged(entry.getValue().getObjectSnapshot());
     }
-
   }
 
   public Map<KeyType, Integer> getSnapshotIds() {
@@ -101,5 +99,4 @@ public class LongPollClient {
   public Map<KeyType, Object> getObjectSnapshots() {
     return objectSnapshots;
   }
-
 }

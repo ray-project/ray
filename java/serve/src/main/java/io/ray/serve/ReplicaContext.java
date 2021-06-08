@@ -1,8 +1,6 @@
 package io.ray.serve;
 
-/**
- * Stores data for Serve API calls from within the user's backend code.
- */
+/** Stores data for Serve API calls from within the user's backend code. */
 public class ReplicaContext {
 
   private String backendTag;
@@ -13,8 +11,8 @@ public class ReplicaContext {
 
   private Object servableObject;
 
-  public ReplicaContext(String backendTag, String replicaTag, String controllerName,
-      Object servableObject) {
+  public ReplicaContext(
+      String backendTag, String replicaTag, String controllerName, Object servableObject) {
     this.backendTag = backendTag;
     this.replicaTag = replicaTag;
     this.internalControllerName = controllerName;
@@ -52,5 +50,4 @@ public class ReplicaContext {
   public void setServableObject(Object servableObject) {
     this.servableObject = servableObject;
   }
-
 }

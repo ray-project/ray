@@ -11,29 +11,20 @@ import org.testng.annotations.Test;
 public class ReflectUtilTest {
 
   static class ReflectExample {
-    public ReflectExample() {
+    public ReflectExample() {}
 
-    }
+    public ReflectExample(Integer a) {}
 
-    public ReflectExample(Integer a) {
+    public ReflectExample(String a) {}
 
-    }
-
-    public ReflectExample(String a) {
-
-    }
-
-    public void test1234(String a) {
-
-    }
+    public void test(String a) {}
   }
 
   @SuppressWarnings("unchecked")
   @Test
   public void getConstructorTest() throws NoSuchMethodException {
 
-    Constructor<ReflectExample> constructor =
-        ReflectUtil.getConstructor(ReflectExample.class);
+    Constructor<ReflectExample> constructor = ReflectUtil.getConstructor(ReflectExample.class);
     Assert.assertNotNull(constructor);
 
     constructor = ReflectUtil.getConstructor(ReflectExample.class, null);
@@ -51,22 +42,20 @@ public class ReflectUtilTest {
     } catch (NoSuchMethodException e) {
 
     }
-
   }
 
   @Test
   public void getMethodTest() throws NoSuchMethodException {
 
-    Method method = ReflectUtil.getMethod(ReflectExample.class, "test1234", "");
+    Method method = ReflectUtil.getMethod(ReflectExample.class, "test", "");
     Assert.assertNotNull(method);
 
     try {
-      method = ReflectUtil.getMethod(ReflectExample.class, "test1234", new HashMap<>());
+      method = ReflectUtil.getMethod(ReflectExample.class, "test", new HashMap<>());
       Assert.assertTrue(false, "expect NoSuchMethodException");
     } catch (NoSuchMethodException e) {
 
     }
-
   }
 
   @Test
@@ -74,11 +63,10 @@ public class ReflectUtilTest {
     List<String> methodList = ReflectUtil.getMethodStrings(ReflectExample.class);
     String result = null;
     for (String method : methodList) {
-      if (StringUtils.contains(method, "test1234")) {
+      if (StringUtils.contains(method, "test")) {
         result = method;
       }
     }
-    Assert.assertNotNull(result, "there should be test1234 method");
+    Assert.assertNotNull(result, "there should be test method");
   }
-
 }

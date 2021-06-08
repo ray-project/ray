@@ -2,9 +2,7 @@ package io.ray.serve.poll;
 
 import java.io.Serializable;
 
-/**
- * The updated object that long poll client received.
- */
+/** The updated object that long poll client received. */
 public class UpdatedObject implements Serializable {
 
   private static final long serialVersionUID = 6245682414826079438L;
@@ -32,5 +30,4 @@ public class UpdatedObject implements Serializable {
   public void setSnapshotId(int snapshotId) {
     this.snapshotId = snapshotId;
   }
-
 }

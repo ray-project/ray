@@ -9,7 +9,5 @@ public class LogUtilTest {
   public void formatTest() {
     String result = LogUtil.format("{},{},{}", "1", "2", "3");
     Assert.assertEquals(result, "1,2,3");
-
   }
-
 }

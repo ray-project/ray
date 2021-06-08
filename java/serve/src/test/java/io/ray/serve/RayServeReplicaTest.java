@@ -29,19 +29,27 @@ public class RayServeReplicaTest {
 
     BackendConfig backendConfig = new BackendConfig();
     backendConfig.setUserConfig("10");
-    ActorHandle<RayServeWrappedReplica> backendHandle = Ray.actor(RayServeWrappedReplica::new,
-        backendTag, replicaTag, "io.ray.serve.RayServeReplicaTest$DummyBackend", new Object[] {"0"},
-        backendConfig, controllerName).remote();
+    ActorHandle<RayServeWrappedReplica> backendHandle =
+        Ray.actor(
+                RayServeWrappedReplica::new,
+                backendTag,
+                replicaTag,
+                "io.ray.serve.RayServeReplicaTest$DummyBackend",
+                new Object[] {"0"},
+                backendConfig,
+                controllerName)
+            .remote();
 
     backendHandle.task(RayServeWrappedReplica::ready).remote();
 
     RequestMetadata requestMetadata = new RequestMetadata();
     requestMetadata.setRequestId("RayServeReplicaTest");
-    ObjectRef<Object> resultRef = backendHandle
-        .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null).remote();
+    ObjectRef<Object> resultRef =
+        backendHandle
+            .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null)
+            .remote();
 
     Assert.assertEquals((String) resultRef.get(), "10");
-
   }
 
   public static class DummyController {
@@ -55,8 +63,7 @@ public class RayServeReplicaTest {
       updatedObject.setSnapshotId(2);
       updatedObject.setObjectSnapshot(new BackendConfig());
       Map<KeyType, UpdatedObject> updates = new HashMap<>();
-      updates.put(new KeyType(LongPollNamespace.BACKEND_CONFIGS, "b_tag"),
-          updatedObject);
+      updates.put(new KeyType(LongPollNamespace.BACKEND_CONFIGS, "b_tag"), updatedObject);
       return updates;
     }
   }
@@ -80,6 +87,4 @@ public class RayServeReplicaTest {
       counter.addAndGet(Integer.valueOf(value));
     }
   }
-
-
 }

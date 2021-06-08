@@ -1,10 +1,7 @@
 package io.ray.serve.poll;
 
-/**
- * The long poll namespace enum.
- */
+/** The long poll namespace enum. */
 public enum LongPollNamespace {
-
   REPLICA_HANDLES,
 
   TRAFFIC_POLICIES,
@@ -12,5 +9,4 @@ public enum LongPollNamespace {
   BACKEND_CONFIGS,
 
   ROUTE_TABLE
-
 }

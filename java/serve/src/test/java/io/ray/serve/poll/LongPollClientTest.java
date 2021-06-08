@@ -27,10 +27,8 @@ public class LongPollClientTest {
     longPollClient.processUpdate(updates);
 
     Assert.assertEquals(longPollClient.getSnapshotIds().get(keyType).intValue(), snapshotId);
-    Assert.assertEquals(((Integer) longPollClient.getObjectSnapshots().get(keyType)).intValue(),
-        objectSnapshot);
+    Assert.assertEquals(
+        ((Integer) longPollClient.getObjectSnapshots().get(keyType)).intValue(), objectSnapshot);
     Assert.assertEquals(a[0], objectSnapshot);
-
   }
-
 }

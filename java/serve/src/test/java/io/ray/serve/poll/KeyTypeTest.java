@@ -28,5 +28,4 @@ public class KeyTypeTest {
     Assert.assertNotEquals(k1.hashCode(), k4.hashCode());
     Assert.assertFalse(k1.equals(k4));
   }
-
 }

@@ -1,8 +1,6 @@
 package io.ray.serve;
 
-/**
- * Wrap request arguments and meta data.
- */
+/** Wrap request arguments and meta data. */
 public class Query {
 
   private Object[] args;
@@ -29,5 +27,4 @@ public class Query {
   public void setMetadata(RequestMetadata metadata) {
     this.metadata = metadata;
   }
-
 }
