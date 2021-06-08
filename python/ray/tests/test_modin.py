@@ -32,9 +32,46 @@ pytestmark = pytest.mark.skipif(
     reason="Newer versions of Modin require Python 3.7+")
 
 if modin_compatible_version:
-    from ray.tests.modin_test_utils import df_equals, test_data_values, \
-        test_data_keys
+    from ray.tests.modin_test_utils import df_equals
     import modin.pandas as pd
+
+random_state = np.random.RandomState(seed=42)
+
+# Size of test dataframes
+NCOLS, NROWS = (2**6, 2**8)
+
+# Range for values for test data
+RAND_LOW = 0
+RAND_HIGH = 100
+
+# Input data and functions for the tests
+# The test data that we will test our code against
+test_data = {
+    "int_data": {
+        "col{}".format(int((i - NCOLS / 2) % NCOLS + 1)): random_state.randint(
+            RAND_LOW, RAND_HIGH, size=(NROWS))
+        for i in range(NCOLS)
+    },
+    "float_nan_data": {
+        "col{}".format(int((i - NCOLS / 2) % NCOLS + 1)): [
+            x if (j % 4 == 0 and i > NCOLS // 2)
+            or (j != i and i <= NCOLS // 2) else np.NaN for j, x in enumerate(
+                random_state.uniform(RAND_LOW, RAND_HIGH, size=(NROWS)))
+        ]
+        for i in range(NCOLS)
+    },
+}
+
+test_data["int_data"]["index"] = test_data["int_data"].pop("col{}".format(
+    int(NCOLS / 2)))
+
+for col in test_data["float_nan_data"]:
+    for row in range(NROWS // 2):
+        if row % 16 == 0:
+            test_data["float_nan_data"][col][row] = np.NaN
+
+test_data_values = list(test_data.values())
+test_data_keys = list(test_data.keys())
 
 
 # Module scoped fixture. Will first run all tests without ray
