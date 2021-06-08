@@ -1141,7 +1141,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ProcessSubscribeForObjectEviction(
       const rpc::WorkerObjectEvictionSubMessage &message);
 
-  // void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
+  void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
