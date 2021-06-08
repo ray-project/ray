@@ -400,6 +400,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "worker_register_timeout_seconds": 600,
         },
     )
 
@@ -438,7 +439,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         del obj
     duration = datetime.now() - start
     assert duration <= timedelta(
-        seconds=10
+        seconds=30
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 
