@@ -1,19 +1,12 @@
 
 #include "function_helper.h"
-#include <dlfcn.h>
-#include <stdio.h>
-#include <string.h>
+#include <ray/api/logging.h>
 #include <boost/filesystem.hpp>
 #include <memory>
-#include "ray/core.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace api {
-
-static const uintptr_t BaseAddressForHandle(void *handle) {
-  /// TODO(Guyang Song): Implement a cross-platform function.
-  return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const *)(handle));
-}
 
 std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
     const std::string &lib_name) {
@@ -81,25 +74,6 @@ FunctionHelper::GetEntryFunction(const std::string &lib_name) {
 
   RAY_LOG(WARNING) << "Can't get execute function, lib_name: " << lib_name;
   return nullptr;
-}
-
-uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
-  /// Generate base address from library.
-  RAY_LOG(INFO) << "Start load library " << lib_name;
-  void *handle = dlopen(lib_name.c_str(), RTLD_LAZY);
-  uintptr_t base_addr = BaseAddressForHandle(handle);
-  RAY_CHECK(base_addr > 0);
-  RAY_LOG(INFO) << "Loaded library " << lib_name << " to base address " << base_addr;
-  loaded_library_.emplace(lib_name, base_addr);
-  return base_addr;
-}
-
-uintptr_t FunctionHelper::GetBaseAddress(std::string lib_name) {
-  auto got = loaded_library_.find(lib_name);
-  if (got == loaded_library_.end()) {
-    return LoadLibrary(lib_name);
-  }
-  return got->second;
 }
 
 }  // namespace api

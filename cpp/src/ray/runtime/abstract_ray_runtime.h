@@ -1,16 +1,18 @@
 
 #pragma once
 
-#include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
 
 #include <msgpack.hpp>
 #include <mutex>
 
+#include "../config_internal.h"
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace api {
@@ -54,7 +56,6 @@ class AbstractRayRuntime : public RayRuntime {
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
 
  protected:
-  std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
@@ -62,9 +63,9 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::shared_ptr<AbstractRayRuntime> DoInit(std::shared_ptr<RayConfig> config);
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
 
-  static void DoShutdown(std::shared_ptr<RayConfig> config);
+  static void DoShutdown();
 
   void Execute(const TaskSpecification &task_spec);
 

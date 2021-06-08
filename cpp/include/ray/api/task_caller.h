@@ -2,7 +2,6 @@
 #pragma once
 
 #include <ray/api/static_check.h>
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
@@ -15,7 +14,7 @@ class TaskCaller {
   TaskCaller(RayRuntime *runtime, RemoteFunctionHolder remote_function_holder);
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
  private:
   RayRuntime *runtime_;
@@ -32,14 +31,15 @@ TaskCaller<F>::TaskCaller() {}
 template <typename F>
 TaskCaller<F>::TaskCaller(RayRuntime *runtime,
                           RemoteFunctionHolder remote_function_holder)
-    : runtime_(runtime), remote_function_holder_(remote_function_holder) {}
+    : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
 template <typename F>
 template <typename... Args>
-ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(Args... args) {
+ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
+    Args &&... args) {
   StaticCheck<F, Args...>();
   using ReturnType = boost::callable_traits::return_type_t<F>;
-  Arguments::WrapArgs(&args_, args...);
+  Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_);
   return ObjectRef<ReturnType>(returned_object_id);
 }

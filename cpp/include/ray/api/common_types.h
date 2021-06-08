@@ -17,15 +17,9 @@
 #include <msgpack.hpp>
 #include <string>
 #include "boost/optional.hpp"
-#include "ray/core.h"
 
 namespace ray {
 namespace api {
-
-enum WorkerType : int {
-  WORKER = 0,
-  DRIVER = 1,
-};
 
 struct TaskArg {
   TaskArg() = default;

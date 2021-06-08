@@ -43,43 +43,6 @@ Operator = TrainingOperator.from_creators(
     model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
 
 
-@pytest.mark.parametrize("use_local", [True, False])
-def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
-    trainer = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=1,
-        use_local=use_local,
-        use_gpu=False)
-    metrics = trainer.train(num_steps=1)
-    assert metrics[BATCH_COUNT] == 1
-
-    val_metrics = trainer.validate(num_steps=1)
-    assert val_metrics[BATCH_COUNT] == 1
-    trainer.shutdown()
-
-
-@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-@pytest.mark.parametrize("use_local", [True, False])
-def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
-    trainer = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers,
-        use_local=use_local,
-        use_gpu=False)
-    for i in range(3):
-        train_loss1 = trainer.train()["train_loss"]
-    validation_loss1 = trainer.validate()["val_loss"]
-
-    for i in range(3):
-        train_loss2 = trainer.train()["train_loss"]
-    validation_loss2 = trainer.validate()["val_loss"]
-
-    assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
-    assert validation_loss2 <= validation_loss1, (validation_loss2,
-                                                  validation_loss1)
-    trainer.shutdown()
-
-
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):

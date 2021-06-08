@@ -94,7 +94,17 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // Create a buffer. This is creating a temporary file and then
   // immediately unlinking it so we do not leave traces in the system.
   std::string file_template = plasma_config->directory;
+
+  // In never-OOM mode, fallback to allocating from the filesystem. Note that these
+  // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
+  // plasma_allocator.cc.
+  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+    // TODO(ekl) get this from the node manager config.
+    file_template = "/tmp";
+  }
+
   file_template += "/plasmaXXXXXX";
+  RAY_LOG(INFO) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
   std::vector<char> file_name(file_template.begin(), file_template.end());
   file_name.push_back('\0');
   *fd = mkstemp(&file_name[0]);
@@ -137,11 +147,15 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
-  if (allocated_once) {
-    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to allocate: " << size;
+  // In unlimited allocation mode, fail allocations done by PlasmaAllocator::Memalign()
+  // after the initial allocation. Allow allocations done by
+  // PlasmaAllocator::DiskMemalignUnlimited(), which sets mmap_threshold to zero prior to
+  // calling dlmemalign().
+  if (RayConfig::instance().plasma_unlimited() && allocated_once &&
+      mparams.mmap_threshold > 0) {
+    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
     return MFAIL;
   }
-  allocated_once = true;
 
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
   // page-aligned. This ensures that the segments of memory returned by
@@ -151,6 +165,7 @@ void *fake_mmap(size_t size) {
   void *pointer;
   MEMFD_TYPE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
+  allocated_once = true;
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
@@ -161,7 +176,7 @@ void *fake_mmap(size_t size) {
 
   // We lie to dlmalloc about where mapped memory actually lives.
   pointer = pointer_advance(pointer, kMmapRegionsGap);
-  RAY_LOG(INFO) << pointer << " = fake_mmap(" << size << ")";
+  RAY_LOG(DEBUG) << pointer << " = fake_mmap(" << size << ")";
   return pointer;
 }
 
