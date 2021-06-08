@@ -23,7 +23,6 @@ from pandas.testing import (assert_series_equal, assert_frame_equal,
                             assert_extension_array_equal, assert_index_equal)
 import numpy as np
 
-
 random_state = np.random.RandomState(seed=42)
 
 # Size of test dataframes
