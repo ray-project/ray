@@ -3,6 +3,7 @@ import json
 import random
 import platform
 import sys
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
@@ -49,14 +50,6 @@ def assert_no_thrashing(address):
             consumed_bytes = int(line.split(" ")[-2])
     assert consumed_bytes >= restored_bytes, (
         f"consumed: {consumed_bytes}, restored: {restored_bytes}")
-
-
-def assert_no_worker_blocking():
-    session_dir = ray.worker._global_node.get_session_dir_path()
-    raylet_out_file = f"{session_dir}/logs/raylet.out"
-    with open(raylet_out_file, "r") as f:
-        for line in f:
-            assert "have not registered to raylet within timeout" not in line, line  # noqa: E501
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -433,6 +426,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(i, x)
         ids.append(x)
 
+    start = datetime.now()
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
@@ -442,9 +436,9 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             obj = ray.get(x)
         print(obj.shape)
         del obj
+    duration = datetime.now() - start
+    assert duration <= timedelta(seconds=10), "Concurrent gets took too long. Maybe IO workers are not started properly."
     assert_no_thrashing(address["redis_address"])
-
-    assert_no_worker_blocking()
 
 
 @pytest.mark.skipif(
