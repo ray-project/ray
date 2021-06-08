@@ -1,5 +1,7 @@
 import copy
 import threading
+from six.moves import queue
+import time
 from typing import Dict
 
 from ray.rllib.evaluation.metrics import get_learner_stats
@@ -9,7 +11,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
-from six.moves import queue
 
 tf1, tf, tfv = try_import_tf()
 
@@ -72,6 +73,7 @@ class LearnerThread(threading.Thread):
             try:
                 batch, _ = self.minibatch_buffer.get()
             except queue.Empty:
+                time.sleep(0.001)
                 return _NextValueNotReady()
 
         with self.grad_timer:
