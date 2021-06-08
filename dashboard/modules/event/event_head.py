@@ -80,12 +80,7 @@ class EventHead(dashboard_utils.DashboardHeadModule,
 
     async def run(self, server):
         event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
-        disable_event_head_monitor = os.environ.get(
-            "DISABLE_EVENT_HEAD_MONITOR")
-        if disable_event_head_monitor:
-            logger.info("Disable event head monitor.")
-        else:
-            self._monitor = monitor_events(
-                self._event_dir,
-                lambda l: self._update_events(parse_event_strings(l)),
-                source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES)
+        self._monitor = monitor_events(
+            self._event_dir,
+            lambda data: self._update_events(parse_event_strings(data)),
+            source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES)
