@@ -80,16 +80,14 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
 }
 
 int GlobalStateAccessor::GetNextJobID() {
-  std::promise<int> promise;
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
-      [&promise](const int job_id) { promise.set_value(job_id); }));
-  auto future = promise.get_future();
-  auto status = future.wait_for(std::chrono::milliseconds(5000));
-  if (status == std::future_status::ready) {
-    return future.get();
-  } else {
-    throw std::runtime_error("Failed to get next job id");
-  }
+  int job_id;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID([&promise](const int job_id) {
+    job_id = job_id;
+    promise.set_value(true);
+  }));
+  promise.get_future().get();
+  return job_id;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
