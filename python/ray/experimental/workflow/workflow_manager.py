@@ -1,17 +1,15 @@
 import functools
 import inspect
-from typing import List, Tuple, Union, Any, Dict, Callable, Optional
-import uuid
+from typing import List, Tuple, Union, Any, Dict, Callable
 
 import ray
 import ray.cloudpickle
-from ray.util.serialization import register_serializer, deregister_serializer
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
+from ray.experimental.workflow.common import (
+    RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
 
-RRef = ray.ObjectRef  # Alias ObjectRef because it is too long in type hints.
-WorkflowOutputType = RRef  # Alias workflow output type.
 StepArgType = Union[RRef, Any]
 
 
@@ -33,9 +31,18 @@ def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
     return ref, last_ref
 
 
-def _deref_arguments(inputs: RRef) -> Tuple[List, Dict]:
-    # deref arguments like ray remote functions
-    args, kwargs = ray.get(inputs)
+def _deref_arguments(args: List, kwargs: Dict) -> Tuple[List, Dict]:
+    """
+    This function decides how the ObjectRefs in the argument will be presented
+    to the user. Currently we dereference arguments like Ray remote functions.
+
+    Args:
+        args: Positional arguments.
+        kwargs: Keywords arguments.
+
+    Returns:
+        Post processed arguments.
+    """
     _args = [ray.get(a) if isinstance(a, RRef) else a for a in args]
     _kwargs = {
         k: ray.get(v) if isinstance(v, RRef) else v
@@ -67,14 +74,16 @@ def _resolve_step_inputs(step_inputs: Tuple[RRef, List[RRef], List[RRef]]
 
     resolved_object_refs = []
     objects_mapping = []
-    inputs, workflow_outputs, object_refs = step_inputs
-    for rref in workflow_outputs:
+    input_placeholder, input_workflows, input_object_refs = step_inputs
+    for rref in input_workflows:
         obj, ref = resolve_object_ref(rref)
         objects_mapping.append(obj)
         resolved_object_refs.append(ref)
     with serialization_context.workflow_args_resolving_context(
-            objects_mapping, object_refs):
-        _args, _kwargs = _deref_arguments(inputs)
+            objects_mapping, input_object_refs):
+        # reconstruct input arguments under correct serialization context
+        args, kwargs = ray.get(input_placeholder)
+    _args, _kwargs = _deref_arguments(args, kwargs)
     return _args, _kwargs, resolved_object_refs
 
 
@@ -112,11 +121,26 @@ class WorkflowStepFunction:
                 reconstructed_signature.bind(*args, **kwargs)
             except TypeError as exc:  # capture a friendlier stacktrace
                 raise TypeError(str(exc)) from None
-            return Workflow(self._run_step, args, kwargs)
+            workflows: List[Workflow] = []
+            object_refs: List[RRef] = []
+            with serialization_context.workflow_args_serialization_context(
+                    workflows, object_refs):
+                # NOTE: When calling 'ray.put', we trigger python object
+                # serialization. Under our serialization context,
+                # Workflows and ObjectRefs are separated from the arguments,
+                # leaving a placeholder object with all other python objects.
+                # Then we put the placeholder object to object store,
+                # so it won't be mutated later. This guarantees correct
+                # semantics. See "tests/test_variable_mutable.py" as
+                # an example.
+                input_placeholder: RRef = ray.put((args, kwargs))
+            return Workflow(self.func, self._run_step, input_placeholder,
+                            workflows, object_refs)
 
         self.step = _build_workflow
 
-    def _run_step(self, step_id, step_inputs):
+    def _run_step(self, step_id: StepID,
+                  step_inputs: WorkflowInputTuple) -> WorkflowOutputType:
         ref = self._remote_function.remote(
             workflow_context.get_workflow_step_context(), step_id, step_inputs)
         return ref
@@ -125,98 +149,3 @@ class WorkflowStepFunction:
         raise TypeError("Workflow steps cannot be called directly. Instead "
                         f"of running '{self.step.__name__}()', "
                         f"try '{self.step.__name__}.step()'.")
-
-
-class Workflow:
-    def __init__(self, step_func: Callable, args: Tuple,
-                 kwargs: Dict[str, Any]):
-        # NOTE: we must serialize the inputs here, so they cannot be
-        # mutable later.
-        self._captured_workflows: List[Workflow] = []
-        self._captured_objectrefs: List[RRef] = []
-        with _CaptureWorkflowInputs(self._captured_workflows,
-                                    self._captured_objectrefs):
-            self._inputs: RRef = ray.put((args, kwargs))
-        self.step_func = step_func
-        self._executed = False
-        self._output: Optional[WorkflowOutputType] = None
-        self._step_id = uuid.uuid4()
-
-    @property
-    def executed(self) -> bool:
-        return self._executed
-
-    @property
-    def output(self):
-        if not self._executed:
-            raise Exception("The workflow has not been executed.")
-        return self._output
-
-    def execute(self) -> WorkflowOutputType:
-        """
-        Trigger workflow execution recursively.
-        """
-        if self.executed:
-            return self._output
-        workflow_outputs = [w.execute() for w in self._captured_workflows]
-        # NOTE: wrap '_inputs' inside a tuple to prevent dereference.
-        step_inputs = (self._inputs, workflow_outputs,
-                       self._captured_objectrefs)
-        output = self.step_func(self._step_id, step_inputs)
-        if not isinstance(output, WorkflowOutputType):
-            raise TypeError("Unexpected return type of the workflow.")
-        self._output = output
-        self._executed = True
-        return output
-
-    def __reduce__(self):
-        raise ValueError(
-            "Workflow is not supposed to be serialized by pickle. "
-            "Maybe you are passing it to a Ray remote function, "
-            "returning it from a Ray remote function, or using "
-            "'ray.put()' with it?")
-
-
-class _CaptureWorkflowInputs:
-    def __init__(self, captured_workflows: List[Workflow],
-                 captured_object_refs: List[RRef]):
-        self._captured_workflows = captured_workflows
-        self._workflow_deduplicator: Dict[Workflow, int] = {}
-        self._captured_objectrefs = captured_object_refs
-        self._objectref_deduplicator: Dict[RRef, int] = {}
-        self._objectref_reducer = None
-
-    def __enter__(self):
-        def workflow_serializer(workflow):
-            if workflow in self._workflow_deduplicator:
-                return self._workflow_deduplicator[workflow]
-            i = len(self._captured_workflows)
-            self._captured_workflows.append(workflow)
-            self._workflow_deduplicator[workflow] = i
-            return i
-
-        register_serializer(
-            Workflow,
-            serializer=workflow_serializer,
-            deserializer=serialization_context._resolve_workflow_outputs)
-
-        def objectref_serializer(rref):
-            if rref in self._objectref_deduplicator:
-                return self._objectref_deduplicator[rref]
-            i = len(self._captured_objectrefs)
-            self._captured_objectrefs.append(rref)
-            self._objectref_deduplicator[rref] = i
-            return i
-
-        self._objectref_reducer = ray.cloudpickle.CloudPickler.dispatch[RRef]
-        # this would override the original serializer
-        register_serializer(
-            RRef,
-            serializer=objectref_serializer,
-            deserializer=serialization_context._resolve_objectrefs)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # we do not want to serialize Workflow objects in other places.
-        deregister_serializer(Workflow)
-        # restore original dispatch
-        ray.cloudpickle.CloudPickler.dispatch[RRef] = self._objectref_reducer

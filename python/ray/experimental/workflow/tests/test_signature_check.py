@@ -27,4 +27,9 @@ def test_signature_check():
     with pytest.raises(TypeError):
         signature_check.step(1, 2, 3, 4)
 
+    signature_check.step(1, 2, 3)
+    signature_check.step(1, 2, c=3)
+    signature_check.step(1, b=2, c=3)
+    signature_check.step(a=1, b=2, c=3)
+
     ray.shutdown()
