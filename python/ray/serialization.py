@@ -27,7 +27,7 @@ class DeserializationError(Exception):
     pass
 
 
-def _object_ref_deserializer(binary, owner_address):
+def _object_ref_deserializer(binary, owner_address, object_status):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
@@ -51,7 +51,7 @@ def _object_ref_deserializer(binary, owner_address):
         if outer_id is None:
             outer_id = ray.ObjectRef.nil()
         worker.core_worker.deserialize_and_register_object_ref(
-            obj_ref.binary(), outer_id, owner_address)
+            obj_ref.binary(), outer_id, owner_address, object_status)
     return obj_ref
 
 
@@ -88,9 +88,10 @@ class SerializationContext:
             self.add_contained_object_ref(obj)
             worker = ray.worker.global_worker
             worker.check_connected()
-            obj, owner_address = (
+            obj, owner_address, object_status = (
                 worker.core_worker.serialize_and_promote_object_ref(obj))
-            return _object_ref_deserializer, (obj.binary(), owner_address)
+            return _object_ref_deserializer, \
+                (obj.binary(), owner_address, object_status)
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
         serialization_addons.apply(self)

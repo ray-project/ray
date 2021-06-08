@@ -500,10 +500,25 @@ class ObjectManager : public ObjectManagerInterface,
   int64_t used_memory_ = 0;
 
   /// Running total of received chunks.
-  int64_t num_chunks_received_total_ = 0;
+  size_t num_chunks_received_total_ = 0;
 
-  /// Running total of received chunks that failed (duplicated).
-  int64_t num_chunks_received_failed_ = 0;
+  /// Running total of received chunks that failed. A finer-grained breakdown
+  /// is recorded below.
+  size_t num_chunks_received_total_failed_ = 0;
+
+  /// The total number of chunks that we failed to receive because they were
+  /// no longer needed by any worker or task on this node.
+  size_t num_chunks_received_cancelled_ = 0;
+
+  /// The total number of chunks that we failed to receive because they are
+  /// still needed, but accepting them would put us over the pull manager's
+  /// threshold. The threshold is needed to throttle incoming objects.
+  size_t num_chunks_received_thrashed_ = 0;
+
+  /// The total number of chunks that we failed to receive because we could not
+  /// create the object in plasma. This is usually due to out-of-memory in
+  /// plasma.
+  size_t num_chunks_received_failed_due_to_plasma_ = 0;
 };
 
 }  // namespace ray

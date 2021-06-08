@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import re
 import logging
@@ -7,10 +8,9 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray.gcs_utils
-import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
-    as stats_collector_consts
+from ray.new_dashboard.modules.node import node_consts
 import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
+import ray.new_dashboard.consts as dashboard_consts
 from ray.new_dashboard.utils import async_loop_forever
 from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
@@ -21,6 +21,11 @@ from ray.new_dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
+
+
+def gcs_node_info_to_dict(message):
+    return dashboard_utils.message_to_dict(
+        message, {"nodeId"}, including_default_value_fields=True)
 
 
 def node_stats_to_dict(message):
@@ -42,24 +47,13 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-def actor_table_data_to_dict(message):
-    return dashboard_utils.message_to_dict(
-        message, {
-            "actorId", "parentId", "jobId", "workerId", "rayletId",
-            "actorCreationDummyObjectId", "callerId", "taskId", "parentTaskId",
-            "sourceActorId", "placementGroupId"
-        },
-        including_default_value_fields=True)
-
-
-class StatsCollector(dashboard_utils.DashboardHeadModule):
+class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
-        # JobInfoGcsServiceStub
-        self._gcs_job_info_stub = None
-        # ActorInfoGcsService
-        self._gcs_actor_info_stub = None
+        # NodeInfoGcsService
+        self._gcs_node_info_stub = None
+        self._gcs_rpc_error_counter = 0
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
@@ -68,6 +62,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_id, node_info = change.old
             self._stubs.pop(node_id)
         if change.new:
+            # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
@@ -75,6 +70,80 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             channel = aiogrpc.insecure_channel(address, options=options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
+
+    async def _get_nodes(self):
+        """Read the client table.
+
+        Returns:
+            A dict of information about the nodes in the cluster.
+        """
+        request = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=2)
+        if reply.status.code == 0:
+            result = {}
+            for node_info in reply.node_info_list:
+                node_info_dict = gcs_node_info_to_dict(node_info)
+                result[node_info_dict["nodeId"]] = node_info_dict
+            return result
+        else:
+            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
+
+    async def _update_nodes(self):
+        # TODO(fyrestone): Refactor code for updating actor / node / job.
+        # Subscribe actor channel.
+        aioredis_client = self._dashboard_head.aioredis_client
+        while True:
+            try:
+                nodes = await self._get_nodes()
+
+                alive_node_ids = []
+                alive_node_infos = []
+                node_id_to_ip = {}
+                node_id_to_hostname = {}
+                for node in nodes.values():
+                    node_id = node["nodeId"]
+                    ip = node["nodeManagerAddress"]
+                    hostname = node["nodeManagerHostname"]
+                    node_id_to_ip[node_id] = ip
+                    node_id_to_hostname[node_id] = hostname
+                    assert node["state"] in ["ALIVE", "DEAD"]
+                    if node["state"] == "ALIVE":
+                        alive_node_ids.append(node_id)
+                        alive_node_infos.append(node)
+
+                agents = dict(DataSource.agents)
+                for node_id in alive_node_ids:
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
+                          f"{node_id}"
+                    agent_port = await aioredis_client.get(key)
+                    if agent_port:
+                        agents[node_id] = json.loads(agent_port)
+                for node_id in agents.keys() - set(alive_node_ids):
+                    agents.pop(node_id, None)
+
+                DataSource.node_id_to_ip.reset(node_id_to_ip)
+                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
+                DataSource.agents.reset(agents)
+                DataSource.nodes.reset(nodes)
+
+                self._gcs_rpc_error_counter = 0
+            except aiogrpc.AioRpcError:
+                # TODO(fyrestone): Use a dedicated RPC to check if gcs
+                # is alive.
+                logger.exception("Got AioRpcError when updating nodes.")
+                self._gcs_rpc_error_counter += 1
+                if self._gcs_rpc_error_counter > \
+                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
+                    logger.error(
+                        "Dashboard suicide, the GCS RPC error count %s > %s",
+                        self._gcs_rpc_error_counter,
+                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
+                    sys.exit(-1)
+            except Exception:
+                logger.exception("Error updating nodes.")
+            finally:
+                await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/nodes")
     @dashboard_utils.aiohttp_cache
@@ -165,100 +234,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
-    async def _update_actors(self):
-        # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
-
-        key = "{}:*".format(stats_collector_consts.ACTOR_CHANNEL)
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
-
-        def _process_actor_table_data(data):
-            actor_class = actor_classname_from_task_spec(
-                data.get("taskSpec", {}))
-            data["actorClass"] = actor_class
-
-        # Get all actor info.
-        while True:
-            try:
-                logger.info("Getting all actor info from GCS.")
-                request = gcs_service_pb2.GetAllActorInfoRequest()
-                reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=5)
-                if reply.status.code == 0:
-                    actors = {}
-                    for message in reply.actor_table_data:
-                        actor_table_data = actor_table_data_to_dict(message)
-                        _process_actor_table_data(actor_table_data)
-                        actors[actor_table_data["actorId"]] = actor_table_data
-                    # Update actors.
-                    DataSource.actors.reset(actors)
-                    # Update node actors and job actors.
-                    job_actors = {}
-                    node_actors = {}
-                    for actor_id, actor_table_data in actors.items():
-                        job_id = actor_table_data["jobId"]
-                        node_id = actor_table_data["address"]["rayletId"]
-                        job_actors.setdefault(job_id,
-                                              {})[actor_id] = actor_table_data
-                        # Update only when node_id is not Nil.
-                        if node_id != stats_collector_consts.NIL_NODE_ID:
-                            node_actors.setdefault(
-                                node_id, {})[actor_id] = actor_table_data
-                    DataSource.job_actors.reset(job_actors)
-                    DataSource.node_actors.reset(node_actors)
-                    logger.info("Received %d actor info from GCS.",
-                                len(actors))
-                    break
-                else:
-                    raise Exception(
-                        f"Failed to GetAllActorInfo: {reply.status.message}")
-            except Exception:
-                logger.exception("Error Getting all actor info from GCS.")
-                await asyncio.sleep(stats_collector_consts.
-                                    RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
-
-        # Receive actors from channel.
-        state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
-        async for sender, msg in receiver.iter():
-            try:
-                actor_id, actor_table_data = msg
-                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
-                    actor_table_data)
-                message = ray.gcs_utils.ActorTableData.FromString(
-                    pubsub_message.data)
-                actor_table_data = actor_table_data_to_dict(message)
-                _process_actor_table_data(actor_table_data)
-                # If actor is not new registered but updated, we only update
-                # states related fields.
-                if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
-                    actor_id = actor_id.decode("UTF-8")[len(
-                        ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
-                    actor_table_data_copy = dict(DataSource.actors[actor_id])
-                    for k in state_keys:
-                        actor_table_data_copy[k] = actor_table_data[k]
-                    actor_table_data = actor_table_data_copy
-                actor_id = actor_table_data["actorId"]
-                job_id = actor_table_data["jobId"]
-                node_id = actor_table_data["address"]["rayletId"]
-                # Update actors.
-                DataSource.actors[actor_id] = actor_table_data
-                # Update node actors (only when node_id is not Nil).
-                if node_id != stats_collector_consts.NIL_NODE_ID:
-                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                    node_actors[actor_id] = actor_table_data
-                    DataSource.node_actors[node_id] = node_actors
-                # Update job actors.
-                job_actors = dict(DataSource.job_actors.get(job_id, {}))
-                job_actors[actor_id] = actor_table_data
-                DataSource.job_actors[job_id] = job_actors
-            except Exception:
-                logger.exception("Error receiving actor info.")
-
-    @async_loop_forever(
-        stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
+    @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
         for node_id, stub in list(self._stubs.items()):
@@ -333,11 +309,9 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_job_info_stub = \
-            gcs_service_pb2_grpc.JobInfoGcsServiceStub(gcs_channel)
-        self._gcs_actor_info_stub = \
-            gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
+        self._gcs_node_info_stub = \
+            gcs_service_pb2_grpc.NodeInfoGcsServiceStub(gcs_channel)
 
-        await asyncio.gather(self._update_node_stats(), self._update_actors(),
+        await asyncio.gather(self._update_nodes(), self._update_node_stats(),
                              self._update_log_info(),
                              self._update_error_info())

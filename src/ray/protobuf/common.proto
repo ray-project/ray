@@ -478,6 +478,8 @@ enum WorkerExitType {
   PLACEMENT_GROUP_REMOVED = 3;
   // Worker exit due to exceptions in creation task.
   CREATION_TASK_ERROR = 4;
+  // Worker killed by raylet if it has been idle for too long.
+  IDLE_EXIT = 5;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
