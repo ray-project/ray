@@ -69,26 +69,6 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def is_local_manual_node_provider(provider_config: Dict[str, Any]) -> bool:
-    """Is this a LocalNodeProvider that has manually specified IPs?"""
-    return (provider_config["type"] == "local"
-            and "coordinator_address" not in provider_config)
-
-
-def sync_state(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Adds cluster state file to file mounts.
-
-    Used to synchronize head and local cluster state files, mostly to let the
-    head node know that the head node itself is non-terminated.
-    """
-    config = copy.deepcopy(config)
-    cluster_name = config["cluster_name"]
-    state_path = get_state_path(cluster_name)
-    config["file_mounts"][state_path] = state_path
-    return config
-
-
 def get_lock_path(cluster_name: str) -> str:
     return "/tmp/cluster-{}.lock".format(cluster_name)
 

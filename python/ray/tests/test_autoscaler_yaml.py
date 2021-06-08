@@ -14,7 +14,6 @@ from click.exceptions import ClickException
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
-from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -248,9 +247,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Failed to validate local/example-minimal-manual.yaml")
         expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
         assert prepared_config == expected_prepared
-        synced_config = local_config.sync_state(prepared_config)
-        state_path = "/tmp/cluster-minimal-manual.state"
-        assert (synced_config["file_mounts"] == {state_path: state_path})
 
         no_worker_config = copy.deepcopy(base_config)
         del no_worker_config["provider"]["worker_ips"]

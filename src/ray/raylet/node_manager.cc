@@ -511,20 +511,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
-          normal_task_resources)) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
-    resources_data.set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
-    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                       normal_task_resources.GetResourceMap().end()};
-    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
-  }
-}
-
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
@@ -534,9 +520,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
-    FillNormalTaskResourceUsage(resources_data);
-  }
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
