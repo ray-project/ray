@@ -539,26 +539,6 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
 
-class BlendsearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
-
-        search_alg = BlendSearch(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-        )
-
-        return search_alg, cost
-
-
 class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {
