@@ -909,11 +909,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
-                               rpc::WaitForRefRemovedReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
   void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
                                     rpc::AddObjectLocationOwnerReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;

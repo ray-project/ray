@@ -2609,12 +2609,6 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
                                             ref_removed_callback);
 }
 
-void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
-                                         rpc::WaitForRefRemovedReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(false);
-}
-
 void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
                                         rpc::RemoteCancelTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {

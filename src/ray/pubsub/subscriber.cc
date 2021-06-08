@@ -279,15 +279,16 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
         command_batch_request,
         [this, publisher_address, publisher_id](
             Status status, const rpc::PubsubCommandBatchReply &reply) {
-          if (!status.ok()) {
-            // This means the publisher is failed. We don't need to do anytihng special.
-            RAY_LOG(DEBUG) << "The command batch request to " << publisher_id
-                           << " has failed";
-          }
           auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
           RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
           command_batch_sent_.erase(command_batch_sent_it);
-          SendCommandBatchIfPossible(publisher_address);
+          if (!status.ok()) {
+            // This means the publisher has failed.
+            RAY_LOG(DEBUG) << "The command batch request to " << publisher_id
+                           << " has failed";
+          } else {
+            SendCommandBatchIfPossible(publisher_address);
+          }
         });
   }
 }

@@ -296,6 +296,7 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestIgnoreBatchAfterUnsubscription);
   FRIEND_TEST(SubscriberTest, TestLongPollingFailure);
   FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
+  FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
   bool CheckNoLeaks() const;
 
@@ -305,10 +306,10 @@ class Subscriber : public SubscriberInterface {
 
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.
+  /// NOTE(sang): Note that the subscriber needs to "ensure" that the long polling
+  /// requests are always in flight as long as the publisher is subscribed.
+  /// The publisher failure should be only detected by this RPC.
   ///
-  /// TODO(sang): Currently, we assume that unregistered objects will never be published
-  /// from the pubsub server. We may want to loose the restriction once OBOD is supported
-  /// by this function.
   /// \param publisher_address The address of the publisher that publishes
   /// objects.
   /// \param subscriber_address The address of the subscriber.
@@ -331,6 +332,8 @@ class Subscriber : public SubscriberInterface {
   /// 1-flight GRPC request per the publisher. Since we batch all commands into a single
   /// request, it should have higher throughput than sending 1 RPC per command
   /// concurrently.
+  /// This RPC should be independent from the long polling RPC to receive published
+  /// messages.
   void SendCommandBatchIfPossible(const rpc::Address &publisher_address);
 
   /// Return true if the given publisher id has subscription to any of channel.
@@ -354,6 +357,7 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<rpc::Command>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_;
 
+  /// Queue the command to the designated publisher.
   void QueueCommand(const PublisherID &publisher_id,
                     std::unique_ptr<rpc::Command> command);
 
