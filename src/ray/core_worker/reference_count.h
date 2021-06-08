@@ -285,10 +285,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// RefCount() for the object ID goes to 0.
   ///
   /// \param[in] object_id The object that we were borrowing.
-  /// \param[in] subscriber_worker_id The worker id of the worker that subscribes
-  /// this reference to be removed.
-  void HandleRefRemoved(const ObjectID &object_id, const WorkerID &subscriber_worker_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);

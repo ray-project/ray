@@ -237,12 +237,11 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
       ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
       const auto owner_address = request.reference().owner_address();
-      const auto subscriber_id = WorkerID::FromBinary(request.subscriber_worker_id());
       // Reply to the owner first. The ref message will be published by
       // MockDistributedPublisher.
       requests_[r].second(Status::OK(), *requests_[r].first);
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1, subscriber_id);
+          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
