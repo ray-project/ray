@@ -361,7 +361,7 @@ def compute_q_values(policy: Policy,
             support_logits_per_action = torch.unsqueeze(
                 state_score, dim=1) + support_logits_per_action_centered
             support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action)
+                support_logits_per_action, dim=-1)
             value = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs_or_logits = support_prob_per_action
