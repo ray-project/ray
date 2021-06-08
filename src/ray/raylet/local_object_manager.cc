@@ -308,20 +308,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   num_bytes_pending_spill_ -= it->second.first->GetSize();
   objects_pending_spill_.erase(it);
 
-  // Update the object_id -> url_ref_count to use it for deletion later.
-  // We need to track the references here because a single file can contain
-  // multiple objects, and we shouldn't delete the file until
-  // all the objects are gone out of scope.
-  // object_url is equivalent to url_with_offset.
-  auto parsed_url = ParseURL(object_url);
-  const auto base_url_it = parsed_url->find("url");
-  RAY_CHECK(base_url_it != parsed_url->end());
-  if (!url_ref_count_.contains(base_url_it->second)) {
-    url_ref_count_[base_url_it->second] = 1;
-  } else {
-    url_ref_count_[base_url_it->second] += 1;
-  }
-
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
     callback(status);
@@ -352,6 +338,21 @@ void LocalObjectManager::AddSpilledUrls(
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
+
+    // Update the object_id -> url_ref_count to use it for deletion later.
+    // We need to track the references here because a single file can contain
+    // multiple objects, and we shouldn't delete the file until
+    // all the objects are gone out of scope.
+    // object_url is equivalent to url_with_offset.
+    auto parsed_url = ParseURL(object_url);
+    const auto base_url_it = parsed_url->find("url");
+    RAY_CHECK(base_url_it != parsed_url->end());
+    if (!url_ref_count_.contains(base_url_it->second)) {
+      url_ref_count_[base_url_it->second] = 1;
+    } else {
+      url_ref_count_[base_url_it->second] += 1;
+    }
+
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.

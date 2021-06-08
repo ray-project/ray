@@ -53,23 +53,17 @@ vector<FixedPoint> EmptyFixedPointVector;
 
 void initTaskRequest(TaskRequest &tr, vector<FixedPoint> &pred_demands,
                      vector<int64_t> &cust_ids, vector<FixedPoint> &cust_demands) {
+  tr.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
   for (size_t i = 0; i < pred_demands.size(); i++) {
-    ResourceRequest rq;
-    rq.demand = pred_demands[i];
-    tr.predefined_resources.push_back(rq);
+    tr.predefined_resources[i] = pred_demands[i];
   }
 
   for (size_t i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
-    ResourceRequest rq;
-    rq.demand = 0;
-    tr.predefined_resources.push_back(rq);
+    tr.predefined_resources.push_back(0);
   }
 
   for (size_t i = 0; i < cust_ids.size(); i++) {
-    ResourceRequestWithId rq;
-    rq.id = cust_ids[i];
-    rq.demand = cust_demands[i];
-    tr.custom_resources.push_back(rq);
+    tr.custom_resources[cust_ids[i]] = cust_demands[i];
   }
 };
 
@@ -354,18 +348,17 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     ASSERT_TRUE(resource_scheduler.GetNodeResources(node_id, &nr2));
 
     for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
-      auto t =
-          nr1.predefined_resources[i].available - task_req.predefined_resources[i].demand;
+      auto t = nr1.predefined_resources[i].available - task_req.predefined_resources[i];
       if (t < 0) t = 0;
       ASSERT_EQ(nr2.predefined_resources[i].available, t);
     }
 
-    for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
-      auto it1 = nr1.custom_resources.find(task_req.custom_resources[i].id);
+    for (size_t i = 1; i <= PRED_CUSTOM_LEN; i++) {
+      auto it1 = nr1.custom_resources.find(i);
       if (it1 != nr1.custom_resources.end()) {
-        auto it2 = nr2.custom_resources.find(task_req.custom_resources[i].id);
+        auto it2 = nr2.custom_resources.find(i);
         if (it2 != nr2.custom_resources.end()) {
-          auto t = it1->second.available - task_req.custom_resources[i].demand;
+          auto t = it1->second.available - task_req.custom_resources[i];
           if (t < 0) t = 0;
           ASSERT_EQ(it2->second.available, t);
         }
