@@ -116,7 +116,7 @@ install_miniconda() {
       darwin*)
         # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
         local miniconda_dir="/usr/local/miniconda"
-        if [ -n "$BUILDKITE" ] then
+        if [ -n "$BUILDKITE" ]; then
           mkdir -p -- "${miniconda_dir}"
         else
           sudo mkdir -p -- "${miniconda_dir}"
