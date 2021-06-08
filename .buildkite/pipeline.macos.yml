@@ -16,9 +16,6 @@ steps:
 - label: ":mac: :apple: Core+Libraries"
   <<: *common
   commands:
-    # Sanity check for permission
-    - tail /usr/local/etc/buildkite-agent/buildkite-agent.cfg || true
-
     - cleanup() { ./ci/travis/upload_build_info.sh }; trap cleanup EXIT
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
