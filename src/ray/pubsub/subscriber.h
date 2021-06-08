@@ -324,18 +324,14 @@ class Subscriber : public SubscriberInterface {
 
   /// Make a long polling connection if it never made the one with this publisher for
   /// pubsub operations.
-  void MakeLongPollingConnectionIfNotConnected(const rpc::Address &publisher_address) {
-    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-    auto publishers_connected_it = publishers_connected_.find(publisher_id);
-    if (publishers_connected_it == publishers_connected_.end()) {
-      publishers_connected_.emplace(publisher_id);
-      rpc::Address subscriber_address;
-      subscriber_address.set_raylet_id(subscriber_id_.Binary());
-      subscriber_address.set_ip_address(subscriber_address_);
-      subscriber_address.set_port(subscriber_port_);
-      MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
-    }
-  }
+  void MakeLongPollingConnectionIfNotConnected(const rpc::Address &publisher_address);
+
+  /// Send a command batch to the publisher. To ensure the FIFO order with unary GRPC
+  /// requests (which don't guarantee ordering), the subscriber module only allows to have
+  /// 1-flight GRPC request per the publisher. Since we batch all commands into a single
+  /// request, it should have higher throughput than sending 1 RPC per command
+  /// concurrently.
+  void SendCommandBatchIfPossible(const rpc::Address &publisher_address);
 
   /// Return true if the given publisher id has subscription to any of channel.
   bool SubscriptionExists(const PublisherID &publisher_id) {
@@ -355,7 +351,11 @@ class Subscriber : public SubscriberInterface {
   /// Commands queue. Commands are reported in FIFO order to the publisher. This
   /// guarantees the ordering of commands because they are delivered only by a single RPC
   /// (long polling request).
-  std::queue<std::unique_ptr<rpc::Command>> commands_;
+  using CommandQueue = std::queue<std::unique_ptr<rpc::Command>>;
+  absl::flat_hash_map<PublisherID, CommandQueue> commands_;
+
+  void QueueCommand(const PublisherID &publisher_id,
+                    std::unique_ptr<rpc::Command> command);
 
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;
@@ -363,6 +363,9 @@ class Subscriber : public SubscriberInterface {
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.
   absl::flat_hash_set<PublisherID> publishers_connected_;
+
+  /// A set to keep track of in-flight command batch requests
+  absl::flat_hash_set<PublisherID> command_batch_sent_;
 
   /// WaitForObjectEviction channel.
   std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_;

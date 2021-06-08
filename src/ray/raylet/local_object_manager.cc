@@ -60,21 +60,18 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
       const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
       ReleaseFreedObject(object_id);
       core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                            owner_address, object_id.Binary());
+                                           owner_address, object_id.Binary());
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, object_id]() {
-      ReleaseFreedObject(object_id);
-    };
+    auto owner_dead_callback = [this, object_id]() { ReleaseFreedObject(object_id); };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
-    
-    core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                        rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                        owner_address, object_id.Binary(),
-                                        subscription_callback, owner_dead_callback);
+
+    core_worker_subscriber_->Subscribe(
+        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
+        object_id.Binary(), subscription_callback, owner_dead_callback);
   }
 }
 
