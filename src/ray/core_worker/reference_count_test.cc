@@ -103,11 +103,13 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID subscriber_id)
+      WorkerID subscriber_id,
+      rpc::ClientFactoryFn client_factory)
       : directory_(directory),
         subscription_callback_map_(subscription_callback_map),
         subscription_failure_callback_map_(subscription_failure_callback_map),
-        subscriber_id_(subscriber_id) {}
+        subscriber_id_(subscriber_id),
+        client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
 
@@ -117,6 +119,15 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    const auto &request = sub_message->worker_ref_removed_message();
+    // Register the borrower callback first. It will be flushable by FlushBorrowerCallbacks from mock core worker client.
+    const auto object_id = ObjectID::FromBinary(request.reference().object_id());
+    const auto contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+    const auto owner_address = request.reference().owner_address();
+    const auto subscriber_id = WorkerID::FromBinary(request.subscriber_worker_id());
+    if (client_factory_) {
+      client_factory_()->WaitForRefRemoved(object_id, contained_in_id, owner_address, subscriber_id);
+    }
     // Due to the test env, there are times that the same mssage id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
@@ -199,6 +210,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID publisher_id_;
+  rpc::ClientFactoryFn client_factory_;
 };
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
@@ -219,29 +231,18 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
             WorkerID::FromBinary(address_.worker_id()))),
         subscriber_(std::make_shared<MockDistributedSubscriber>(
             &directory, &subscription_callback_map, &subscription_failure_callback_map,
-            WorkerID::FromBinary(address_.worker_id()))),
+            WorkerID::FromBinary(address_.worker_id()), client_factory)),
         rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
             /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
   void WaitForRefRemoved(
-      const rpc::WaitForRefRemovedRequest &request,
-      const rpc::ClientCallback<rpc::WaitForRefRemovedReply> &callback) override {
+      const ObjectID object_id, const ObjectID contained_in_id, rpc::Address owner_address, const WorkerID subscriber_id) {
     auto r = num_requests_;
-    requests_[r] = {
-        std::make_shared<rpc::WaitForRefRemovedReply>(),
-        callback,
-    };
 
     auto borrower_callback = [=]() {
-      const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
-      ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
-      const auto owner_address = request.reference().owner_address();
-      // Reply to the owner first. The ref message will be published by
-      // MockDistributedPublisher.
-      requests_[r].second(Status::OK(), *requests_[r].first);
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1, subscriber_id);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
@@ -251,6 +252,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   bool FlushBorrowerCallbacks() {
+    // Flush all the borrower callbacks. This means that after this function is invoked,
+    // all of ref_counts will be tracked.
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
@@ -262,11 +265,11 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
   }
 
-  void FailAllWaitForRefRemovedRequests() {
-    for (const auto &request : requests_) {
-      request.second.second(Status::IOError("disconnected"), *request.second.first);
-    }
-  }
+  // void FailAllWaitForRefRemovedRequests() {
+  //   for (const auto &request : requests_) {
+  //     request.second.second(Status::IOError("disconnected"), *request.second.first);
+  //   }
+  // }
 
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
@@ -333,6 +336,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
                                      nullptr);
   }
 
+  WorkerID GetID() const {
+    return WorkerID::FromBinary(address_.worker_id());
+  }
+
   // Global map from Worker ID -> MockWorkerClient.
   // Global map from Object ID -> owner worker ID, list of objects that it depends on,
   // worker address that it's scheduled on. Worker map of pending return IDs.
@@ -343,9 +350,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   // The ReferenceCounter at the "client".
   ReferenceCounter rc_;
   std::unordered_map<int, std::function<void()>> borrower_callbacks_;
-  std::unordered_map<int, std::pair<std::shared_ptr<rpc::WaitForRefRemovedReply>,
-                                    rpc::ClientCallback<rpc::WaitForRefRemovedReply>>>
-      requests_;
   int num_requests_ = 0;
 };
 
@@ -783,7 +787,7 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 
   // The borrower fails. The owner's ref count should go to 0.
-  borrower->FailAllWaitForRefRemovedRequests();
+  // borrower->FailAllWaitForRefRemovedRequests();
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
