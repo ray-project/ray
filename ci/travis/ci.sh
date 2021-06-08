@@ -190,9 +190,16 @@ test_python() {
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046
-    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
-      "${args[@]}";
+
+    if [ "${OSTYPE}" = msys ]; then
+      bazel test --config=ci --config=win_test --build_tests_only $(./scripts/bazel_export_options) \
+        --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
+        "${args[@]}";
+    else
+      bazel test --config=ci --config=generic_os_test --build_tests_only $(./scripts/bazel_export_options) \
+        --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
+        "${args[@]}";
+    fi
   fi
 }
 
