@@ -1,7 +1,9 @@
 import argparse
 
+import dask
 import dask.dataframe as dd
 import ray
+from ray.util.dask import ray_dask_get
 from xgboost_ray import RayDMatrix, RayParams, train
 
 FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
@@ -21,6 +23,7 @@ def main():
 
     print("Loading HIGGS data.")
 
+    dask.config.set(scheduler=ray_dask_get)
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
     data = dd.read_csv(FILE_URL, names=colnames)
     if args.smoke_test:
@@ -30,8 +33,10 @@ def main():
 
     # partition on a column
     df_train = data[(data["feature-01"] < 0.4)]
+    df_train = df_train.persist()
     df_validation = data[(data["feature-01"] >= 0.4)
                          & (data["feature-01"] < 0.8)]
+    df_validation = df_validation.persist()
 
     dtrain = RayDMatrix(df_train, label="label", columns=colnames)
     dvalidation = RayDMatrix(df_validation, label="label")
