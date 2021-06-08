@@ -429,47 +429,44 @@ Runtime Environments (Experimental)
 -----------------------------------
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
-The ``runtime_env`` option is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and to ``ray.init()`` and ``ray.client().connect()``. The runtime environment defines the dependencies required for your workload.
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.
+The runtime environment defines the dependencies required for your workload.
 
-Examples:
-
-.. code-block:: python
-    
-    runtime_env = {"working_dir": "local_project.zip", "pip": ["chess==1.5.0"]}
-    runtime_env = {
-        "conda": {
-            "dependencies":
-            ["pytorch", "torchvision", "pip", {
-                "pip": ["chess"]
-            }]
-        }
-    }
-
-Different ways to use runtime environments:
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
 
 .. code-block:: python
 
     ray.init(job_config=ray.job_config.JobConfig(runtime_env=runtime_env))
+
+.. code-block:: python
+
     ray.client("localhost:10001").env(runtime_env).connect()
+
+...or specify per-actor or per-task using ``.options()``:
+
+.. code-block:: python
+
     f.options(runtime_env=runtime_env).remote()
     Actor.options(runtime_env=runtime_env).remote()
 
 
-The ``runtime_env`` is a dictionary including one or more of the following arguments:
+The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
-- ``working_dir`` (Path): Specifies the working directory for your job. This can either be a local directory or zip file.
-  It will be cached on the cluster, so the next time you connect you will be able to skip uploading the directory.
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+  It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
   Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
 
   - Examples
 
     - ``"."  # cwd``
 
-    - ``"local_project.zip"  # Archive is unpacked into the directory.``
+    - ``"/code/my_project"``
 
   Note: Setting this option per-task or per-actor is currently unsupported.
 
-- ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip “requirements.txt” file. This will be dynamically installed in the ``runtime_env``.
+- ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip 
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
+  This will be dynamically installed in the ``runtime_env``.
 
   - Example: ``["requests==1.0.0", "aiohttp"]``
 
@@ -479,7 +476,7 @@ The ``runtime_env`` is a dictionary including one or more of the following argum
   `conda “environment.yaml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.  
-  Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time--to use them together, please add your conda dependencies under the ``"pip"`` entry in your conda ``environment.yaml``.
+  Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
   - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["chess"]}]}}``
 
@@ -494,4 +491,19 @@ The ``runtime_env`` is a dictionary including one or more of the following argum
 The runtime env is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
+
+Here are some examples combining multiple options:
+
+.. code-block:: python
+    
+    runtime_env = {"working_dir": "/code/my_project", "pip": ["chess==1.5.0"]}
+    runtime_env = {
+        "conda": {
+            "dependencies":
+            ["pytorch", "torchvision", "pip", {
+                "pip": ["chess"]
+            }]
+        },
+        "env_vars": {"TF_WARNINGS": "none"}
+    }
 
