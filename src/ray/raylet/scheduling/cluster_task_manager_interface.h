@@ -118,6 +118,9 @@ class ClusterTaskManagerInterface {
 
   /// Report high frequency scheduling metrics.
   virtual void RecordMetrics() = 0;
+
+  /// Calculate normal task resources.
+  virtual ResourceSet CalcNormalTaskResources() const = 0;
 };
 }  // namespace raylet
 }  // namespace ray
