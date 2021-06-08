@@ -1021,4 +1021,23 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
+void ClusterResourceScheduler::FillResourceTotals(rpc::UpdateResourcesRequest &request) const {
+  request.set_node_id(string_to_int_map_.Get(local_node_id_));
+  auto &map = *request.mutable_resources();
+
+  const auto &local_resources = nodes_[local_node_id_].GetLocalView();
+
+  for (int i = 0; i < local_resources.predefined_resources.size(); i++) {
+    auto &resource_total = local_resources.predefined_resources[i].total;
+    if (total > 0) {
+
+    }
+  }
+
+
+
+
+  return;
+}
+
 }  // namespace ray

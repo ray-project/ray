@@ -409,6 +409,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
+  /// Populate a UpdateResourcesRequest. This is inteneded to update the
+  /// resource totals on a node when a custom resource is created or deleted
+  /// (e.g. during the placement group lifecycle).
+  ///
+  /// \param Output parameter. Fills out all fields.
+  void FillResourceTotals(rpc::UpdateResourcesRequest &request) const override;
+
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///
