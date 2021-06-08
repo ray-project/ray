@@ -835,7 +835,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  bool create_runtime_env = false;
   auto start_worker_process_fn = [this](const TaskSpecification &task_spec, State &state,
                                         std::vector<std::string> dynamic_options,
                                         bool dedicated) -> Process {
@@ -843,9 +842,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                                       task_spec.JobId(), dynamic_options,
                                       task_spec.SerializedRuntimeEnv(),
                                       task_spec.OverrideEnvironmentVariables());
-    if (proc.IsValid() && dedicated) {
-      state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-      state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
+    if (proc.IsValid()) {
+      WarnAboutSize();
+      if (dedicated) {
+        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+        state.tasks_to_dedicated_workers.emplace(task_spec.TaskId());
+      }
     }
     return proc;
   };
@@ -877,13 +879,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
       // create runtime env.
       if (task_spec.HasRuntimeEnv()) {
-        create_runtime_env = true;
-        state.tasks_to_pending_runtime_envs[task_spec.TaskId()] =
-            task_spec.SerializedRuntimeEnv();
+        state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, dynamic_options](bool done) {
-              state.tasks_to_pending_runtime_envs.erase(task_spec.TaskId());
+              state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (!done) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
@@ -937,15 +937,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
-        create_runtime_env = true;
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec](bool done) {
-              if (!done) {
+            [start_worker_process_fn, &state, task_spec](bool successful) {
+              if (!successful) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
-                RAY_LOG(ERROR) << "Create runtime env rpc failed. Wait for next time to "
-                                  "retry or reschedule.";
                 return;
               }
               start_worker_process_fn(task_spec, state, {}, false);
@@ -956,7 +953,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     }
   }
 
-  if (worker == nullptr && proc.IsValid() && !create_runtime_env) {
+  if (worker == nullptr && proc.IsValid()) {
     WarnAboutSize();
   }
 
@@ -1148,8 +1145,8 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  auto runtime_env_it = state.tasks_to_pending_runtime_envs.find(task_id);
-  if (runtime_env_it != state.tasks_to_pending_runtime_envs.end()) {
+  auto runtime_env_it = state.tasks_with_pending_runtime_envs.find(task_id);
+  if (runtime_env_it != state.tasks_with_pending_runtime_envs.end()) {
     return true;
   }
   auto it = state.tasks_to_dedicated_workers.find(task_id);

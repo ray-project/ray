@@ -24,9 +24,9 @@ message CreateRuntimeEnvRequest {
 }
 
 message CreateRuntimeEnvReply {
-  // The status of job env creation.
+  // The status of runtime env creation.
   AgentRpcStatus status = 1;
-  // The error message in CreateRuntimeEnv.
+  // The error message.
   string error_message = 2;
 }
 
@@ -36,9 +36,9 @@ message DeleteRuntimeEnvRequest {
 }
 
 message DeleteRuntimeEnvReply {
-  // The status of job env initialization.
+  // The status of runtime env deletion.
   AgentRpcStatus status = 1;
-  // The error message in CreateRuntimeEnv.
+  // The error message.
   string error_message = 2;
 }
 

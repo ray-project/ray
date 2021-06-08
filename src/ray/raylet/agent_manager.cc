@@ -103,11 +103,11 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
                                     CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv "
-        << serialized_runtime_env << " later.";
+        << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
+        << serialized_runtime_env;
     delay_executor_([this, serialized_runtime_env,
                      callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_retry_interval_ms());
+                    RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
@@ -132,7 +132,7 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
               [this, serialized_runtime_env, callback] {
                 CreateRuntimeEnv(serialized_runtime_env, callback);
               },
-              RayConfig::instance().agent_retry_interval_ms());
+              RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
@@ -141,11 +141,11 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
                                     DeleteRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv "
-        << serialized_runtime_env << " later.";
+        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv later: "
+        << serialized_runtime_env;
     delay_executor_([this, serialized_runtime_env,
                      callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_retry_interval_ms());
+                    RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::DeleteRuntimeEnvRequest request;
@@ -155,11 +155,11 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
                    Status status, const rpc::DeleteRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true);
+            callback();
           } else {
             RAY_LOG(ERROR) << "Failed to delete runtime env: " << serialized_runtime_env
                            << ", error message: " << reply.error_message();
-            callback(false);
+            callback();
           }
 
         } else {
@@ -168,9 +168,9 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
                          << ", maybe there are some network problems, retry it later.";
           delay_executor_(
               [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnv(serialized_runtime_env, callback);
+                DeleteRuntimeEnv(serialized_runtime_env, callback);
               },
-              RayConfig::instance().agent_retry_interval_ms());
+              RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }

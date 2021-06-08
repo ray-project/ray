@@ -459,11 +459,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
-    /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
-    /// A map for speeding up looking up the pending runtime env request for the given
+    /// A set for speeding up looking up the pending worker for the given task.
+    std::unordered_set<TaskID> tasks_to_dedicated_workers;
+    /// A set for speeding up looking up the pending runtime env request for the given
     /// task.
-    std::unordered_map<TaskID, std::string> tasks_to_pending_runtime_envs;
+    std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
