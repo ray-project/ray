@@ -1,4 +1,6 @@
 common: &common
+  artifact_paths:
+    - "/tmp/bazel_event_logs/*"
   env:
     BUILDKITE: "true"
     CI: "true"
@@ -14,7 +16,10 @@ steps:
 - label: ":mac: :apple: Core+Libraries"
   <<: *common
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    # Sanity check for permission
+    - tail /usr/local/etc/buildkite-agent/buildkite-agent.cfg || true
+
+    - cleanup() { ./ci/travis/upload_build_info.sh }; trap cleanup EXIT
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
@@ -26,7 +31,7 @@ steps:
 - label: ":mac: :apple: Medium A-J"
   <<: *common
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - cleanup() { ./ci/travis/upload_build_info.sh }; trap cleanup EXIT
     - (which bazel && bazel clean) || true;
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
