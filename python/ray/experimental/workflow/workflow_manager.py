@@ -4,7 +4,6 @@ from typing import List, Tuple, Union, Any, Dict, Callable, Optional
 import uuid
 
 import ray
-import ray.serialization
 import ray.cloudpickle
 from ray.util.serialization import register_serializer, deregister_serializer
 
