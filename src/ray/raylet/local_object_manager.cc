@@ -378,7 +378,7 @@ void LocalObjectManager::AddSpilledUrls(
 
   // Batch send the AddSpilledUrl RPCs.
   for (const auto &pair : requests_to_send) {
-    auto request = pair.second;
+    auto &request = pair.second;
     // Get the client connection for the batch.
     const ObjectID oid0 = ObjectID::FromBinary(request.spilled_urls(0).object_id());
     auto owner_client =
