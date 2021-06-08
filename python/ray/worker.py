@@ -298,8 +298,8 @@ class Worker:
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         # FunctionActorManager may or the import thread may call pickle.loads
         # at the same time which can lead to deadlock.
-        # TODO: We may be better off locking on imports or locking pickle.loads
-        # directly (Discussion at #16304)
+        # TODO: We may be better off locking on all imports or injecting a lock
+        # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs,
