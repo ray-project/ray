@@ -7,9 +7,9 @@ import torch.distributed as dist
 import ray
 from ray import tune
 from ray.cluster_utils import Cluster
-from ray.tune.integration.torch import (DistributedTrainableCreator,
-                                        distributed_checkpoint_dir,
-                                        _train_simple, _train_check_global)
+from ray.tune.integration.torch import (
+    DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple,
+    _train_check_global, _train_validate_session)
 
 
 @pytest.fixture
@@ -169,6 +169,11 @@ def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
     assert ray.available_resources().get("GPU", 0) == 0
     trainable.train()
     trainable.stop()
+
+
+def test_validate_session(ray_start_2_cpus):
+    trainable_cls = DistributedTrainableCreator(_train_validate_session)
+    tune.run(trainable_cls)
 
 
 if __name__ == "__main__":

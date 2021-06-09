@@ -475,7 +475,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                        std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -489,10 +491,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_address The address of the object's owner.
+  /// \param[in] owner_address The address of the object's owner.
+  /// \param[in] serialized_object_status The serialized object status protobuf.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address);
+                                             const rpc::Address &owner_address,
+                                             const std::string &serialized_object_status);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -538,7 +542,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                     bool created_by_worker);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -554,7 +559,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                         const ObjectID &object_id, const rpc::Address &owner_address,
-                        std::shared_ptr<Buffer> *data);
+                        std::shared_ptr<Buffer> *data, bool created_by_worker);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
@@ -631,6 +636,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Get the locations of a list objects. Locations that failed to be retrieved
+  /// will be returned as nullptrs.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                              std::vector<std::shared_ptr<ObjectLocation>> *results);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
@@ -1035,6 +1050,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
+
+  /// Helper method to fill in object status reply given an object.
+  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
+                            rpc::GetObjectStatusReply *reply);
 
   ///
   /// Private methods related to task submission.

@@ -193,3 +193,23 @@ cc_proto_library(
     name = "pubsub_cc_proto",
     deps = [":pubsub_proto"],
 )
+
+# runtime env agent gRPC lib.
+proto_library(
+    name = "runtime_env_agent_proto",
+    srcs = ["runtime_env_agent.proto"],
+    deps = [
+        ":common_proto",
+        ":agent_manager_proto",
+    ],
+)
+
+python_grpc_compile(
+    name = "runtime_env_agent_py_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_agent_cc_proto",
+    deps = [":runtime_env_agent_proto"],
+)

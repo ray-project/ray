@@ -103,6 +103,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
 # Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):

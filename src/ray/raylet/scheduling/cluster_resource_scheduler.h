@@ -277,15 +277,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// (0., 0., 0., 0.)
   ///
   /// \param demand: The resource amount to be allocated.
-  /// \param soft: Specifies whether this demand has soft or hard constraints.
   /// \param available: List of available capacities of the instances of the resource.
   /// \param allocation: List of instance capacities allocated to satisfy the demand.
   /// This is a return parameter.
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(FixedPoint demand, bool soft,
-                                 std::vector<FixedPoint> &available,
+  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
                                  std::vector<FixedPoint> *allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).

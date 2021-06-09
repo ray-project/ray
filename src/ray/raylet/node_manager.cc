@@ -248,9 +248,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
           /*core_worker_subscriber_=*/
-          std::make_shared<pubsub::Subscriber>(self_node_id_, config.node_manager_address,
-                                               config.node_manager_port,
-                                               worker_rpc_pool_)),
+          std::make_shared<pubsub::Subscriber>(
+              self_node_id_, config.node_manager_address, config.node_manager_port,
+              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_)),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -323,12 +323,19 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   }
 
   auto options = AgentManager::Options({self_node_id, agent_command_line});
-  agent_manager_.reset(
-      new AgentManager(std::move(options),
-                       /*delay_executor=*/
-                       [this](std::function<void()> task, uint32_t delay_ms) {
-                         return execute_after(io_service_, task, delay_ms);
-                       }));
+  agent_manager_ = std::make_shared<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, delay_ms);
+      },
+      /*runtime_env_agent_factory=*/
+      [this](const std::string &ip_address, int port) {
+        RAY_CHECK(!ip_address.empty() && port != 0);
+        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
+            new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
+      });
+  worker_pool_.SetAgentManager(agent_manager_);
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -1675,7 +1682,8 @@ void NodeManager::MarkObjectsAsFailed(
     Status status;
     status = store_client_.TryCreateImmediately(
         object_id, ref.owner_address(), 0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data,
+        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }

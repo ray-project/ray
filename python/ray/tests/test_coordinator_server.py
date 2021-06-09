@@ -1,4 +1,5 @@
 import os
+import random
 import unittest
 import socket
 import json
@@ -6,12 +7,16 @@ import json
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
     _get_node_provider
+from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import \
+    record_local_head_state_if_needed
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, TAG_RAY_CLUSTER_NAME,
                                  TAG_RAY_NODE_NAME, NODE_KIND_WORKER,
-                                 NODE_KIND_HEAD)
+                                 NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+                                 TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
 import pytest
 
 
@@ -47,20 +52,25 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
         Test the general use case and if num_workers increase/decrease.
         """
-
+        # Use a random head_ip so that the state file is regenerated each time
+        # this test is run. (Otherwise the test will fail spuriously when run a
+        # second time.)
+        head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
             "min_workers": 0,
             "max_workers": 0,
             "provider": {
                 "type": "local",
-                "head_ip": "0.0.0.0:2",
-                "worker_ips": ["0.0.0.0:1"]
+                "head_ip": head_ip,
+                "worker_ips": ["0.0.0.0:1"],
+                "external_head_ip": "0.0.0.0.3"
             },
         }
         provider_config = cluster_config["provider"]
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False)
+        assert node_provider.external_ip(head_ip) == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
         expected_workers[provider_config["head_ip"]] = {
@@ -68,6 +78,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             },
             "state": "terminated",
+            "external_ip": "0.0.0.0.3"
         }
         expected_workers[provider_config["worker_ips"][0]] = {
             "tags": {
@@ -76,8 +87,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "state": "terminated",
         }
 
-        state_save_path = "/tmp/cluster-{}.state".format(
+        state_save_path = local_config.get_state_path(
             cluster_config["cluster_name"])
+
         assert os.path.exists(state_save_path)
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
@@ -102,6 +114,26 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             provider_config, cluster_config["cluster_name"], use_cache=False)
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
+
+        # Test record_local_head_state_if_needed
+        head_ip = cluster_config["provider"]["head_ip"]
+        cluster_name = cluster_config["cluster_name"]
+        node_provider = _get_node_provider(
+            provider_config, cluster_config["cluster_name"], use_cache=False)
+        assert head_ip not in node_provider.non_terminated_nodes({})
+        record_local_head_state_if_needed(node_provider)
+        assert head_ip in node_provider.non_terminated_nodes({})
+        expected_head_tags = {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: local_config.LOCAL_CLUSTER_NODE_TYPE,
+            TAG_RAY_NODE_NAME: "ray-{}-head".format(cluster_name),
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }
+        assert node_provider.node_tags(head_ip) == expected_head_tags
+        # Repeat and verify nothing has changed.
+        record_local_head_state_if_needed(node_provider)
+        assert head_ip in node_provider.non_terminated_nodes({})
+        assert node_provider.node_tags(head_ip) == expected_head_tags
 
     def testOnPremCoordinatorStateInit(self):
         """If OnPremCoordinatorState __init__ generates correct state file.

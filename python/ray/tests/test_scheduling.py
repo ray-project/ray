@@ -118,10 +118,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
     cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "scheduler_loadbalance_spillback": True,
-            "scheduler_hybrid_scheduling": False
+        num_cpus=0, _system_config={
+            "scheduler_hybrid_threshold": 0,
         })
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()

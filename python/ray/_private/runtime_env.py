@@ -179,6 +179,13 @@ class RuntimeEnvDict:
             if self._dict.get("pip") or self._dict.get("conda"):
                 self._dict["_ray_commit"] = ray.__commit__
 
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if "_skip_inject_ray" in runtime_env_json:
+            self._dict["_skip_inject_ray"] = runtime_env_json[
+                "_skip_inject_ray"]
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker
@@ -197,6 +204,9 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
+
+    def set_uris(self, uris):
+        self._dict["uris"] = uris
 
 
 class Protocol(Enum):
@@ -512,9 +522,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env["uris"] = [
-            Protocol.GCS.value + "://" + pkg_name
-        ]
+        job_config.set_runtime_env_uris(
+            [Protocol.GCS.value + "://" + pkg_name])
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

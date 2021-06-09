@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import os
 import numpy as np
 import pytest
 
@@ -165,6 +166,9 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
+@pytest.mark.skipif(
+    "RAY_PROFILING" not in os.environ,
+    reason="Only tested in client/profiling build.")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():

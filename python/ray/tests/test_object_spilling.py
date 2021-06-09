@@ -3,6 +3,7 @@ import json
 import random
 import platform
 import sys
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
@@ -391,7 +392,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
                                 is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
-        num_cpus=4,
+        num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
@@ -399,18 +400,19 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "worker_register_timeout_seconds": 600,
         },
     )
 
     if is_async:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         class Actor:
             async def f(self):
                 return np.zeros(10 * 1024 * 1024)
     else:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         def f():
             return np.zeros(10 * 1024 * 1024)
 
@@ -425,6 +427,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(i, x)
         ids.append(x)
 
+    start = datetime.now()
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
@@ -434,6 +437,10 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             obj = ray.get(x)
         print(obj.shape)
         del obj
+    duration = datetime.now() - start
+    assert duration <= timedelta(
+        seconds=30
+    ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 
 

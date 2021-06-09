@@ -1551,6 +1551,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_ray_client",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    srcs = ["tests/test_ray_client.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "medium",
