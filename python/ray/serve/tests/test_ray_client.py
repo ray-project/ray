@@ -7,6 +7,7 @@ import requests
 
 import ray
 from ray.test_utils import run_string_as_driver
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray import serve
 
 # https://tools.ietf.org/html/rfc6335#section-6
@@ -97,6 +98,49 @@ A.deploy()
     run_string_as_driver(fastapi)
 
     assert requests.get("http://localhost:8000/A").json() == "hello"
+
+
+def test_quickstart_class():
+    with ray_start_client_server():
+        assert ray.util.client.ray.is_connected()
+
+        serve.start()
+
+        @serve.deployment
+        def hello(request):
+            name = request.query_params["name"]
+            return f"Hello {name}!"
+
+        hello.deploy()
+
+        # Query our endpoint over HTTP.
+        response = requests.get("http://127.0.0.1:8000/hello?name=serve").text
+        assert response == "Hello serve!"
+
+
+def test_quickstart_task():
+    with ray_start_client_server():
+        assert ray.util.client.ray.is_connected()
+
+        serve.start()
+
+        @serve.deployment
+        class Counter:
+            def __init__(self):
+                self.count = 0
+
+            def __call__(self, *args):
+                self.count += 1
+                return {"count": self.count}
+
+        # Deploy our class.
+        Counter.deploy()
+
+        # Query our endpoint in two different ways: from HTTP and from Python.
+        assert requests.get("http://127.0.0.1:8000/Counter").json() == {
+            "count": 1
+        }
+        assert ray.get(Counter.get_handle().remote()) == {"count": 2}
 
 
 if __name__ == "__main__":
