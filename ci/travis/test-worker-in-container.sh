@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
+cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
 
 set -euxo pipefail
-
-cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
 
 export STORAGE_DRIVER=vfs
 podman load --input /var/lib/containers/images.tar
