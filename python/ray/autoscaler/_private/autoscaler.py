@@ -21,6 +21,9 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import \
+    record_local_head_state_if_needed
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -269,8 +272,15 @@ class StandardAutoscaler:
         if completed_nodes:
             failed_nodes = []
             for node_id in completed_nodes:
-                if self.updaters[node_id].exitcode == 0:
+                updater = self.updaters[node_id]
+                if updater.exitcode == 0:
                     self.num_successful_updates[node_id] += 1
+                    self.prom_metrics.successful_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.successful_recoveries.inc()
+                    if updater.update_time:
+                        self.prom_metrics.worker_update_time.observe(
+                            updater.update_time)
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
                     self.load_metrics.mark_active(
@@ -278,6 +288,9 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.prom_metrics.failed_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.failed_recoveries.inc()
                     self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
 
@@ -332,6 +345,12 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+        self.prom_metrics.updating_nodes.set(len(self.updaters))
+        num_recovering = 0
+        for updater in self.updaters.values():
+            if updater.for_recovery:
+                num_recovering += 1
+        self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 
@@ -505,6 +524,11 @@ class StandardAutoscaler:
                 self.provider = _get_node_provider(self.config["provider"],
                                                    self.config["cluster_name"])
 
+            # If using the LocalNodeProvider, make sure the head node is marked
+            # non-terminated.
+            if isinstance(self.provider, LocalNodeProvider):
+                record_local_head_state_if_needed(self.provider)
+
             self.available_node_types = self.config["available_node_types"]
             upscaling_speed = self.config.get("upscaling_speed")
             aggressive = self.config.get("autoscaling_mode") == "aggressive"
@@ -556,7 +580,9 @@ class StandardAutoscaler:
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
 
-        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
+        launch_config = copy.deepcopy(self.config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
                 self.config["available_node_types"][node_type]["node_config"])
@@ -621,7 +647,8 @@ class StandardAutoscaler:
             use_internal_ip=True,
             is_head_node=False,
             docker_config=self.config.get("docker"),
-            node_resources=self._node_resources(node_id))
+            node_resources=self._node_resources(node_id),
+            for_recovery=True)
         updater.start()
         self.updaters[node_id] = updater
 

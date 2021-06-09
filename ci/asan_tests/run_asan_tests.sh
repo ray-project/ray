@@ -28,8 +28,6 @@ asan_setup() {
 
   echo "Compiling ray"
   cd "${RAY_DIR}"
-  git fetch
-  git pull origin master
   asan_install || true
 }
 
