@@ -346,7 +346,7 @@ message DeleteSpilledObjectsRequest {
 message DeleteSpilledObjectsReply {
 }
 
-message SpilledURL {
+message AddSpilledUrlRequest {
   // Object that was spilled.
   bytes object_id = 1;
   // For objects that have been spilled to external storage, the URL from which
@@ -357,11 +357,6 @@ message SpilledURL {
   bytes spilled_node_id = 3;
   // The size of the object in bytes.
   int64 size = 4;
-}
-
-// Batched add spill URLs (add one or more URLs with the given attributes).
-message AddSpilledUrlRequest {
-  repeated SpilledURL spilled_urls = 1;
 }
 
 message AddSpilledUrlReply {
