@@ -97,8 +97,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.log_dir = log_dir;
   options.install_failure_signal_handler = true;
   std::string node_ip = ConfigInternal::Instance().node_ip_address.empty()
-                          ? "127.0.0.1"
-                          : ConfigInternal::Instance().node_ip_address;
+                            ? "127.0.0.1"
+                            : ConfigInternal::Instance().node_ip_address;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = node_ip;
