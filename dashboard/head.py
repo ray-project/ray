@@ -1,3 +1,4 @@
+import os
 import sys
 import socket
 import asyncio
@@ -71,7 +72,12 @@ class DashboardHead:
                     "Dashboard suicide, the GCS RPC error count %s > %s",
                     self._gcs_rpc_error_counter,
                     dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR)
-                sys.exit(-1)
+                # TODO(fyrestone): Do not use ray.state in
+                # PrometheusServiceDiscoveryWriter.
+                # Currently, we use os._exit() here to avoid hanging at the ray
+                # shutdown(). Please refer to:
+                # https://github.com/ray-project/ray/issues/16328
+                os._exit(-1)
         except Exception:
             logger.exception("Error checking GCS is alive, seq=%s.",
                              self._gcs_check_alive_seq)
