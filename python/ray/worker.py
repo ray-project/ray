@@ -711,9 +711,11 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if "RAY_ADDRESS" in os.environ:
+    address_env_var = os.environ.get(
+        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var:
         if address is None or address == "auto":
-            address = os.environ["RAY_ADDRESS"]
+            address = address_env_var
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
