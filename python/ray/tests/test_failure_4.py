@@ -16,6 +16,9 @@ def test_fill_object_store_exception(shutdown_only):
         object_store_memory=10**8,
         _system_config={"automatic_object_spilling_enabled": False})
 
+    if ray.worker.global_worker.core_worker.plasma_unlimited():
+        return  # No exception is raised.
+
     @ray.remote
     def expensive_task():
         return np.zeros((10**8) // 10, dtype=np.uint8)
