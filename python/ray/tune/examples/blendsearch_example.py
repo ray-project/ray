@@ -49,6 +49,35 @@ def run_blendsearch_tune(smoke_test=False):
     print("Best hyperparameters found were: ", analysis.best_config)
 
 
+def run_blendsearch_tune_w_budget(time_budget_s=10):
+    """run BlendSearch with given time_budget_s
+    """
+    algo = BlendSearch(metric="mean_loss",
+                       mode="min",
+                       space={"width": tune.uniform(0, 20),
+                              "height": tune.uniform(-100, 100),
+                              "activation": tune.choice(["relu", "tanh"])
+                              }
+                       )
+    algo.set_search_properties(config={'time_budget_s': time_budget_s})
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
+        easy_objective,
+        metric="mean_loss",
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        time_budget_s=time_budget_s,
+        num_samples=-1,
+        config={
+            "steps": 100,
+        }
+       )
+
+    print("Best hyperparameters found were: ", analysis.best_config)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -68,4 +97,5 @@ if __name__ == "__main__":
     else:
         ray.init(configure_logging=False)
 
+    run_blendsearch_tune_w_budget(time_budget_s=30)
     run_blendsearch_tune(smoke_test=args.smoke_test)
