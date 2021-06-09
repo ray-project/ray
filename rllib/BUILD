@@ -1397,13 +1397,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_client",
-    tags = ["tests_dir", "tests_dir_C"],
-    size = "large",
-    srcs = ["tests/test_client.py"]
-)
-
-py_test(
     name = "tests/test_dependency_tf",
     tags = ["tests_dir", "tests_dir_D"],
     size = "small",
@@ -1555,6 +1548,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_P"],
     size = "medium",
     srcs = ["tests/test_placement_groups.py"]
+)
+
+py_test(
+    name = "tests/test_ray_client",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    srcs = ["tests/test_ray_client.py"]
 )
 
 py_test(
