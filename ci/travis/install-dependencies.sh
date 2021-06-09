@@ -273,12 +273,15 @@ download_mnist() {
 install_dependencies() {
 
   install_bazel
-
   install_base
   install_toolchains
-  install_nvm
-  install_upgrade_pip
 
+  install_nvm
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+    install_node
+  fi
+
+  install_upgrade_pip
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
     # Upgrade the miniconda pip.
@@ -371,10 +374,6 @@ install_dependencies() {
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
     HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
-  fi
-
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
