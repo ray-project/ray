@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 # Start Ray.
-# Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
+# Tip: If connecting to an existing cluster, use ray.init(address="auto").
 ray.init()
 
 d_arr = da.from_array(np.random.randint(0, 1000, size=(256, 256)))
@@ -15,11 +15,12 @@ d_arr = da.from_array(np.random.randint(0, 1000, size=(256, 256)))
 # The Dask scheduler submits the underlying task graph to Ray.
 d_arr.mean().compute(scheduler=ray_dask_get)
 
-# Set the scheduler to ray_dask_get in your config so you don't have to specify it on
-# each compute call.
+# Set the scheduler to ray_dask_get in your config so you don't have to
+# specify it on each compute call.
 dask.config.set(scheduler=ray_dask_get)
 
-df = dd.from_pandas(pd.DataFrame(
-    np.random.randint(0, 100, size=(1024, 2)),
-    columns=["age", "grade"]), npartitions=2)
+df = dd.from_pandas(
+    pd.DataFrame(
+        np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]),
+    npartitions=2)
 df.groupby(["age"]).mean().compute()
