@@ -553,30 +553,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       // If necessary, record that this client is using this object. In the case
       // where entry == NULL, this will be called from SealObject.
       AddToClientObjectIds(object_id, entry, client);
-    } else if (entry && entry->state == ObjectState::PLASMA_EVICTED) {
-      // Make sure the object pointer is not already allocated
-      RAY_CHECK(!entry->pointer);
-
-      PlasmaError error = PlasmaError::OK;
-      // TODO(ekl) this is dead code (we don't use the plasma eviction path).
-      // We should remove this.
-      entry->pointer =
-          AllocateMemory(entry->data_size + entry->metadata_size, &entry->fd,
-                         &entry->map_size, &entry->offset, client, /*is_create=*/false,
-                         /*fallback_allocator=*/true, &error);
-      if (entry->pointer) {
-        // TODO(suquark): Not sure if this old behavior is still compatible
-        // with our current object spilling mechanics.
-        entry->state = ObjectState::PLASMA_CREATED;
-        entry->create_time = std::time(nullptr);
-        eviction_policy_.ObjectCreated(object_id, client.get(), false);
-        AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
-      } else {
-        // We are out of memory and cannot allocate memory for this object.
-        // Change the state of the object back to PLASMA_EVICTED so some
-        // other request can try again.
-        entry->state = ObjectState::PLASMA_EVICTED;
-      }
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -667,8 +643,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
 // Check if an object is present.
 ObjectStatus PlasmaStore::ContainsObject(const ObjectID &object_id) {
   auto entry = GetObjectTableEntry(&store_info_, object_id);
-  return entry && (entry->state == ObjectState::PLASMA_SEALED ||
-                   entry->state == ObjectState::PLASMA_EVICTED)
+  return entry && entry->state == ObjectState::PLASMA_SEALED
              ? ObjectStatus::OBJECT_FOUND
              : ObjectStatus::OBJECT_NOT_FOUND;
 }

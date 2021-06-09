@@ -390,7 +390,8 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 
 /// Grace period until we throw the OOM error to the application in seconds.
-RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+/// In unlimited allocation mode, this is the time delay prior to fallback allocating.
+RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
