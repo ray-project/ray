@@ -63,7 +63,8 @@ class TestCQL(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train().get("evaluation")
                 if results:
-                    print(f"R={results['episode_reward_mean']}")
+                    print(f"iter={trainer.iteration} "
+                          f"R={results['episode_reward_mean']}")
 
             check_compute_single_action(trainer)
 

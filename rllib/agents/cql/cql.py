@@ -154,7 +154,7 @@ def after_init(trainer):
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
         print(
-            f"Loaded {num_batches} batches ({total_timesteps} ts) into "
+            f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
             f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
         raise ValueError(
