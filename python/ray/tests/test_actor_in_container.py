@@ -8,6 +8,7 @@ import sys
 import ray
 import ray.job_config
 import ray.test_utils
+from ray.tests.conftest import shutdown_only  # noqa: F401
 import ray.cluster_utils
 
 
