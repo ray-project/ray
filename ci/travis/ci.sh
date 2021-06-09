@@ -237,8 +237,7 @@ build_dashboard_front_end() {
     (
       cd ray/new_dashboard/client
 
-      # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
+      if [ -z "${BUILDKITE-}" ]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
         nvm use --silent node
