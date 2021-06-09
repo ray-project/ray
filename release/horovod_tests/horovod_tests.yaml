@@ -5,9 +5,11 @@
 
   cluster:
     app_config: app_config.yaml
-    compute_template: cluster.yaml
+    compute_template: compute_tpl.yaml
 
   run:
-    timeout: 3600 # 10 hours.
+    timeout: 36000
     prepare: python ../util/wait_cluster 3 600
     script: python workloads/horovod_test.py
+    time_key: last_update
+    max_update_delay: 120

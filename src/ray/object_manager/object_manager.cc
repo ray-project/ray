@@ -676,12 +676,13 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
                                     metadata_size, chunk_index, data);
+  num_chunks_received_total_++;
   if (!success) {
-    num_chunks_received_failed_++;
+    num_chunks_received_total_failed_++;
     RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index
                   << " of object " << object_id << ": overall "
-                  << num_chunks_received_failed_ << "/" << num_chunks_received_total_
-                  << " failed";
+                  << num_chunks_received_total_failed_ << "/"
+                  << num_chunks_received_total_ << " failed";
   }
   double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
@@ -693,20 +694,30 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
                                        const rpc::Address &owner_address,
                                        uint64_t data_size, uint64_t metadata_size,
                                        uint64_t chunk_index, const std::string &data) {
-  num_chunks_received_total_++;
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
 
-  if (!pull_manager_->IsObjectActive(object_id)) {
+  bool still_required;
+  if (!pull_manager_->IsObjectActive(object_id, &still_required)) {
+    if (still_required) {
+      num_chunks_received_thrashed_++;
+    } else {
+      num_chunks_received_cancelled_++;
+    }
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
-  if (!pull_manager_->IsObjectActive(object_id)) {
+  if (!pull_manager_->IsObjectActive(object_id, &still_required)) {
+    if (still_required) {
+      num_chunks_received_thrashed_++;
+    } else {
+      num_chunks_received_cancelled_++;
+    }
     // This object is no longer being actively pulled. Abort the object. We
     // have to check again here because the pull manager runs in a different
     // thread and the object may have been deactivated right before creating
@@ -722,6 +733,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     buffer_pool_.SealChunk(object_id, chunk_index);
     return true;
   } else {
+    num_chunks_received_failed_due_to_plasma_++;
     RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.second.message();
     return false;
   }
@@ -846,7 +858,11 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
-  result << "\n- num chunks received failed: " << num_chunks_received_failed_;
+  result << "\n- num chunks received total failed: " << num_chunks_received_total_failed_;
+  result << "\n  - num chunks received cancelled: " << num_chunks_received_cancelled_;
+  result << "\n  - num chunks received thrashed: " << num_chunks_received_thrashed_;
+  result << "\n  - num chunks received, plasma error : "
+         << num_chunks_received_failed_due_to_plasma_;
   result << "\nEvent loop stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();

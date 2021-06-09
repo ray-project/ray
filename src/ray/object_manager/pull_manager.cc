@@ -93,7 +93,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  if (next_request_it->second.num_object_sizes_missing > 0) {
+  if (next_request_it->second.num_object_sizes_missing > 0 &&
+      !RayConfig::instance().plasma_unlimited()) {
     // There is at least one object size missing. We should not activate the
     // bundle, since it may put us over the available capacity.
     return false;
@@ -193,7 +194,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
 
     // Activate the next worker request if we have space.
-    if (num_bytes_being_pulled_ < num_bytes_available_) {
+    // TODO(ekl) consider throttling wait requests based on `num_returns`.
+    if (num_bytes_being_pulled_ < num_bytes_available_ ||
+        RayConfig::instance().plasma_unlimited()) {
       worker_requests_remaining = ActivateNextPullBundleRequest(
           worker_request_bundles_, &highest_worker_req_id_being_pulled_,
           &objects_to_pull);
@@ -231,7 +234,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // If we are still over capacity, deactivate requests starting from the back
   // of the worker request queue.
   while (num_bytes_being_pulled_ > num_bytes_available_ &&
-         highest_worker_req_id_being_pulled_ != 0) {
+         highest_worker_req_id_being_pulled_ != 0 &&
+         !RayConfig::instance().plasma_unlimited()) {
     RAY_LOG(DEBUG) << "Deactivating worker request "
                    << highest_worker_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -246,7 +250,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // It should always be possible to stay under the available memory by
   // canceling all requests.
-  RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+  if (!RayConfig::instance().plasma_unlimited()) {
+    RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+  }
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
@@ -513,7 +519,6 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it != object_pull_requests_.end()) {
     it->second.next_pull_time = get_time_();
-    it->second.num_retries = 0;
   }
 }
 
@@ -521,6 +526,11 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
   const auto time = get_time_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
+
+  if (request.num_retries > 0) {
+    // We've tried this object before.
+    num_retries_total_++;
+  }
 
   // Bound the retry time at 10 * 1024 seconds.
   request.num_retries = std::min(request.num_retries + 1, 10);
@@ -536,7 +546,10 @@ void PullManager::Tick() {
 
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
 
-bool PullManager::IsObjectActive(const ObjectID &object_id) const {
+bool PullManager::IsObjectActive(const ObjectID &object_id, bool *object_required) const {
+  if (object_required) {
+    *object_required = object_pull_requests_.count(object_id) == 1;
+  }
   absl::MutexLock lock(&active_objects_mu_);
   return active_object_pull_requests_.count(object_id) == 1;
 }
@@ -570,6 +583,7 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
+  result << "\n- num pull retries: " << num_retries_total_;
   return result.str();
 }
 

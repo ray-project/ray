@@ -1,7 +1,4 @@
 import argparse
-import json
-import time
-
 import torch
 import torch.nn as nn
 import os
@@ -17,6 +14,8 @@ from ray.tune.schedulers import create_scheduler
 from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
+
+from ray.tune.utils.release_test_util import ProgressCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
@@ -102,9 +101,9 @@ if __name__ == "__main__":
 
     horovod_trainable = DistributedTrainableCreator(
         train,
-        use_gpu=False if args.smoke_test else True,
+        use_gpu=True,
         num_hosts=1 if args.smoke_test else 2,
-        num_slots=1 if args.smoke_test else 2,
+        num_slots=2 if args.smoke_test else 2,
         replicate_pem=False)
 
     transform_train = transforms.Compose([
@@ -128,8 +127,6 @@ if __name__ == "__main__":
             "lr": tune.uniform(0.001, 0.1),
         })
 
-    start_time = time.time()
-
     analysis = tune.run(
         horovod_trainable,
         metric="loss",
@@ -142,23 +139,6 @@ if __name__ == "__main__":
             "data": ray.put(dataset)
         },
         num_samples=1,
-        stop={"training_iteration": 1} if args.smoke_test else None,
+        callbacks=[ProgressCallback()],  # FailureInjectorCallback()
         fail_fast=True)
-
-    end_time = time.time()
-
-    best_config = analysis.best_config
-    best_config.pop("data")
-    result_str = "Best hyperparameters found were: ", best_config
-
-    json_output_file = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/pytorch_pbt_failure.json")
-
-    with open(json_output_file, "at") as f:
-        json.dump({
-            "result": result_str,
-            "time_taken": end_time - start_time
-        }, f)
-
-    print("PASSED")
-    print(result_str)
+    print("Best hyperparameters found were: ", analysis.best_config)

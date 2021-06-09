@@ -103,7 +103,10 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
 
-  bool IsObjectActive(const ObjectID &object_id) const;
+  /// Returns whether the object is actively being pulled. object_required
+  /// returns whether the object is still needed by some pull request on this
+  /// node (but may not be actively pulled due to throttling).
+  bool IsObjectActive(const ObjectID &object_id, bool *object_required = nullptr) const;
 
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
@@ -271,6 +274,8 @@ class PullManager {
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+
+  size_t num_retries_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;
