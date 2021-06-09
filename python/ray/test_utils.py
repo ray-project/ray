@@ -6,16 +6,18 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
 import traceback
-from typing import Dict
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -621,3 +623,68 @@ def get_release_wheel_url(
     # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
     # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
     # 4_x86_64.whl
+
+
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(
+                self.maxsize)
+
+    def get_batch(
+            self, batch_size: int = None,
+            total_timeout: Optional[float] = None,
+            first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(
+                batch_size, total_timeout, first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(
+            self, batch_size=None, total_timeout=None,
+            first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            batch = [await asyncio.wait_for(self.queue.get(), first_timeout)]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(
+                        await asyncio.wait_for(
+                            self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(
+                        await asyncio.wait_for(
+                            self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch
