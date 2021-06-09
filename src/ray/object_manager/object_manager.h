@@ -409,10 +409,10 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  /// \param spilled_url The optional spilled_url.
+  /// \param object_reader TODO
   /// \return Void
   void PushInternal(const ObjectID &object_id, const NodeID &node_id,
-                    absl::optional<std::string> spilled_url);
+                    std::shared_ptr<ObjectReaderInterface> object_reader);
 
   /// Send object to remote object manager. If spilled_object is not null, it pushes
   /// from the spilled objects. Otherwise it uses local object from buffer_pool_.
@@ -421,19 +421,17 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
-  /// \param owner_address The address of the object's owner
   /// \param node_id The id of the receiver.
-  /// \param data_size Data size
-  /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
+  /// TODO
   /// \param rpc_client Rpc client used to send message to remote object manager
   /// \param spilled_object The object in local spilled file.
   /// \param on_complete Callback to run on completion.
   void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                       const rpc::Address &owner_address, const NodeID &node_id,
-                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                       const NodeID &node_id, uint64_t chunk_index,
+                       std::shared_ptr<ObjectReader> object_reader,
+                       std::shared_ptr<ChunkObjectReader> chunk_object_reader,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                       std::shared_ptr<SpilledObject> spilled_object,
                        std::function<void(const Status &)> on_complete);
 
   /// Weak reference to main service. We ensure this object is destroyed before
