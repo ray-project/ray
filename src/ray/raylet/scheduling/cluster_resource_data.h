@@ -108,7 +108,7 @@ class ResourceSet {
   /// \return True, if the resource was successfully added. False otherwise.
   void AddOrUpdateResource(const std::string &resource_name, const FixedPoint &capacity);
 
-  /// \brief [DEPARATED] Delete a resource from the resource set. This method is departed,
+  /// \brief [deprecated] Delete a resource from the resource set. This method is departed,
   /// kept just for back compatibility and will be removed in future. Please do not use
   /// it.
   ///
@@ -152,7 +152,7 @@ class ResourceSet {
   /// \return Void.
   void SubtractResourcesStrict(const ResourceSet &other);
 
-  /// \brief [DEPARATED] Return the capacity value associated with the specified
+  /// \brief [deprecated] Return the capacity value associated with the specified
   /// resource.This method is departed, kept just for back compatibility and will be
   /// removed in future. Please do not use it.
   ///
@@ -174,14 +174,14 @@ class ResourceSet {
   /// \return True if the resource capacity is zero. False otherwise.
   bool IsEmpty() const;
 
-  /// \brief [DEPARATED] Return a map of the resource and size in doubles. This method is
+  /// \brief [deprecated] Return a map of the resource and size in doubles. This method is
   /// departed, kept just for back compatibility and will be removed in future. Please do
   /// not use it.
   ///
   /// \return map of resource in string to size in double.
   const std::unordered_map<std::string, double> GetResourceMap() const;
 
-  /// \brief [DEPARATED] Return a map of the resource and size in FixedPoint. This method
+  /// \brief [deprecated] Return a map of the resource and size in FixedPoint. This method
   /// is departed, kept just for back compatibility and will be removed in future. Please
   /// do not use it.
   ///
