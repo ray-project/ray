@@ -1126,15 +1126,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   std::vector<ObjectID> *arg_reference_ids,
                                   std::vector<ObjectID> *pinned_ids);
 
-  // SANG-TODO Docstring
+  /// Process a subscribe message for wait for object eviction.
+  /// The object eviction message will be published once the object
+  /// needs to be evicted.
   void ProcessSubscribeForObjectEviction(
       const rpc::WorkerObjectEvictionSubMessage &message);
 
+  /// Process a subscribe message for wait for ref removed.
+  /// It is used for the ref counting protocol. When the borrower
+  /// stops using the reference, the message will be published to the owner.
   void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
-  /// SANG-TODO Docstring.
+  /// A single endpoint to process different types of pubsub commands.
+  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply

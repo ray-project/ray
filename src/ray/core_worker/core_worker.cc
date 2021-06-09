@@ -2472,7 +2472,7 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
     if (command.has_unsubscribe_message()) {
       object_status_publisher_->UnregisterSubscription(command.channel_type(),
                                                        subscriber_id, command.key_id());
-      break;
+      continue;
     }
 
     RAY_CHECK(command.has_subscribe_message())

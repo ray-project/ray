@@ -284,6 +284,8 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
           command_batch_sent_.erase(command_batch_sent_it);
           if (!status.ok()) {
             // This means the publisher has failed.
+            // The publisher dead detection & command clean up will be done
+            // from the long polling request.
             RAY_LOG(DEBUG) << "The command batch request to " << publisher_id
                            << " has failed";
           } else {
