@@ -18,8 +18,10 @@ steps:
   commands:
     - ./ci/travis/upload_build_info.sh
     - (which bazel && bazel clean) || true;
-    - (. ./ci/travis/ci.sh init) && (. ./ci/travis/ci.sh build) && TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky --
+    - (. ./ci/travis/ci.sh init) &&
+      (. ./ci/travis/ci.sh build) &&
+      TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh &&
+      bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky --
       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
 
 - label: ":mac: :apple: Medium A-J"
@@ -27,9 +29,11 @@ steps:
   commands:
     - ./ci/travis/upload_build_info.sh
     - (which bazel && bazel clean) || true;
-    - (. ./ci/travis/ci.sh init) && (source ./ci/travis/ci.sh build) && ./ci/travis/install-dependencies.sh
-    - TORCH_VERSION=1.6 RLLIB_TESTING=1  ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky python/ray/tests/...
+    - (. ./ci/travis/ci.sh init) &&
+      (source ./ci/travis/ci.sh build) && ./ci/travis/install-dependencies.sh &&
+      bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky
+      python/ray/tests/...
 
 
     # The follow is running in Travis for now.
