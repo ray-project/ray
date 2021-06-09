@@ -76,13 +76,14 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 }
 
 template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
-    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) {
+std::shared_ptr<SubscriptionCallback>
+SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
+    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
-    return;
+    return nullptr;
   }
 
   const auto channel_type = pub_message.channel_type();
@@ -93,9 +94,10 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
 
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   if (maybe_subscription_callback.has_value()) {
-    // If the object id is still subscribed, invoke a subscription callback.
-    const auto &subscription_callback = maybe_subscription_callback.value();
-    subscription_callback(pub_message);
+    // If the object id is still subscribed, return a subscribe callback.
+    return std::make_shared<SubscriptionCallback>(maybe_subscription_callback.value());
+  } else {
+    return nullptr;
   }
 }
 
@@ -111,13 +113,13 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
   std::vector<KeyIdType> key_ids_to_unsubscribe;
+  std::shared_ptr<SubscriptionFailureCallback> failure_callback;
   for (const auto &key_id_it : subscription_callback_map) {
     const auto &key_id = key_id_it.first;
     key_ids_to_unsubscribe.push_back(key_id);
 
     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
     if (maybe_failure_callback.has_value()) {
-      // If the object id is still subscribed, invoke a failure callback.
       const auto &failure_callback = maybe_failure_callback.value();
       failure_callback();
     }
@@ -148,6 +150,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   command->set_key_id(key_id_binary);
   command->mutable_subscribe_message()->Swap(sub_message.get());
 
+  absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   QueueCommand(publisher_id, std::move(command));
   SendCommandBatchIfPossible(publisher_address);
@@ -168,6 +171,7 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   rpc::UnsubscribeMessage unsub_message;
   command->mutable_unsubscribe_message()->CopyFrom(unsub_message);
 
+  absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   QueueCommand(publisher_id, std::move(command));
   SendCommandBatchIfPossible(publisher_address);
@@ -200,6 +204,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   publisher_client->PubsubLongPolling(
       long_polling_request, [this, publisher_address, subscriber_address](
                                 Status status, const rpc::PubsubLongPollingReply &reply) {
+        absl::MutexLock lock(&mutex_);
         HandleLongPollingResponse(publisher_address, subscriber_address, status, reply);
       });
 }
@@ -217,6 +222,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
                       "Publisher id: "
                    << publisher_id;
+
+    // First get all failure callbacks from the channel.
+    std::queue<std::shared_ptr<SubscriptionFailureCallback>> failure_callbacks;
     for (const auto &channel_it : channels_) {
       channel_it.second->HandlePublisherFailure(publisher_address);
     }
@@ -224,11 +232,28 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     commands_.erase(publisher_id);
   } else {
     // Otherwise, iterate on the reply and pass published messages to channels.
+    std::queue<std::shared_ptr<SubscriptionCallback>> subscription_callbacks;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
-      Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
+      subscription_callbacks.push(
+          Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }
+    // We need to unlock here because the subscription callback could call Subscriber APIs
+    // which needs to hold a lock. Note that we don't allow to call subscriber APIs inside
+    // the failure callback right now, so we don't need to do the same thing for that.
+    mutex_.Unlock();
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto &subscription_callback = subscription_callbacks.front();
+      if (subscription_callback) {
+        // Q: Should we post this to the io service?
+        (*subscription_callback)(msg);
+      }
+      subscription_callbacks.pop();
+    }
+    RAY_CHECK(subscription_callbacks.empty());
+    mutex_.Lock();
   }
 
   if (SubscriptionExists(publisher_id)) {
@@ -258,9 +283,8 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     command_batch_request.set_subscriber_id(subscriber_id_.Binary());
     int64_t updated_commands = 0;
     while (!command_queue.empty() && updated_commands < max_command_batch_size_) {
-      auto &command = command_queue.front();
-      auto *new_command = command_batch_request.add_commands();
-      new_command->Swap(command.get());
+      auto new_command = command_batch_request.add_commands();
+      new_command->Swap(command_queue.front().get());
       command_queue.pop();
       updated_commands += 1;
     }
@@ -279,6 +303,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
         command_batch_request,
         [this, publisher_address, publisher_id](
             Status status, const rpc::PubsubCommandBatchReply &reply) {
+          absl::MutexLock lock(&mutex_);
           auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
           RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
           command_batch_sent_.erase(command_batch_sent_it);
@@ -305,6 +330,7 @@ void Subscriber::QueueCommand(const PublisherID &publisher_id,
 }
 
 bool Subscriber::CheckNoLeaks() const {
+  absl::MutexLock lock(&mutex_);
   bool leaks = false;
   for (const auto &channel_it : channels_) {
     if (!channel_it.second->CheckNoLeaks()) {

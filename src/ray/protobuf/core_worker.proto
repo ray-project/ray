@@ -179,7 +179,7 @@ message PubsubLongPollingReply {
 }
 
 message PubsubCommandBatchRequest {
-  /// The id of the subscriber. 
+  /// The id of the subscriber.
   bytes subscriber_id = 1;
   /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
   repeated Command commands = 2;

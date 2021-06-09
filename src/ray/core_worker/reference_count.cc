@@ -766,6 +766,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
     const rpc::WorkerAddress &borrower_addr) {
+  absl::MutexLock lock(&mutex_);
   // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
@@ -780,7 +781,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
   const ObjectID &object_id = ref_it->first;
-  auto request = std::make_unique<rpc::WorkerRefRemovedSubMessage>();
+  auto sub_message = std::make_unique<rpc::SubMessage>();
+  auto *request = sub_message->mutable_worker_ref_removed_message();
   // Only the owner should send requests to borrowers.
   RAY_CHECK(ref_it->second.owned_by_us);
   request->mutable_reference()->set_object_id(object_id.Binary());
@@ -797,7 +799,6 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     const ReferenceTable new_borrower_refs =
         ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
 
-    absl::MutexLock lock(&mutex_);
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
     RAY_CHECK(object_status_subscriber_->Unsubscribe(
@@ -809,12 +810,9 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   const auto publisher_failed_callback = [this, addr, object_id]() {
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
-    absl::MutexLock lock(&mutex_);
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
-  auto sub_message = std::make_unique<rpc::SubMessage>();
-  sub_message->mutable_worker_ref_removed_message()->Swap(request.get());
   object_status_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
       addr.ToProto(), object_id.Binary(), message_published_callback,

@@ -321,9 +321,11 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   subscriber_->Subscribe(GenerateSubMessage(object_id), channel, owner_addr,
                          object_id.Binary(), subscription_callback, failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
+
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+
   // Since we unsubscribe the object in the subscription callback, there shouldn't be any
   // long polling request in flight.
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
