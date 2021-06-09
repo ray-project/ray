@@ -311,9 +311,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             self_node_id_, resources, nullptr));
       },
       [this](const std::vector<std::string> &resource_names) {
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(self_node_id_, resource_names, nullptr));
-      }
-                                                                                         );
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
+            self_node_id_, resource_names, nullptr));
+      });
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.

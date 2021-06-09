@@ -38,13 +38,11 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
 
     std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-    update_resources,
-    std::function<void(const std::vector<std::string> &resource_names)> delete_resources
-                                                                   )
+        update_resources,
+    std::function<void(const std::vector<std::string> &resource_names)> delete_resources)
     : cluster_resource_scheduler_(cluster_resource_scheduler),
       update_resources_(update_resources),
-      delete_resources_(delete_resources)
-{}
+      delete_resources_(delete_resources) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {

@@ -91,9 +91,9 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       std::function<
           void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-      update_resources,
-      std::function<void(const std::vector<std::string> &resource_names)> delete_resources
-                                   );
+          update_resources,
+      std::function<void(const std::vector<std::string> &resource_names)>
+          delete_resources);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
