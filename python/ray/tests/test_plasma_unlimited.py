@@ -174,7 +174,6 @@ def test_task_unlimited_multiget_args():
 #def test_task_unlimited_huge_args():
 #    try:
 #        address = _init_ray()
-#        assert not ray.worker.global_worker.core_worker.plasma_unlimited()
 #
 #        # PullManager should raise an error, since the set of task args is
 #        # too huge to fit into memory.
