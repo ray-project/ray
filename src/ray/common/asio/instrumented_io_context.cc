@@ -72,16 +72,32 @@ void instrumented_io_context::post(std::function<void()> handler,
       });
 }
 
-std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string &name,
-                                                                  int64_t pad_start_ns) {
+void instrumented_io_context::post(std::function<void()> handler,
+                                   std::shared_ptr<StatsHandle> stats_handle) {
+  if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    return boost::asio::io_context::post(std::move(handler));
+  }
+  // Reset the handle start time, so that we effectively measure the queueing
+  // time only and not the time delay from RecordStart().
+  // TODO(ekl) it would be nice to track this delay too,.
+  stats_handle->ZeroAccumulatedQueuingDelay();
+  boost::asio::io_context::post(
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+        RecordExecution(handler, std::move(stats_handle));
+      });
+}
+
+std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
+    const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   {
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.cum_count++;
     stats->stats.curr_count++;
   }
-  return std::make_shared<StatsHandle>(name, absl::GetCurrentTimeNanos() + pad_start_ns,
-                                       stats, global_stats_);
+  return std::make_shared<StatsHandle>(
+      name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
+      global_stats_);
 }
 
 void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
