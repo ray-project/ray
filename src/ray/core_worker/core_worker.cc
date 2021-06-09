@@ -508,6 +508,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
        options_.worker_type != ray::WorkerType::RESTORE_WORKER &&
        options_.worker_type != ray::WorkerType::UTIL_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
+
+  plasma_store_provider_for_get_.reset(new CoreWorkerPlasmaStoreProvider(
+      options_.store_socket, local_raylet_client_, reference_counter_,
+      options_.check_signals,
+      /*warmup=*/
+      (options_.worker_type != ray::WorkerType::SPILL_WORKER &&
+       options_.worker_type != ray::WorkerType::RESTORE_WORKER &&
+       options_.worker_type != ray::WorkerType::UTIL_WORKER),
+      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
+
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
         PutObjectIntoPlasma(object, object_id);
@@ -1217,7 +1227,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms,
+    RAY_RETURN_NOT_OK(plasma_store_provider_for_get_->Get(plasma_object_ids, local_timeout_ms,
                                                   worker_context_, &result_map,
                                                   &got_exception));
   }

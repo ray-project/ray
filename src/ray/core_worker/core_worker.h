@@ -1239,6 +1239,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
+  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_for_get_;
+
   std::unique_ptr<FutureResolver> future_resolver_;
 
   ///
