@@ -250,6 +250,12 @@ JobID JobID::FromInt(uint32_t value) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
+uint32_t JobID::ToInt() {
+  uint32_t value;
+  std::memcpy(&value, &id_, JobID::Size());
+  return value;
+}
+
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
     if (id.IsNil()) {                                             \

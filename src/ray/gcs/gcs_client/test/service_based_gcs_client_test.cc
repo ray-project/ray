@@ -142,16 +142,11 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  int GetNextJobID() {
-    std::promise<bool> promise;
-    int job_id;
-    RAY_CHECK_OK(
-        gcs_client_->Jobs().AsyncGetNextJobID([&job_id, &promise](const int &result) {
-          job_id = result;
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return job_id;
+  JobID GetNextJobID() {
+    std::promise<JobID> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    return promise.get_future().get();
   }
 
   bool SubscribeActor(
@@ -591,10 +586,10 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGetNextJobID) {
-  int job_id1 = GetNextJobID();
-  ASSERT_TRUE(job_id1 > 0);
-  int job_id2 = GetNextJobID();
-  ASSERT_TRUE(job_id2 > job_id1);
+  JobID job_id1 = GetNextJobID();
+  ASSERT_TRUE(job_id1.ToInt() > 0);
+  JobID job_id2 = GetNextJobID();
+  ASSERT_TRUE(job_id2.ToInt() > job_id1.ToInt());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {

@@ -109,6 +109,8 @@ class JobID : public BaseID<JobID> {
 
   static JobID FromInt(uint32_t value);
 
+  uint32_t ToInt();
+
   static constexpr size_t Size() { return kLength; }
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
