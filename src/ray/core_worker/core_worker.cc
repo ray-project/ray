@@ -2779,20 +2779,18 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
 void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
                                      rpc::AddSpilledUrlReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  Status status = Status::OK();
-  for (const auto &url : request.spilled_urls()) {
-    const ObjectID object_id = ObjectID::FromBinary(url.object_id());
-    const std::string &spilled_url = url.spilled_url();
-    const NodeID node_id = NodeID::FromBinary(url.spilled_node_id());
-    RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
-                   << ", which has been spilled to " << spilled_url << " on node "
-                   << node_id;
-    auto reference_exists = reference_counter_->HandleObjectSpilled(
-        object_id, spilled_url, node_id, url.size(), /*release*/ false);
-    if (!reference_exists) {
-      status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-    }
-  }
+  const ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  const std::string &spilled_url = request.spilled_url();
+  const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
+  RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
+                 << ", which has been spilled to " << spilled_url << " on node "
+                 << node_id;
+  auto reference_exists = reference_counter_->HandleObjectSpilled(
+      object_id, spilled_url, node_id, request.size(), /*release*/ false);
+  Status status =
+      reference_exists
+          ? Status::OK()
+          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   send_reply_callback(status, nullptr, nullptr);
 }
 
