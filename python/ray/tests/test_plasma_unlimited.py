@@ -123,20 +123,16 @@ def test_task_unlimited():
 
         @ray.remote
         def consume(refs):
-            # round 1: triggers fallback allocation, spilling of the sentinel
-            # round 2: x2 is spilled
+            # triggers fallback allocation, spilling of the sentinel
             ray.get(refs[0])
-            # round 1: triggers fallback allocation.
+            # triggers fallback allocation.
             return ray.put(np.zeros(400 * MB, dtype=np.uint8))
 
         # round 1
         ray.get(consume.remote(refs))
         _check_spilled_mb(address, spilled=500, restored=400)
 
-        # round 2
         del x2p
-        ray.get(consume.remote(refs))
-        _check_spilled_mb(address, spilled=900, restored=800)
         del sentinel
     finally:
         ray.shutdown()

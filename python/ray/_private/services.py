@@ -235,10 +235,8 @@ def get_ray_address_to_use_or_die():
     Returns:
         A string to pass into `ray.init(address=...)`
     """
-    if "RAY_ADDRESS" in os.environ:
-        return os.environ.get("RAY_ADDRESS")
-
-    return find_redis_address_or_die()
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          find_redis_address_or_die())
 
 
 def find_redis_address_or_die():
@@ -1514,6 +1512,7 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--runtime-env-dir={resource_dir}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",

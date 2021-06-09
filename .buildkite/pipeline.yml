@@ -13,10 +13,12 @@
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - pip install -q docker aws_requests_auth boto3
-    - python .buildkite/copy_files.py --destination wheels --path ./.whl
+    # Upload to branch directory.
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-    - python .buildkite/copy_files.py --destination jars --path ./.jar/linux
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/linux
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/linux; fi
 
 - label: ":ferris_wheel: Post-wheel tests"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -288,7 +290,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
@@ -296,6 +298,12 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
+
+- label: ":potable_water: Workflow tests and examples"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/...
 
 - label: ":book: Doc tests and examples"
   conditions:

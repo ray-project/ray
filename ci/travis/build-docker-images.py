@@ -120,7 +120,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+                    "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
@@ -408,10 +408,10 @@ if __name__ == "__main__":
     build_type = args.build_type
     is_buildkite = build_type == BUILDKITE
     if build_type == BUILDKITE:
-        if os.environ.get("BUILDKITE_PULL_REQUEST"):
-            build_type = PR
-        else:
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
             build_type = MERGE
+        else:
+            build_type = PR
     if build_type == HUMAN:
         _configure_human_version()
     if (build_type in {HUMAN, MERGE} or is_buildkite

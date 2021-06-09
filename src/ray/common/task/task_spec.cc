@@ -114,6 +114,11 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
 std::string TaskSpecification::SerializedRuntimeEnv() const {
   return message_->serialized_runtime_env();
 }
+
+bool TaskSpecification::HasRuntimeEnv() const {
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+}
+
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);
   return sched_cls_id_;

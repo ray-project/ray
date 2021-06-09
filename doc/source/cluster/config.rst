@@ -906,7 +906,7 @@ The user that Ray will authenticate with when launching new nodes.
 
         The globally unique project ID to use for deployment of the Ray cluster.
 
-        * **Required:** No
+        * **Required:** Yes
         * **Importance:** Low
         * **Type:** String
         * **Default:** ``null``

@@ -5,12 +5,12 @@ max_workers: 0
 
 # TODO(ekl/sang) switch to i2.8xl and mount the NVMe disks
 head_node_type:
-    name: head_node
-    instance_type: i3.2xlarge
+    name: head_node2
+    instance_type: i3.4xlarge
 
 worker_node_types:
-    - name: worker_node4
-      instance_type: i3.2xlarge
+    - name: worker_node2
+      instance_type: i3.4xlarge
       min_workers: 0
       max_workers: 0
       use_spot: false

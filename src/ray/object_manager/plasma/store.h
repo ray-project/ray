@@ -209,9 +209,11 @@ class PlasmaStore {
     callback(available);
   }
 
+  void PrintDebugDump() const;
+
   // NOTE(swang): This will iterate through all objects in the
   // object store, so it should be called sparingly.
-  std::string DumpDebugInfo() const;
+  std::string GetDebugDump() const;
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -303,6 +305,9 @@ class PlasmaStore {
   /// retried when this timer expires.
   std::shared_ptr<boost::asio::deadline_timer> create_timer_;
 
+  /// Timer for printing debug information.
+  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_;
+
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
 
@@ -328,6 +333,13 @@ class PlasmaStore {
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
+
+  /// Whether we have dumped debug information on OOM yet. This limits dump
+  /// (which can be expensive) to once per OOM event.
+  bool dumped_on_oom_ = false;
+
+  /// A running total of the objects that have ever been created on this node.
+  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

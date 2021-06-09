@@ -10,6 +10,7 @@ import redis
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 from ray.new_dashboard.tests.conftest import *  # noqa
+from ray.new_dashboard.modules.actor import actor_consts
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -278,6 +279,47 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         else:
             raise Exception("Unknown state: {}".format(
                 actor_data_dict["state"]))
+
+
+def test_nil_node(enable_test_module, disable_aiohttp_cache,
+                  ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            assert len(actors) == 1
+            response = requests.get(webui_url + "/test/dump?key=node_actors")
+            response.raise_for_status()
+            result = response.json()
+            assert actor_consts.NIL_NODE_ID not in result["data"]["nodeActors"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 if __name__ == "__main__":
