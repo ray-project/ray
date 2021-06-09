@@ -1027,7 +1027,7 @@ ClusterResourceScheduler::GetResourceTotals() const {
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());
   const auto &local_resources = it->second.GetLocalView();
-  for (int i = 0; i < local_resources.predefined_resources.size(); i++) {
+  for (auto i = 0; i < local_resources.predefined_resources.size(); i++) {
     std::string resource_name = ResourceEnumToString((PredefinedResources)i);
     double resource_total = local_resources.predefined_resources[i].total.Double();
     if (resource_total > 0) {
