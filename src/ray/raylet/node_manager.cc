@@ -305,8 +305,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_, resources,
-                                                                       nullptr));
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
+            self_node_id_, resources, nullptr));
       });
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -410,13 +410,13 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
-  RAY_RETURN_NOT_OK(
-                    gcs_client_->Jobs().AsyncGetAll([job_subscribe_handler](Status status, const std::vector<rpc::JobTableData> &result) {
-                      for (const auto &job_data : result) {
-                        job_subscribe_handler(JobID::FromBinary(job_data.job_id()), job_data);
-                      }
-                    })
-                    );
+  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncGetAll(
+      [job_subscribe_handler](Status status,
+                              const std::vector<rpc::JobTableData> &result) {
+        for (const auto &job_data : result) {
+          job_subscribe_handler(JobID::FromBinary(job_data.job_id()), job_data);
+        }
+      }));
 
   periodical_runner_.RunFnPeriodically(
       [this] {

@@ -1021,7 +1021,8 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
-ray::gcs::NodeResourceInfoAccessor::ResourceMap ClusterResourceScheduler::GetResourceTotals() const {
+ray::gcs::NodeResourceInfoAccessor::ResourceMap
+ClusterResourceScheduler::GetResourceTotals() const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());

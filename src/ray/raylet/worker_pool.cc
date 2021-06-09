@@ -318,7 +318,7 @@ Process WorkerPool::StartWorkerProcess(
   stats::NumWorkersStarted.Record(1);
 
   RAY_LOG(ERROR) << "Started worker process of " << workers_to_start
-                << " worker(s) with pid " << proc.GetId();
+                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   if (IsIOWorkerType(worker_type)) {
