@@ -9,7 +9,7 @@
 
   run:
     timeout: 36000
-    prepare: python ../util/wait_cluster 3 600
+    prepare: python wait_cluster 3 600
     script: python workloads/horovod_test.py
     time_key: last_update
     max_update_delay: 120
