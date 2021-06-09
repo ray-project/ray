@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
 
-set -euxo pipefail
+set -exo pipefail
 
 export STORAGE_DRIVER=vfs
 podman load --input /var/lib/containers/images.tar
@@ -19,6 +19,7 @@ export RAY_BACKEND_LOG_LEVEL=debug
 if [ -f /etc/profile.d/bazel.sh ]; then
   . /etc/profile.d/bazel.sh
 fi
+# shellcheck disable=SC2046
 bazel test --config=ci $(/ray/scripts/bazel_export_options) \
 --test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
 /ray/python/ray/tests/...
