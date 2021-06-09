@@ -3,8 +3,6 @@
 
 /// including the header
 #include <ray/api.h>
-#include "gflags/gflags.h"
-#include "ray/util/logging.h"
 
 /// using namespace
 using namespace ::ray::api;

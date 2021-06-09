@@ -1,0 +1,22 @@
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+new_local_repository(
+    name = "ray_api_libs",
+    path = "thirdparty",
+    build_file_content = """
+cc_library(
+    name = "ray_api",
+    srcs = ["lib/libray_api.so"],
+    hdrs = glob([
+        "include/**/*.h",
+        "include/**/*.hpp",
+        "include/**/**/*.h",
+        "include/**/**/*.hpp",
+    ]),
+    strip_include_prefix = "include", 
+    linkopts = ["-Wl,-rpath, ./"],
+    visibility = ["//visibility:public"],
+)
+""",
+)

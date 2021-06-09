@@ -3,6 +3,18 @@
 
 load("//bazel:ray.bzl", "COPTS")
 
+cc_binary(
+    name = "libray_api.so",
+    copts = COPTS,
+    #linkopts = ["-shared"],
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
 cc_library(
     name = "ray_api",
     srcs = glob([
@@ -28,6 +40,7 @@ cc_library(
         "include/ray/**/**/*.h",
     ]),
     copts = COPTS,
+    alwayslink = True,
     linkopts = ["-ldl"],
     linkstatic = True,
     strip_include_prefix = "include",
@@ -60,6 +73,7 @@ genrule(
     srcs = [
         "default_worker",
         "ray_api",
+        "libray_api.so",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
@@ -67,6 +81,21 @@ genrule(
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        mkdir -p "$$WORK_DIR/cpp/example/thirdparty/include/" &&
+        mkdir -p "$$WORK_DIR/cpp/example/thirdparty/lib/" &&
+        cp -f "$$WORK_DIR/.bazelrc" "$$WORK_DIR/cpp/example/" &&
+        cp -f -r "$$WORK_DIR/external/msgpack/include/msgpack" "$$WORK_DIR/cpp/example/thirdparty/include" &&
+        cp -f "$$WORK_DIR/external/msgpack/include/msgpack.h" "$$WORK_DIR/cpp/example/thirdparty/include" &&
+        cp -f "$$WORK_DIR/external/msgpack/include/msgpack.hpp" "$$WORK_DIR/cpp/example/thirdparty/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/" "$$WORK_DIR/cpp/example/thirdparty/include" &&
+        cp -f -r "$$WORK_DIR/external/com_google_absl/absl/" "$$WORK_DIR/cpp/example/thirdparty/include" &&
+        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/BUILD.bazel" &&
+        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/utility/BUILD.bazel" &&
+        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/base/BUILD.bazel" &&
+        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/meta/BUILD.bazel" &&
+        cp -f $(locations libray_api.so) "$$WORK_DIR/cpp/example/thirdparty/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$WORK_DIR/cpp/example/thirdparty/include" &&        
         echo "$$WORK_DIR" > $@
     """,
     local = 1,

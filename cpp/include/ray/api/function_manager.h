@@ -226,6 +226,17 @@ class FunctionManager {
     return instance;
   }
 
+  std::vector<std::string> GetRemoteFunctionNames() {
+    std::vector<std::string> names;
+    for (const auto &pair : map_invokers_) {
+      names.push_back(pair.first);
+    }
+    for (const auto &pair : map_mem_func_invokers_) {
+      names.push_back(pair.first);
+    }
+    return names;
+  }
+
   std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)> *GetFunction(
       const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
