@@ -261,7 +261,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
   // Fallback to allocating from the filesystem.
   if (pointer == nullptr && RayConfig::instance().plasma_unlimited() &&
       fallback_allocator) {
-    RAY_LOG(ERROR)
+    RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
         << size;
     pointer = reinterpret_cast<uint8_t *>(
