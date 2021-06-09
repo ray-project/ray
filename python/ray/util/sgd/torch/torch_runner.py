@@ -248,9 +248,13 @@ class TorchRunner:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def get_models(self):
+    def get_models(self, to_cpu=False):
         """Getter method. Needed for remote actor calls."""
-        return self.models
+        if not to_cpu:
+            return self.models
+        else:
+            cpu_models = [m.cpu() for m in self.models]
+            return cpu_models
 
     def get_node_ip(self):
         return ray.util.get_node_ip_address()

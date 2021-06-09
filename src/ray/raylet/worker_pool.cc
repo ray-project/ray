@@ -163,11 +163,13 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   auto &state = GetStateForLanguage(language);
-  // If we are already starting up too many workers, then return without starting
-  // more.
+  // If we are already starting up too many workers of the same worker type, then return
+  // without starting more.
   int starting_workers = 0;
   for (auto &entry : state.starting_worker_processes) {
-    starting_workers += entry.second;
+    if (entry.second.worker_type == worker_type) {
+      starting_workers += entry.second.num_starting_workers;
+    }
   }
 
   // Here we consider both task workers and I/O workers.
@@ -289,12 +291,16 @@ Process WorkerPool::StartWorkerProcess(
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
-      if (worker_command_args.size() >= 3 &&
+      if (worker_command_args.size() >= 4 &&
           worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
         worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 3);
+                                  worker_command_args.begin() + 4);
       }
     }
+
+    WorkerCacheKey env = {override_environment_variables, serialized_runtime_env};
+    const std::string runtime_env_hash_str = std::to_string(env.IntHash());
+    worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);
   }
 
   // We use setproctitle to change python worker process title,
@@ -316,7 +322,8 @@ Process WorkerPool::StartWorkerProcess(
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
-  state.starting_worker_processes.emplace(proc, workers_to_start);
+  state.starting_worker_processes.emplace(
+      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type});
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -478,8 +485,8 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 
   auto it = state.starting_worker_processes.find(process);
   if (it != state.starting_worker_processes.end()) {
-    it->second--;
-    if (it->second == 0) {
+    it->second.num_starting_workers--;
+    if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
@@ -664,23 +671,15 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it_p = state.pending_dedicated_workers_to_tasks.find(worker->GetProcess());
-  auto it_r = state.registered_dedicated_workers_to_tasks.find(worker->GetProcess());
-  if (it_p != state.pending_dedicated_workers_to_tasks.end()) {
-    // The worker is used for a task which needs a dedicated worker process.
-    // Put it into the idle dedicated worker pool.
-    const auto task_id = it_p->second;
+  auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
+  if (it != state.dedicated_workers_to_tasks.end()) {
+    // The worker is used for the actor creation task with dynamic options.
+    // Put it into idle dedicated worker pool.
+    const auto task_id = it->second;
     state.idle_dedicated_workers[task_id] = worker;
-  } else if (it_r != state.registered_dedicated_workers_to_tasks.end()) {
-    // The dedicated worker has been used before and should be added again
-    // to the idle dedicated worker pool.
-    const auto task_id = it_r->second;
-    state.idle_dedicated_workers[task_id] = worker;
-    // The worker has been assigned to the pool, so we can remove it from this map.
-    state.registered_dedicated_workers_to_tasks.erase(it_r);
   } else {
-    // The worker is not used for a task which needs a dedicated worker process.
-    // Put the worker to the general idle pool.
+    // The worker is not used for the actor creation task with dynamic options.
+    // Put the worker to the idle pool.
     state.idle.insert(worker);
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
@@ -835,13 +834,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      !(task_spec.SerializedRuntimeEnv() == "{}" ||
-        task_spec.SerializedRuntimeEnv() == "")) {
+  if (task_spec.IsActorTask()) {
+    // Code path of actor task.
+    RAY_CHECK(false) << "Direct call shouldn't reach here.";
+  } else if ((task_spec.IsActorCreationTask() &&
+              !task_spec.DynamicWorkerOptions().empty())) {
     // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options, or any task with environment variable overrides, or
-    // any task with a specified RuntimeEnv.
+    // dynamic worker options.
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
     if (it != state.idle_dedicated_workers.end()) {
@@ -849,13 +848,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
       // Because we found a worker that can perform this task,
-      // we can remove it from pending_dedicated_workers_to_tasks.
-      state.pending_dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_to_pending_dedicated_workers.erase(task_spec.TaskId());
-      // We don't want this dedicated worker to end up in the general idle pool because
-      // it has state from its environment, so keep track of it in this map.
-      state.registered_dedicated_workers_to_tasks[worker->GetProcess()] =
-          task_spec.TaskId();
+      // we can remove it from dedicated_workers_to_tasks.
+      state.dedicated_workers_to_tasks.erase(worker->GetProcess());
+      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
@@ -864,21 +859,19 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
-                                task_spec.SerializedRuntimeEnv(),
-                                task_spec.OverrideEnvironmentVariables());
+                                task_spec.JobId(), dynamic_options);
       if (proc.IsValid()) {
-        state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
+        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+        state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
       }
     }
-  } else if (task_spec.IsActorTask()) {
-    // Code path of actor task.
-    RAY_CHECK(false) << "Direct call shouldn't reach here.";
   } else {
-    // Code path of normal task or actor creation task without dynamic worker options.
-    // Find an available worker which is already assigned to this job.
+    // Find an available worker which is already assigned to this job and which has
+    // the specified runtime env.
     // Try to pop the most recently pushed worker.
+    const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
+                                task_spec.SerializedRuntimeEnv()};
+    const int runtime_env_hash = env.IntHash();
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -891,6 +884,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
         continue;
       }
+      // Skip if the runtime env doesn't match.
+      if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
+        continue;
+      }
+
       state.idle.erase(it->first);
       // We can't erase a reverse_iterator.
       auto lit = it.base();
@@ -905,7 +903,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId());
+                                task_spec.JobId(), {}, /* dynamic_options */
+                                task_spec.SerializedRuntimeEnv(),
+                                task_spec.OverrideEnvironmentVariables());
     }
   }
 
@@ -921,18 +921,21 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
-  // Code path of task that needs a dedicated worker: an actor creation task with
-  // dynamic worker options, or any task with environment variable overrides.
+  // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0) {
+      task_spec.OverrideEnvironmentVariables().size() > 0 ||
+      !(task_spec.SerializedRuntimeEnv() == "{}" ||
+        task_spec.SerializedRuntimeEnv() == "")) {
     return;  // Not handled.
+    // TODO(architkulkarni): We'd eventually like to prestart workers with the same
+    // runtime env to improve initial startup performance.
   }
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.starting_worker_processes) {
-    num_usable_workers += entry.second;
+    num_usable_workers += entry.second.num_starting_workers;
   }
   // The number of workers total regardless of suitability for this task.
   int num_workers_total = 0;
@@ -1072,7 +1075,7 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
-      num_workers_started_or_registered += starting_process.second;
+      num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
@@ -1100,8 +1103,8 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  auto it = state.tasks_to_pending_dedicated_workers.find(task_id);
-  return it != state.tasks_to_pending_dedicated_workers.end();
+  auto it = state.tasks_to_dedicated_workers.find(task_id);
+  return it != state.tasks_to_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {
@@ -1188,6 +1191,47 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   }
   UNREACHABLE;
 }
+
+WorkerCacheKey::WorkerCacheKey(
+    const std::unordered_map<std::string, std::string> override_environment_variables,
+    const std::string serialized_runtime_env)
+    : override_environment_variables(override_environment_variables),
+      serialized_runtime_env(serialized_runtime_env) {}
+
+bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  return Hash() == k.Hash();
+}
+
+bool WorkerCacheKey::EnvIsEmpty() const {
+  return override_environment_variables.size() == 0 &&
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+}
+
+std::size_t WorkerCacheKey::Hash() const {
+  // Cache the hash value.
+  if (!hash_) {
+    if (EnvIsEmpty()) {
+      // It's useful to have the same predetermined value for both unspecified and empty
+      // runtime envs.
+      hash_ = 0;
+    } else {
+      std::vector<std::pair<std::string, std::string>> env_vars(
+          override_environment_variables.begin(), override_environment_variables.end());
+      // The environment doesn't depend the order of the variables, so the hash should not
+      // either.  Sort the variables so different permutations yield the same hash.
+      std::sort(env_vars.begin(), env_vars.end());
+      for (auto &pair : env_vars) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+
+      boost::hash_combine(hash_, serialized_runtime_env);
+    }
+  }
+  return hash_;
+}
+
+int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 }  // namespace raylet
 

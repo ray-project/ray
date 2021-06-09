@@ -4,10 +4,13 @@ import json
 import os
 import pytest
 import shutil
+from unittest.mock import patch
 
 import ray
 from ray.test_utils import check_call_ray
-from ray.tests.enable_tracing import spans_dir
+from ray.util.tracing.setup_local_tmp_tracing import spans_dir
+
+setup_tracing_path = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
 
 
 @pytest.fixture()
@@ -29,10 +32,8 @@ def cleanup_dirs():
 def ray_start_cli_tracing(scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
     check_call_ray(["stop", "--force"], )
-    check_call_ray([
-        "start", "--head", "--tracing-startup-hook",
-        "ray.tests.enable_tracing:setup_tracing"
-    ], )
+    check_call_ray(
+        ["start", "--head", "--tracing-startup-hook", setup_tracing_path], )
     ray.init(address="auto")
     yield
     ray.shutdown()
@@ -42,19 +43,17 @@ def ray_start_cli_tracing(scope="function"):
 @pytest.fixture()
 def ray_start_init_tracing(scope="function"):
     """Call ray.init with tracing-startup-hook, and clean up at end of test."""
-    ray.init(_tracing_startup_hook="ray.tests.enable_tracing:setup_tracing")
+    ray.init(_tracing_startup_hook=setup_tracing_path)
     yield
     ray.shutdown()
 
 
 def get_span_list():
     """Read span files and return list of span names."""
-    span_string = ""
     span_list = []
     for entry in glob.glob(f"{spans_dir}/**/*.txt", recursive=True):
         with open(entry) as f:
             for line in f.readlines():
-                span_string += line
                 span_list.append(json.loads(line))
     return span_list
 
@@ -183,6 +182,24 @@ def test_wrapping(ray_start_init_tracing):
     @ray.remote
     def f(**_kwargs):
         pass
+
+
+def test_deserialization_works_without_opentelemetry(ray_start_regular):
+    """
+    Test that if a function is serialized with opentelemetry, it can be
+    deserialized in a context without opentelemetry
+    """
+
+    @ray.remote
+    def f():
+        return 30
+
+    fn_bytes = ray.cloudpickle.dumps(f)
+    with patch.dict("sys.modules", opentelemetry=None):
+        # Ensure that opentelemetry cannot be imported
+        with pytest.raises(ModuleNotFoundError):
+            import opentelemetry.trace  # noqa: F401
+        ray.cloudpickle.loads(fn_bytes)
 
 
 if __name__ == "__main__":

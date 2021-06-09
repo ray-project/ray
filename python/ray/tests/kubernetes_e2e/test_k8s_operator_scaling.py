@@ -19,13 +19,14 @@ import pytest
 import yaml
 
 import ray
-from test_k8s_operator_examples import client_connect_to_k8s
-from test_k8s_operator_examples import get_operator_config_path
-from test_k8s_operator_examples import retry_until_true
-from test_k8s_operator_examples import wait_for_pods
-from test_k8s_operator_examples import IMAGE
-from test_k8s_operator_examples import PULL_POLICY
-from test_k8s_operator_examples import NAMESPACE
+from test_k8s_operator_basic import client_connect_to_k8s
+from test_k8s_operator_basic import get_crd_path
+from test_k8s_operator_basic import get_component_config_path
+from test_k8s_operator_basic import retry_until_true
+from test_k8s_operator_basic import wait_for_pods
+from test_k8s_operator_basic import IMAGE
+from test_k8s_operator_basic import PULL_POLICY
+from test_k8s_operator_basic import NAMESPACE
 
 
 def submit_scaling_job(num_tasks):
@@ -65,12 +66,10 @@ class KubernetesScaleTest(unittest.TestCase):
                 tempfile.NamedTemporaryFile("w+") as example_cluster_file2, \
                 tempfile.NamedTemporaryFile("w+") as operator_file:
 
-            example_cluster_config_path = get_operator_config_path(
+            example_cluster_config_path = get_component_config_path(
                 "example_cluster.yaml")
-            operator_config_path = get_operator_config_path(
+            operator_config_path = get_component_config_path(
                 "operator_cluster_scoped.yaml")
-
-            crd_path = get_operator_config_path("cluster_crd.yaml")
 
             operator_config = list(
                 yaml.safe_load_all(open(operator_config_path).read()))
@@ -116,19 +115,19 @@ class KubernetesScaleTest(unittest.TestCase):
             for file in files:
                 file.flush()
 
+            # Must create CRD before operator.
+            print("\n>>>Creating RayCluster CRD.")
+            cmd = f"kubectl apply -f {get_crd_path()}"
+            subprocess.check_call(cmd, shell=True)
+            # Takes a bit of time for CRD to register.
+            time.sleep(10)
+
             print(">>>Creating operator.")
             cmd = f"kubectl apply -f {operator_file.name}"
             subprocess.check_call(cmd, shell=True)
 
-            # Test creating operator before CRD.
             print(">>>Waiting for Ray operator to enter running state.")
             wait_for_operator()
-
-            print(">>>Creating RayCluster CRD.")
-            cmd = f"kubectl apply -f {crd_path}"
-            subprocess.check_call(cmd, shell=True)
-            # Takes a bit of time for CRD to register.
-            time.sleep(10)
 
             # Start a 30-pod cluster.
             print(">>>Starting a cluster.")
