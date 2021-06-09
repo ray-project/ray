@@ -2928,38 +2928,15 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> b5e325cc6 (add python tests)
   send_reply_callback(Status::OK(),
                       [this, is_idle]() {
                         // If the worker is idle, we exit.
                         if (is_idle) {
-<<<<<<< HEAD
                           Exit(rpc::WorkerExitType::IDLE_EXIT);
-=======
-                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
->>>>>>> b5e325cc6 (add python tests)
                         }
                       },
                       // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
-<<<<<<< HEAD
-=======
-  send_reply_callback(
-      Status::OK(),
-      [this, is_idle]() {
-        // If the worker is idle, we exit.
-        if (is_idle) {
-          Exit(rpc::WorkerExitType::INTENDED_EXIT);
-        }
-      },
-      // We need to kill it regardless if the RPC failed.
-      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
->>>>>>> dceba8e5d (plumbing GetLocationAPI to CoWorker)
-=======
->>>>>>> b5e325cc6 (add python tests)
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
