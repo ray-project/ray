@@ -68,7 +68,7 @@ class Process {
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
-  /// \param[in] decouple True iff the parent will not wait for the child to exit.
+  /// \param[in] decouple True if the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
   explicit Process(const char *argv[], void *io_service, std::error_code &ec,

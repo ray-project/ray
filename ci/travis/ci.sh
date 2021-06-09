@@ -200,6 +200,9 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  # run cluster mode test with external cluster
+  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis_password="1234" \
+    --test_arg=--ray-redis-password="1234"
   # run the cpp example
   bazel run //cpp/example:example
 
@@ -237,6 +240,7 @@ build_dashboard_front_end() {
     (
       cd ray/new_dashboard/client
 
+      # shellcheck disable=SC2030
       if [ -z "${BUILDKITE-}" ]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
@@ -313,6 +317,7 @@ build_wheels() {
       # For the linux wheel build, we use a shared cache between all
       # wheels, but not between different travis runs, because that
       # caused timeouts in the past. See the "cache: false" line below.
+      # shellcheck disable=SC2031
       local MOUNT_BAZEL_CACHE=(
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
@@ -326,7 +331,7 @@ build_wheels() {
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
       )
 
-
+      # shellcheck disable=SC2031
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
