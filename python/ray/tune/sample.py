@@ -485,7 +485,7 @@ def randint(lower: int, upper: int):
     ``np.random.randint(10)``
 
     .. versionchanged:: 1.5.0
-        When converting ``tune.randint()`` to searcher-specific search spaces,
+        When converting Ray Tune configs to searcher-specific search spaces,
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
@@ -500,7 +500,7 @@ def lograndint(lower: int, upper: int, base: float = 10):
     ``lower`` is inclusive, ``upper`` is exclusive.
 
     .. versionchanged:: 1.5.0
-        When converting ``tune.randint()`` to searcher-specific search spaces,
+        When converting Ray Tune configs to searcher-specific search spaces,
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
@@ -517,7 +517,7 @@ def qrandint(lower: int, upper: int, q: int = 1):
     Quantization makes the upper bound inclusive.
 
     .. versionchanged:: 1.5.0
-        When converting ``tune.randint()`` to searcher-specific search spaces,
+        When converting Ray Tune configs to searcher-specific search spaces,
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
@@ -535,7 +535,7 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
     Quantization makes the upper bound inclusive.
 
     .. versionchanged:: 1.5.0
-        When converting ``tune.randint()`` to searcher-specific search spaces,
+        When converting Ray Tune configs to searcher-specific search spaces,
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
