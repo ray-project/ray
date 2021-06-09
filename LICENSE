@@ -289,9 +289,10 @@ Code in python/ray/_private/prometheus_exporter.py is adapted from https://githu
 # limitations under the License.
 
 --------------------------------------------------------------------------------
-Code in python/ray/tests/test_modin is adapted from
-http://github.com/modin-project/modin/master/modin/pandas/test/test_general.py
-and http://github.com/modin-project/modin/master/modin/pandas/test/utils.py
+Code in python/ray/tests/test_modin and python/ray/tests/modin_test_utils adapted 
+from:
+- http://github.com/modin-project/modin/master/modin/pandas/test/test_general.py
+- http://github.com/modin-project/modin/master/modin/pandas/test/utils.py
 
 Copyright (c) 2018-2020 Modin Developers.
 
