@@ -28,76 +28,12 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
 
 ObjectBufferPool::~ObjectBufferPool() {
   // Abort everything in progress.
-  auto get_buf_state_copy = get_buffer_state_;
-  for (const auto &pair : get_buf_state_copy) {
-    AbortGet(pair.first);
-  }
   auto create_buf_state_copy = create_buffer_state_;
   for (const auto &pair : create_buf_state_copy) {
     AbortCreate(pair.first);
   }
-  RAY_CHECK(get_buffer_state_.empty());
   RAY_CHECK(create_buffer_state_.empty());
   RAY_CHECK_OK(store_client_.Disconnect());
-}
-
-uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
-  return (data_size + default_chunk_size_ - 1) / default_chunk_size_;
-}
-
-uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size) {
-  return (chunk_index + 1) * default_chunk_size_ > data_size
-             ? data_size % default_chunk_size_
-             : default_chunk_size_;
-}
-
-std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::GetChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
-    uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  if (get_buffer_state_.count(object_id) == 0) {
-    plasma::ObjectBuffer object_buffer;
-    RAY_CHECK_OK(
-        store_client_.Get(&object_id, 1, 0, &object_buffer, /*is_from_worker=*/false));
-    if (object_buffer.data == nullptr) {
-      RAY_LOG(INFO)
-          << "Failed to get a chunk of the object: " << object_id
-          << ". It is mostly because the object is already evicted or spilled when the "
-             "pull request is received. The caller will retry the pull request again.";
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-          errored_chunk_,
-          ray::Status::IOError("Unable to obtain object chunk, object not local."));
-    }
-    RAY_CHECK(object_buffer.metadata->Data() ==
-              object_buffer.data->Data() + object_buffer.data->Size());
-    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->Size() +
-                                                 object_buffer.metadata->Size()));
-    auto *data = object_buffer.data->Data();
-    uint64_t num_chunks = GetNumChunks(data_size);
-    get_buffer_state_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, data, data_size)));
-    RAY_CHECK(get_buffer_state_[object_id].chunk_info.size() == num_chunks);
-  }
-  get_buffer_state_[object_id].references++;
-  return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-      get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
-}
-
-void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  GetBufferState &buffer_state = get_buffer_state_[object_id];
-  buffer_state.references--;
-  if (buffer_state.references == 0) {
-    RAY_CHECK_OK(store_client_.Release(object_id));
-    get_buffer_state_.erase(object_id);
-  }
-}
-
-void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_CHECK_OK(store_client_.Release(object_id));
-  get_buffer_state_.erase(object_id);
 }
 
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
@@ -222,7 +158,6 @@ std::string ObjectBufferPool::DebugString() const {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   std::stringstream result;
   result << "BufferPool:";
-  result << "\n- get buffer state map size: " << get_buffer_state_.size();
   result << "\n- create buffer state map size: " << create_buffer_state_.size();
   return result.str();
 }

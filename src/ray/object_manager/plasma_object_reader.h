@@ -26,9 +26,7 @@ class PlasmaObjectReader : public ObjectReaderInterface {
   ~PlasmaObjectReader();
 
   uint64_t GetDataSize() const override;
-
   uint64_t GetMetadataSize() const override;
-
   const rpc::Address &GetOwnerAddress() const override;
   Status ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const override;
   Status ReadFromMetadataSecton(uint64_t offset, uint64_t size,

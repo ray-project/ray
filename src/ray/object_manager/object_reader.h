@@ -33,10 +33,9 @@ class ObjectReaderInterface {
                                         char *output) const = 0;
 };
 
-class ChunkObjectReader : ObjectReaderInterface {
+class ChunkObjectReader {
  public:
-  ChunkObjectReader(std::shared_ptr<ObjectReaderInterface> object_reader,
-                    uint64_t chunk_size);
+  ChunkReader(std::shared_ptr<ObjectReaderInterface> object_reader, uint64_t chunk_size);
   uint64_t GetNumChunks() const;
   uint64_t GetChunkSize() const;
   uint64_t GetTotalSize() const;

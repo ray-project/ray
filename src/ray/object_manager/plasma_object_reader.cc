@@ -27,13 +27,11 @@ PlasmaObjectReader::PlasmaObjectReader(ObjectID object_id, rpc::Address owner_ad
       owner_address_(std::move(owner_address)),
       client_(client),
       object_buffer_() {
-  RAY_CHECK_OK(store_client_.Get(&object_id_, /*num_objects*/ 1, /*timeout_ms*/ 0,
-                                 &object_buffer_, /*is_from_worker*/ false));
+  RAY_CHECK_OK(client_.Get(&object_id_, /*num_objects*/ 1, /*timeout_ms*/ 0,
+                           &object_buffer_, /*is_from_worker*/ false));
 }
 
-PlasmaObjectReader::~PlasmaObjectReader() {
-  RAY_CHECK_OK(store_client_.Release(&object_id_));
-}
+PlasmaObjectReader::~PlasmaObjectReader() { RAY_CHECK_OK(client_.Release(&object_id_)); }
 
 uint64_t PlasmaObjectReader::GetDataSize() const override {
   return object_buffer_.data->Size();
@@ -51,7 +49,7 @@ Status PlasmaObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
                                                char *output) const override {
   if (offset + size > GetDataSize()) {
     return Status::Invalid(absl::StrFormat(
-        "Read from data section failed: offset(%d) + size(%d) > data size (%d)", offset,
+        "Read from data section failed: offset(%d) + size(%d) > data size(%d)", offset,
         size, GetDataSize()));
   }
   std::memcpy(output, object_buffer_.data->Data() + offset, size);
@@ -62,8 +60,8 @@ Status PlasmaObjectReader::ReadFromMetadataSecton(uint64_t offset, uint64_t size
                                                   char *output) const override {
   if (offset + size > GetMetadataSize()) {
     return Status::Invalid(absl::StrFormat(
-        "Read from data section failed: offset(%d) + size(%d) > data size (%d)", offset,
-        size, GetMetadataSize()));
+        "Read from metadata section failed: offset(%d) + size(%d) > metadata size(%d)",
+        offset, size, GetMetadataSize()));
   }
   std::memcpy(output, object_buffer_.metadata->Data() + offset, size);
   return Status::OK();
