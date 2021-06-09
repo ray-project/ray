@@ -76,7 +76,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             else:
                 self.ray_connect_handler(job_config)
         if job_config is None:
-            return ray_client_pb2.InitResponse()
+            return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -660,7 +660,7 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
+        "-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
         "--mode",
         type=str,

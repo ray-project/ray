@@ -24,8 +24,9 @@ namespace mock_pubsub {
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  MOCK_METHOD5(Subscribe,
-               void(const rpc::ChannelType channel_type,
+  MOCK_METHOD6(Subscribe,
+               void(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
                     const rpc::Address &owner_address, const std::string &key_id_binary,
                     pubsub::SubscriptionCallback subscription_callback,
                     pubsub::SubscriptionFailureCallback subscription_failure_callback));

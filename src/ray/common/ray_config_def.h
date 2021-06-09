@@ -50,7 +50,10 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
+/// Whether to enable Ray event stats collection.
+/// TODO(ekl) this seems to segfault Java unit tests when on by default?
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
+           env_bool("RAY_EVENT_STATS", false))
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -106,27 +109,29 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory,
-           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
-               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
+           env_bool("RAY_PREALLOCATE_PLASMA_MEMORY", false))
+
+/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
+/// in /tmp, creating a new file per object. This degrades performance since filesystem
+/// backed objects are written to disk, but allows Ray to operate with degraded
+/// performance instead of crashing. Note that memory admission control is still in play,
+/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
+/// spilling).
+RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
 /// many tasks to the same node.
 RAY_CONFIG(bool, scheduler_loadbalance_spillback,
-           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
-               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
+           env_bool("RAY_SCHEDULER_LOADBALANCE_SPILLBACK", false))
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling,
-           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
-               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, env_bool("RAY_SCHEDULER_HYBRID", true))
 
 RAY_CONFIG(float, scheduler_hybrid_threshold,
-           getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
-               ? 0.5
-               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+           env_float("RAY_SCHEDULER_HYBRID_THRESHOLD", 0.5))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -164,6 +169,10 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
+// Whether to inline object status in serialized references.
+// See https://github.com/ray-project/ray/issues/16025 for more details.
+RAY_CONFIG(bool, inline_object_status_in_refs, true)
 
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
@@ -265,11 +274,17 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
+/// The threshold to trigger a global gc
+RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
+
+/// The min amount of time between triggering global_gc in raylet
+RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -314,6 +329,10 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// If the agent manager fails to communicate with the dashboard agent, we will retry
+/// after this interval.
+RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
@@ -326,9 +345,7 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart,
-           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
-               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+RAY_CONFIG(bool, enable_worker_prestart, env_bool("RAY_ENABLE_WORKER_PRESTART", true))
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -355,7 +372,7 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(std::string, object_spilling_config, "")
+RAY_CONFIG(string_type, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -409,13 +426,17 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
 /// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
-RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms,
+           env_int64_t("RAY_EVENT_STATS_INTERVAL_MS", -1))
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
+
+/// The maximum command batch size.
+RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.

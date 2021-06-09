@@ -94,26 +94,29 @@ def postprocess_advantages(
 
 class MARWILLoss:
     def __init__(self, policy: Policy, value_estimates: TensorType,
-                 action_dist: ActionDistribution, actions: TensorType,
-                 cumulative_rewards: TensorType, vf_loss_coeff: float,
-                 beta: float):
+                 action_dist: ActionDistribution, train_batch: SampleBatch,
+                 vf_loss_coeff: float, beta: float):
 
-        # Advantage Estimation.
-        adv = cumulative_rewards - value_estimates
-        adv_squared = tf.reduce_mean(tf.math.square(adv))
-
-        # Value function's loss term (MSE).
-        self.v_loss = 0.5 * adv_squared
+        # L = - A * log\pi_\theta(a|s)
+        logprobs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
         if beta != 0.0:
+            cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
+            # Advantage Estimation.
+            adv = cumulative_rewards - value_estimates
+            adv_squared = tf.reduce_mean(tf.math.square(adv))
+            # Value function's loss term (MSE).
+            self.v_loss = 0.5 * adv_squared
+
             # Perform moving averaging of advantage^2.
+            rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
 
             # Update averaged advantage norm.
             # Eager.
             if policy.config["framework"] in ["tf2", "tfe"]:
                 update_term = adv_squared - policy._moving_average_sqd_adv_norm
                 policy._moving_average_sqd_adv_norm.assign_add(
-                    1e-7 * update_term)
+                    rate * update_term)
 
                 # Exponentially weighted advantages.
                 c = tf.math.sqrt(policy._moving_average_sqd_adv_norm)
@@ -122,7 +125,7 @@ class MARWILLoss:
             else:
                 update_adv_norm = tf1.assign_add(
                     ref=policy._moving_average_sqd_adv_norm,
-                    value=1e-7 *
+                    value=rate *
                     (adv_squared - policy._moving_average_sqd_adv_norm))
 
                 # Exponentially weighted advantages.
@@ -131,17 +134,18 @@ class MARWILLoss:
                         adv, 1e-8 + tf.math.sqrt(
                             policy._moving_average_sqd_adv_norm)))
             exp_advs = tf.stop_gradient(exp_advs)
+
+            self.explained_variance = tf.reduce_mean(
+                explained_variance(cumulative_rewards, value_estimates))
+
         else:
+            # Value function's loss term (MSE).
+            self.v_loss = tf.constant(0.0)
             exp_advs = 1.0
 
-        # L = - A * log\pi_\theta(a|s)
-        logprobs = action_dist.logp(actions)
         self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
 
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
-
-        self.explained_variance = tf.reduce_mean(
-            explained_variance(cumulative_rewards, value_estimates))
 
 
 def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
@@ -150,34 +154,41 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     action_dist = dist_class(model_out, model)
     value_estimates = model.value_function()
 
-    policy.loss = MARWILLoss(policy, value_estimates, action_dist,
-                             train_batch[SampleBatch.ACTIONS],
-                             train_batch[Postprocessing.ADVANTAGES],
+    policy.loss = MARWILLoss(policy, value_estimates, action_dist, train_batch,
                              policy.config["vf_coeff"], policy.config["beta"])
 
     return policy.loss.total_loss
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
-    return {
+    stats = {
         "policy_loss": policy.loss.p_loss,
-        "vf_loss": policy.loss.v_loss,
         "total_loss": policy.loss.total_loss,
-        "vf_explained_var": policy.loss.explained_variance,
     }
+    if policy.config["beta"] != 0.0:
+        stats["moving_average_sqd_adv_norm"] = \
+            policy._moving_average_sqd_adv_norm
+        stats["vf_explained_var"] = policy.loss.explained_variance
+        stats["vf_loss"] = policy.loss.v_loss
+
+    return stats
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
+    # Setup Value branch of our NN.
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Set up a tf-var for the moving avg (do this here to make it work with
-    # eager mode); "c^2" in the paper.
-    policy._moving_average_sqd_adv_norm = get_variable(
-        100.0,
-        framework="tf",
-        tf_name="moving_average_of_advantage_norm",
-        trainable=False)
+
+    # Not needed for pure BC.
+    if policy.config["beta"] != 0.0:
+        # Set up a tf-var for the moving avg (do this here to make it work
+        # with eager mode); "c^2" in the paper.
+        policy._moving_average_sqd_adv_norm = get_variable(
+            policy.config["moving_average_sqd_adv_norm_start"],
+            framework="tf",
+            tf_name="moving_average_of_advantage_norm",
+            trainable=False)
 
 
 MARWILTFPolicy = build_tf_policy(

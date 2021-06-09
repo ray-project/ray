@@ -13,6 +13,7 @@ import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
+from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -143,6 +144,10 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Has a valid Docker configuration if provided.
     - Has max_worker set for each node type.
     """
+    is_local = config.get("provider", {}).get("type") == "local"
+    if is_local:
+        config = prepare_local(config)
+
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)

@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import json
+import yaml
 
 from filelock import FileLock
 from pathlib import Path
@@ -9,6 +10,7 @@ from ray._private.thirdparty.pathspec import PathSpec
 from ray.job_config import JobConfig
 from enum import Enum
 
+import ray
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
@@ -41,12 +43,18 @@ class RuntimeEnvDict:
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
         pip (List[str] | str): Either a list of pip packages, or a string
-            containing the contents of a pip requirements.txt file.
-        conda (dict | str): Either the conda YAML config or the name of a
-            local conda env (e.g., "pytorch_p36"). The Ray dependency will be
-            automatically injected into the conda env to ensure compatibility
-            with the cluster Ray. The conda name may be mangled automatically
-            to avoid conflicts between runtime envs.
+            containing the path to a pip requirements.txt file.  If a relative
+            path is specified and working_dir is specified, the path is
+            interpreted relative to working_dir.
+        conda (dict | str): Either the conda YAML config, the name of a
+            local conda env (e.g., "pytorch_p36"), or the path to a conda
+            environment.yaml file. If a relative path is specified and
+            working_dir is specified, the path is interpreted relative to
+            working_dir.
+            The Ray dependency will be automatically injected into the conda
+            env to ensure compatibility with the cluster Ray. The conda name
+            may be mangled automatically to avoid conflicts between runtime
+            envs.
             This field cannot be specified at the same time as the 'pip' field.
             To use pip with conda, please specify your pip dependencies within
             the conda YAML config:
@@ -70,7 +78,15 @@ class RuntimeEnvDict:
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
         # unspecified.  However, if all values are None this is set to {}.
-        self._dict = {}
+        self._dict = dict()
+
+        if "working_dir" in runtime_env_json:
+            self._dict["working_dir"] = runtime_env_json["working_dir"]
+            working_dir = Path(self._dict["working_dir"])
+        else:
+            self._dict["working_dir"] = None
+            working_dir = None
+
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
             if sys.platform == "win32":
@@ -79,7 +95,22 @@ class RuntimeEnvDict:
                                           "Windows.")
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
-                self._dict["conda"] = conda
+                yaml_file = Path(conda)
+                if yaml_file.suffix in (".yaml", ".yml"):
+                    if working_dir and not yaml_file.is_absolute():
+                        yaml_file = working_dir / yaml_file
+                    if not yaml_file.is_file():
+                        raise ValueError(
+                            f"Can't find conda YAML file {yaml_file}")
+                    try:
+                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                    except Exception as e:
+                        raise ValueError(
+                            f"Invalid conda file {yaml_file} with error {e}")
+                else:
+                    logger.info(
+                        f"Using preinstalled conda environment: {conda}")
+                    self._dict["conda"] = conda
             elif isinstance(conda, dict):
                 self._dict["conda"] = conda
             elif conda is not None:
@@ -104,7 +135,13 @@ class RuntimeEnvDict:
                     "#create-env-file-manually")
             pip = runtime_env_json["pip"]
             if isinstance(pip, str):
-                self._dict["pip"] = pip
+                # We have been given a path to a requirements.txt file.
+                pip_file = Path(pip)
+                if working_dir and not pip_file.is_absolute():
+                    pip_file = working_dir / pip_file
+                if not pip_file.is_file():
+                    raise ValueError(f"{pip_file} is not a valid file")
+                self._dict["pip"] = pip_file.read_text()
             elif isinstance(pip, list) and all(
                     isinstance(dep, str) for dep in pip):
                 # Construct valid pip requirements.txt from list of packages.
@@ -113,39 +150,51 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['pip'] must be of type str or "
                                 "List[str]")
 
-        if "working_dir" in runtime_env_json:
-            self._dict["working_dir"] = runtime_env_json["working_dir"]
-        else:
-            self._dict["working_dir"] = None
-
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
+
+        self._dict["env_vars"] = None
+        if "env_vars" in runtime_env_json:
+            env_vars = runtime_env_json["env_vars"]
+            self._dict["env_vars"] = env_vars
+            if not (isinstance(env_vars, dict) and all(
+                    isinstance(k, str) and isinstance(v, str)
+                    for (k, v) in env_vars.items())):
+                raise TypeError("runtime_env['env_vars'] must be of type"
+                                "Dict[str, str]")
+
+        if self._dict.get("working_dir"):
+            if self._dict["env_vars"] is None:
+                self._dict["env_vars"] = {}
+            # TODO(ekl): env vars is probably not the right long term impl.
+            self._dict["env_vars"].update(
+                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
 
+        if "_ray_commit" in runtime_env_json:
+            self._dict["_ray_commit"] = runtime_env_json["_ray_commit"]
+        else:
+            if self._dict.get("pip") or self._dict.get("conda"):
+                self._dict["_ray_commit"] = ray.__commit__
+
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if "_skip_inject_ray" in runtime_env_json:
+            self._dict["_skip_inject_ray"] = runtime_env_json[
+                "_skip_inject_ray"]
+
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
-        # TODO(architkulkarni) support env_vars, docker
+        # TODO(architkulkarni) support docker
 
         # TODO(architkulkarni) This is to make it easy for the worker caching
         # code in C++ to check if the env is empty without deserializing and
         # parsing it.  We should use a less confusing approach here.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
-
-    def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
-        """Given existing worker env vars, return an updated dict.
-
-        This sets any necessary env vars to setup the runtime env.
-        TODO(ekl): env vars is probably not the right long term impl.
-        """
-        if override_environment_variables is None:
-            override_environment_variables = {}
-        if self._dict.get("working_dir"):
-            override_environment_variables.update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
-        return override_environment_variables
 
     def get_parsed_dict(self) -> dict:
         return self._dict
@@ -155,6 +204,9 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
+
+    def set_uris(self, uris):
+        self._dict["uris"] = uris
 
 
 class Protocol(Enum):
@@ -470,9 +522,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env["uris"] = [
-            Protocol.GCS.value + "://" + pkg_name
-        ]
+        job_config.set_runtime_env_uris(
+            [Protocol.GCS.value + "://" + pkg_name])
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

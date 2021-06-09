@@ -185,6 +185,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
+    RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                   << return_object.size();
 
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
