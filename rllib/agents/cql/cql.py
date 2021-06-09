@@ -27,7 +27,7 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Offline RL does not need IS estimators.
         "input_evaluation": [],
         # Number of iterations with Behavior Cloning Pretraining.
-        "bc_iters": 2000,
+        "bc_iters": 20000,
         # CQL Loss Temperature.
         "temperature": 1.0,
         # Num Actions to sample for CQL Loss.
