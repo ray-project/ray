@@ -257,12 +257,12 @@ tune.qrandint
 .. autofunction:: ray.tune.qrandint
 
 tune.lograndint
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.lograndint
 
 tune.qlograndint
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.qlograndint
 
