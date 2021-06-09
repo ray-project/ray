@@ -43,14 +43,10 @@ class RuntimeEnvDict:
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
         pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.  If a relative
-            path is specified and working_dir is specified, the path is
-            interpreted relative to working_dir.
+            containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
-            environment.yaml file. If a relative path is specified and
-            working_dir is specified, the path is interpreted relative to
-            working_dir.
+            environment.yaml file.
             The Ray dependency will be automatically injected into the conda
             env to ensure compatibility with the cluster Ray. The conda name
             may be mangled automatically to avoid conflicts between runtime
