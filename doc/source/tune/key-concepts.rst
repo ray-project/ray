@@ -145,6 +145,8 @@ Here's an example covering all search space functions. Again,
         "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
         "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
         "qrandint": tune.qrandint(-21, 12, 3),  # Round to increments of 3 (includes 12)
+        "lograndint": tune.lograndint(1, 10),  # Random integer in log space
+        "qlograndint": tune.qlograndint(1, 10, 2),  # Round to increments of 2
         "choice": tune.choice(["a", "b", "c"]),  # Choose one of these options uniformly
         "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01), # Depends on other value
         "grid": tune.grid_search([32, 64, 128])  # Search over all these values
