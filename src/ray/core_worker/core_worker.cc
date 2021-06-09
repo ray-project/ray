@@ -78,18 +78,16 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
 }
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
-std::shared_ptr<ObjectLocation> CreateObjectLocation(
-    const rpc::GetObjectLocationsOwnerReply &reply) {
+ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
   std::vector<NodeID> node_ids;
   node_ids.reserve(reply.node_ids_size());
   for (auto i = 0; i < reply.node_ids_size(); i++) {
     node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
   }
   bool is_spilled = !reply.spilled_url().empty();
-  return std::make_shared<ObjectLocation>(NodeID::FromBinary(reply.primary_node_id()),
-                                          reply.object_size(), std::move(node_ids),
-                                          is_spilled, reply.spilled_url(),
-                                          NodeID::FromBinary(reply.spilled_node_id()));
+  return ObjectLocation(NodeID::FromBinary(reply.primary_node_id()), reply.object_size(),
+                        std::move(node_ids), is_spilled, reply.spilled_url(),
+                        NodeID::FromBinary(reply.spilled_node_id()));
 }
 }  // namespace
 
@@ -1418,7 +1416,8 @@ Status CoreWorker::GetLocationFromOwner(
             const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
           absl::MutexLock lock(mutex.get());
           if (status.ok()) {
-            (*location_by_id)[object_id] = CreateObjectLocation(reply);
+            location_by_id->emplace(
+                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
           } else {
             RAY_LOG(WARNING) << "Failed to query location information for " << object_id
                              << " with error: " << status.ToString();
@@ -2603,9 +2602,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                              int64_t object_size, const std::string &spilled_url,
                              const NodeID &spilled_node_id, int64_t current_version,
                              const absl::optional<NodeID> &optional_primary_node_id) {
-    auto primary_node_id = optional_primary_node_id.has_value()
-                               ? optional_primary_node_id.value()
-                               : NodeID() /* Nil */;
+    auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
                    << locations.size() << " locations, spilled url: " << spilled_url

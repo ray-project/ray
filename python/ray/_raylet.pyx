@@ -234,7 +234,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     """
     object_size = c_object_location.GetObjectSize()
 
-    node_ids = set([])
+    node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
     for i in range(c_node_ids.size()):
         node_id = c_node_ids[i].Hex().decode("ascii")
