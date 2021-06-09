@@ -16,6 +16,7 @@
 
 #include "ray/common/task/scheduling_resources.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 class ClusterResourceSchedulerInterface {
@@ -76,7 +77,7 @@ class ClusterResourceSchedulerInterface {
   /// (e.g. during the placement group lifecycle).
   ///
   /// \param Output parameter. Fills out all fields.
-  virtual void FillResourceTotals(rpc::UpdateResourcesRequest &request) const = 0;
+  virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

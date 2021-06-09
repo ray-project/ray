@@ -87,7 +87,7 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      RAY_LOG(ERROR) << "Node resource change: " << node_resource_change.DebugString();
+      // RAY_LOG(ERROR) << "publishing: " << node_resource_change.DebugString();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));

@@ -1021,20 +1021,31 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
-void ClusterResourceScheduler::FillResourceTotals(
-    rpc::UpdateResourcesRequest &request) const {
-  request.set_node_id(string_to_int_map_.Get(local_node_id_));
-  auto &map = *request.mutable_resources();
-
-  const auto &local_resources = nodes_[local_node_id_].GetLocalView();
-
+ray::gcs::NodeResourceInfoAccessor::ResourceMap ClusterResourceScheduler::GetResourceTotals() const {
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  const auto &local_resources = it->second.GetLocalView();
   for (int i = 0; i < local_resources.predefined_resources.size(); i++) {
-    auto &resource_total = local_resources.predefined_resources[i].total;
-    if (total > 0) {
+    std::string resource_name = ResourceEnumToString((PredefinedResources)i);
+    double resource_total = local_resources.predefined_resources[i].total.Double();
+    if (resource_total > 0) {
+      auto data = std::make_shared<rpc::ResourceTableData>();
+      data->set_resource_capacity(resource_total);
+      map.emplace(resource_name, std::move(data));
     }
   }
 
-  return;
+  for (auto entry : local_resources.custom_resources) {
+    std::string resource_name = string_to_int_map_.Get(entry.first);
+    double resource_total = entry.second.total.Double();
+    if (resource_total > 0) {
+      auto data = std::make_shared<rpc::ResourceTableData>();
+      data->set_resource_capacity(resource_total);
+      map.emplace(resource_name, std::move(data));
+    }
+  }
+  return map;
 }
 
 }  // namespace ray

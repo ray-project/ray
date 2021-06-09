@@ -35,8 +35,12 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
 }
 
 NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
-    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_)
-    : cluster_resource_scheduler_(cluster_resource_scheduler_) {}
+    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+
+    std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
+        update_resources)
+    : cluster_resource_scheduler_(cluster_resource_scheduler),
+      update_resources_(update_resources) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
@@ -106,6 +110,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
     cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
+  update_resources_(cluster_resource_scheduler_->GetResourceTotals());
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(

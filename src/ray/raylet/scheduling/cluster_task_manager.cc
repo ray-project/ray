@@ -840,6 +840,7 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
     rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
+  RAY_LOG(ERROR) << "Dispatched!" << task.DebugString();
   metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 

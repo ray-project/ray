@@ -303,7 +303,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       },
       max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_, resources,
+                                                                       nullptr));
+      });
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
@@ -392,14 +396,27 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    if (!job_data.is_dead()) {
-      HandleJobStarted(job_id, job_data);
-    } else {
+    // HandleJobStarted is idempotent so it's ok to call it again when the job
+    // finishes. We always need to call `HandleJobStarted` even when a job has
+    // finished, because we may have missed the started event (for example,
+    // because the node wasn't up when the job started). JobStarted +
+    // JobFinished events both need to be processed because we need to persist
+    // the job config of dead jobs in order for detached actors to function
+    // properly.
+    HandleJobStarted(job_id, job_data);
+    if (job_data.is_dead()) {
       HandleJobFinished(job_id, job_data);
     }
   };
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  RAY_RETURN_NOT_OK(
+                    gcs_client_->Jobs().AsyncGetAll([job_subscribe_handler](Status status, const std::vector<rpc::JobTableData> &result) {
+                      for (const auto &job_data : result) {
+                        job_subscribe_handler(JobID::FromBinary(job_data.job_id()), job_data);
+                      }
+                    })
+                    );
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -478,10 +495,12 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
-  RAY_CHECK(!job_data.is_dead());
+  RAY_LOG(ERROR) << "HandleJobStarted " << job_id;
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
+  // NOTE: Technically `HandleJobStarted` isn't idempotent because of we'll
+  // increment the ref count multiple times. This is fine because
+  // `HandleJobFinisehd` will also decrement the ref count multiple times.
   runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -490,7 +509,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_LOG(ERROR) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
 
@@ -860,6 +879,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
+    // RAY_LOG(ERROR) << "Updating resource capacity of: " << resource_label;
     cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
                                                         new_resource_capacity);
   }

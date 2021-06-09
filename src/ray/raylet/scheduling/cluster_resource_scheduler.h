@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/gcs/accessor.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -414,7 +415,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// (e.g. during the placement group lifecycle).
   ///
   /// \param Output parameter. Fills out all fields.
-  void FillResourceTotals(rpc::UpdateResourcesRequest &request) const override;
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
