@@ -303,8 +303,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    alias pip="python -m pip"
-    keep_alive pip install -v -e .
+    keep_alive python -m pip install -v -e .
   )
 }
 
