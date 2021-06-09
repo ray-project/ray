@@ -2,6 +2,7 @@ from typing import List, Dict
 
 import pytest
 
+import numpy as np
 import ray
 from ray.experimental import workflow
 
@@ -55,6 +56,17 @@ def return_workflow():
     return empty_list.step()
 
 
+@workflow.step
+def return_data() -> ray.ObjectRef:
+    obj = ray.put(np.ones(4096))
+    return obj
+
+
+@workflow.step
+def receive_data(data: np.ndarray):
+    return data
+
+
 def test_object_deref():
     ray.init()
 
@@ -78,5 +90,10 @@ def test_object_deref():
         ray.get(receive_workflow.remote(x))
     with pytest.raises(ValueError):
         ray.get(return_workflow.remote())
+
+    # test return object ref
+    obj = return_data.step()
+    arr: np.ndarray = ray.get(workflow.run(receive_data.step(obj)))
+    assert np.array_equal(arr, np.ones(4096))
 
     ray.shutdown()
