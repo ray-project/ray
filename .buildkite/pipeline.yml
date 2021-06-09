@@ -34,7 +34,7 @@
       --test_env=CONDA_DEFAULT_ENV
       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
+      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]

@@ -434,9 +434,13 @@ The runtime environment defines the dependencies required for your workload.
 
 You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
 
-.. code-block:: python
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __ray_init_start__
+   :end-before: __ray_init_end__
 
-    ray.init(job_config=ray.job_config.JobConfig(runtime_env=runtime_env))
+..
+  TODO(architkulkarni): run Ray Client doc example in CI
 
 .. code-block:: python
 
@@ -444,11 +448,10 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
 
 ...or specify per-actor or per-task using ``.options()``:
 
-.. code-block:: python
-
-    f.options(runtime_env=runtime_env).remote()
-    Actor.options(runtime_env=runtime_env).remote()
-
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __per_task_per_actor_start__
+   :end-before: __per_task_per_actor_end__
 
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
@@ -467,18 +470,19 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 - ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip 
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
   This will be dynamically installed in the ``runtime_env``.
+  To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
 
   - Example: ``["requests==1.0.0", "aiohttp"]``
 
   - Example: ``"./requirements.txt"``
 
 - ``conda`` (dict | str): Either a dict representing the conda environment YAML, a string containing the path to a 
-  `conda “environment.yaml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
+  `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.  
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
-  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["chess"]}]}}``
+  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
 
   - Example: ``"./environment.yml"``
 
@@ -492,18 +496,16 @@ The runtime env is inheritable, so it will apply to all tasks/actors within a jo
 
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
 
-Here are some examples combining multiple options:
+Here are some examples of runtime envs combining multiple options:
+
+..
+  TODO(architkulkarni): run working_dir doc example in CI
 
 .. code-block:: python
     
-    runtime_env = {"working_dir": "/code/my_project", "pip": ["chess==1.5.0"]}
-    runtime_env = {
-        "conda": {
-            "dependencies":
-            ["pytorch", "torchvision", "pip", {
-                "pip": ["chess"]
-            }]
-        },
-        "env_vars": {"TF_WARNINGS": "none"}
-    }
+    runtime_env = {"working_dir": "/code/my_project", "pip": ["pendulum=2.1.2"]}
 
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __runtime_env_conda_def_start__
+   :end-before: __runtime_env_conda_def_end__
