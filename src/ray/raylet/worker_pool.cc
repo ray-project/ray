@@ -155,7 +155,7 @@ Process WorkerPool::StartWorkerProcess(
     RAY_CHECK(!job_id.IsNil());
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
-      RAY_LOG(ERROR) << "Job config of job " << job_id << " are not local yet.";
+      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
     }
@@ -179,7 +179,7 @@ Process WorkerPool::StartWorkerProcess(
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(ERROR) << "Starting new worker process, current pool has " << state.idle.size()
+  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
                  << " workers";
 
   int workers_to_start = 1;
@@ -317,8 +317,8 @@ Process WorkerPool::StartWorkerProcess(
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
 
-  RAY_LOG(ERROR) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc.GetId();
+  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
+                << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   if (IsIOWorkerType(worker_type)) {
@@ -899,7 +899,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     if (worker == nullptr) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
-      RAY_LOG(DEBUG) << "Requesting a new worker process.";
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                 task_spec.JobId(), {}, /* dynamic_options */
                                 task_spec.SerializedRuntimeEnv(),
