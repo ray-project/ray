@@ -170,18 +170,18 @@ def test_task_unlimited_multiget_args():
 # def test_task_unlimited_huge_args():
 #     try:
 #         address = _init_ray()
-# 
+#
 #         # PullManager should raise an error, since the set of task args is
 #         # too huge to fit into memory.
 #         @ray.remote
 #         def consume(*refs):
 #             return "ok"
-# 
+#
 #         # Too many refs to fit into memory.
 #         refs = []
 #         for _ in range(10):
 #             refs.append(ray.put(np.zeros(200 * MB, dtype=np.uint8)))
-# 
+#
 #         with pytest.raises(Exception):
 #             ray.get(consume.remote(*refs))
 #     finally:
