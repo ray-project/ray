@@ -209,15 +209,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
-      worker_pool_(io_service, self_node_id_, config.node_manager_address,
-                   config.num_workers_soft_limit,
-                   config.num_initial_python_workers_for_first_job,
-                   config.maximum_startup_concurrency, config.min_worker_port,
-                   config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands,
-                   /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(
+          io_service, self_node_id_, config.node_manager_address,
+          config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
+          config.maximum_startup_concurrency, config.min_worker_port,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands,
+          /*starting_worker_timeout_callback=*/
+          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       dependency_manager_(object_manager_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -713,8 +713,11 @@ void NodeManager::WarnResourceDeadlock() {
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale or if you specified a "
         << "runtime_env for this task or actor because it takes time to install.";
+
+    std::string error_message_str = error_message.str();
+    RAY_LOG(WARNING) << error_message_str;
     auto error_data_ptr = gcs::CreateErrorTableData(
-        "resource_deadlock", error_message.str(), current_time_ms(),
+        "resource_deadlock", error_message_str, current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
@@ -1236,8 +1239,10 @@ void NodeManager::DisconnectClient(
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
                       << " Worker PID: " << worker->GetProcess().GetId();
-        auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
-                                                        current_time_ms(), job_id);
+        std::string error_message_str = error_message.str();
+        RAY_LOG(INFO) << error_message_str;
+        auto error_data_ptr =
+            gcs::CreateErrorTableData(type, error_message_str, current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
@@ -2354,9 +2359,10 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
            "resources. The required resources may be added as autoscaling takes place "
            "or placement groups are scheduled. Otherwise, consider reducing the "
            "resource requirements of the task.";
-    auto error_data_ptr =
-        gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
-                                  task.GetTaskSpecification().JobId());
+    std::string error_message_str = error_message.str();
+    RAY_LOG(WARNING) << error_message_str;
+    auto error_data_ptr = gcs::CreateErrorTableData(
+        type, error_message_str, current_time_ms(), task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
 }

@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -50,9 +51,14 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type, const std::string &error_msg, double timestamp,
     const JobID &job_id = JobID::Nil()) {
+  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
   error_info_ptr->set_type(error_type);
-  error_info_ptr->set_error_message(error_msg);
+  if (error_msg.length() > max_error_msg_size_bytes) {
+    error_info_ptr->set_error_message(error_msg.substr(0, max_error_msg_size_bytes));
+  } else {
+    error_info_ptr->set_error_message(error_msg);
+  }
   error_info_ptr->set_timestamp(timestamp);
   error_info_ptr->set_job_id(job_id.Binary());
   return error_info_ptr;
