@@ -232,13 +232,6 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if command -v node; then
-    if [ -n "${BUILDKITE-}" ]; then
-      echo "Node existed, skipping install";
-      return
-    fi
-  fi
-
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
     return
