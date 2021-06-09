@@ -183,6 +183,7 @@ message SubscribeForObjectEvictionReply {
 message PubsubLongPollingRequest {
   /// The address of the subscriber that sends a long polling request.
   Address subscriber_address = 1;
+  repeated Command commands = 2;
 }
 
 message PubsubLongPollingReply {

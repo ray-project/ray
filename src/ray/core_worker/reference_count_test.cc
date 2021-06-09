@@ -112,6 +112,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   ~MockDistributedSubscriber() = default;
 
   void Subscribe(
+      const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
       const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
