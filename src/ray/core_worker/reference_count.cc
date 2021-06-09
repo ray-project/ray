@@ -833,9 +833,11 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         }
 
         absl::MutexLock lock(&mutex_);
+        auto sub_message = std::make_unique<rpc::SubMessage>();
         object_status_subscriber_->Subscribe(
-            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-            object_id.Binary(), message_published_callback, publisher_failed_callback);
+            std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+            addr.ToProto(), object_id.Binary(), message_published_callback,
+            publisher_failed_callback);
       });
 }
 

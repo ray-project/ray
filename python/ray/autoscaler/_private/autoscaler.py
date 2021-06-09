@@ -21,6 +21,9 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import \
+    record_local_head_state_if_needed
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -520,6 +523,11 @@ class StandardAutoscaler:
             if not self.provider:
                 self.provider = _get_node_provider(self.config["provider"],
                                                    self.config["cluster_name"])
+
+            # If using the LocalNodeProvider, make sure the head node is marked
+            # non-terminated.
+            if isinstance(self.provider, LocalNodeProvider):
+                record_local_head_state_if_needed(self.provider)
 
             self.available_node_types = self.config["available_node_types"]
             upscaling_speed = self.config.get("upscaling_speed")

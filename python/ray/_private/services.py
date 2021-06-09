@@ -235,10 +235,8 @@ def get_ray_address_to_use_or_die():
     Returns:
         A string to pass into `ray.init(address=...)`
     """
-    if "RAY_ADDRESS" in os.environ:
-        return os.environ.get("RAY_ADDRESS")
-
-    return find_redis_address_or_die()
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          find_redis_address_or_die())
 
 
 def find_redis_address_or_die():
