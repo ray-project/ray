@@ -50,15 +50,21 @@ class TestCQL(unittest.TestCase):
         # Switch on off-policy evaluation.
         config["input_evaluation"] = ["is"]
 
-        num_iterations = 2
+        config["evaluation_interval"] = 2
+        config["evaluation_num_episodes"] = 10
+        config["evaluation_config"]["input"] = "sampler"
+        config["evaluation_parallel_to_training"] = True
+
+        num_iterations = 3
 
         # Test for tf/torch frameworks.
         for fw in framework_iterator(config):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
-                results = trainer.train()
-                print(f"iter={trainer.iteration} "
-                      f"R={results['episode_reward_mean']}")
+                results = trainer.train().get("evaluation")
+                if results:
+                    print(f"iter={trainer.iteration} "
+                          f"R={results['episode_reward_mean']}")
 
             check_compute_single_action(trainer)
 
