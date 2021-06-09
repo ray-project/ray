@@ -846,7 +846,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       WarnAboutSize();
       if (dedicated) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_dedicated_workers.emplace(task_spec.TaskId());
+        state.tasks_with_dedicated_workers.emplace(task_spec.TaskId());
       }
     }
     return proc;
@@ -868,7 +868,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Because we found a worker that can perform this task,
       // we can remove it from dedicated_workers_to_tasks.
       state.dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
+      state.tasks_with_dedicated_workers.erase(task_spec.TaskId());
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
@@ -1149,8 +1149,8 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
   if (runtime_env_it != state.tasks_with_pending_runtime_envs.end()) {
     return true;
   }
-  auto it = state.tasks_to_dedicated_workers.find(task_id);
-  return it != state.tasks_to_dedicated_workers.end();
+  auto it = state.tasks_with_dedicated_workers.find(task_id);
+  return it != state.tasks_with_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {
