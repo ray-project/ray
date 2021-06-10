@@ -94,9 +94,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
-  if (automatic_object_deletion_enabled_) {
-    spilled_object_pending_delete_.push(object_id);
-  }
+  spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
     pinned_objects_.erase(object_id);
@@ -118,16 +116,13 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
-  if (automatic_object_deletion_enabled_) {
-    // Deletion wouldn't work when the object pinning is not enabled.
-    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  }
+  // Deletion wouldn't work when the object pinning is not enabled.
+  ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return;
   }
 
@@ -151,8 +146,7 @@ bool LocalObjectManager::IsSpillingInProgress() {
 }
 
 bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 

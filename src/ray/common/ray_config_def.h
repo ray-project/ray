@@ -364,11 +364,6 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
-/// Whether to enable automatic object deletion when refs are gone out of scope.
-/// When it is true, manual (force) spilling is not available.
-/// TODO(sang): Fix it.
-RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
-
 /// Grace period until we throw the OOM error to the application in seconds.
 RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
