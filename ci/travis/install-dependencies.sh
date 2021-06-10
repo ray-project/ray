@@ -89,6 +89,11 @@ install_miniconda() {
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
     esac
 
+    case "${OSTYPE}" in
+      # The hosttype variable is deprecated.
+      darwin*) HOSTTYPE="${MACHTYPE}";;
+    esac
+
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
     curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
