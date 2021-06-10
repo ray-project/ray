@@ -12,6 +12,7 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.test_utils import object_memory_usage
 
 MB = 1024**2
 
@@ -29,9 +30,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=1,
-            object_store_memory=100 * MB)
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -92,8 +91,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=2)
+        ray.init(num_cpus=2)
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
     def tearDown(self):
