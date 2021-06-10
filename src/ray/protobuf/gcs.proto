@@ -402,7 +402,7 @@ message ResourceUpdate {
 }
 
 message ResourceUsageBroadcastData {
-// An incrementing sequence number, used for correcting network errors.
+  // An incrementing sequence number, used for correcting network errors.
   int64 seq_no = 1;
   // The changes to the state of the cluster.
   repeated ResourceUpdate batch = 2;
