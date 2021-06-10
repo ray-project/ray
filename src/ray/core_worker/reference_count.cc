@@ -1104,7 +1104,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   }
 }
 
-Status ReferenceCounter::FillObjectInformation(const ObjectID &object_id, rpc::GetObjectLocationsOwnerReply *reply) {
+Status ReferenceCounter::FillObjectInformation(const ObjectID &object_id,
+                                               rpc::GetObjectLocationsOwnerReply *reply) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
