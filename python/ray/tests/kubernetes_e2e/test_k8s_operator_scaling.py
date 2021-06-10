@@ -115,19 +115,19 @@ class KubernetesScaleTest(unittest.TestCase):
             for file in files:
                 file.flush()
 
-            print(">>>Creating operator.")
-            cmd = f"kubectl apply -f {operator_file.name}"
-            subprocess.check_call(cmd, shell=True)
-
-            # Test creating operator before CRD.
-            print(">>>Waiting for Ray operator to enter running state.")
-            wait_for_operator()
-
-            print(">>>Creating RayCluster CRD.")
+            # Must create CRD before operator.
+            print("\n>>>Creating RayCluster CRD.")
             cmd = f"kubectl apply -f {get_crd_path()}"
             subprocess.check_call(cmd, shell=True)
             # Takes a bit of time for CRD to register.
             time.sleep(10)
+
+            print(">>>Creating operator.")
+            cmd = f"kubectl apply -f {operator_file.name}"
+            subprocess.check_call(cmd, shell=True)
+
+            print(">>>Waiting for Ray operator to enter running state.")
+            wait_for_operator()
 
             # Start a 30-pod cluster.
             print(">>>Starting a cluster.")

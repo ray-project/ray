@@ -32,5 +32,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
         unique_ptr[c_string] GetPlacementGroupByName(
-            const c_string &placement_group_name)
+            const c_string &placement_group_name,
+            const c_string &ray_namespace,
+        )
         c_vector[c_string] GetAllPlacementGroupInfo()

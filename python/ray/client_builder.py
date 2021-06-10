@@ -2,8 +2,8 @@ import os
 import importlib
 import logging
 from dataclasses import dataclass
-from urllib.parse import urlparse
 import sys
+
 from typing import Any, Dict, Optional, Tuple
 
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
@@ -69,7 +69,7 @@ class ClientBuilder:
         Set an environment for the session.
         Args:
             env (Dict[st, Any]): A runtime environment to use for this
-            connection. See ``runtime_env.py`` for what values are
+            connection. See :ref:`runtime-environments` for what values are
             accepted in this dict.
         """
         self._job_config.set_runtime_env(env)
@@ -119,7 +119,8 @@ class _LocalClientBuilder(ClientBuilder):
                 sys.version_info[0], sys.version_info[1], sys.version_info[2]),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=None)
+            protocol_version=None,
+            _num_clients=1)
 
 
 def _split_address(address: str) -> Tuple[str, str]:
@@ -128,9 +129,10 @@ def _split_address(address: str) -> Tuple[str, str]:
     """
     if "://" not in address:
         address = "ray://" + address
-    url_object = urlparse(address)
-    module_string = url_object.scheme
-    inner_address = address.replace(module_string + "://", "", 1)
+    # NOTE: We use a custom splitting function instead of urllib because
+    # PEP allows "underscores" in a module names, while URL schemes do not
+    # allow them.
+    module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
 
 
@@ -151,7 +153,14 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
-    module = importlib.import_module(module_string)
+    try:
+        module = importlib.import_module(module_string)
+    except Exception:
+        raise RuntimeError(
+            f"Module: {module_string} does not exist.\n"
+            f"This module was parsed from Address: {address}") from None
+    assert "ClientBuilder" in dir(module), (f"Module: {module_string} does "
+                                            "not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 
@@ -166,11 +175,11 @@ def client(address: Optional[str] = None) -> ClientBuilder:
         * ``"module://inner_address"``: load module.ClientBuilder & pass
             inner_address
     """
-    override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if override_address:
+    env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if env_address and address is None:
         logger.debug(
-            f"Using address ({override_address}) instead of "
-            f"({address}) because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set")
-        address = override_address
+            f"Using address ({env_address}) instead of auto-detection "
+            f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
+        address = env_address
 
     return _get_builder_from_address(address)

@@ -16,7 +16,7 @@ auth:
 available_node_types:
     cpu_4_ondemand:
         node_config:
-            InstanceType: m5.xlarge
+            InstanceType: m5.2xlarge
             TagSpecifications:
               - ResourceType: "instance"
                 Tags:
@@ -30,7 +30,7 @@ available_node_types:
               - DeviceName: /dev/sda1
                 Ebs:
                   VolumeSize: 200
-        resources: {"CPU": 4}
+        resources: {"CPU": 8}
         min_workers: 0
         max_workers: 0
 
@@ -44,3 +44,7 @@ setup_commands:
    - pip install -U tensorflow==1.14
    - pip install -U {{env["RAY_WHEEL"]}}
    - pip install -q "ray[all]" "gym[atari]"
+
+
+head_start_ray_commands:
+    - ray stop

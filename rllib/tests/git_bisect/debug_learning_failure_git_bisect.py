@@ -137,36 +137,32 @@ if __name__ == "__main__":
     # - Uninstall and re-install ray (from source) if required.
     # - Start ray.
     try:
-        subprocess.run(["ray", "stop"])
-        subprocess.run(["ray", "stop"])
+        subprocess.run("ray stop".split(" "))
+        subprocess.run("ray stop".split(" "))
     except Exception:
         pass
 
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
-        subprocess.run(["sudo", "apt-get", "update"])
-        subprocess.run([
-            "sudo", "apt-get", "install", "-y", "build-essential", "curl",
-            "unzip", "psmisc"
-        ])
-        subprocess.run(["pip", "install", "cython==0.29.0", "pytest"])
+        subprocess.run("sudo apt-get update".split(" "))
+        subprocess.run("sudo apt-get install -y build-essential curl unzip "
+                       "psmisc".split(" "))
+        subprocess.run("pip install cython==0.29.0 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.
         try:
-            subprocess.run(["pip", "uninstall", "-y", "ray"])
+            subprocess.run("pip uninstall -y ray".split(" "))
         except Exception:
             pass
-        subprocess.run(["ci/travis/install-bazel.sh"])
+        subprocess.run("ci/travis/install-bazel.sh".split(" "))
         os.chdir("python")
-        subprocess.run(["pip", "install", "-e", ".", "--verbose"])
+        subprocess.run("pip install -e . --verbose".split(" "))
         os.chdir("../")
 
     try:
-        subprocess.run(
-            ["ray", "start", "--head", "--include-dashboard", "false"])
+        subprocess.run("ray start --head --include-dashboard false".split(" "))
     except Exception:
-        subprocess.run(["ray", "stop"])
-        subprocess.run(
-            ["ray", "start", "--head", "--include-dashboard", "false"])
+        subprocess.run("ray stop".split(" "))
+        subprocess.run("ray start --head --include-dashboard false".split(" "))
 
     # Run the training experiment.
     importlib.invalidate_caches()

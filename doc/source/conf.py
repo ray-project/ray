@@ -17,6 +17,7 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 from datetime import datetime
@@ -99,6 +100,7 @@ sys.modules["pytorch_lightning"] = ChildClassMock()
 sys.modules["xgboost"] = ChildClassMock()
 sys.modules["xgboost.core"] = ChildClassMock()
 sys.modules["xgboost.callback"] = ChildClassMock()
+sys.modules["xgboost_ray"] = ChildClassMock()
 
 
 class SimpleClass(object):

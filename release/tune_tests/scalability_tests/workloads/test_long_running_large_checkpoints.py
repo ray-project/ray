@@ -15,7 +15,7 @@ Theoretical minimum time: 86,400 seconds
 import ray
 from ray import tune
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run, ProgressCallback
 
 
 def main():
@@ -27,6 +27,8 @@ def main():
 
     max_runtime = 90000
 
+    callback = ProgressCallback()
+
     timed_tune_run(
         name="long running large checkpoints",
         num_samples=num_samples,
@@ -34,10 +36,11 @@ def main():
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         checkpoint_freq_s=900,  # Once every 15 minutes
-        checkpoint_size_b=int(3.75 * 1000**3),
+        checkpoint_size_b=int(0.75 * 1000**3),
         keep_checkpoints_num=2,  # 2 * 16 * 4 = 128 GB
         resources_per_trial={"cpu": 1},
-        sync_config=tune.SyncConfig(sync_to_driver=True))
+        sync_config=tune.SyncConfig(sync_to_driver=True),
+        callbacks=[callback])
 
 
 if __name__ == "__main__":

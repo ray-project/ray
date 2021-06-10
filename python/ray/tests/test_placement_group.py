@@ -1509,14 +1509,14 @@ def test_named_placement_group(ray_start_cluster):
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
-    info = ray.init(address=cluster.address)
+    info = ray.init(address=cluster.address, namespace="")
     global_placement_group_name = "named_placement_group"
 
     # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["redis_address"]}", namespace="")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
