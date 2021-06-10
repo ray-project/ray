@@ -1147,6 +1147,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// stops using the reference, the message will be published to the owner.
   void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
+  /// SANG-TODO doc
+  void ProcessSubscribeObjectLocations(const rpc::WorkerObjectLocationsSubMessage &message);
+
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.

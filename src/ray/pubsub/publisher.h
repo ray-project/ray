@@ -226,6 +226,8 @@ class Publisher : public PublisherInterface {
                                     pub_internal::SubscriptionIndex<ObjectID>());
     subscription_index_map_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     pub_internal::SubscriptionIndex<ObjectID>());
+    subscription_index_map_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                    pub_internal::SubscriptionIndex<ObjectID>());
   }
 
   ~Publisher() = default;
