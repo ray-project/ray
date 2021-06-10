@@ -168,4 +168,45 @@ struct PlacementGroupCreationOptions {
   const bool is_detached = false;
 };
 
+class ObjectLocation {
+ public:
+  ObjectLocation(NodeID primary_node_id, uint64_t object_size,
+                 std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+                 NodeID spilled_node_id)
+      : primary_node_id_(primary_node_id),
+        object_size_(object_size),
+        node_ids_(std::move(node_ids)),
+        is_spilled_(is_spilled),
+        spilled_url_(std::move(spilled_url)),
+        spilled_node_id_(spilled_node_id) {}
+
+  const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
+
+  const uint64_t GetObjectSize() const { return object_size_; }
+
+  const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
+
+  bool IsSpilled() const { return is_spilled_; }
+
+  const std::string &GetSpilledURL() const { return spilled_url_; }
+
+  const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
+
+ private:
+  /// The ID of the node has the primary copy of the object.
+  /// Nil if the object is pending resolution.
+  const NodeID primary_node_id_;
+  /// The size of the object in bytes.
+  const uint64_t object_size_;
+  /// The IDs of the nodes that this object appeared on or was evicted by.
+  const std::vector<NodeID> node_ids_;
+  /// Whether this object has been spilled.
+  const bool is_spilled_;
+  /// If spilled, the URL of this object's spill location.
+  const std::string spilled_url_;
+  /// If spilled, the ID of the node that spilled the object. Nil if the object was
+  /// spilled to distributed external storage.
+  const NodeID spilled_node_id_;
+};
+
 }  // namespace ray

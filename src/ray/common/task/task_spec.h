@@ -77,6 +77,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string SerializedRuntimeEnv() const;
 
+  bool HasRuntimeEnv() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;

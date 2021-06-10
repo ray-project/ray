@@ -323,12 +323,19 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   }
 
   auto options = AgentManager::Options({self_node_id, agent_command_line});
-  agent_manager_.reset(
-      new AgentManager(std::move(options),
-                       /*delay_executor=*/
-                       [this](std::function<void()> task, uint32_t delay_ms) {
-                         return execute_after(io_service_, task, delay_ms);
-                       }));
+  agent_manager_ = std::make_shared<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, delay_ms);
+      },
+      /*runtime_env_agent_factory=*/
+      [this](const std::string &ip_address, int port) {
+        RAY_CHECK(!ip_address.empty() && port != 0);
+        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
+            new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
+      });
+  worker_pool_.SetAgentManager(agent_manager_);
 }
 
 ray::Status NodeManager::RegisterGcs() {

@@ -1107,7 +1107,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   it->second.location_version++;
   for (const auto &callback : callbacks) {
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   }
 }
 
@@ -1128,7 +1129,8 @@ Status ReferenceCounter::SubscribeObjectLocations(
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   } else {
     // Otherwise, save the callback for later invocation.
     it->second.location_subscription_callbacks.push_back(callback);
