@@ -25,6 +25,7 @@
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
+namespace ray {
 namespace {
 
 // Duration between internal book-keeping heartbeats.
@@ -40,14 +41,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
-    const ray::RuntimeEnv &runtime_env,
+    const std::string &serialized_runtime_env,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, runtime_env, override_environment_variables);
+      debugger_breakpoint, serialized_runtime_env, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -76,9 +77,19 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
   return options.job_id;
 }
 
+// Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
+ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
+  std::vector<NodeID> node_ids;
+  node_ids.reserve(reply.node_ids_size());
+  for (auto i = 0; i < reply.node_ids_size(); i++) {
+    node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
+  }
+  bool is_spilled = !reply.spilled_url().empty();
+  return ObjectLocation(NodeID::FromBinary(reply.primary_node_id()), reply.object_size(),
+                        std::move(node_ids), is_spilled, reply.spilled_url(),
+                        NodeID::FromBinary(reply.spilled_node_id()));
+}
 }  // namespace
-
-namespace ray {
 
 /// The global instance of `CoreWorkerProcess`.
 std::unique_ptr<CoreWorkerProcess> core_worker_process;
@@ -386,9 +397,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   std::string serialized_job_config = options_.serialized_job_config;
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
-      options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
-      options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &serialized_job_config);
+      options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
+      options_.language, options_.node_ip_address, &raylet_client_status,
+      &local_raylet_id, &assigned_port, &serialized_job_config);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -426,15 +437,34 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
+  // Begin to get gcs server address from raylet.
+  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
+      options_.raylet_ip_address, options_.node_manager_port,
+      [this](std::string ip, int port) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        gcs_server_address_.first = ip;
+        gcs_server_address_.second = port;
+      });
+
   // Initialize gcs client.
-  // As asynchronous context of redis client is not used in this gcs client. We would not
-  // open connection for it by setting `enable_async_conn` as false.
+  // As the synchronous and the asynchronous context of redis client is not used in this
+  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
+  // `enable_async_conn` as false.
   gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
       options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
       options_.gcs_options.password_,
-      /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
+      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(
+      gcs_options, [this](std::pair<std::string, int> *address) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        if (gcs_server_address_.second != 0) {
+          address->first = gcs_server_address_.first;
+          address->second = gcs_server_address_.second;
+          return true;
+        }
+        return false;
+      });
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
@@ -451,8 +481,26 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  core_worker_client_pool_ =
+      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+
+  object_status_publisher_ = std::make_unique<pubsub::Publisher>(
+      /*periodical_runner=*/&periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+  object_status_subscriber_ = std::make_unique<pubsub::Subscriber>(
+      /*subscriber_id=*/GetWorkerID(),
+      /*subscriber_address=*/rpc_address_.ip_address(),
+      /*subscriber_port=*/rpc_address_.port(),
+      /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+      /*publisher_client_pool=*/*(core_worker_client_pool_.get()));
+
   reference_counter_ = std::make_shared<ReferenceCounter>(
-      rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
+      rpc_address_,
+      /*object_status_publisher=*/object_status_publisher_.get(),
+      /*object_status_subscriber=*/object_status_subscriber_.get(),
+      RayConfig::instance().distributed_ref_counting_enabled(),
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -550,9 +598,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id);
   }
 
-  core_worker_client_pool_ =
-      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
-
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
@@ -566,12 +611,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
-
-  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
-      /*periodical_runner=*/&periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -977,8 +1016,8 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   return owner_address;
 }
 
-void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
-                                  rpc::Address *owner_address) {
+void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                                  std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
@@ -987,18 +1026,37 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
   RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id;
+
+  rpc::GetObjectStatusReply object_status;
+  // Optimization: if the object exists, serialize and inline its status. This also
+  // resolves some race conditions in resource release (#16025).
+  if (RayConfig::instance().inline_object_status_in_refs()) {
+    auto existing_object = memory_store_->GetIfExists(object_id);
+    if (existing_object != nullptr) {
+      PopulateObjectStatus(object_id, existing_object, &object_status);
+    }
+  }
+  *serialized_object_status = object_status.SerializeAsString();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const ObjectID &outer_object_id,
-    const rpc::Address &owner_address) {
+    const rpc::Address &owner_address, const std::string &serialized_object_status) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
 
-  // We will ask the owner about the object until the object is
-  // created or we can no longer reach the owner.
-  future_resolver_->ResolveFutureAsync(object_id, owner_address);
+  rpc::GetObjectStatusReply object_status;
+  object_status.ParseFromString(serialized_object_status);
+
+  if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
+    // We already have the inlined object status, process it immediately.
+    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), object_status);
+  } else {
+    // We will ask the owner about the object until the object is
+    // created or we can no longer reach the owner.
+    future_resolver_->ResolveFutureAsync(object_id, owner_address);
+  }
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -1059,7 +1117,8 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const size_t data_size,
                                const std::vector<ObjectID> &contained_object_ids,
-                               ObjectID *object_id, std::shared_ptr<Buffer> *data) {
+                               ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                               bool created_by_worker) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
@@ -1071,9 +1130,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
        static_cast<int64_t>(data_size) < max_direct_call_object_size_)) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    auto status =
-        plasma_store_provider_->Create(metadata, data_size, *object_id,
-                                       /* owner_address = */ rpc_address_, data);
+    auto status = plasma_store_provider_->Create(metadata, data_size, *object_id,
+                                                 /* owner_address = */ rpc_address_, data,
+                                                 created_by_worker);
     if (!status.ok() || !data) {
       reference_counter_->RemoveOwnedObject(*object_id);
       return status;
@@ -1085,14 +1144,14 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const size_t data_size, const ObjectID &object_id,
                                   const rpc::Address &owner_address,
-                                  std::shared_ptr<Buffer> *data) {
+                                  std::shared_ptr<Buffer> *data, bool created_by_worker) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
     return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
-                                          data);
+                                          data, created_by_worker);
   }
 }
 
@@ -1331,6 +1390,65 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
+Status CoreWorker::GetLocationFromOwner(
+    const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+    std::vector<std::shared_ptr<ObjectLocation>> *results) {
+  results->resize(object_ids.size());
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
+
+  auto mutex = std::make_shared<absl::Mutex>();
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto ready_promise = std::make_shared<std::promise<void>>();
+  auto location_by_id =
+      std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
+
+  for (const auto &object_id : object_ids) {
+    auto owner_address = GetOwnerAddress(object_id);
+    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(-1);
+    client->GetObjectLocationsOwner(
+        request,
+        [object_id, mutex, num_remaining, ready_promise, location_by_id](
+            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
+          absl::MutexLock lock(mutex.get());
+          if (status.ok()) {
+            location_by_id->emplace(
+                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
+          } else {
+            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
+                             << " with error: " << status.ToString();
+          }
+          (*num_remaining)--;
+          if (*num_remaining == 0) {
+            ready_promise->set_value();
+          }
+        });
+  }
+  if (timeout_ms < 0) {
+    ready_promise->get_future().wait();
+  } else if (ready_promise->get_future().wait_for(
+                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "Failed querying object locations within " << timeout_ms
+           << " milliseconds.";
+    return Status::TimedOut(stream.str());
+  }
+
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    auto pair = location_by_id->find(object_ids[i]);
+    if (pair == location_by_id->end()) {
+      continue;
+    }
+    (*results)[i] = pair->second;
+  }
+  return Status::OK();
+}
+
 void CoreWorker::TriggerGlobalGC() {
   local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
@@ -1382,9 +1500,9 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Find the raylet that hosts the primary copy of the object.
+  bool owned_by_us = false;
   NodeID pinned_at;
-  bool spilled;
-  bool owned_by_us;
+  bool spilled = false;
   RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us,
                                                               &pinned_at, &spilled));
   RAY_CHECK(owned_by_us);
@@ -1419,6 +1537,9 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 }
 
 Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
+  if (object_ids.empty()) {
+    return Status::OK();
+  }
   auto mutex = std::make_shared<absl::Mutex>();
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
   auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
@@ -1520,21 +1641,16 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       task_options.override_environment_variables;
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
-  // Update runtime env with simple dict update.
-  ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
-  ray::RuntimeEnv new_runtime_env = task_options.runtime_env;
-  runtime_env.Update(new_runtime_env);
-  if (runtime_env.IsEmpty()) {
-    runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
-  }
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
                       placement_options, placement_group_capture_child_tasks,
-                      debugger_breakpoint, runtime_env, override_environment_variables);
+                      debugger_breakpoint, task_options.serialized_runtime_env,
+                      override_environment_variables);
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
   } else {
@@ -1571,13 +1687,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.override_environment_variables;
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
-  // Update runtime env with simple dict update.
-  ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
-  ray::RuntimeEnv new_runtime_env = actor_creation_options.runtime_env;
-  runtime_env.Update(new_runtime_env);
-  if (runtime_env.IsEmpty()) {
-    runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
-  }
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
@@ -1592,14 +1701,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, &return_ids,
-                      actor_creation_options.placement_options,
-                      actor_creation_options.placement_group_capture_child_tasks,
-                      "", /* debugger_breakpoint */
-                      runtime_env, override_environment_variables);
+  BuildCommonTaskSpec(
+      builder, job_id, actor_creation_task_id, task_name,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, args, 1, new_resource, new_placement_resources, &return_ids,
+      actor_creation_options.placement_options,
+      actor_creation_options.placement_group_capture_child_tasks,
+      "", /* debugger_breakpoint */
+      actor_creation_options.serialized_runtime_env, override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.max_task_retries,
                                    actor_creation_options.dynamic_worker_options,
@@ -1735,7 +1844,6 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
   const std::unordered_map<std::string, std::string> override_environment_variables = {};
-  const ray::RuntimeEnv runtime_env = RuntimeEnv();
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
@@ -1743,7 +1851,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
-                      runtime_env, override_environment_variables);
+                      "{}", /* serialized_runtime_env */
+                      override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -1877,9 +1986,11 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   ActorID actor_id;
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
+  const auto &ray_namespace = job_config_->ray_namespace();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, ready_promise](
-                Status status, const boost::optional<rpc::ActorTableData> &result) {
+      name, ray_namespace,
+      [this, &actor_id, name, ready_promise](
+          Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::make_unique<ActorHandle>(*result);
           actor_id = actor_handle->GetActorID();
@@ -1940,46 +2051,41 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 
 void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }
 
-Status CoreWorker::AllocateReturnObjects(
-    const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
-    const std::vector<std::shared_ptr<Buffer>> &metadatas,
-    const std::vector<std::vector<ObjectID>> &contained_object_ids,
-    std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  RAY_CHECK(object_ids.size() == metadatas.size());
-  RAY_CHECK(object_ids.size() == data_sizes.size());
-  return_objects->resize(object_ids.size(), nullptr);
-
+Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
+                                        const size_t &data_size,
+                                        const std::shared_ptr<Buffer> &metadata,
+                                        const std::vector<ObjectID> &contained_object_id,
+                                        std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
                                  : worker_context_.GetCurrentTask()->CallerAddress());
 
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    bool object_already_exists = false;
-    std::shared_ptr<Buffer> data_buffer;
-    if (data_sizes[i] > 0) {
-      RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
-      // Mark this object as containing other object IDs. The ref counter will
-      // keep the inner IDs in scope until the outer one is out of scope.
-      if (!contained_object_ids[i].empty() && !options_.is_local_mode) {
-        reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
-                                               owner_address);
-      }
+  bool object_already_exists = false;
+  std::shared_ptr<Buffer> data_buffer;
+  if (data_size > 0) {
+    RAY_LOG(DEBUG) << "Creating return object " << object_id;
+    // Mark this object as containing other object IDs. The ref counter will
+    // keep the inner IDs in scope until the outer one is out of scope.
+    if (!contained_object_id.empty() && !options_.is_local_mode) {
+      reference_counter_->AddNestedObjectIds(object_id, contained_object_id,
+                                             owner_address);
+    }
 
-      // Allocate a buffer for the return object.
-      if (options_.is_local_mode ||
-          static_cast<int64_t>(data_sizes[i]) < max_direct_call_object_size_) {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
-      } else {
-        RAY_RETURN_NOT_OK(CreateExisting(metadatas[i], data_sizes[i], object_ids[i],
-                                         owner_address, &data_buffer));
-        object_already_exists = !data_buffer;
-      }
+    // Allocate a buffer for the return object.
+    if (options_.is_local_mode ||
+        static_cast<int64_t>(data_size) < max_direct_call_object_size_) {
+      data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
+    } else {
+      RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
+                                       &data_buffer,
+                                       /*created_by_worker=*/true));
+      object_already_exists = !data_buffer;
     }
-    // Leave the return object as a nullptr if the object already exists.
-    if (!object_already_exists) {
-      return_objects->at(i) =
-          std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
-    }
+  }
+  // Leave the return object as a nullptr if the object already exists.
+  if (!object_already_exists) {
+    *return_object =
+        std::make_shared<RayObject>(data_buffer, metadata, contained_object_id);
   }
 
   return Status::OK();
@@ -2048,23 +2154,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
       creation_task_exception_pb_bytes);
 
-  absl::optional<rpc::Address> caller_address(
-      options_.is_local_mode ? absl::optional<rpc::Address>()
-                             : worker_context_.GetCurrentTask()->CallerAddress());
-  for (size_t i = 0; i < return_objects->size(); i++) {
-    // The object is nullptr if it already existed in the object store.
-    if (!return_objects->at(i)) {
-      continue;
-    }
-    if (return_objects->at(i)->GetData() != nullptr &&
-        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!SealExisting(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
-                       << return_ids[i] << " in store: " << status.message();
-      }
-    }
-  }
-
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also notify the caller of
@@ -2116,6 +2205,25 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
 
+  return status;
+}
+
+Status CoreWorker::SealReturnObject(const ObjectID &return_id,
+                                    std::shared_ptr<RayObject> return_object) {
+  Status status = Status::OK();
+  if (!return_object) {
+    return status;
+  }
+  absl::optional<rpc::Address> caller_address(
+      options_.is_local_mode ? absl::optional<rpc::Address>()
+                             : worker_context_.GetCurrentTask()->CallerAddress());
+  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+    status = SealExisting(return_id, /*pin_object=*/true, caller_address);
+    if (!status.ok()) {
+      RAY_LOG(FATAL) << "Failed to seal object " << return_id
+                     << " in store: " << status.message();
+    }
+  }
   return status;
 }
 
@@ -2322,41 +2430,47 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
       if (is_freed) {
         reply->set_status(rpc::GetObjectStatusReply::FREED);
       } else {
-        // If obj is the concrete object value, it is small, so we
-        // send the object back to the caller in the GetObjectStatus
-        // reply, bypassing a Plasma put and object transfer. If obj
-        // is an indicator that the object is in Plasma, we set an
-        // in_plasma indicator on the message, and the caller will
-        // have to facilitate a Plasma object transfer to get the
-        // object value.
-        auto *object = reply->mutable_object();
-        if (obj->HasData()) {
-          const auto &data = obj->GetData();
-          object->set_data(data->Data(), data->Size());
-        }
-        if (obj->HasMetadata()) {
-          const auto &metadata = obj->GetMetadata();
-          object->set_metadata(metadata->Data(), metadata->Size());
-        }
-        for (const auto &nested_id : obj->GetNestedIds()) {
-          object->add_nested_inlined_ids(nested_id.Binary());
-        }
-        reply->set_status(rpc::GetObjectStatusReply::CREATED);
-        // Set locality data.
-        const auto &locality_data = reference_counter_->GetLocalityData(object_id);
-        if (locality_data.has_value()) {
-          for (const auto &node_id : locality_data.value().nodes_containing_object) {
-            reply->add_node_ids(node_id.Binary());
-          }
-          reply->set_object_size(locality_data.value().object_size);
-        }
+        PopulateObjectStatus(object_id, obj, reply);
       }
       send_reply_callback(Status::OK(), nullptr, nullptr);
     });
   }
 
   RemoveLocalReference(object_id);
-}  // namespace ray
+}
+
+void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
+                                      std::shared_ptr<RayObject> obj,
+                                      rpc::GetObjectStatusReply *reply) {
+  // If obj is the concrete object value, it is small, so we
+  // send the object back to the caller in the GetObjectStatus
+  // reply, bypassing a Plasma put and object transfer. If obj
+  // is an indicator that the object is in Plasma, we set an
+  // in_plasma indicator on the message, and the caller will
+  // have to facilitate a Plasma object transfer to get the
+  // object value.
+  auto *object = reply->mutable_object();
+  if (obj->HasData()) {
+    const auto &data = obj->GetData();
+    object->set_data(data->Data(), data->Size());
+  }
+  if (obj->HasMetadata()) {
+    const auto &metadata = obj->GetMetadata();
+    object->set_metadata(metadata->Data(), metadata->Size());
+  }
+  for (const auto &nested_id : obj->GetNestedIds()) {
+    object->add_nested_inlined_ids(nested_id.Binary());
+  }
+  reply->set_status(rpc::GetObjectStatusReply::CREATED);
+  // Set locality data.
+  const auto &locality_data = reference_counter_->GetLocalityData(object_id);
+  if (locality_data.has_value()) {
+    for (const auto &node_id : locality_data.value().nodes_containing_object) {
+      reply->add_node_ids(node_id.Binary());
+    }
+    reply->set_object_size(locality_data.value().object_size);
+  }
+}
 
 void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
@@ -2395,21 +2509,38 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
-    object_status_publisher_->Publish(object_id);
-    object_status_publisher_->UnregisterSubscription(subscriber_node_id, object_id);
+
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    pub_message.mutable_worker_object_eviction_message()->set_object_id(
+        object_id.Binary());
+
+    object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                      pub_message, object_id.Binary());
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  // Always register the subscription before we register the delete callback to avoid race
+  // condition.
+  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 subscriber_node_id, object_id.Binary());
+
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+    // If the object is already evicted (callback cannot be set), unregister the
+    // subscription.
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
     std::ostringstream stream;
     stream << "Reference for object " << object_id << " has already been freed.";
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    object_status_publisher_->RegisterSubscription(subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
@@ -2418,21 +2549,9 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  auto long_polling_reply_callback =
-      [send_reply_callback = std::move(send_reply_callback), reply,
-       subscriber_id](const std::vector<ObjectID> &object_ids) {
-        RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
-        // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
-        // fail if the number of batched objects are more than 50K. Though it is very
-        // rare, we should probably handle it.
-        for (const auto &object_id : object_ids) {
-          reply->add_object_ids(object_id.Binary());
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
-  object_status_publisher_->ConnectToSubscriber(subscriber_id,
-                                                std::move(long_polling_reply_callback));
+  object_status_publisher_->ConnectToSubscriber(subscriber_id, reply,
+                                                std::move(send_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
@@ -2482,12 +2601,15 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   const auto &callback = [object_id, reply, send_reply_callback](
                              const absl::flat_hash_set<NodeID> &locations,
                              int64_t object_size, const std::string &spilled_url,
-                             const NodeID &spilled_node_id, int64_t current_version) {
+                             const NodeID &spilled_node_id, int64_t current_version,
+                             const absl::optional<NodeID> &optional_primary_node_id) {
+    auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
                    << locations.size() << " locations, spilled url: " << spilled_url
                    << ", spilled node ID: " << spilled_node_id
-                   << ", and object size: " << object_size;
+                   << ", and object size: " << object_size
+                   << ", and primary node ID: " << primary_node_id;
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
@@ -2495,6 +2617,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     reply->set_spilled_url(spilled_url);
     reply->set_spilled_node_id(spilled_node_id.Binary());
     reply->set_current_version(current_version);
+    reply->set_primary_node_id(primary_node_id.Binary());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
   auto status = reference_counter_->SubscribeObjectLocations(
@@ -2511,14 +2634,27 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                            send_reply_callback)) {
     return;
   }
+
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+  const WorkerID subscriber_worker_id =
+      WorkerID::FromBinary(request.subscriber_worker_id());
   const auto owner_address = request.reference().owner_address();
+
+  // We need to reply first to avoid race condition where publish
+  // happens before subscriber receives the reply.
+  // Note that this function should be called after accessing fields from the request.
+  // Otherwise, request could be GC'ed.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      object_id.Binary());
+  // Set a callback to publish the message when the requested object ID's ref count
+  // goes to 0.
   auto ref_removed_callback =
       boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id,
-                  reply, send_reply_callback);
-  // Set a callback to send the reply when the requested object ID's ref count
-  // goes to 0.
+                  subscriber_worker_id);
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                             ref_removed_callback);
 }
@@ -2783,16 +2919,19 @@ void CoreWorker::HandleDeleteSpilledObjects(
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   bool own_objects = reference_counter_->OwnObjects();
-  // Fail the request if it owns any object.
-  reply->set_success(!own_objects);
+  int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
+  // We consider the worker to be idle if it doesn't own any objects and it doesn't have
+  // any object pinning RPCs in flight.
+  bool is_idle = !own_objects && pins_in_flight == 0;
+  reply->set_success(is_idle);
   send_reply_callback(Status::OK(),
-                      [own_objects, this]() {
-                        // If it doesn't own objects, we'll exit it
-                        if (!own_objects) {
-                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+                      [this, is_idle]() {
+                        // If the worker is idle, we exit.
+                        if (is_idle) {
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
                         }
                       },
-                      // We need to kill it if grpc failed.
+                      // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
@@ -2829,10 +2968,11 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
-    RAY_CHECK(vec.size() > 0)
-        << "Failed to get local object but Raylet notified object is local.";
-    return success(vec.front(), object_id, py_future);
+    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+      RAY_CHECK(vec.size() > 0)
+          << "Failed to get local object but Raylet notified object is local.";
+      return success(vec.front(), object_id, py_future);
+    }
   }
 
   // Object is not available locally. We now add the callback to listener queue.

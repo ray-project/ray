@@ -1,9 +1,0 @@
-ray[rllib]
-ray
--f https://download.pytorch.org/whl/torch_stable.html
-torch==1.7.1+cu110 
--f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.8.2+cu110 
-boto3==1.4.8
-cython==0.29.0
-pytest

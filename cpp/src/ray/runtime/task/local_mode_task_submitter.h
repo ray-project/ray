@@ -7,7 +7,6 @@
 #include "../local_mode_ray_runtime.h"
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
-#include "ray/core.h"
 #include "task_executor.h"
 #include "task_submitter.h"
 

@@ -54,6 +54,11 @@ class LearnerThread(threading.Thread):
                         td_error = info.get(
                             "td_error",
                             info[LEARNER_STATS_KEY].get("td_error"))
+                        # Switch off auto-conversion from numpy to torch/tf
+                        # tensors for the indices. This may lead to errors
+                        # when sent to the buffer for processing
+                        # (may get manipulated if they are part of a tensor).
+                        replay.policy_batches[pid].set_get_interceptor(None)
                         prio_dict[pid] = (
                             replay.policy_batches[pid].get("batch_indexes"),
                             td_error)

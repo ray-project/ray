@@ -9,7 +9,7 @@ cc_binary(
         "*.cc",
     ]),
     args = [
-        "--dynamic-library-path $(location example.so)",
+        "--ray-dynamic-library-path $(location example.so)",
     ],
     copts = COPTS,
     data = [
@@ -29,6 +29,7 @@ cc_binary(
         "*.cc",
     ]),
     copts = COPTS,
+    linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "//cpp:ray_api",

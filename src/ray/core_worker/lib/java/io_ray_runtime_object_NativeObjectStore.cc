@@ -35,11 +35,12 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
   if (object_id.IsNil()) {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
-        out_object_id, &data);
+        out_object_id, &data, /*created_by_worker=*/true);
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
-        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data);
+        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data,
+        /*created_by_worker=*/true);
     *out_object_id = object_id;
   }
   if (!status.ok()) {
@@ -194,7 +195,10 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   ray::CoreWorkerProcess::GetCoreWorker().PromoteObjectToPlasma(object_id);
   ray::rpc::Address address;
-  ray::CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address);
+  // TODO(ekl) send serialized object status to Java land.
+  std::string serialized_object_status;
+  ray::CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
+                                                           &serialized_object_status);
   auto address_str = address.SerializeAsString();
   auto arr = NativeStringToJavaByteArray(env, address_str);
   return arr;
@@ -212,8 +216,11 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResol
   auto ownerAddressStr = JavaByteArrayToNativeString(env, ownerAddress);
   ray::rpc::Address address;
   address.ParseFromString(ownerAddressStr);
+  // TODO(ekl) populate serialized object status from Java land.
+  ray::rpc::GetObjectStatusReply object_status;
+  auto serialized_status = object_status.SerializeAsString();
   ray::CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
-      object_id, outer_objectId, address);
+      object_id, outer_objectId, address, serialized_status);
 }
 
 #ifdef __cplusplus

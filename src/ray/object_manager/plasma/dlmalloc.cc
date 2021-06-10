@@ -69,6 +69,10 @@ int fake_munmap(void *, int64_t);
 
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
+// Ray allocates all plasma memory up-front at once to avoid runtime allocations.
+// Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
+static bool allocated_once = false;
+
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
 static void *pointer_retreat(void *p, ptrdiff_t n) { return (unsigned char *)p - n; }
@@ -78,10 +82,11 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
                               (DWORD)(uint64_t)size, NULL);
-  RAY_CHECK(*handle != NULL) << "Failed to create buffer during mmap";
+  RAY_CHECK(*handle != NULL) << "CreateFileMapping() failed. GetLastError() = "
+                             << GetLastError();
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
   if (*pointer == NULL) {
-    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
+    RAY_LOG(ERROR) << "MapViewOfFile() failed. GetLastError() = " << GetLastError();
   }
 }
 #else
@@ -89,7 +94,17 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // Create a buffer. This is creating a temporary file and then
   // immediately unlinking it so we do not leave traces in the system.
   std::string file_template = plasma_config->directory;
+
+  // In never-OOM mode, fallback to allocating from the filesystem. Note that these
+  // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
+  // plasma_allocator.cc.
+  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+    // TODO(ekl) get this from the node manager config.
+    file_template = "/tmp";
+  }
+
   file_template += "/plasmaXXXXXX";
+  RAY_LOG(INFO) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
   std::vector<char> file_name(file_template.begin(), file_template.end());
   file_name.push_back('\0');
   *fd = mkstemp(&file_name[0]);
@@ -132,6 +147,16 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #endif
 
 void *fake_mmap(size_t size) {
+  // In unlimited allocation mode, fail allocations done by PlasmaAllocator::Memalign()
+  // after the initial allocation. Allow allocations done by
+  // PlasmaAllocator::DiskMemalignUnlimited(), which sets mmap_threshold to zero prior to
+  // calling dlmemalign().
+  if (RayConfig::instance().plasma_unlimited() && allocated_once &&
+      mparams.mmap_threshold > 0) {
+    RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
+    return MFAIL;
+  }
+
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
   // page-aligned. This ensures that the segments of memory returned by
   // fake_mmap are never contiguous.
@@ -140,6 +165,7 @@ void *fake_mmap(size_t size) {
   void *pointer;
   MEMFD_TYPE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
+  allocated_once = true;
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
@@ -155,7 +181,6 @@ void *fake_mmap(size_t size) {
 }
 
 int fake_munmap(void *addr, int64_t size) {
-  RAY_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
 
@@ -166,6 +191,7 @@ int fake_munmap(void *addr, int64_t size) {
     // calls to mmap, to prevent dlmalloc from trimming.
     return -1;
   }
+  RAY_LOG(INFO) << "fake_munmap(" << addr << ", " << size << ")";
 
   int r;
 #ifdef _WIN32

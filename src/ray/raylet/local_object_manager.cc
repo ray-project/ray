@@ -66,16 +66,24 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 
           // If the subscription succeeds, register the subscription callback.
           // Callback that is invoked when the owner publishes the object to evict.
-          auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
+          auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
+            RAY_CHECK(msg.has_worker_object_eviction_message());
+            const auto object_eviction_msg = msg.worker_object_eviction_message();
+            const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
             ReleaseFreedObject(object_id);
-            core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
+            core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 owner_address, object_id.Binary());
           };
+
           // Callback that is invoked when the owner of the object id is dead.
-          auto owner_dead_callback = [this](const ObjectID &object_id) {
+          auto owner_dead_callback = [this, object_id]() {
             ReleaseFreedObject(object_id);
           };
-          core_worker_subscriber_->SubcribeObject(
-              owner_address, object_id, subscription_callback, owner_dead_callback);
+          auto sub_message = std::make_unique<rpc::SubMessage>();
+          core_worker_subscriber_->Subscribe(std::move(sub_message),
+                                             rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                             owner_address, object_id.Binary(),
+                                             subscription_callback, owner_dead_callback);
         });
   }
 }
@@ -300,20 +308,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   num_bytes_pending_spill_ -= it->second.first->GetSize();
   objects_pending_spill_.erase(it);
 
-  // Update the object_id -> url_ref_count to use it for deletion later.
-  // We need to track the references here because a single file can contain
-  // multiple objects, and we shouldn't delete the file until
-  // all the objects are gone out of scope.
-  // object_url is equivalent to url_with_offset.
-  auto parsed_url = ParseURL(object_url);
-  const auto base_url_it = parsed_url->find("url");
-  RAY_CHECK(base_url_it != parsed_url->end());
-  if (!url_ref_count_.contains(base_url_it->second)) {
-    url_ref_count_[base_url_it->second] = 1;
-  } else {
-    url_ref_count_[base_url_it->second] += 1;
-  }
-
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
     callback(status);
@@ -344,6 +338,21 @@ void LocalObjectManager::AddSpilledUrls(
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
+
+    // Update the object_id -> url_ref_count to use it for deletion later.
+    // We need to track the references here because a single file can contain
+    // multiple objects, and we shouldn't delete the file until
+    // all the objects are gone out of scope.
+    // object_url is equivalent to url_with_offset.
+    auto parsed_url = ParseURL(object_url);
+    const auto base_url_it = parsed_url->find("url");
+    RAY_CHECK(base_url_it != parsed_url->end());
+    if (!url_ref_count_.contains(base_url_it->second)) {
+      url_ref_count_[base_url_it->second] = 1;
+    } else {
+      url_ref_count_[base_url_it->second] += 1;
+    }
+
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.

@@ -270,12 +270,16 @@ class RemoteFunction:
             accelerator_type)
 
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
         else:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+            runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -302,7 +306,7 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
-                parsed_runtime_env,
+                runtime_env_dict,
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

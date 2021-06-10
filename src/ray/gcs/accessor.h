@@ -53,7 +53,7 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
   /// Register actor to GCS asynchronously.
@@ -741,7 +741,7 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_name The name of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name,
+      const std::string &placement_group_name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

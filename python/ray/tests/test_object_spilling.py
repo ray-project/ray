@@ -3,6 +3,7 @@ import json
 import random
 import platform
 import sys
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
@@ -256,7 +257,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Darwin", "Windows"],
+    reason="Failing on Windows, very flaky on OSX.")
 def test_unstable_spill_objects_automatically(unstable_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -273,7 +275,44 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 100
+    buffer_length = 20
+
+    # Each object averages 16MiB => 320MiB total.
+    for _ in range(buffer_length):
+        multiplier = random.choice([1, 2, 3])
+        arr = np.random.rand(multiplier * 1024 * 1024)
+        ref = ray.put(arr)
+        replay_buffer.append(ref)
+        solution_buffer.append(arr)
+    print("spill done.")
+    # randomly sample objects
+    for _ in range(10):
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, solution)
+    assert_no_thrashing(address["redis_address"])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    object_spilling_config, _ = slow_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
+        })
+    replay_buffer = []
+    solution_buffer = []
+    buffer_length = 10
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
@@ -286,7 +325,7 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
             solution_buffer.append(arr)
     print("spill done.")
     # randomly sample objects
-    for _ in range(1000):
+    for _ in range(buffer_length):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
@@ -347,10 +386,13 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_during_get(object_spilling_config, shutdown_only):
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_async", [False, True])
+async def test_spill_during_get(object_spilling_config, shutdown_only,
+                                is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
-        num_cpus=4,
+        num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
@@ -358,23 +400,47 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
             "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "worker_register_timeout_seconds": 600,
         },
     )
 
-    @ray.remote
-    def f():
-        return np.zeros(10 * 1024 * 1024)
+    if is_async:
 
+        @ray.remote(num_cpus=0)
+        class Actor:
+            async def f(self):
+                return np.zeros(10 * 1024 * 1024)
+    else:
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return np.zeros(10 * 1024 * 1024)
+
+    if is_async:
+        a = Actor.remote()
     ids = []
     for i in range(10):
-        x = f.remote()
+        if is_async:
+            x = a.f.remote()
+        else:
+            x = f.remote()
         print(i, x)
         ids.append(x)
 
+    start = datetime.now()
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
-        print(ray.get(x).shape)
+        if is_async:
+            obj = await x
+        else:
+            obj = ray.get(x)
+        print(obj.shape)
+        del obj
+    duration = datetime.now() - start
+    assert duration <= timedelta(
+        seconds=30
+    ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 
 
@@ -408,6 +474,21 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
     assert_no_thrashing(address["redis_address"])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_partial_retval_allocation():
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote(num_returns=4)
+    def f():
+        return [np.zeros(50 * 1024 * 1024, dtype=np.uint8) for _ in range(4)]
+
+    ret = f.remote()
+    for obj in ret:
+        obj = ray.get(obj)
+        print(obj.size)
 
 
 if __name__ == "__main__":

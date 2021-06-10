@@ -203,6 +203,34 @@ cc_library(
     ],
 )
 
+# runtime env.
+cc_grpc_library(
+    name = "runtime_env_cc_grpc",
+    srcs = ["//src/ray/protobuf:runtime_env_agent_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:runtime_env_agent_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "runtime_env_rpc",
+    hdrs = glob([
+        "src/ray/rpc/runtime_env/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":runtime_env_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -330,12 +358,20 @@ cc_library(
         exclude = [
             "src/ray/common/**/*_test.cc",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.cc",
+        "src/ray/raylet/scheduling/fixed_point.cc",
+        "src/ray/raylet/scheduling/scheduling_ids.cc",
+    ],
     hdrs = glob(
         [
             "src/ray/common/**/*.h",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.h",
+        "src/ray/raylet/scheduling/fixed_point.h",
+        "src/ray/raylet/scheduling/scheduling_ids.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
@@ -574,6 +610,7 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":ray_util",
+        ":runtime_env_rpc",
         ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
@@ -962,6 +999,17 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "throttler_test",
+    srcs = ["src/ray/util/throttler_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1875,9 +1923,11 @@ filegroup(
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
+        "//src/ray/protobuf:runtime_env_agent_py_proto",
     ],
 )
 

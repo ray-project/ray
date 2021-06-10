@@ -24,6 +24,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
@@ -34,10 +35,12 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -95,7 +98,8 @@ struct CoreWorkerOptions {
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
-        connect_on_start(true) {}
+        connect_on_start(true),
+        runtime_env_hash(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -179,6 +183,8 @@ struct CoreWorkerOptions {
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
+  /// The hash of the runtime env for this worker.
+  int runtime_env_hash;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -469,7 +475,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                        std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -483,10 +491,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_address The address of the object's owner.
+  /// \param[in] owner_address The address of the object's owner.
+  /// \param[in] serialized_object_status The serialized object status protobuf.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address);
+                                             const rpc::Address &owner_address,
+                                             const std::string &serialized_object_status);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -532,7 +542,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                     bool created_by_worker);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -548,7 +559,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                         const ObjectID &object_id, const rpc::Address &owner_address,
-                        std::shared_ptr<Buffer> *data);
+                        std::shared_ptr<Buffer> *data, bool created_by_worker);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
@@ -625,6 +636,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Get the locations of a list objects. Locations that failed to be retrieved
+  /// will be returned as nullptrs.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                              std::vector<std::shared_ptr<ObjectLocation>> *results);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
@@ -816,20 +837,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
  public:
-  /// Allocate the return objects for an executing task. The caller should write into the
-  /// data buffers of the allocated buffers.
+  /// Allocate the return object for an executing task. The caller should write into the
+  /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
+  /// To avoid deadlock, the caller should allocate and seal a single object at a time.
   ///
-  /// \param[in] object_ids Object IDs of the return values.
-  /// \param[in] data_sizes Sizes of the return values.
-  /// \param[in] metadatas Metadata buffers of the return values.
-  /// \param[in] contained_object_ids IDs serialized within each return object.
-  /// \param[out] return_objects RayObjects containing buffers to write results into.
+  /// \param[in] object_id Object ID of the return value.
+  /// \param[in] data_size Size of the return value.
+  /// \param[in] metadata Metadata buffer of the return value.
+  /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObjects(
-      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
-      const std::vector<std::shared_ptr<Buffer>> &metadatas,
-      const std::vector<std::vector<ObjectID>> &contained_object_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects);
+  Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
+                              const std::shared_ptr<Buffer> &metadata,
+                              const std::vector<ObjectID> &contained_object_id,
+                              std::shared_ptr<RayObject> *return_object);
+
+  /// Seal a return object for an executing task. The caller should already have
+  /// written into the data buffer.
+  ///
+  /// \param[in] return_id Object ID of the return value.
+  /// \param[in] return_object RayObject containing the buffer written info.
+  /// \return Status.
+  Status SealReturnObject(const ObjectID &return_id,
+                          std::shared_ptr<RayObject> return_object);
 
   /// Get a handle to an actor.
   ///
@@ -1021,6 +1051,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
 
+  /// Helper method to fill in object status reply given an object.
+  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
+                            rpc::GetObjectStatusReply *reply);
+
   ///
   /// Private methods related to task submission.
   ///
@@ -1184,6 +1218,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
+  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
+      std::make_pair<std::string, int>("", 0);
+  /// To protect accessing the `gcs_server_address_`.
+  absl::Mutex gcs_server_address_mutex_;
+  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -1221,8 +1261,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
-  // Server that handles pubsub operations of raylets / core workers.
-  std::shared_ptr<pubsub::Publisher> object_status_publisher_;
+  // A class to publish object status from other raylets/workers.
+  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+
+  // A class to subscribe object status from other raylets/workers.
+  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

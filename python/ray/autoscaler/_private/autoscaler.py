@@ -1,4 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -20,6 +21,9 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import \
+    record_local_head_state_if_needed
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -30,10 +34,9 @@ from ray.autoscaler._private.resource_demand_scheduler import \
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     format_info_string
-from ray.autoscaler._private.constants import \
-    AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_NUM_FAILURES, \
+    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -75,13 +78,19 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
                  prefix_cluster_info=False,
-                 event_summarizer=None):
+                 event_summarizer=None,
+                 prom_metrics=None):
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
+        # Keep this before self.reset (if an exception occurs in reset
+        # then prom_metrics must be instantitiated to increment the
+        # exception counter)
+        self.prom_metrics = prom_metrics or \
+            AutoscalerPrometheusMetrics()
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.head_node_ip = load_metrics.local_ip
@@ -113,7 +122,7 @@ class StandardAutoscaler:
                 index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
-            )
+                prom_metrics=self.prom_metrics)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -131,7 +140,6 @@ class StandardAutoscaler:
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
-
         logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
@@ -139,6 +147,7 @@ class StandardAutoscaler:
             self.reset(errors_fatal=False)
             self._update()
         except Exception as e:
+            self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
             # Don't abort the autoscaler if the K8s API server is down.
@@ -217,6 +226,7 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
+                self.prom_metrics.stopped_nodes.inc()
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -237,6 +247,7 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
+                self.prom_metrics.stopped_nodes.inc()
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -261,8 +272,15 @@ class StandardAutoscaler:
         if completed_nodes:
             failed_nodes = []
             for node_id in completed_nodes:
-                if self.updaters[node_id].exitcode == 0:
+                updater = self.updaters[node_id]
+                if updater.exitcode == 0:
                     self.num_successful_updates[node_id] += 1
+                    self.prom_metrics.successful_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.successful_recoveries.inc()
+                    if updater.update_time:
+                        self.prom_metrics.worker_update_time.observe(
+                            updater.update_time)
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
                     self.load_metrics.mark_active(
@@ -270,6 +288,9 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.prom_metrics.failed_updates.inc()
+                    if updater.for_recovery:
+                        self.prom_metrics.failed_recoveries.inc()
                     self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
 
@@ -295,6 +316,8 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
+                    self.prom_metrics.stopped_nodes.inc(
+                        len(nodes_to_terminate))
                     self.provider.terminate_nodes(nodes_to_terminate)
                     nodes = self.workers()
 
@@ -322,6 +345,12 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+        self.prom_metrics.updating_nodes.set(len(self.updaters))
+        num_recovering = 0
+        for updater in self.updaters.values():
+            if updater.for_recovery:
+                num_recovering += 1
+        self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 
@@ -470,6 +499,7 @@ class StandardAutoscaler:
                 try:
                     validate_config(new_config)
                 except Exception as e:
+                    self.prom_metrics.config_validation_exceptions.inc()
                     logger.debug(
                         "Cluster config validation failed. The version of "
                         "the ray CLI you launched this cluster with may "
@@ -493,6 +523,11 @@ class StandardAutoscaler:
             if not self.provider:
                 self.provider = _get_node_provider(self.config["provider"],
                                                    self.config["cluster_name"])
+
+            # If using the LocalNodeProvider, make sure the head node is marked
+            # non-terminated.
+            if isinstance(self.provider, LocalNodeProvider):
+                record_local_head_state_if_needed(self.provider)
 
             self.available_node_types = self.config["available_node_types"]
             upscaling_speed = self.config.get("upscaling_speed")
@@ -533,6 +568,7 @@ class StandardAutoscaler:
                     upscaling_speed)
 
         except Exception as e:
+            self.prom_metrics.reset_exceptions.inc()
             if errors_fatal:
                 raise e
             else:
@@ -544,7 +580,9 @@ class StandardAutoscaler:
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
 
-        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
+        launch_config = copy.deepcopy(self.config.get("worker_nodes", {}))
         if node_type:
             launch_config.update(
                 self.config["available_node_types"][node_type]["node_config"])
@@ -609,7 +647,8 @@ class StandardAutoscaler:
             use_internal_ip=True,
             is_head_node=False,
             docker_config=self.config.get("docker"),
-            node_resources=self._node_resources(node_id))
+            node_resources=self._node_resources(node_id),
+            for_recovery=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -725,6 +764,7 @@ class StandardAutoscaler:
             quantity=count,
             aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
+        self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         # Split into individual launch requests of the max batch size.
         while count > 0:
@@ -736,8 +776,11 @@ class StandardAutoscaler:
         return self.workers() + self.unmanaged_workers()
 
     def workers(self):
-        return self.provider.non_terminated_nodes(
+        nodes = self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        # Update running nodes gauge whenever we check workers
+        self.prom_metrics.running_workers.set(len(nodes))
+        return nodes
 
     def unmanaged_workers(self):
         return self.provider.non_terminated_nodes(
@@ -750,6 +793,7 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
             for node in nodes:
                 self.node_tracker.untrack(node)
+                self.prom_metrics.stopped_nodes.inc()
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
 

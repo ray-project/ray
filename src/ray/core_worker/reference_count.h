@@ -22,6 +22,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -50,9 +52,10 @@ class ReferenceCounterInterface {
 };
 
 // Callback for location subscriptions.
-using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
-                       const NodeID &, int64_t)>;
+using LocationSubscriptionCallback = std::function<void(
+    const absl::flat_hash_set<NodeID> & /* node_ids */, int64_t /* object_size */,
+    const std::string & /* spilled_url */, const NodeID & /* spilled_node_id */,
+    int64_t /* current_version */, const absl::optional<NodeID> & /* primary_node_id */)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
@@ -66,13 +69,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+                   pubsub::PublisherInterface *object_status_publisher,
+                   pubsub::SubscriberInterface *object_status_subscriber,
                    bool distributed_ref_counting_enabled = true,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory) {}
+        borrower_pool_(client_factory),
+        object_status_publisher_(object_status_publisher),
+        object_status_subscriber_(object_status_subscriber) {}
 
   ~ReferenceCounter() {}
 
@@ -83,6 +90,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Return true if the worker owns any object.
   bool OwnObjects() const;
+
+  /// Return true if the object is owned by us.
+  bool OwnedByUs(const ObjectID &object_id) const;
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -276,13 +286,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// RefCount() for the object ID goes to 0.
   ///
   /// \param[in] object_id The object that we were borrowing.
-  /// \param[in] reply A reply sent to the owner when we are no longer
-  /// borrowing the object ID. This reply also includes any new borrowers and
-  /// any object IDs that were nested inside the object that we or others are
-  /// now borrowing.
-  /// \param[in] send_reply_callback The callback to send the reply.
-  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
-                        rpc::SendReplyCallback send_reply_callback)
+  /// \param[in] subscriber_worker_id The worker id of the worker that subscribes
+  /// this reference to be removed.
+  void HandleRefRemoved(const ObjectID &object_id, const WorkerID &subscriber_worker_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
@@ -761,6 +767,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Clean up borrowers and references when the reference is removed from borrowers.
+  /// It should be used as a WaitForRefRemoved callback.
+  void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
+                                    const ObjectID &object_id,
+                                    const rpc::WorkerAddress &borrower_addr)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
@@ -804,6 +817,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
   std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
+
+  /// Object status publisher. It is used to publish the ref removed message for the
+  /// reference counting protocol. It is not guarded by a lock because the class itself is
+  /// thread-safe.
+  pubsub::PublisherInterface *object_status_publisher_;
+
+  /// Object status subscriber. It is used to subscribe the ref removed information from
+  /// other workers.
+  pubsub::SubscriberInterface *object_status_subscriber_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray
