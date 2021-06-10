@@ -379,10 +379,18 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
+        if hasattr(GenerationStep, "num_trials"):
+            generation_strategy = GenerationStrategy(
+                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)])
+        else:
+            # Legacy Ax versions (compatbile with Python 3.6)
+            # use `num_arms` instead
+            generation_strategy = GenerationStrategy(
+                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)])
+
         client1 = AxClient(
             enforce_sequential_optimization=False,
-            generation_strategy=GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]))
+            generation_strategy=generation_strategy)
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
