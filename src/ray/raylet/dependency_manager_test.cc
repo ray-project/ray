@@ -51,6 +51,10 @@ class MockObjectManager : public ObjectManagerInterface {
            active_task_requests.count(request_id);
   }
 
+  int NumActiveRequests() {
+    return active_worker_requests.size() + active_task_requests.size();
+  }
+
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_worker_requests;
   std::unordered_set<uint64_t> active_task_requests;
@@ -242,7 +246,7 @@ TEST_F(DependencyManagerTest, TestWait) {
     oids.push_back(ObjectID::FromRandom());
   }
   dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_worker_requests.size(), num_objects);
+  ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects);
 
   for (int i = 0; i < num_objects; i++) {
     // Object is local.
@@ -252,7 +256,7 @@ TEST_F(DependencyManagerTest, TestWait) {
     // reactivated.
     auto waiting_task_ids = dependency_manager_.HandleObjectMissing(oids[i]);
     ASSERT_TRUE(waiting_task_ids.empty());
-    ASSERT_EQ(object_manager_mock_.active_worker_requests.size(), num_objects - i - 1);
+    ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects);
   }
   AssertNoLeaks();
 }
@@ -270,12 +274,11 @@ TEST_F(DependencyManagerTest, TestWaitThenCancel) {
   }
   // Simulate a worker calling `ray.wait` on some objects.
   dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_worker_requests.size(), num_objects);
-  auto prev_pull_reqs = object_manager_mock_.active_worker_requests;
+  ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects);
   // Check that it's okay to call `ray.wait` on the same objects again. No new
   // calls should be made to try and make the objects local.
   dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_worker_requests, prev_pull_reqs);
+  ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects);
   // Cancel the worker's `ray.wait`.
   dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
@@ -298,12 +301,12 @@ TEST_F(DependencyManagerTest, TestWaitObjectLocal) {
   auto ready_task_ids = dependency_manager_.HandleObjectLocal(local_object_id);
   ASSERT_TRUE(ready_task_ids.empty());
   dependency_manager_.StartOrUpdateWaitRequest(worker_id, ObjectIdsToRefs(oids));
-  ASSERT_EQ(object_manager_mock_.active_worker_requests.size(), num_objects - 1);
+  ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects - 1);
   // Simulate the local object getting evicted. The `ray.wait` call should not
   // be reactivated.
   auto waiting_task_ids = dependency_manager_.HandleObjectMissing(local_object_id);
   ASSERT_TRUE(waiting_task_ids.empty());
-  ASSERT_EQ(object_manager_mock_.active_worker_requests.size(), num_objects - 1);
+  ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects - 1);
   // Cancel the worker's `ray.wait`.
   dependency_manager_.CancelWaitRequest(worker_id);
   AssertNoLeaks();
