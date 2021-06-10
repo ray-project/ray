@@ -16,22 +16,23 @@
 # This file is copied and adapted from:
 # http://github.com/modin-project/modin/master/modin/pandas/test/test_general.py
 
-import sys
 import pytest
 import pandas
 import numpy as np
+import modin
+from packaging import version
 from numpy.testing import assert_array_equal
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
-modin_compatible_version = sys.version_info >= (3, 7, 0)
+compatible_modin_version = version.parse(
+    modin.__version__) <= version.parse("0.9.1")
 
-# These tests are written for versions of Modin that require python 3.7+
 pytestmark = pytest.mark.skipif(
-    not modin_compatible_version,
-    reason="Newer versions of Modin require Python 3.7+")
+    not compatible_modin_version,
+    reason="These tests require a higher version of modin (>= 0.9.1)")
 
-if modin_compatible_version:
+if compatible_modin_version:
     from ray.tests.modin.modin_test_utils import df_equals
     import modin.pandas as pd
 
