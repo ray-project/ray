@@ -1658,9 +1658,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
     """
 
     command = [
-        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
-        session_dir, log_dir, node_ip_address
+        DEFAULT_WORKER_EXECUTABLE,
+        f"--ray-plasma-store-socket-name={plasma_store_name}",
+        f"--ray-raylet-socket-name={raylet_name}",
+        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray-redis-address={redis_address}",
+        f"--ray-redis-password={redis_password}",
+        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}"
     ]
 
     return command
