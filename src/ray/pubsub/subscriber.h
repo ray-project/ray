@@ -351,11 +351,6 @@ class Subscriber : public SubscriberInterface {
     });
   }
 
-  /// Queue the command to the designated publisher.
-  void QueueCommand(const PublisherID &publisher_id,
-                    std::unique_ptr<rpc::Command> command)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Self node's address information.
   const SubscriberID subscriber_id_;
   const std::string subscriber_address_;

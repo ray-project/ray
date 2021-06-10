@@ -113,7 +113,6 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
   std::vector<KeyIdType> key_ids_to_unsubscribe;
-  std::shared_ptr<SubscriptionFailureCallback> failure_callback;
   for (const auto &key_id_it : subscription_callback_map) {
     const auto &key_id = key_id_it.first;
     key_ids_to_unsubscribe.push_back(key_id);
@@ -152,7 +151,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
 
   absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  QueueCommand(publisher_id, std::move(command));
+  commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
 
@@ -173,7 +172,7 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
 
   absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  QueueCommand(publisher_id, std::move(command));
+  commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
 
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
@@ -223,8 +222,6 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                       "Publisher id: "
                    << publisher_id;
 
-    // First get all failure callbacks from the channel.
-    std::queue<std::shared_ptr<SubscriptionFailureCallback>> failure_callbacks;
     for (const auto &channel_it : channels_) {
       channel_it.second->HandlePublisherFailure(publisher_address);
     }
@@ -318,15 +315,6 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
           }
         });
   }
-}
-
-void Subscriber::QueueCommand(const PublisherID &publisher_id,
-                              std::unique_ptr<rpc::Command> command) {
-  auto commands_it = commands_.find(publisher_id);
-  if (commands_it == commands_.end()) {
-    commands_.emplace(publisher_id, CommandQueue());
-  }
-  commands_[publisher_id].push(std::move(command));
 }
 
 bool Subscriber::CheckNoLeaks() const {

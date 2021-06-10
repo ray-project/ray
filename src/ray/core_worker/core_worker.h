@@ -1149,6 +1149,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
+  /// Process the subscribe message received from the subscriber.
+  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                               rpc::ChannelType channel_type, const std::string &key_id,
+                               const NodeID &subscriber_id);
+
   /// A single endpoint to process different types of pubsub commands.
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.

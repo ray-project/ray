@@ -2495,8 +2495,6 @@ void CoreWorker::HandleWaitForActorOutOfScope(
 
 void CoreWorker::ProcessSubscribeForObjectEviction(
     const rpc::WorkerObjectEvictionSubMessage &message) {
-  const auto subscriber_node_id =
-      NodeID::FromBinary(message.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto unpin_object = [this](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
@@ -2521,11 +2519,6 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     return;
   }
 
-  // Always register the subscription before we register the delete callback to avoid race
-  // condition.
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, object_id.Binary());
-
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
@@ -2533,9 +2526,24 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
-    std::ostringstream stream;
-    stream << "Reference for object " << object_id << " has already been freed.";
-    RAY_LOG(DEBUG) << stream.str();
+    RAY_LOG(DEBUG) << "Reference for object " << object_id << " has already been freed.";
+  }
+}
+
+void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                                         rpc::ChannelType channel_type,
+                                         const std::string &key_id,
+                                         const NodeID &subscriber_id) {
+  object_status_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+
+  if (sub_message.has_worker_object_eviction_message()) {
+    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
+  } else if (sub_message.has_worker_ref_removed_message()) {
+    ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
+  } else {
+    RAY_LOG(FATAL)
+        << "Invalid command type " << channel_type
+        << " has received. If you see this message, please report to Ray Github.";
   }
 }
 
@@ -2545,23 +2553,13 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
     if (command.has_unsubscribe_message()) {
       object_status_publisher_->UnregisterSubscription(command.channel_type(),
                                                        subscriber_id, command.key_id());
-      continue;
-    }
-
-    RAY_CHECK(command.has_subscribe_message())
-        << "Invalid command has received. If you see this message, please report to Ray "
-           "Github.";
-
-    if (command.subscribe_message().has_worker_object_eviction_message()) {
-      ProcessSubscribeForObjectEviction(
-          command.subscribe_message().worker_object_eviction_message());
-    } else if (command.subscribe_message().has_worker_ref_removed_message()) {
-      ProcessSubscribeForRefRemoved(
-          command.subscribe_message().worker_ref_removed_message());
+    } else if (command.has_subscribe_message()) {
+      ProcessSubscribeMessage(command.subscribe_message(), command.channel_type(),
+                              command.key_id(), subscriber_id);
     } else {
-      RAY_CHECK(false)
-          << "Invalid command type " << command.channel_type()
-          << " has received. If you see this message, please report to Ray Github.";
+      RAY_LOG(FATAL) << "Invalid command has received. If you see this message, please "
+                        "report to Ray "
+                        "Github.";
     }
   }
 }
@@ -2659,12 +2657,6 @@ void CoreWorker::HandleGetObjectLocationsOwner(
 void CoreWorker::ProcessSubscribeForRefRemoved(
     const rpc::WorkerRefRemovedSubMessage &message) {
   const ObjectID &object_id = ObjectID::FromBinary(message.reference().object_id());
-  const WorkerID subscriber_worker_id =
-      WorkerID::FromBinary(message.subscriber_worker_id());
-
-  object_status_publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
-      object_id.Binary());
 
   // Set a callback to publish the message when the requested object ID's ref count
   // goes to 0.
