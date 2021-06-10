@@ -34,7 +34,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
   static class ActorContext {
-
     /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
   }
@@ -49,12 +48,12 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
   }
 
-  void setActorContext(T actorContext) {
+  void setActorContext(UniqueId workerId, T actorContext) {
     if (actorContext == null) {
       // ConcurrentHashMap doesn't allow null values. So just return here.
       return;
     }
-    this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
+    this.actorContextMap.put(workerId, actorContext);
   }
 
   protected void removeActorContext(UniqueId workerId) {
@@ -93,7 +92,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     T actorContext = null;
     if (taskType == TaskType.ACTOR_CREATION_TASK) {
       actorContext = createActorContext();
-      setActorContext(actorContext);
+      setActorContext(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
     } else if (taskType == TaskType.ACTOR_TASK) {
       actorContext = getActorContext();
       Preconditions.checkNotNull(actorContext);
