@@ -265,6 +265,58 @@ def test_ray_client(call_ray_start):
     assert ray_client.get(f.remote()) == "hello client"
 
 
+def test_detached_actor_autoscaling(ray_start_cluster_head):
+    """Make sure that a detached actor, which belongs to a dead job, can start
+    workers on nodes that were added after the job ended.
+    """
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes(2)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.handles = []
+
+        def start_actors(self, n):
+            self.handles.extend([Actor.remote() for _ in range(n)])
+
+        def get_children(self):
+            return self.handles
+
+        def ping(self):
+            pass
+
+    main_actor = Actor.options(lifetime="detached", name="main").remote()
+    ray.get(main_actor.ping.remote())
+
+    ray.shutdown()
+    ray.init(address=cluster.address, namespace="")
+
+    main_actor = ray.get_actor("main")
+    num_to_start = int(ray.available_resources().get("CPU", 0) + 1)
+    print(f"Starting {num_to_start} actors")
+    ray.get(main_actor.start_actors.remote(num_to_start))
+
+    actor_handles = ray.get(main_actor.get_children.remote())
+
+    up, down = ray.wait(
+        [actor.ping.remote() for actor in actor_handles],
+        timeout=1,
+        num_returns=len(actor_handles))
+    assert len(up) == len(actor_handles) - 1
+    assert len(down) == 1
+
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes(3)
+    up, down = ray.wait(
+        [actor.ping.remote() for actor in actor_handles],
+        timeout=1,
+        num_returns=len(actor_handles))
+    assert len(up) == len(actor_handles)
+    assert len(down) == 0
+
+
 if __name__ == "__main__":
     import pytest
     import sys

@@ -501,8 +501,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(ERROR) << "HandleJobStarted " << job_id;
-
+  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // NOTE: Technically `HandleJobStarted` isn't idempotent because of we'll
   // increment the ref count multiple times. This is fine because
@@ -515,7 +514,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(ERROR) << "HandleJobFinished " << job_id;
+  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
 

@@ -34,7 +34,14 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     auto cluster_resource_scheduler_ =
         std::make_shared<ClusterResourceScheduler>("local", unit_resource);
     new_placement_group_resource_manager_.reset(
-        new raylet::NewPlacementGroupResourceManager(cluster_resource_scheduler_));
+        new raylet::NewPlacementGroupResourceManager(
+            cluster_resource_scheduler_,
+            [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
+              update_called_ = true;
+            },
+            [this](const std::vector<std::string> &resource_names) {
+              delete_called_ = true;
+            }));
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
@@ -49,6 +56,9 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     auto local_node_resource = cluster_resource_scheduler_->GetLocalNodeResources();
     ASSERT_TRUE(local_node_resource == node_resources);
   }
+
+  bool update_called_;
+  bool delete_called_;
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
@@ -104,6 +114,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
       unit_resource, resource_instances));
   auto remaining_resource_instance =
       remaining_resource_scheduler->GetLocalNodeResources();
+  ASSERT_TRUE(update_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -125,6 +136,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
       std::make_shared<ClusterResourceScheduler>("remaining", unit_resource);
   auto remaining_resource_instance =
       remaining_resource_scheduler->GetLocalNodeResources();
+  ASSERT_TRUE(delete_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -179,6 +191,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", remaining_resources);
   remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  ASSERT_TRUE(update_called_);
+  ASSERT_TRUE(delete_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
