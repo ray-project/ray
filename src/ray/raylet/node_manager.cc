@@ -717,8 +717,11 @@ void NodeManager::WarnResourceDeadlock() {
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale or if you specified a "
         << "runtime_env for this task or actor because it takes time to install.";
+
+    std::string error_message_str = error_message.str();
+    RAY_LOG(WARNING) << error_message_str;
     auto error_data_ptr = gcs::CreateErrorTableData(
-        "resource_deadlock", error_message.str(), current_time_ms(),
+        "resource_deadlock", error_message_str, current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
@@ -1240,8 +1243,10 @@ void NodeManager::DisconnectClient(
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
                       << " Worker PID: " << worker->GetProcess().GetId();
-        auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
-                                                        current_time_ms(), job_id);
+        std::string error_message_str = error_message.str();
+        RAY_LOG(INFO) << error_message_str;
+        auto error_data_ptr =
+            gcs::CreateErrorTableData(type, error_message_str, current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
@@ -2358,9 +2363,10 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
            "resources. The required resources may be added as autoscaling takes place "
            "or placement groups are scheduled. Otherwise, consider reducing the "
            "resource requirements of the task.";
-    auto error_data_ptr =
-        gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
-                                  task.GetTaskSpecification().JobId());
+    std::string error_message_str = error_message.str();
+    RAY_LOG(WARNING) << error_message_str;
+    auto error_data_ptr = gcs::CreateErrorTableData(
+        type, error_message_str, current_time_ms(), task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
 }

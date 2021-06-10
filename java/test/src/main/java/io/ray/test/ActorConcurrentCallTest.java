@@ -7,7 +7,7 @@ import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"cluster"})
+@Test
 public class ActorConcurrentCallTest extends BaseTest {
 
   public static class ConcurrentActor {
