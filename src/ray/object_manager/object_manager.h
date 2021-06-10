@@ -75,6 +75,8 @@ struct ObjectManagerConfig {
   int64_t object_store_memory = -1;
   /// The directory for shared memory files.
   std::string plasma_directory;
+  /// The directory for fallback allocation files.
+  std::string fallback_directory;
   /// Enable huge pages.
   bool huge_pages;
 };
