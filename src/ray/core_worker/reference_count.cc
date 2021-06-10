@@ -447,14 +447,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
 
-  // If distributed ref counting is not enabled, then delete the object as soon
-  // as its local ref count goes to 0.
-  size_t local_ref_count =
-      it->second.local_ref_count + it->second.submitted_task_ref_count;
-  if (!distributed_ref_counting_enabled_ && local_ref_count == 0) {
-    should_delete_value = true;
-  }
-
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
@@ -833,9 +825,11 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         }
 
         absl::MutexLock lock(&mutex_);
+        auto sub_message = std::make_unique<rpc::SubMessage>();
         object_status_subscriber_->Subscribe(
-            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-            object_id.Binary(), message_published_callback, publisher_failed_callback);
+            std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+            addr.ToProto(), object_id.Binary(), message_published_callback,
+            publisher_failed_callback);
       });
 }
 
@@ -1131,7 +1125,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   it->second.location_version++;
   for (const auto &callback : callbacks) {
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   }
 }
 
@@ -1152,7 +1147,8 @@ Status ReferenceCounter::SubscribeObjectLocations(
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   } else {
     // Otherwise, save the callback for later invocation.
     it->second.location_subscription_callbacks.push_back(callback);

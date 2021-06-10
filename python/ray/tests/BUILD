@@ -38,6 +38,7 @@ py_test_module_list(
     "test_gcs_fault_tolerance.py",
     "test_iter.py",
     "test_joblib.py",
+    "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
     "test_mldataset.py",

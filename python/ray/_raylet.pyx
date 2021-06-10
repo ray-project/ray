@@ -222,6 +222,40 @@ cdef increase_recursion_limit():
                          new_limit, current_depth))
 
 
+cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
+    """A helper function that converts a CObjectLocation to a Python dict.
+
+    Returns:
+        A Dict with following attributes:
+        - node_ids:
+            The hex IDs of the nodes that have a copy of this object.
+        - object_size:
+            The size of data + metadata in bytes.
+    """
+    object_size = c_object_location.GetObjectSize()
+
+    node_ids = set()
+    c_node_ids = c_object_location.GetNodeIDs()
+    for i in range(c_node_ids.size()):
+        node_id = c_node_ids[i].Hex().decode("ascii")
+        node_ids.add(node_id)
+
+    # add primary_node_id into node_ids
+    if not c_object_location.GetPrimaryNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
+
+    # add spilled_node_id into node_ids
+    if not c_object_location.GetSpilledNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
+
+    return {
+        "node_ids": list(node_ids),
+        "object_size": object_size,
+    }
+
+
 @cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
@@ -1163,6 +1197,27 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_object_locations(self, object_refs, int64_t timeout_ms):
+        cdef:
+            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                    lookup_ids, timeout_ms, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].get():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(results[i].get())
+        return object_locations
+
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
@@ -1436,6 +1491,9 @@ cdef class CoreWorker:
             postincrement(iterator)
 
         return resources_dict
+
+    def plasma_unlimited(self):
+        return RayConfig.instance().plasma_unlimited()
 
     def profile_event(self, c_string event_type, object extra_data=None):
         if RayConfig.instance().enable_timeline():
