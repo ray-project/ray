@@ -256,7 +256,7 @@ TEST_F(DependencyManagerTest, TestWait) {
     // reactivated.
     auto waiting_task_ids = dependency_manager_.HandleObjectMissing(oids[i]);
     ASSERT_TRUE(waiting_task_ids.empty());
-    ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects);
+    ASSERT_EQ(object_manager_mock_.NumActiveRequests(), num_objects - i - 1);
   }
   AssertNoLeaks();
 }
