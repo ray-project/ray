@@ -711,9 +711,11 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if "RAY_ADDRESS" in os.environ:
+    address_env_var = os.environ.get(
+        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var:
         if address is None or address == "auto":
-            address = os.environ["RAY_ADDRESS"]
+            address = address_env_var
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -1905,9 +1907,12 @@ def remote(*args, **kwargs):
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children. See``runtime_env.py`` for
-            detailed documentation.  Note: can only be set via `.options()`.
-        override_environment_variables (Dict[str, str]): This specifies
+            this actor or task and its children. See
+            :ref:`runtime-environments` for detailed documentation.
+            Note: can only be set via `.options()`.
+        override_environment_variables (Dict[str, str]): (Deprecated in Ray
+            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This
             is a dictionary mapping variable names to their values.  Existing

@@ -430,6 +430,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_io_workers = 0;
   };
 
+  /// Some basic information about the starting worker process.
+  struct StartingWorkerProcessInfo {
+    /// The number of workers in the worker process.
+    int num_workers;
+    /// The number of pending registration workers in the worker process.
+    int num_starting_workers;
+    /// The type of the worker.
+    rpc::WorkerType worker_type;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -453,9 +463,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of starting worker processes
-    /// to the number of their unregistered workers.
-    std::unordered_map<Process, int> starting_worker_processes;
+    /// A map from the pids of starting worker processes to the extra information
+    /// of the process.
+    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;

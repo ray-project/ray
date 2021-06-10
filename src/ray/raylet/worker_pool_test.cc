@@ -131,7 +131,7 @@ class WorkerPoolMock : public WorkerPool {
     int total = 0;
     for (auto &state_entry : states_by_lang_) {
       for (auto &process_entry : state_entry.second.starting_worker_processes) {
-        total += process_entry.second;
+        total += process_entry.second.num_starting_workers;
       }
     }
     return total;
