@@ -40,6 +40,7 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
+#include "ray/object_manager/spilled_object.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -359,6 +360,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param node_id The remote node's id.
   /// \return Void.
   void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+
+  /// Pushing a known spilled object to a remote object manager.
+  /// \param object_id The object's object id.
+  /// \param node_id The remote node's id.
+  /// \param spilled_url The url of the spilled object.
+  /// \return Void.
+  void PushSpilledObject(const ObjectID &object_id, const NodeID &node_id,
+                         const std::string &spilled_url);
 
   /// The internal implementation of pushing an object.
   ///
