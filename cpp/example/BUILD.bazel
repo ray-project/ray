@@ -8,8 +8,8 @@ cc_binary(
     ],
     linkstatic = True,
     deps = [
-        "@ray_api_libs//:ray_api",
         ":example.so",
+        "@ray_api_libs//:ray_api",
     ],
 )
 

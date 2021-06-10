@@ -40,7 +40,6 @@ cc_library(
         "include/ray/**/**/*.h",
     ]),
     copts = COPTS,
-    alwayslink = True,
     linkopts = ["-ldl"],
     linkstatic = True,
     strip_include_prefix = "include",
@@ -54,6 +53,7 @@ cc_library(
         "@com_github_gflags_gflags//:gflags",
         "@msgpack",
     ],
+    alwayslink = True,
 )
 
 cc_binary(
