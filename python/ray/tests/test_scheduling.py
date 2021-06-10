@@ -15,7 +15,7 @@ import ray.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore)
+                            Semaphore, object_memory_usage)
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +354,7 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
+            "ownership_based_object_directory_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
@@ -424,7 +425,11 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
-    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "object_timeout_milliseconds": 200
+        })
 
     @ray.remote
     def f(x):
@@ -440,6 +445,10 @@ def test_lease_request_leak(shutdown_only):
             tasks.append(f.remote(obj_ref))
         del obj_ref
     ray.get(tasks)
+
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert object_memory_usage() == 0
 
 
 if __name__ == "__main__":

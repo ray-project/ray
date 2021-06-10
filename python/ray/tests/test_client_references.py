@@ -4,7 +4,7 @@ from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, object_memory_usage
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray._raylet import ActorID, ObjectRef
@@ -129,6 +129,11 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
         real_ray.init(address=cluster.address, namespace="")
+
+        def test_cond():
+            return object_memory_usage() == 0
+
+        wait_for_condition(test_cond, timeout=5)
 
 
 def test_delete_ref_on_object_deletion(ray_start_regular):

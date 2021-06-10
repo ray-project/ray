@@ -6,7 +6,8 @@ import time
 import ray
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
-                            init_error_pubsub, get_error_message)
+                            init_error_pubsub, get_error_message,
+                            object_memory_usage)
 
 
 def test_error_isolation(call_ray_start):
@@ -161,6 +162,48 @@ print("success")
         out = run_string_as_driver(driver_script2)
         # Make sure the first driver ran to completion.
         assert "success" in out
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0",
+    ],
+    indirect=True)
+def test_cleanup_on_driver_exit(call_ray_start):
+    # This test will create a driver that creates a bunch of objects and then
+    # exits. The entries in the object table should be cleaned up.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a bunch of objects and exits.
+    driver_script = """
+import time
+import ray
+import numpy as np
+ray.init(address="{}")
+object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+              for i in range(1000)]
+start_time = time.time()
+while time.time() - start_time < 30:
+    if object_memory_usage() > 0:
+        break
+else:
+    raise Exception("Objects did not appear in object table.")
+print("success")
+""".format(address)
+
+    run_string_as_driver(driver_script)
+
+    # Make sure the objects are removed from the object table.
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        if object_memory_usage() == 0
+            break
+    else:
+        raise Exception("Objects were not all removed from object table.")
 
 
 def test_drivers_named_actors(call_ray_start):

@@ -613,11 +613,10 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     ASSERT_TRUE(it != urls.end());
     ASSERT_EQ((*unpins)[object_url.first], 1);
   }
-}
 
-// Since there's no more object to spill, this should fail.
-ASSERT_FALSE(manager.SpillObjectsOfSize(0));
-}  // namespace raylet
+  // Since there's no more object to spill, this should fail.
+  ASSERT_FALSE(manager.SpillObjectsOfSize(0));
+}
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
   ///
@@ -1168,7 +1167,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   ASSERT_EQ(deleted_urls_size, 1);
 }
 
-}  // namespace ray
+}  // namespace raylet
 
 }  // namespace ray
 
