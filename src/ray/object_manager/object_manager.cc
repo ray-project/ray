@@ -426,25 +426,24 @@ void ObjectManager::PushObjectInternal(
                  << ", number of chunks: " << num_chunks
                  << ", total data size: " << total_data_size;
 
-  UniqueID push_id = UniqueID::FromRandom();
+  auto push_id = UniqueID::FromRandom();
   push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
     rpc_service_.post(
         [=]() {
           // Post to the multithreaded RPC event loop so that data is copied
           // off of the main thread.
-          SendObjectChunk(
-              push_id, object_id, owner_address, node_id, total_data_size, metadata_size,
-              chunk_id, rpc_client,
-              [=](const Status &status) {
-                // Post back to the main event loop because the
-                // PushManager is thread-safe.
-                main_service_->post(
-                    [this, node_id, object_id]() {
-                      push_manager_->OnChunkComplete(node_id, object_id);
-                    },
-                    "ObjectManager.Push");
-              },
-              std::move(chunk_reader), std::move(release_chunk_callback));
+          SendObjectChunk(push_id, object_id, owner_address, node_id, total_data_size,
+                          metadata_size, chunk_id, rpc_client,
+                          [=](const Status &status) {
+                            // Post back to the main event loop because the
+                            // PushManager is thread-safe.
+                            main_service_->post(
+                                [this, node_id, object_id]() {
+                                  push_manager_->OnChunkComplete(node_id, object_id);
+                                },
+                                "ObjectManager.Push");
+                          },
+                          std::move(chunk_reader), std::move(release_chunk_callback));
         },
         "ObjectManager.Push");
   });

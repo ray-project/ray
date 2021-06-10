@@ -352,6 +352,7 @@ class ObjectManager : public ObjectManagerInterface,
       const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients);
 
   /// Pushing a known local object to a remote object manager.
+  ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
   /// \return Void.
@@ -368,7 +369,7 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
       std::function<void(uint64_t)> release_chunk_callback);
 
-  /// Send object to remote object manager
+  /// Send one chunk of the object to remote object manager
   ///
   /// Object will be transfered as a sequence of chunks, small object(defined in config)
   /// contains only one chunk
