@@ -332,95 +332,131 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << node_id << " of object "
                  << object_id;
-  if (local_objects_.count(object_id) == 0) {
-    // Avoid setting duplicated timer for the same object and node pair.
-    auto &nodes = unfulfilled_push_requests_[object_id];
-    // Issue a restore request if the object is on local disk. This is only relevant
-    // if the local filesystem storage type is being used.
-    auto object_url = get_spilled_object_url_(object_id);
-    if (!object_url.empty()) {
-      restore_spilled_object_(object_id, object_url, nullptr);
-    }
-    if (nodes.count(node_id) == 0) {
-      // If config_.push_timeout_ms < 0, we give an empty timer
-      // and the task will be kept infinitely.
-      std::unique_ptr<boost::asio::deadline_timer> timer;
-      if (config_.push_timeout_ms == 0) {
-        // The Push request fails directly when config_.push_timeout_ms == 0.
-        RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
-                         << " due to direct timeout setting. (0 ms timeout)";
-      } else if (config_.push_timeout_ms > 0) {
-        // Put the task into a queue and wait for the notification of Object added.
-        timer.reset(new boost::asio::deadline_timer(*main_service_));
-        auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
-        timer->expires_from_now(clean_push_period);
-        timer->async_wait(
-            [this, object_id, node_id](const boost::system::error_code &error) {
-              // Timer killing will receive the boost::asio::error::operation_aborted,
-              // we only handle the timeout event.
-              if (!error) {
-                HandlePushTaskTimeout(object_id, node_id);
-              }
-            });
-      }
-      if (config_.push_timeout_ms != 0) {
-        nodes.emplace(node_id, std::move(timer));
-      }
-    }
-    return;
+  if (local_objects_.count(object_id) != 0) {
+    return PushLocalObject(object_id, node_id);
   }
 
-  auto rpc_client = GetRpcClient(node_id);
-  if (rpc_client) {
-    const ObjectInfo &object_info = local_objects_[object_id].object_info;
-    uint64_t data_size =
-        static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-    uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-    uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
-
-    rpc::Address owner_address;
-    owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
-    owner_address.set_ip_address(object_info.owner_ip_address);
-    owner_address.set_port(object_info.owner_port);
-    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
-
-    RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
-                   << ", number of chunks: " << num_chunks
-                   << ", total data size: " << data_size;
-
-    UniqueID push_id = UniqueID::FromRandom();
-    push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-      rpc_service_.post(
-          [=]() {
-            // Post to the multithreaded RPC event loop so that data is copied
-            // off of the main thread.
-            SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
-                            metadata_size, chunk_id, rpc_client,
-                            [=](const Status &status) {
-                              // Post back to the main event loop because the
-                              // PushManager is thread-safe.
-                              main_service_->post(
-                                  [this, node_id, object_id]() {
-                                    push_manager_->OnChunkComplete(node_id, object_id);
-                                  },
-                                  "ObjectManager.Push");
-                            });
-          },
-          "ObjectManager.Push");
-    });
-  } else {
-    // Push is best effort, so do nothing here.
-    RAY_LOG(ERROR)
-        << "Failed to establish connection for Push with remote object manager.";
+  // Avoid setting duplicated timer for the same object and node pair.
+  auto &nodes = unfulfilled_push_requests_[object_id];
+  // Issue a restore request if the object is on local disk. This is only relevant
+  // if the local filesystem storage type is being used.
+  auto object_url = get_spilled_object_url_(object_id);
+  if (!object_url.empty()) {
+    restore_spilled_object_(object_id, object_url, nullptr);
+  }
+  if (nodes.count(node_id) == 0) {
+    // If config_.push_timeout_ms < 0, we give an empty timer
+    // and the task will be kept infinitely.
+    std::unique_ptr<boost::asio::deadline_timer> timer;
+    if (config_.push_timeout_ms == 0) {
+      // The Push request fails directly when config_.push_timeout_ms == 0.
+      RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
+                       << " due to direct timeout setting. (0 ms timeout)";
+    } else if (config_.push_timeout_ms > 0) {
+      // Put the task into a queue and wait for the notification of Object added.
+      timer.reset(new boost::asio::deadline_timer(*main_service_));
+      auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
+      timer->expires_from_now(clean_push_period);
+      timer->async_wait(
+          [this, object_id, node_id](const boost::system::error_code &error) {
+            // Timer killing will receive the boost::asio::error::operation_aborted,
+            // we only handle the timeout event.
+            if (!error) {
+              HandlePushTaskTimeout(object_id, node_id);
+            }
+          });
+    }
+    if (config_.push_timeout_ms != 0) {
+      nodes.emplace(node_id, std::move(timer));
+    }
   }
 }
 
-void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                                    const rpc::Address &owner_address,
-                                    const NodeID &node_id, uint64_t data_size,
-                                    uint64_t metadata_size, uint64_t chunk_index,
-                                    std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                                    std::function<void(const Status &)> on_complete) {
+void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &node_id) {
+  const ObjectInfo &object_info = local_objects_[object_id].object_info;
+  uint64_t total_data_size =
+      static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+  uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+  uint64_t num_chunks = buffer_pool_.GetNumChunks(total_data_size);
+
+  rpc::Address owner_address;
+  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_ip_address(object_info.owner_ip_address);
+  owner_address.set_port(object_info.owner_port);
+  owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+
+  auto local_chunk_reader = [this, object_id, total_data_size, metadata_size](
+                                uint64_t chunk_index,
+                                rpc::PushRequest &push_request) -> Status {
+    std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+        buffer_pool_.GetChunk(object_id, total_data_size, metadata_size, chunk_index);
+    // Fail on status not okay. The object is local, and there is
+    // no other anticipated error here.
+    Status status = chunk_status.second;
+    if (status.ok()) {
+      ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
+      push_request.set_data(chunk_info.data, chunk_info.buffer_length);
+    }
+    return status;
+  };
+
+  auto release_chunk_callback = [this, object_id](uint64_t chunk_index) {
+    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
+  };
+
+  PushObjectInternal(object_id, node_id, total_data_size, metadata_size, num_chunks,
+                     std::move(owner_address), std::move(local_chunk_reader),
+                     std::move(release_chunk_callback));
+}
+
+void ObjectManager::PushObjectInternal(
+    const ObjectID &object_id, const NodeID &node_id, uint64_t total_data_size,
+    uint64_t metadata_size, uint64_t num_chunks, rpc::Address owner_address,
+    std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
+    std::function<void(uint64_t)> release_chunk_callback) {
+  auto rpc_client = GetRpcClient(node_id);
+  if (!rpc_client) {
+    // Push is best effort, so do nothing here.
+    RAY_LOG(ERROR)
+        << "Failed to establish connection for Push with remote object manager.";
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
+                 << ", number of chunks: " << num_chunks
+                 << ", total data size: " << total_data_size;
+
+  UniqueID push_id = UniqueID::FromRandom();
+  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
+    rpc_service_.post(
+        [=]() {
+          // Post to the multithreaded RPC event loop so that data is copied
+          // off of the main thread.
+          SendObjectChunk(
+              push_id, object_id, owner_address, node_id, total_data_size, metadata_size,
+              chunk_id, rpc_client,
+              [=](const Status &status) {
+                // Post back to the main event loop because the
+                // PushManager is thread-safe.
+                main_service_->post(
+                    [this, node_id, object_id]() {
+                      push_manager_->OnChunkComplete(node_id, object_id);
+                    },
+                    "ObjectManager.Push");
+              },
+              std::move(chunk_reader), std::move(release_chunk_callback));
+        },
+        "ObjectManager.Push");
+  });
+}
+
+void ObjectManager::SendObjectChunk(
+    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
+    const NodeID &node_id, uint64_t total_data_size, uint64_t metadata_size,
+    uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+    std::function<void(const Status &)> on_complete,
+    std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
+    std::function<void(uint64_t)> release_chunk_callback) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -428,26 +464,18 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   push_request.set_object_id(object_id.Binary());
   push_request.mutable_owner_address()->CopyFrom(owner_address);
   push_request.set_node_id(self_node_id_.Binary());
-  push_request.set_data_size(data_size);
+  push_request.set_data_size(total_data_size);
   push_request.set_metadata_size(metadata_size);
   push_request.set_chunk_index(chunk_index);
 
-  // Get data
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
-  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-
-  // Fail on status not okay. The object is local, and there is
-  // no other anticipated error here.
-  ray::Status status = chunk_status.second;
-  if (!chunk_status.second.ok()) {
+  // read a chunk into push_request and handle errors.
+  auto status = chunk_reader(chunk_index, push_request);
+  if (!status.ok()) {
     RAY_LOG(WARNING) << "Attempting to push object " << object_id
                      << " which is not local. It may have been evicted.";
     on_complete(status);
     return;
   }
-
-  push_request.set_data(chunk_info.data, chunk_info.buffer_length);
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
@@ -463,10 +491,10 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
         HandleSendFinished(object_id, node_id, chunk_index, start_time, end_time, status);
         on_complete(status);
       };
+
   rpc_client->Push(push_request, callback);
 
-  // Do this regardless of whether it failed or succeeded.
-  buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
+  release_chunk_callback(chunk_index);
 }
 
 ray::Status ObjectManager::Wait(
