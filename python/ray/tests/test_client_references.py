@@ -300,4 +300,5 @@ def test_named_actor_refcount(ray_start_regular):
 if __name__ == "__main__":
     import sys
     import pytest
-    sys.exit(pytest.main(["-v", "-ra", "--durations=0", __file__] + sys.argv[1:]))
+    sys.exit(
+        pytest.main(["-v", "-ra", "--durations=0", __file__] + sys.argv[1:]))
