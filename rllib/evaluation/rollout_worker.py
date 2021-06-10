@@ -361,9 +361,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
-        policy_mapping_fn = (policy_mapping_fn
-                             or (lambda agent_id: DEFAULT_POLICY_ID))
-        if not callable(policy_mapping_fn):
+        self.policy_mapping_fn = (policy_mapping_fn
+                                  or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(self.policy_mapping_fn):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
@@ -647,7 +647,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 worker=self,
                 env=self.async_env,
                 policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
+                #policy_mapping_fn=self.policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
@@ -673,7 +673,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 worker=self,
                 env=self.async_env,
                 policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
+                #policy_mapping_fn=self.policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
@@ -1013,6 +1013,44 @@ class RolloutWorker(ParallelIteratorWorker):
         """
 
         return self.policy_map.get(policy_id)
+
+    @DeveloperAPI
+    def add_policy(self,
+                   *,
+                   policy_id: PolicyID = DEFAULT_POLICY_ID,
+                   observation_space: Optional[gym.spaces.Space] = None,
+                   action_space: Optional[gym.spaces.Space] = None,
+                   config: Optional[PartialTrainerConfigDict] = None,
+                   ):
+        """Adds a new policy to this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to add.
+            observation_space (Optional[gym.spaces.Space]): The observation
+                space of the policy to add.
+            action_space (Optional[gym.spaces.Space]): The action space
+                of the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config overrides
+                for the policy to add.
+        """
+        if policy_id in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
+        policy_dict = {policy_id: (None, observation_space, action_space, config)}
+        add_map, add_prep = self._build_policy_map(policy_dict, self.policy_config)
+        self.policy_map.update(add_map)
+        self.preprocessors.update(add_prep)
+
+    @DeveloperAPI
+    def remove_policy(self, *, policy_id: PolicyID = DEFAULT_POLICY_ID):
+        """Removes a policy from this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to be removed.
+        """
+        if policy_id not in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' not in policy map!")
+        del self.policy_map[policy_id]
+        del self.preprocessors[policy_id]
 
     @DeveloperAPI
     def for_policy(self,

@@ -129,8 +129,8 @@ class SyncSampler(SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            policies: Dict[PolicyID, Policy],
-            policy_mapping_fn: Callable[[AgentID], PolicyID],
+            #policies: Dict[PolicyID, Policy],
+            #policy_mapping_fn: Callable[[AgentID], PolicyID],
             preprocessors: Dict[PolicyID, Preprocessor],
             obs_filters: Dict[PolicyID, Filter],
             clip_rewards: bool,
@@ -146,6 +146,9 @@ class SyncSampler(SamplerInput):
             observation_fn: "ObservationFunction" = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
+            # Obsolete.
+            policies: Optional[Dict[PolicyID, Policy]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
     ):
         """Initializes a SyncSampler object.
 
@@ -153,9 +156,9 @@ class SyncSampler(SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            policies (Dict[str,Policy]): Mapping from policy ID to Policy obj.
-            policy_mapping_fn (callable): Callable that takes an agent ID and
-                returns a Policy object.
+            #policies (Dict[str,Policy]): Mapping from policy ID to Policy obj.
+            #policy_mapping_fn (callable): Callable that takes an agent ID and
+            #    returns a Policy object.
             preprocessors (Dict[str,Preprocessor]): Mapping from policy ID to
                 Preprocessor object for the observations prior to filtering.
             obs_filters (Dict[str,Filter]): Mapping from policy ID to
@@ -193,8 +196,8 @@ class SyncSampler(SamplerInput):
         self.base_env = BaseEnv.to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
-        self.policies = policies
-        self.policy_mapping_fn = policy_mapping_fn
+        #self.policies = policies
+        #self.policy_mapping_fn = policy_mapping_fn
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
@@ -212,8 +215,9 @@ class SyncSampler(SamplerInput):
 
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
-            worker, self.base_env, self.extra_batches.put, self.policies,
-            self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
+            worker, self.base_env, self.extra_batches.put, #self.policies,
+            #self.policy_mapping_fn,
+            self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
             soft_horizon, no_done_at_end, observation_fn,
@@ -264,8 +268,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            policies: Dict[PolicyID, Policy],
-            policy_mapping_fn: Callable[[AgentID], PolicyID],
             preprocessors: Dict[PolicyID, Preprocessor],
             obs_filters: Dict[PolicyID, Filter],
             clip_rewards: bool,
@@ -282,6 +284,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             observation_fn: "ObservationFunction" = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
+            # Obsolete.
+            policies: Optional[Dict[PolicyID, Policy]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
     ):
         """Initializes a AsyncSampler object.
 
@@ -289,9 +294,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            policies (Dict[str, Policy]): Mapping from policy ID to Policy obj.
-            policy_mapping_fn (callable): Callable that takes an agent ID and
-                returns a Policy object.
+            #policies (Dict[str, Policy]): Mapping from policy ID to Policy obj.
+            #policy_mapping_fn (callable): Callable that takes an agent ID and
+            #    returns a Policy object.
             preprocessors (Dict[str, Preprocessor]): Mapping from policy ID to
                 Preprocessor object for the observations prior to filtering.
             obs_filters (Dict[str, Filter]): Mapping from policy ID to
@@ -340,8 +345,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.metrics_queue = queue.Queue()
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
-        self.policies = policies
-        self.policy_mapping_fn = policy_mapping_fn
+        #self.policies = policies
+        #self.policy_mapping_fn = policy_mapping_fn
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
         self.clip_rewards = clip_rewards
@@ -384,8 +389,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            self.worker, self.base_env, extra_batches_putter, self.policies,
-            self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
+            self.worker, self.base_env, extra_batches_putter, #self.policies,
+            #self.policy_mapping_fn,
+            self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
             self.tf_sess, self.perf_stats, self.soft_horizon,
@@ -439,8 +445,8 @@ def _env_runner(
         worker: "RolloutWorker",
         base_env: BaseEnv,
         extra_batch_callback: Callable[[SampleBatchType], None],
-        policies: Dict[PolicyID, Policy],
-        policy_mapping_fn: Callable[[AgentID], PolicyID],
+        #policies: Dict[PolicyID, Policy],
+        #policy_mapping_fn: Callable[[AgentID], PolicyID],
         rollout_fragment_length: int,
         horizon: int,
         preprocessors: Dict[PolicyID, Preprocessor],
@@ -463,11 +469,11 @@ def _env_runner(
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        policies (Dict[PolicyID, Policy]): Map of policy ids to Policy
-            instances.
-        policy_mapping_fn (func): Function that maps agent ids to policy ids.
-            This is called when an agent first enters the environment. The
-            agent is then "bound" to the returned policy for the episode.
+        #policies (Dict[PolicyID, Policy]): Map of policy ids to Policy
+        #    instances.
+        #policy_mapping_fn (func): Function that maps agent ids to policy ids.
+        #    This is called when an agent first enters the environment. The
+        #    agent is then "bound" to the returned policy for the episode.
         rollout_fragment_length (int): Number of episode steps before
             `SampleBatch` is yielded. Set to infinity to yield complete
             episodes.
@@ -551,14 +557,14 @@ def _env_runner(
 
     def new_episode(env_id):
         episode = MultiAgentEpisode(
-            policies,
-            policy_mapping_fn,
+            worker.policy_map,
+            worker.policy_mapping_fn,
             get_batch_builder,
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
         # type: Policy
-        for p in policies.values():
+        for p in worker.policy_map.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
                     policy=p,
@@ -568,7 +574,7 @@ def _env_runner(
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
-            policies=policies,
+            policies=worker.policy_map,
             episode=episode,
             env_index=env_id,
         )
@@ -599,7 +605,7 @@ def _env_runner(
             _process_observations(
                 worker=worker,
                 base_env=base_env,
-                policies=policies,
+                policies=worker.policy_map,
                 active_episodes=active_episodes,
                 unfiltered_obs=unfiltered_obs,
                 rewards=rewards,
@@ -624,7 +630,7 @@ def _env_runner(
         # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
         eval_results = _do_policy_eval(
             to_eval=to_eval,
-            policies=policies,
+            policies=worker.policy_map,
             sample_collector=sample_collector,
             active_episodes=active_episodes,
             tf_sess=tf_sess,
@@ -640,7 +646,7 @@ def _env_runner(
                 active_episodes=active_episodes,
                 active_envs=active_envs,
                 off_policy_actions=off_policy_actions,
-                policies=policies,
+                policies=worker.policy_map,
                 clip_actions=clip_actions,
             )
         perf_stats.action_processing_time += time.time() - t3

@@ -1,6 +1,7 @@
 import copy
 from datetime import datetime
 import functools
+import gym
 import logging
 import math
 import numpy as np
@@ -1070,7 +1071,7 @@ class Trainer(Trainable):
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): id of policy to return.
+            policy_id (PolicyID): ID of the policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
 
@@ -1092,6 +1093,54 @@ class Trainer(Trainable):
             weights (dict): Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
+
+    @PublicAPI
+    def add_policy(self,
+                   *,
+                   policy_id: PolicyID = DEFAULT_POLICY_ID,
+                   observation_space: Optional[gym.spaces.Space] = None,
+                   action_space: Optional[gym.spaces.Space] = None,
+                   config: Optional[PartialTrainerConfigDict] = None,
+                   ):
+        """Adds a new policy to this Trainer.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to add.
+            observation_space (Optional[gym.spaces.Space]): The observation
+                space of the policy to add.
+            action_space (Optional[gym.spaces.Space]): The action space
+                of the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config overrides
+                for the policy to add.
+        """
+        self.workers.foreach_worker(lambda w: w.add_policy(
+            policy_id=policy_id,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+        ))
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(lambda w: w.add_policy(
+                policy_id=policy_id,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+            ))
+
+    @PublicAPI
+    def remove_policy(self, *, policy_id: PolicyID = DEFAULT_POLICY_ID):
+        """Removes a new policy from this Trainer.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to be removed.
+        """
+        self.workers.foreach_worker(lambda w: w.remove_policy(
+            policy_id=policy_id,
+        ))
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(lambda w: w.remove_policy(
+                policy_id=policy_id,
+            ))
 
     @DeveloperAPI
     def export_policy_model(self,

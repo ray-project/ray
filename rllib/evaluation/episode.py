@@ -68,7 +68,7 @@ class MultiAgentEpisode:
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
         self.media: Dict[str, Any] = {}
-        self._policies: Dict[PolicyID, Policy] = policies
+        self._policy_map: Dict[PolicyID, Policy] = policies
         self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
             policy_mapping_fn
         self._next_agent_index: int = 0
@@ -112,8 +112,15 @@ class MultiAgentEpisode:
         """
 
         if agent_id not in self._agent_to_policy:
-            self._agent_to_policy[agent_id] = self._policy_mapping_fn(agent_id)
-        return self._agent_to_policy[agent_id]
+            policy_id = self._agent_to_policy[agent_id] = \
+                self._policy_mapping_fn(agent_id)
+        else:
+            policy_id = self._agent_to_policy[agent_id]
+        if policy_id not in self._policy_map:
+            raise KeyError(
+                "policy_mapping_fn returned invalid policy id "
+                f"'{policy_id}'!")
+        return policy_id
 
     @DeveloperAPI
     def last_observation_for(
@@ -145,7 +152,8 @@ class MultiAgentEpisode:
             return flatten_to_single_ndarray(
                 self._agent_to_last_action[agent_id])
         else:
-            policy = self._policies[self.policy_for(agent_id)]
+            policy_id = self.policy_for(agent_id)
+            policy = self._policy_map[policy_id]
             flat = flatten_to_single_ndarray(policy.action_space.sample())
             if hasattr(policy.action_space, "dtype"):
                 return np.zeros_like(flat, dtype=policy.action_space.dtype)
@@ -179,7 +187,8 @@ class MultiAgentEpisode:
         """Returns the last RNN state for the specified agent."""
 
         if agent_id not in self._agent_to_rnn_state:
-            policy = self._policies[self.policy_for(agent_id)]
+            policy_id = self.policy_for(agent_id)
+            policy = self._policy_map[policy_id]
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 
