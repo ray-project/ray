@@ -192,6 +192,14 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
   ~WaitForRefRemovedChannel() = default;
 };
 
+class ObjectLocationsChannel : public SubscriberChannel<ObjectID> {
+ public:
+  ObjectLocationsChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
+  }
+  ~ObjectLocationsChannel() = default;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Subscriber Abstraction
 ///////////////////////////////////////////////////////////////////////////////
@@ -261,11 +269,14 @@ class Subscriber : public SubscriberInterface {
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
         wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
+        object_locations_channel_(std::make_shared<ObjectLocationsChannel>()),
         /// This is used to define new channel_type -> Channel abstraction.
         channels_({{rpc::ChannelType::WORKER_OBJECT_EVICTION,
                     wait_for_object_eviction_channel_},
                    {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                    wait_for_ref_removed_channel_}}) {}
+                    wait_for_ref_removed_channel_},
+                    {rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                    object_locations_channel_}}) {}
 
   ~Subscriber() = default;
 
@@ -385,6 +396,10 @@ class Subscriber : public SubscriberInterface {
 
   /// WaitForRefRemoved channel.
   std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_
+      GUARDED_BY(mutex_);
+
+  /// WaitForRefRemoved channel.
+  std::shared_ptr<ObjectLocationsChannel> object_locations_channel_
       GUARDED_BY(mutex_);
 
   /// Mapping of channel type to channels.

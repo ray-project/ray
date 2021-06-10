@@ -1104,6 +1104,23 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   }
 }
 
+Status ReferenceCounter::FillObjectInformation(const ObjectID &object_id, rpc::GetObjectLocationsOwnerReply *reply) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  }
+  for (const auto &node_id : it->second.locations) {
+    reply->add_node_ids(node_id.Binary());
+  }
+  reply->set_object_size(it->second.object_size);
+  reply->set_spilled_url(it->second.spilled_url);
+  reply->set_spilled_node_id(it->second.spilled_node_id.Binary());
+  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+  reply->set_primary_node_id(primary_node_id.Binary());
+  return Status::OK();
+}
+
 Status ReferenceCounter::SubscribeObjectLocations(
     const ObjectID &object_id, int64_t last_location_version,
     const LocationSubscriptionCallback &callback) {

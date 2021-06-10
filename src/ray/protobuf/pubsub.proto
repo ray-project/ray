@@ -26,6 +26,8 @@ enum ChannelType {
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
+  /// A channel to subscribe object locations.
+  WORKER_OBJECT_LOCATIONS_CHANNEL = 2;
 }
 
 ///
@@ -41,6 +43,7 @@ message PubMessage {
   oneof pub_message_oneof {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
+    WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
   }
 }
 
@@ -54,6 +57,24 @@ message WorkerRefRemovedMessage {
   // ID by the time it replies, but may have accumulated other borrowers or may
   // still be borrowing an object ID that was nested inside.
   repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message WorkerObjectLocationsPubMessage {
+  // The IDs of the nodes that this object appeared on or was evicted by.
+  repeated bytes node_ids = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The version of the returned location updates.
+  int64 current_version = 5;
+  // The ID of the node that stores the primary copy in plasma.
+  // This could be Nil if the object has been evicted or inlined.
+  bytes primary_node_id = 6;
 }
 
 ///
@@ -93,6 +114,7 @@ message SubMessage {
   oneof sub_message_oneof {
     WorkerObjectEvictionSubMessage worker_object_eviction_message = 1;
     WorkerRefRemovedSubMessage worker_ref_removed_message = 2;
+    WorkerObjectLocationsSubMessage worker_object_locations_message = 3;
   }
 }
 
@@ -116,4 +138,13 @@ message WorkerRefRemovedSubMessage {
   bytes contained_in_id = 3;
   // The ID of the worker that waits for the ref removed message.
   bytes subscriber_worker_id = 4;
+}
+
+message WorkerObjectLocationsSubMessage {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  // The version of the last location update. Only updates more recent than this version
+  // will be returned. -1 indicates that the current location data should
+  // always be returned.
+  int64 last_version = 3;
 }
