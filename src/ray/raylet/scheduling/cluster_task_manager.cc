@@ -312,6 +312,8 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   }
 
   for (const auto &task_id : ready_ids) {
+      RAY_LOG(DEBUG) << "ARGS READY, task can be dispatched "
+                     << task_id;
     auto it = waiting_tasks_index_.find(task_id);
     if (it != waiting_tasks_index_.end()) {
       auto work = *it->second;
@@ -1055,6 +1057,12 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
+
+    for (const auto &dep : task.GetTaskSpecification().GetDependencyIds()) {
+      if (!task_dependency_manager_.CheckObjectLocal(dep)) {
+        RAY_LOG(DEBUG) << "Task " << task_id << " still blocked on arg " << dep;
+      }
+    }
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for

@@ -20,6 +20,7 @@ namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  num_tasks_submitted_++;
 
   if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
@@ -280,6 +281,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
+  num_leases_requested_++;
   TaskSpecification &resource_spec = task_queue.front();
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {

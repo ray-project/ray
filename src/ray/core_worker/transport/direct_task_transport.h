@@ -95,6 +95,14 @@ class CoreWorkerDirectTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
+  int64_t GetNumTasksSubmitted() const {
+    return num_tasks_submitted_;
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return num_leases_requested_;
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -276,6 +284,9 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
+
+  int64_t num_tasks_submitted_ = 0;
+  int64_t num_leases_requested_ = 0 GUARDED_BY(mu_);
 };
 
 };  // namespace ray
