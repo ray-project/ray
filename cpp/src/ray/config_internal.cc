@@ -24,6 +24,8 @@ DEFINE_string(ray_plasma_store_socket_name, "",
 
 DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
 
+DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
+
 namespace ray {
 namespace api {
 
@@ -65,6 +67,9 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     }
     if (!FLAGS_ray_logs_dir.empty()) {
       logs_dir = FLAGS_ray_logs_dir;
+    }
+    if (!FLAGS_ray_node_ip_address.empty()) {
+      node_ip_address = FLAGS_ray_node_ip_address;
     }
     gflags::ShutDownCommandLineFlags();
   }
