@@ -182,6 +182,7 @@ def test_cleanup_on_driver_exit(call_ray_start):
 import time
 import ray
 import numpy as np
+from ray.test_utils import object_memory_usage
 ray.init(address="{}")
 object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]

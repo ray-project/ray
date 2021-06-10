@@ -354,7 +354,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "ownership_based_object_directory_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
