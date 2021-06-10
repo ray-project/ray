@@ -29,9 +29,9 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      std::function<void()> object_store_full_callback,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
-  plasma::plasma_store_runner.reset(
-      new plasma::PlasmaStoreRunner(config.store_socket_name, config.object_store_memory,
-                                    config.huge_pages, config.plasma_directory));
+  plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
+      config.store_socket_name, config.object_store_memory, config.huge_pages,
+      config.plasma_directory, config.fallback_directory));
   // Initialize object store.
   store_thread_ =
       std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
