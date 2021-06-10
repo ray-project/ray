@@ -163,51 +163,6 @@ print("success")
         assert "success" in out
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    [
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.state.objects(), which only works with the
-        # GCS-based object directory
-        "{\"ownership_based_object_directory_enabled\":false}",
-    ],
-    indirect=True)
-def test_cleanup_on_driver_exit(call_ray_start):
-    # This test will create a driver that creates a bunch of objects and then
-    # exits. The entries in the object table should be cleaned up.
-    address = call_ray_start
-
-    ray.init(address=address)
-
-    # Define a driver that creates a bunch of objects and exits.
-    driver_script = """
-import time
-import ray
-import numpy as np
-ray.init(address="{}")
-object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-              for i in range(1000)]
-start_time = time.time()
-while time.time() - start_time < 30:
-    if len(ray.state.objects()) == 1000:
-        break
-else:
-    raise Exception("Objects did not appear in object table.")
-print("success")
-""".format(address)
-
-    run_string_as_driver(driver_script)
-
-    # Make sure the objects are removed from the object table.
-    start_time = time.time()
-    while time.time() - start_time < 30:
-        if len(ray.state.objects()) == 0:
-            break
-    else:
-        raise Exception("Objects were not all removed from object table.")
-
-
 def test_drivers_named_actors(call_ray_start):
     # This test will create some drivers that submit some tasks to the same
     # named actor.

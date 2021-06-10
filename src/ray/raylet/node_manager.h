@@ -636,8 +636,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last resource report was sent at. Used to make sure we are
   /// keeping up with resource reports.
   uint64_t last_resource_report_at_ms_;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;

@@ -102,11 +102,6 @@ def server_actor_ref_count(server, n):
     [{
         "num_nodes": 1,
         "do_init": False,
-        # This test uses ray.state.objects(), which only works with the
-        # GCS-based object directory
-        "_system_config": {
-            "ownership_based_object_directory_enabled": False
-        },
     }],
     indirect=True)
 def test_delete_refs_on_disconnect(ray_start_cluster):
@@ -123,7 +118,6 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # One put, one function -- the function result thing1 is
         # in a different category, according to the raylet.
-        assert len(real_ray.state.objects()) == 2
         # But we're maintaining the reference
         assert server_object_ref_count(server, 3)()
         # And can get the data
@@ -137,11 +131,6 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
         real_ray.init(address=cluster.address, namespace="")
-
-        def test_cond():
-            return len(real_ray.state.objects()) == 0
-
-        wait_for_condition(test_cond, timeout=5)
 
 
 def test_delete_ref_on_object_deletion(ray_start_regular):
