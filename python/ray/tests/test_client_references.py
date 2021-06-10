@@ -98,12 +98,10 @@ def server_actor_ref_count(server, n):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
-    [{
+    "ray_start_cluster", [{
         "num_nodes": 1,
         "do_init": False,
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_delete_refs_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:
