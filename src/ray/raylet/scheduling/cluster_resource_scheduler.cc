@@ -22,14 +22,14 @@ namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
 
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
@@ -41,7 +41,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()) {
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -303,7 +303,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
+      task_req, local_node_id_, nodes_, spread_threshold_, force_spillback,
       force_spillback);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {

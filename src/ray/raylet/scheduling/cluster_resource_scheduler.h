@@ -434,7 +434,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Use the hybrid spillback policy.
   const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
-  const float hybrid_threshold_;
+  const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;

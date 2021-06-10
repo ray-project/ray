@@ -103,8 +103,8 @@ RAY_CONFIG(bool, plasma_unlimited, false)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
-RAY_CONFIG(float, scheduler_hybrid_threshold,
-           env_float("RAY_SCHEDULER_HYBRID_THRESHOLD", 0.5))
+RAY_CONFIG(float, scheduler_spread_threshold,
+           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
