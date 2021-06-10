@@ -1460,7 +1460,7 @@ def start_raylet(redis_address,
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir)
+            session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1639,7 +1639,7 @@ def build_java_worker_command(
 
 def build_cpp_worker_command(cpp_worker_options, redis_address,
                              plasma_store_name, raylet_name, redis_password,
-                             session_dir, log_dir):
+                             session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
 
     Args:
@@ -1650,6 +1650,8 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        log_dir (str): The path of logs.
+        node_ip_address (str): The ip address for this node.
     Returns:
         The command string for starting CPP worker.
     """
@@ -1657,7 +1659,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
         "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
-        session_dir, log_dir
+        session_dir, log_dir, node_ip_address
     ]
 
     return command
