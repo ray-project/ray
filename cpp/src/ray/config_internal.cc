@@ -22,7 +22,11 @@ DEFINE_string(ray_raylet_socket_name, "",
 DEFINE_string(ray_plasma_store_socket_name, "",
               "It will specify the socket name used by the plasma store if provided.");
 
+DEFINE_string(ray_session_dir, "", "The path of this session.");
+
 DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
+
+DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
 
 namespace ray {
 namespace api {
@@ -63,13 +67,21 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     if (!FLAGS_ray_plasma_store_socket_name.empty()) {
       plasma_store_socket_name = FLAGS_ray_plasma_store_socket_name;
     }
+    if (!FLAGS_ray_session_dir.empty()) {
+      session_dir = FLAGS_ray_session_dir;
+    }
     if (!FLAGS_ray_logs_dir.empty()) {
       logs_dir = FLAGS_ray_logs_dir;
     }
+    if (!FLAGS_ray_node_ip_address.empty()) {
+      node_ip_address = FLAGS_ray_node_ip_address;
+    }
     gflags::ShutDownCommandLineFlags();
   }
-  RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !dynamic_library_path.empty())
-      << "Please add a local dynamic library by '--ray-dynamic-library-path'";
+  if (worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !dynamic_library_path.empty())
+        << "Please add a local dynamic library by '--ray-dynamic-library-path'";
+  }
 };
 
 void ConfigInternal::SetRedisAddress(const std::string address) {

@@ -499,6 +499,7 @@ TEST_P(PullManagerTest, TestDuplicateObjectsAreActivatedAndCleanedUp) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
+  auto is_worker_request = GetParam();
   /// Test admission control for a single pull bundle request. We should
   /// activate the request when we are under the reported capacity and
   /// deactivate it when we are over.
@@ -507,7 +508,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   size_t object_size = 2;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, GetParam(), &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, is_worker_request, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
   std::unordered_set<NodeID> client_ids;
@@ -529,6 +530,14 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
+
+  // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
+  if (RayConfig::instance().plasma_unlimited() && is_worker_request) {
+    AssertNumActiveRequestsEquals(3);
+    ASSERT_EQ(num_object_store_full_calls_, 0);
+    return;
+  }
+
   AssertNumActiveRequestsEquals(0);
   ASSERT_EQ(num_object_store_full_calls_, 1);
   for (auto &oid : oids) {
@@ -569,6 +578,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
+  bool is_worker_request = GetParam();
   /// Test admission control for a queue of pull bundle requests. We should
   /// activate as many requests as we can, subject to the reported capacity.
   int object_size = 2;
@@ -581,7 +591,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     auto refs = CreateObjectRefs(num_oids_per_request);
     auto oids = ObjectRefsToIds(refs);
     std::vector<rpc::ObjectReference> objects_to_locate;
-    auto req_id = pull_manager_.Pull(refs, GetParam(), &objects_to_locate);
+    auto req_id = pull_manager_.Pull(refs, is_worker_request, &objects_to_locate);
     ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
     bundles.push_back(oids);
@@ -599,12 +609,17 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_expected =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
+    if (RayConfig::instance().plasma_unlimited() && is_worker_request) {
+      num_requests_expected = num_requests;
+    }
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
 
     AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
-    // The total requests that are active is under the specified capacity.
-    ASSERT_TRUE(
-        IsUnderCapacity(num_requests_expected * num_oids_per_request * object_size));
+    if (!RayConfig::instance().plasma_unlimited()) {
+      // The total requests that are active is under the specified capacity.
+      ASSERT_TRUE(
+          IsUnderCapacity(num_requests_expected * num_oids_per_request * object_size));
+    }
     // This is the maximum number of requests that can be served at once that
     // is under the capacity.
     if (num_requests_expected < num_requests) {
@@ -634,6 +649,10 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
+  auto is_worker_request = GetParam();
+  if (RayConfig::instance().plasma_unlimited() && is_worker_request) {
+    return;  // This case isn't meaningful to test.
+  }
   /// Test admission control while requests are cancelled out-of-order. When an
   /// active request is cancelled, we should activate another request in the
   /// queue, if there is one that satisfies the reported capacity.
@@ -646,7 +665,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
     std::vector<int64_t> req_ids;
     for (auto &ref : refs) {
       std::vector<rpc::ObjectReference> objects_to_locate;
-      auto req_id = pull_manager_.Pull({ref}, GetParam(), &objects_to_locate);
+      auto req_id = pull_manager_.Pull({ref}, is_worker_request, &objects_to_locate);
       req_ids.push_back(req_id);
     }
     for (size_t i = 0; i < object_sizes.size(); i++) {
@@ -773,7 +792,11 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // the same type by FIFO order.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[1]));
+  if (RayConfig::instance().plasma_unlimited()) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[1]));
+  } else {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[1]));
+  }
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 

@@ -105,8 +105,8 @@ cdef class Config:
         return RayConfig.instance().enable_timeline()
 
     @staticmethod
-    def automatic_object_deletion_enabled():
-        return RayConfig.instance().automatic_object_deletion_enabled()
+    def plasma_unlimited():
+        return RayConfig.instance().plasma_unlimited()
 
     @staticmethod
     def max_grpc_message_size():

@@ -627,7 +627,7 @@ class SimpleListCollector(SampleCollector):
             if is_done and check_dones and \
                     not pre_batch[SampleBatch.DONES][-1]:
                 raise ValueError(
-                    "Episode {} terminated for all agents, but we still "
+                    "Episode {} terminated for all agents, but we still"
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
                         episode_id, agent_id, self.agent_key_to_policy_id[(

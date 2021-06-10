@@ -563,6 +563,15 @@ User-defined state can be stored for the `episode <https://github.com/ray-projec
 .. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
     :members:
 
+
+Chaining Callbacks
+~~~~~~~~~~~~~~~~~~
+
+Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+
+.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+
+
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
