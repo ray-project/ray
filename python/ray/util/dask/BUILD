@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "test_dask_callback_client_mode",
     size = "small",
-    main = "test_dask_callback.py"
+    main = "test_dask_callback.py",
     srcs = ["tests/test_dask_callback.py"],
     tags = ["exclusive", "client"],
     deps = [":dask_lib"]
