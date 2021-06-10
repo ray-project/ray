@@ -206,7 +206,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       object_directory_(object_directory),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
-      fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
       worker_pool_(io_service, self_node_id_, config.node_manager_address,
@@ -231,8 +230,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
           gcs_client_->Objects(), worker_rpc_pool_,
-          /* automatic_object_deletion_enabled */
-          config.automatic_object_deletion_enabled,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
