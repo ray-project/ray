@@ -65,6 +65,10 @@ class ClientBuilder:
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
         Set an environment for the session.
+        Args:
+            env (Dict[st, Any]): A runtime environment to use for this
+            connection. See :ref:`runtime-environments` for what values are
+            accepted in this dict.
         """
         self._job_config.set_runtime_env(env)
         return self
