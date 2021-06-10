@@ -63,7 +63,7 @@ void DependencyManager::StartOrUpdateWaitRequest(
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
         // NOTE(ekl): we set is_worker_request to false so that wait requests don't
-        // trigger fallback allocation. This effectively deprioritzes wait requests.
+        // trigger fallback allocation. This effectively deprios wait requests.
         it->second.wait_request_id = object_manager_.Pull({ref},
                                                           /*is_worker_request=*/false);
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
