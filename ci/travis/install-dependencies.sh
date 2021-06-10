@@ -91,7 +91,7 @@ install_miniconda() {
 
     case "${OSTYPE}" in
       # The hosttype variable is deprecated.
-      darwin*) HOSTTYPE="${MACHTYPE}";;
+      darwin*) HOSTTYPE="x86_64";;
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
