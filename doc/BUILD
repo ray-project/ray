@@ -57,6 +57,14 @@ py_test(
     tags = ["exclusive"]
 )
 
+py_test(
+    name = "doc_code_runtime_env_example",
+    size = "small",
+    main = "examples/doc_code/runtime_env_example.py",
+    srcs = ["examples/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the doc/source/tune/_tutorials directory.
 # Please keep these sorted alphabetically.

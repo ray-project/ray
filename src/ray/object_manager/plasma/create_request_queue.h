@@ -111,6 +111,10 @@ class CreateRequestQueue {
   /// \param client The client that was disconnected.
   void RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client);
 
+  size_t NumPendingRequests() const { return queue_.size(); }
+
+  size_t NumPendingBytes() const { return num_bytes_pending_; }
+
  private:
   struct CreateRequest {
     CreateRequest(const ObjectID &object_id, uint64_t request_id,
@@ -201,6 +205,8 @@ class CreateRequestQueue {
 
   /// The time OOM timer first starts. It becomes -1 upon every creation success.
   int64_t oom_start_time_ns_ = -1;
+
+  size_t num_bytes_pending_ = 0;
 
   friend class CreateRequestQueueTest;
 };

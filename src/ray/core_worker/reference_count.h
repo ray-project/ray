@@ -52,9 +52,10 @@ class ReferenceCounterInterface {
 };
 
 // Callback for location subscriptions.
-using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
-                       const NodeID &, int64_t)>;
+using LocationSubscriptionCallback = std::function<void(
+    const absl::flat_hash_set<NodeID> & /* node_ids */, int64_t /* object_size */,
+    const std::string & /* spilled_url */, const NodeID & /* spilled_node_id */,
+    int64_t /* current_version */, const absl::optional<NodeID> & /* primary_node_id */)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.

@@ -9,7 +9,7 @@
 using namespace ::ray::api;
 
 int main(int argc, char **argv) {
-  RAY_LOG(INFO) << "CPP default worker started";
+  RAY_LOG(INFO) << "CPP default worker started.";
   ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
   ::ray::api::RayConfig config;
   Ray::Init(config, &argc, &argv);
