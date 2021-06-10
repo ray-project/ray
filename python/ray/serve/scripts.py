@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import click
+import os
 from watchgod import watch
 from ray.serve.config import DeploymentMode
+from ray.serve.util import logger
 
 import ray
 from ray import serve
@@ -82,5 +84,5 @@ def shutdown():
 def run(filepath, verbose):
     for _ in watch(filepath):
         if verbose:
-            print("[SERVE] Deployment script is modified. Redeploying...\n")
-        exec(open(filepath).read())
+            logger.info("Deployment script is modified. Redeploying...\n")
+        os.system(f"python {filepath}")

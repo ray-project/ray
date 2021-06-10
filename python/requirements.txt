@@ -25,7 +25,6 @@ pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
-watchgod
 
 ## setup.py extras
 dm_tree
@@ -40,6 +39,7 @@ tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
 starlette
+watchgod
 
 # Requirements for running tests
 blist; platform_system != "Windows"

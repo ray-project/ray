@@ -95,7 +95,7 @@ ray_files += [
 # in this directory
 extras = {
     "default": ["colorful"],
-    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+    "serve": ["uvicorn", "requests", "starlette", "fastapi", "watchgod"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
     "observability": [
@@ -144,7 +144,6 @@ install_requires = [
     "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
-    "watchgod"
 ]
 
 
