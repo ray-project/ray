@@ -20,6 +20,7 @@ cc_binary(
     srcs = glob([
         "*.cc",
     ]),
+    linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "@ray_api_libs//:ray_api",
