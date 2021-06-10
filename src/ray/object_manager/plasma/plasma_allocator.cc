@@ -23,6 +23,8 @@
 
 namespace plasma {
 
+bool IsOutsideInitialAllocation(void *ptr);
+
 extern "C" {
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *mem);
@@ -35,6 +37,7 @@ const int M_MMAP_THRESHOLD = -3;
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
+int64_t PlasmaAllocator::fallback_allocated_ = 0;
 
 void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (!RayConfig::instance().plasma_unlimited()) {
@@ -54,7 +57,6 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   return mem;
 }
 
-// TODO(ekl) we should track these allocations separately from the overall footprint.
 void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
@@ -64,13 +66,18 @@ void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
   if (!mem) {
     return nullptr;
   }
+  RAY_CHECK(IsOutsideInitialAllocation(mem));
   allocated_ += bytes;
+  fallback_allocated_ += bytes;
   return mem;
 }
 
 void PlasmaAllocator::Free(void *mem, size_t bytes) {
   dlfree(mem);
   allocated_ -= bytes;
+  if (IsOutsideInitialAllocation(mem)) {
+    fallback_allocated_ -= bytes;
+  }
 }
 
 void PlasmaAllocator::SetFootprintLimit(size_t bytes) {
@@ -80,5 +87,7 @@ void PlasmaAllocator::SetFootprintLimit(size_t bytes) {
 int64_t PlasmaAllocator::GetFootprintLimit() { return footprint_limit_; }
 
 int64_t PlasmaAllocator::Allocated() { return allocated_; }
+
+int64_t PlasmaAllocator::FallbackAllocated() { return fallback_allocated_; }
 
 }  // namespace plasma

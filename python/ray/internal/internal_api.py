@@ -112,6 +112,10 @@ def store_stats_summary(reply):
             round(
                 100 * reply.store_stats.object_store_bytes_used /
                 reply.store_stats.object_store_bytes_avail, 2)))
+    if reply.store_stats.object_store_bytes_fallback > 0:
+        store_summary += (
+            "Plasma filesystem mmap usage: {} MiB\n".format(
+                int(reply.store_stats.object_store_bytes_fallback / (1024 * 1024))))
     if reply.store_stats.spill_time_total_s > 0:
         store_summary += (
             "Spilled {} MiB, {} objects, avg write throughput {} MiB/s\n".
