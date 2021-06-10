@@ -271,14 +271,15 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/12912
-def do_test_release_resource(object_spilling_config, expect_released):
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
     address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
-            "release_resources_during_plasma_fetch": expect_released,
             "automatic_object_spilling_enabled": True,
             "object_spilling_config": object_spilling_config,
         })
@@ -301,17 +302,8 @@ def do_test_release_resource(object_spilling_config, expect_released):
     done = f.remote([plasma_obj])  # noqa
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
-    if expect_released:
-        assert ready
-    else:
-        assert not ready
+    assert not ready
     assert_no_thrashing(address["redis_address"])
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
-    do_test_release_resource(object_spilling_config, expect_released=False)
 
 
 @pytest.mark.skipif(

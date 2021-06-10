@@ -199,10 +199,6 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
-        node_manager_config.fair_queueing_enabled =
-            RayConfig::instance().fair_queueing_enabled();
-        node_manager_config.automatic_object_deletion_enabled =
-            RayConfig::instance().automatic_object_deletion_enabled();
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
