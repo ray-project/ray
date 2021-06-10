@@ -10,7 +10,7 @@ using namespace ::ray::api;
 
 int default_worker_main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
-  RAY_CHECK(argc == 8);
+  RAY_CHECK(argc == 9);
 
   ConfigInternal::Instance().run_mode = RunMode::CLUSTER;
   ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
@@ -22,6 +22,7 @@ int default_worker_main(int argc, char **argv) {
   ConfigInternal::Instance().redis_password = std::string(std::string(argv[5]));
   ConfigInternal::Instance().session_dir = std::string(std::string(argv[6]));
   ConfigInternal::Instance().logs_dir = std::string(std::string(argv[7]));
+  ConfigInternal::Instance().node_ip_address = std::string(std::string(argv[8]));
 
   Ray::Init();
 
