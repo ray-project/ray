@@ -165,8 +165,7 @@ print("success")
 
 
 @pytest.mark.parametrize(
-    "call_ray_start",
-    [
+    "call_ray_start", [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0",
     ],
@@ -200,7 +199,7 @@ print("success")
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if object_memory_usage() == 0
+        if object_memory_usage() == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")

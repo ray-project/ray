@@ -425,11 +425,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            "object_timeout_milliseconds": 200
-        })
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
     @ray.remote
     def f(x):
