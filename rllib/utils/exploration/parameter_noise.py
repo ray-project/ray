@@ -289,7 +289,7 @@ class ParameterNoise(Exploration):
             self.stddev_val /= 1.01
 
         # Update our state (self.stddev and self.stddev_val).
-        self.set_state(self.get_state())
+        self.set_state(self.get_state(), sess=tf_sess)
 
         return sample_batch
 
