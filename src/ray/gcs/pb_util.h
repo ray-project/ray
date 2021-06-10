@@ -55,7 +55,11 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
   error_info_ptr->set_type(error_type);
   if (error_msg.length() > max_error_msg_size_bytes) {
-    error_info_ptr->set_error_message(error_msg.substr(0, max_error_msg_size_bytes));
+    std::ostringstream stream;
+    stream << "The message size exceeds " << std::to_string(max_error_msg_size_bytes)
+           << " bytes. Find the full log from the log files. Here is abstract: "
+           << error_msg.substr(0, max_error_msg_size_bytes);
+    error_info_ptr->set_error_message(stream.str());
   } else {
     error_info_ptr->set_error_message(error_msg);
   }
