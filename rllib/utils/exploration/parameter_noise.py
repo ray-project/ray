@@ -415,11 +415,7 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def get_state(self, sess=None):
-        return {
-            "cur_stddev": self.stddev_val,
-            "last_timestep": convert_to_numpy(self.last_timestep)
-            if self.framework != "tf" else self.last_timestep,
-        }
+        return {"cur_stddev": self.stddev_val}
 
     @override(Exploration)
     def set_state(self, state: dict,
@@ -428,7 +424,5 @@ class ParameterNoise(Exploration):
         # Set self.stddev to calculated value.
         if self.framework == "tf":
             self.stddev.load(self.stddev_val, session=sess)
-            self.last_timestep.load(state["last_timestep"], session=sess)
         else:
             self.stddev = self.stddev_val
-            self.last_timestep = state["last_timestep"]
