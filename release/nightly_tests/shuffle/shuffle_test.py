@@ -19,6 +19,7 @@ if __name__ == "__main__":
 
     start = time.time()
     success = 1
+
     commands = [
         "python", "-m", "ray.experimental.shuffle", "--ray-address={}".format(
             os.environ["RAY_ADDRESS"]),
@@ -35,6 +36,8 @@ if __name__ == "__main__":
         success = 0
     delta = time.time() - start
 
+    # Report the running time as 0 if it fails so that
+    # it is easy to be discovered from the graph.
     if not success:
         delta = 0
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:

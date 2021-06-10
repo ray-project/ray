@@ -3,6 +3,7 @@ package io.ray.runtime.util;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
+import java.util.Arrays;
 
 /**
  * Helper method for different Ids. Note: any changes to these methods must be synced with C++
@@ -23,5 +24,14 @@ public class IdUtil {
     System.arraycopy(
         taskId.getBytes(), TaskId.UNIQUE_BYTES_LENGTH, actorIdBytes, 0, ActorId.LENGTH);
     return ActorId.fromBytes(actorIdBytes);
+  }
+
+  /** Compute the dummy object id for actor creation task. */
+  public static ObjectId getActorCreationDummyObjectId(ActorId actorId) {
+    byte[] objectIdBytes = new byte[ObjectId.LENGTH];
+    Arrays.fill(objectIdBytes, (byte) 0xFF);
+    byte[] actorIdBytes = actorId.getBytes();
+    System.arraycopy(actorIdBytes, 0, objectIdBytes, 0, ActorId.LENGTH);
+    return new ObjectId(objectIdBytes);
   }
 }
