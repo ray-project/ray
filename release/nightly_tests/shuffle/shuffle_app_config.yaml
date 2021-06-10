@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly"
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
 env_vars: {}
 debian_packages: []
 
@@ -6,4 +6,8 @@ python:
   pip_packages: []
   conda_packages: []
 
-post_build_cmds: []
+post_build_cmds:
+  - pip uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - echo {{env["DATESTAMP"]}}

@@ -1,0 +1,66 @@
+{{- if and (.Values.namespacedOperator) (not .Values.clusterOnly) }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ray-operator-serviceaccount
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ray-operator-role
+rules:
+- apiGroups: ["", "cluster.ray.io"]
+  resources: ["rayclusters", "rayclusters/finalizers", "rayclusters/status", "pods", "pods/exec", "services"]
+  verbs: ["get", "watch", "list", "create", "delete", "patch", "update"]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ray-operator-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: ray-operator-serviceaccount
+roleRef:
+  kind: Role
+  name: ray-operator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ray-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.ray.io/component: operator
+  template:
+    metadata:
+      labels:
+        cluster.ray.io/component: operator
+    spec:
+      serviceAccountName: ray-operator-serviceaccount
+      containers:
+      - name: ray
+        imagePullPolicy: Always
+        image: {{ .Values.operatorImage }}
+        command: ["ray-operator"]
+        env:
+        - name: RAY_OPERATOR_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: AUTOSCALER_MAX_NUM_FAILURES
+          value: "inf"
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+          limits:
+            memory: 2Gi
+{{- end }}
+

@@ -139,6 +139,7 @@ REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"

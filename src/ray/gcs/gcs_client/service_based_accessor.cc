@@ -166,10 +166,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetByName(
-    const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const std::string &name, const std::string &ray_namespace,
+    const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedActorInfo(
       request,
       [name, callback](const Status &status, const rpc::GetNamedActorInfoReply &reply) {
@@ -1483,11 +1485,12 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
-    const std::string &name,
+    const std::string &name, const std::string &ray_namespace,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
       request, [name, callback](const Status &status,
                                 const rpc::GetNamedPlacementGroupReply &reply) {

@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
     from ray import JobID
@@ -39,5 +40,13 @@ class ClientWorkerPropertyAPI:
         return NodeID(self._fetch_runtime_context().node_id)
 
     @property
+    def namespace(self) -> str:
+        return self._fetch_runtime_context().namespace
+
+    @property
     def should_capture_child_tasks_in_placement_group(self) -> bool:
         return self._fetch_runtime_context().capture_client_tasks
+
+    @property
+    def runtime_env(self) -> Dict:
+        return json.loads(self._fetch_runtime_context().runtime_env)

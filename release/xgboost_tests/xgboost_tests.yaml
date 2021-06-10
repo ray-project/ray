@@ -32,7 +32,7 @@
     slack: "@tune-team"
 
   cluster:
-    app_config: app_config.yaml
+    app_config: app_config_gpu.yaml
     compute_template: tpl_gpu_small.yaml
 
   run:

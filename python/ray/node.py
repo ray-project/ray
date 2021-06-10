@@ -831,7 +831,8 @@ class Node:
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
-            backup_count=self.backup_count)
+            backup_count=self.backup_count,
+            monitor_ip=self._node_ip_address)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 

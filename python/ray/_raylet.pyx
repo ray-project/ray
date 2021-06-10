@@ -112,7 +112,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     GetTimeoutError,
-    TaskCancelledError
+    TaskCancelledError,
+    AsyncioActorExit,
 )
 from ray._private.utils import decode
 from ray._private.client_mode_hook import (
@@ -221,6 +222,40 @@ cdef increase_recursion_limit():
                          new_limit, current_depth))
 
 
+cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
+    """A helper function that converts a CObjectLocation to a Python dict.
+
+    Returns:
+        A Dict with following attributes:
+        - node_ids:
+            The hex IDs of the nodes that have a copy of this object.
+        - object_size:
+            The size of data + metadata in bytes.
+    """
+    object_size = c_object_location.GetObjectSize()
+
+    node_ids = set()
+    c_node_ids = c_object_location.GetNodeIDs()
+    for i in range(c_node_ids.size()):
+        node_id = c_node_ids[i].Hex().decode("ascii")
+        node_ids.add(node_id)
+
+    # add primary_node_id into node_ids
+    if not c_object_location.GetPrimaryNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
+
+    # add spilled_node_id into node_ids
+    if not c_object_location.GetSpilledNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
+
+    return {
+        "node_ids": list(node_ids),
+        "object_size": object_size,
+    }
+
+
 @cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
@@ -304,8 +339,8 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
-            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
+                metadata_fields = metadata.split(b",")
                 if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
@@ -512,8 +547,9 @@ cdef execute_task(
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
-                except KeyboardInterrupt as e:
+                except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
+                except KeyboardInterrupt as e:
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
@@ -521,7 +557,6 @@ cdef execute_task(
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
-                exit_current_actor_if_asyncio()
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
@@ -718,11 +753,6 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
-            ray._private.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "restore_spilled_objects_error",
-                traceback.format_exc() + exception_str,
-                job_id=None)
     return bytes_restored
 
 
@@ -859,7 +889,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, metrics_agent_port):
+                  serialized_job_config, metrics_agent_port, runtime_env_hash):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -913,6 +943,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
+        options.runtime_env_hash = runtime_env_hash
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -1013,6 +1044,7 @@ cdef class CoreWorker:
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            c_bool created_by_worker,
                             owner_address=None):
         cdef:
             CAddress c_owner_address
@@ -1021,7 +1053,7 @@ cdef class CoreWorker:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
-                             c_object_id, data))
+                             c_object_id, data, created_by_worker))
         else:
             c_object_id[0] = object_ref.native()
             if owner_address is None:
@@ -1033,7 +1065,7 @@ cdef class CoreWorker:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
-                            c_owner_address, data))
+                            c_owner_address, data, created_by_worker))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -1068,7 +1100,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata_buf, data_size, object_ref,
             ObjectRefsToVector([]),
-            &c_object_id, &data_buf, owner_address)
+            &c_object_id, &data_buf, False, owner_address)
         if object_already_exists:
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
@@ -1105,7 +1137,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             ObjectRefsToVector(serialized_object.contained_object_refs),
-            &c_object_id, &data)
+            &c_object_id, &data, True)
 
         if not object_already_exists:
             if total_bytes > 0:
@@ -1164,6 +1196,27 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_object_locations(self, object_refs, int64_t timeout_ms):
+        cdef:
+            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                    lookup_ids, timeout_ms, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].get():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(results[i].get())
+        return object_locations
 
     def global_gc(self):
         with nogil:
@@ -1546,16 +1599,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
+            c_string serialized_object_status
         CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
-                c_object_id, &c_owner_address)
+                c_object_id, &c_owner_address, &serialized_object_status)
         return (object_ref,
-                c_owner_address.SerializeAsString())
+                c_owner_address.SerializeAsString(),
+                serialized_object_status)
 
     def deserialize_and_register_object_ref(
             self, const c_string &object_ref_binary,
             ObjectRef outer_object_ref,
             const c_string &serialized_owner_address,
+            const c_string &serialized_object_status,
     ):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_ref_binary)
@@ -1569,49 +1625,48 @@ cdef class CoreWorker:
             .RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
                 c_outer_object_id,
-                c_owner_address))
+                c_owner_address,
+                serialized_object_status))
 
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
-            c_vector[size_t] data_sizes
-            c_vector[shared_ptr[CBuffer]] metadatas
-            c_vector[c_vector[CObjectID]] contained_ids
+            CObjectID return_id
+            size_t data_size
+            shared_ptr[CBuffer] metadata
+            c_vector[CObjectID] contained_id
             c_vector[CObjectID] return_ids_vector
 
         if return_ids.size() == 0:
             return
 
-        serialized_objects = []
-        for i in range(len(outputs)):
+        n_returns = len(outputs)
+        returns.resize(n_returns)
+        for i in range(n_returns):
             return_id, output = return_ids[i], outputs[i]
             context = worker.get_serialization_context()
             serialized_object = context.serialize(output)
-            data_sizes.push_back(serialized_object.total_bytes)
-            metadata = serialized_object.metadata
+            data_size = serialized_object.total_bytes
+            metadata_str = serialized_object.metadata
             if ray.worker.global_worker.debugger_get_breakpoint:
                 breakpoint = (
                     ray.worker.global_worker.debugger_get_breakpoint)
-                metadata += (
+                metadata_str += (
                     b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
                     breakpoint.encode())
                 # Reset debugging context of this worker.
                 ray.worker.global_worker.debugger_get_breakpoint = b""
-            metadatas.push_back(string_to_buffer(metadata))
-            serialized_objects.append(serialized_object)
-            contained_ids.push_back(
-                ObjectRefsToVector(serialized_object.contained_object_refs)
-            )
+            metadata = string_to_buffer(metadata_str)
+            contained_id = ObjectRefsToVector(
+                serialized_object.contained_object_refs)
 
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .AllocateReturnObjects(
-                             return_ids, data_sizes, metadatas, contained_ids,
-                             returns))
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
+                        return_id, data_size, metadata, contained_id,
+                        &returns[0][i]))
 
-        for i, serialized_object in enumerate(serialized_objects):
-            # A nullptr is returned if the object already exists.
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
                     (<SerializedObject>serialized_object).write_to(
@@ -1625,6 +1680,11 @@ cdef class CoreWorker:
                                        return_ids_vector),
                             return_ids_vector, return_ids[i]))
                     return_ids_vector.clear()
+
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                        return_id, returns[0][i]))
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
