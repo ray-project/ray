@@ -1774,36 +1774,5 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
             is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
 
 
-def test_multi_node_pgs(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes(2)
-
-    ray.init(address=cluster.address)
-
-    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(4)]
-
-    ready, not_ready = ray.wait(
-        [pg.ready() for pg in pgs], timeout=1, num_returns=4)
-    assert len(ready) == 2
-    assert len(not_ready) == 2
-
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes(3)
-    ready, not_ready = ray.wait(
-        [pg.ready() for pg in pgs], timeout=1, num_returns=4)
-    assert len(ready) == 4
-    assert len(not_ready) == 0
-
-    for i in range(4, 10):
-        cluster.add_node(num_cpus=2)
-        cluster.wait_for_nodes(i)
-        print(".")
-        more_pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(2)]
-        ready, not_ready = ray.wait(
-            [pg.ready() for pg in more_pgs], timeout=1, num_returns=2)
-        assert len(ready) == 2
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
