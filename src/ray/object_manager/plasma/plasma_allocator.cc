@@ -75,7 +75,7 @@ void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
 void PlasmaAllocator::Free(void *mem, size_t bytes) {
   dlfree(mem);
   allocated_ -= bytes;
-  if (IsOutsideInitialAllocation(mem)) {
+  if (RayConfig::instance().plasma_unlimited() && IsOutsideInitialAllocation(mem)) {
     fallback_allocated_ -= bytes;
   }
 }
