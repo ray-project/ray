@@ -222,7 +222,7 @@ def apex_execution_plan(workers: WorkerSet,
         replay_stats = ray.get(replay_actors[0].stats.remote(
             config["optimizer"].get("debug")))
         exploration_infos = workers.foreach_trainable_policy(
-            lambda p, _: p.get_exploration_info())
+            lambda p, _: p.get_exploration_state())
         result["info"].update({
             "exploration_infos": exploration_infos,
             "learner_queue": learner_thread.learner_queue_size.stats(),

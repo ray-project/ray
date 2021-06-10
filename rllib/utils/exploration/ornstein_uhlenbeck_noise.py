@@ -6,6 +6,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
 
 tf1, tf, tfv = try_import_tf()
@@ -139,13 +140,15 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 self.last_timestep.assign_add(1)
             else:
                 self.last_timestep.assign(timestep)
-            return action, logp
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
                          if timestep is None else tf1.assign(
                              self.last_timestep, timestep))
             with tf1.control_dependencies([assign_op, ou_state_new]):
-                return action, logp
+                action = tf.identity(action)
+                logp = tf.identity(logp)
+
+        return action, logp
 
     @override(GaussianNoise)
     def _get_torch_exploration_action(self, action_dist: ActionDistribution,
@@ -202,3 +205,31 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             (action.size()[0], ), dtype=torch.float32, device=self.device)
 
         return action, logp
+
+    @override(GaussianNoise)
+    def get_state(self, sess: Optional["tf.Session"] = None):
+        """Returns the current scale value.
+
+        Returns:
+            Union[float,tf.Tensor[float]]: The current scale value.
+        """
+        state = super().get_state()
+        if sess:
+            return sess.run(
+                dict(self._tf_info_op, **{
+                    "ou_state": self.ou_state,
+                }))
+        return dict(
+            state, **{
+                "ou_state": convert_to_numpy(self.ou_state)
+                if self.framework != "tf" else self.ou_state,
+            })
+
+    @override(GaussianNoise)
+    def set_state(self, state: dict,
+                  sess: Optional["tf.Session"] = None) -> None:
+        if self.framework == "tf":
+            self.ou_state.load(state["ou_state"], session=sess)
+        else:
+            self.ou_state = state["ou_state"]
+        super().set_state(state)

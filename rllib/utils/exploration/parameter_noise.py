@@ -14,7 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
+from ray.rllib.utils.numpy import convert_to_numpy, softmax, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType
 
 if TYPE_CHECKING:
@@ -277,7 +277,7 @@ class ParameterNoise(Exploration):
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_info(
+            current_scale = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_scale"]
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
                 current_scale
@@ -288,11 +288,8 @@ class ParameterNoise(Exploration):
         else:
             self.stddev_val /= 1.01
 
-        # Set self.stddev to calculated value.
-        if self.framework == "tf":
-            self.stddev.load(self.stddev_val, session=tf_sess)
-        else:
-            self.stddev = self.stddev_val
+        # Update our state (self.stddev and self.stddev_val).
+        self.set_state(self.get_state())
 
         return sample_batch
 
@@ -417,5 +414,21 @@ class ParameterNoise(Exploration):
             return tf.no_op()
 
     @override(Exploration)
-    def get_info(self, sess=None):
-        return {"cur_stddev": self.stddev_val}
+    def get_state(self, sess=None):
+        return {
+            "cur_stddev": self.stddev_val,
+            "last_timestep": convert_to_numpy(self.last_timestep)
+            if self.framework != "tf" else self.last_timestep,
+        }
+
+    @override(Exploration)
+    def set_state(self, state: dict,
+                  sess: Optional["tf.Session"] = None) -> None:
+        self.stddev_val = state["cur_stddev"]
+        # Set self.stddev to calculated value.
+        if self.framework == "tf":
+            self.stddev.load(self.stddev_val, session=sess)
+            self.last_timestep.load(state["last_timestep"], session=sess)
+        else:
+            self.stddev = self.stddev_val
+            self.last_timestep = state["last_timestep"]

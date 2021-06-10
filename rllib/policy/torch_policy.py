@@ -19,6 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.threading import with_lock
@@ -598,20 +599,25 @@ class TorchPolicy(Policy):
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_non_torch_type(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state()
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: object) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
                 optim_state_dict = convert_to_torch_tensor(
                     s, device=self.device)
                 o.load_state_dict(optim_state_dict)
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(state=state["_exploration_state"])
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
@@ -729,11 +735,10 @@ class TorchPolicy(Policy):
         file_name = os.path.join(export_dir, "model.pt")
         traced.save(file_name)
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
-    @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:
-        """TODO(sven): implement for torch.
-        """
+        deprecation_warning("export_checkpoint", "save")
         raise NotImplementedError
 
     @override(Policy)
