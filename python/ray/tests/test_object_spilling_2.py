@@ -273,7 +273,7 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
 # https://github.com/ray-project/ray/issues/12912
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_release_resource(object_spilling_config):
+def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
     address = ray.init(
         num_cpus=1,
