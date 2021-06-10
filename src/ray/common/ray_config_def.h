@@ -117,7 +117,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
+RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", true))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
@@ -398,7 +398,7 @@ RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 
 /// Grace period until we throw the OOM error to the application in seconds.
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
-RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
