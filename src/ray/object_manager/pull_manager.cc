@@ -93,8 +93,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  if (next_request_it->second.num_object_sizes_missing > 0 &&
-      !RayConfig::instance().plasma_unlimited()) {
+  if (next_request_it->second.num_object_sizes_missing > 0) {
     // There is at least one object size missing. We should not activate the
     // bundle, since it may put us over the available capacity.
     return false;
