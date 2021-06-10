@@ -329,6 +329,7 @@ build_wheels() {
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
       )
 
+
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
@@ -389,7 +390,6 @@ lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
     set +x # suppress set -x since it'll get very noisy here
-
 
     if [ -z "${BUILDKITE-}" ]; then
       . "${HOME}/.nvm/nvm.sh"
