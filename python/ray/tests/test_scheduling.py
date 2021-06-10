@@ -455,6 +455,47 @@ def test_lease_request_leak(shutdown_only):
     assert len(ray.state.objects()) == 0, ray.state.objects()
 
 
+def test_many_args(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects are borrowed.
+    cluster = ray_start_cluster
+    object_size = int(1e6)
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            "object_manager_default_chunk_size": 1024,
+            "asio_stats_print_interval_ms": 1000,
+            "asio_event_loop_stats_collection_enabled": True,
+        },
+        object_store_memory=(4 * object_size * 25))
+    for _ in range(3):
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=(4 * object_size * 25))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(i, *args):
+        print(i)
+        return
+
+
+    @ray.remote
+    def put():
+        return np.zeros(object_size, dtype=np.uint8)
+
+    xs = [put.remote() for _ in range(100)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    tasks = []
+    for i in range(100):
+        args = [np.random.choice(xs) for _ in range(25)]
+        tasks.append(f.remote(i, *args))
+    ray.get(tasks)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

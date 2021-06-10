@@ -168,7 +168,9 @@ bool DependencyManager::RequestTaskDependencies(
 
     auto it = GetOrInsertRequiredObject(obj_id, ref);
     it->second.dependent_tasks.insert(task_id);
+  }
 
+  for (const auto &obj_id : task_entry.dependencies) {
     if (local_objects_.count(obj_id)) {
       task_entry.num_missing_dependencies--;
     }
