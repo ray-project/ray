@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
     reason="Newer versions of Modin require Python 3.7+")
 
 if modin_compatible_version:
-    from ray.tests.modin_test_utils import df_equals
+    from ray.tests.modin.modin_test_utils import df_equals
     import modin.pandas as pd
 
 

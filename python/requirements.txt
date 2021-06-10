@@ -32,7 +32,7 @@ flask
 gym
 lz4
 opencv-python-headless==4.3.0.36
-pandas >= 1.0.5
+pandas==1.0.5
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
@@ -55,12 +55,6 @@ gym
 gym-minigrid
 kubernetes
 lxml
-# Newer versions of modin need pandas 1.2.4 which isn't available for python 3.6
-modin==0.8.0; python_version < '3.7' # Use last compatible version for python 3.6 
-# Modin tests require a version with this fix: 
-# https://github.com/modin-project/modin/pull/2851
-# Can replace with modin>=0.10 once 0.10 is released.
-git+git://github.com/modin-project/modin.git@51658b49b54ce89f1277f8b73bdef4cf909e53fd#egg=modin; python_version >= '3.7'
 moto
 mypy
 networkx
