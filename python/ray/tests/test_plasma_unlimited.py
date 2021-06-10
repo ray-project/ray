@@ -34,11 +34,11 @@ def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Spilled" in s:
                 return False
         if fallback:
-            if "Plasma filesystem page usage: {} MiB".format(
+            if "Plasma filesystem mmap usage: {} MiB".format(
                     fallback) not in s:
                 return False
         else:
-            if "Plasma filesystem page usage:" in s:
+            if "Plasma filesystem mmap usage:" in s:
                 return False
         return True
 
