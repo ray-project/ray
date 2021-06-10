@@ -41,8 +41,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
-      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -265,13 +264,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
   // Randomly select one of the best nodes to spillback.
   int64_t best_node = -1;
   if (!best_nodes.empty()) {
-    int idx;
-    if (loadbalance_spillback_) {
-      idx = std::rand() % best_nodes.size();
-    } else {
-      idx = 0;
-    }
-    best_node = best_nodes[idx];
+    best_node = best_nodes[0];
   }
 
   // If there's no best node, and the task is not feasible locally,

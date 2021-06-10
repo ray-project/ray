@@ -435,9 +435,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
   const float hybrid_threshold_;
-  /// Feature lag between legacy scheduling algorithms. When loadbalance_spillback_ is
-  /// true, a node is chosen at uniform random from the possible nodes.
-  bool loadbalance_spillback_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;

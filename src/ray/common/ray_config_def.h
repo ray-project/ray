@@ -88,8 +88,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
-RAY_CONFIG(bool, preallocate_plasma_memory,
-           env_bool("RAY_PREALLOCATE_PLASMA_MEMORY", false))
+RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
 /// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
 /// in /tmp, creating a new file per object. This degrades performance since filesystem
@@ -97,18 +96,12 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
-
-/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
-/// uniform random from the valid options. The other mode is more likely to spill back
-/// many tasks to the same node.
-RAY_CONFIG(bool, scheduler_loadbalance_spillback,
-           env_bool("RAY_SCHEDULER_LOADBALANCE_SPILLBACK", false))
+RAY_CONFIG(bool, plasma_unlimited, false)
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, env_bool("RAY_SCHEDULER_HYBRID", true))
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_hybrid_threshold,
            env_float("RAY_SCHEDULER_HYBRID_THRESHOLD", 0.5))
