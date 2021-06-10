@@ -179,6 +179,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// the current_object_locations is empty, then this means that the object
     /// does not exist on any nodes due to eviction or the object never getting created.
     bool subscribed;
+    /// The address of the owner.
+    rpc::Address owner_address;
   };
 
   /// Reference to the event loop.

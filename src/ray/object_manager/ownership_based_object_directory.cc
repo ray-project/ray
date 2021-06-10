@@ -20,9 +20,11 @@ namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+    pubsub::SubscriberInterface *object_location_subscriber,
     std::function<void(const ObjectID &)> mark_as_failed)
     : ObjectDirectory(io_service, gcs_client),
       client_call_manager_(io_service),
+      object_location_subscriber_(object_location_subscriber),
       mark_as_failed_(mark_as_failed) {}
 
 namespace {
@@ -232,20 +234,6 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
                            it->second.object_size);
     }
   }
-
-  // Only send the next long-polling RPC if the last one was successful.
-  // If the last RPC failed, we consider the object to have been freed.
-  if (status.ok()) {
-    auto worker_it = worker_rpc_clients_.find(worker_id);
-    rpc::GetObjectLocationsOwnerRequest request;
-    request.set_intended_worker_id(worker_id.Binary());
-    request.set_object_id(object_id.Binary());
-    request.set_last_version(reply.current_version());
-    worker_it->second->GetObjectLocationsOwner(
-        request,
-        std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
-                  worker_id, std::placeholders::_1, std::placeholders::_2));
-  }
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
@@ -254,21 +242,26 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
-    if (rpc_client == nullptr) {
-      RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
-                       << "SubscribeObjectLocations becomes a no-op.";
-      return Status::OK();
-    }
-    rpc::GetObjectLocationsOwnerRequest request;
-    request.set_intended_worker_id(owner_address.worker_id());
-    request.set_object_id(object_id.Binary());
-    request.set_last_version(-1);
-    rpc_client->GetObjectLocationsOwner(
-        request,
+    // Create a object eviction subscription message.
+    auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
+    request->set_intended_worker_id(owner_address.worker_id());
+    request->set_object_id(object_id.Binary());
+    request->set_last_version(-1);
+
+    auto msg_published_callback =
         std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
-                  worker_id, std::placeholders::_1, std::placeholders::_2));
-    it = listeners_.emplace(object_id, LocationListenerState()).first;
+                  worker_id, std::placeholders::_1, std::placeholders::_2);
+
+    auto sub_message = std::make_unique<rpc::SubMessage>();
+    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
+
+    core_worker_subscriber_->Subscribe(
+        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+        owner_address, object_id.Binary(), /*Success callback*/ msg_published_callback,
+        /*Failure callback*/ msg_published_callback);
+    auto location_state = LocationListenerState();
+    location_state.owner_address = owner_address;
+    it = listeners_.emplace(object_id, std::move(location_state)).first;
   }
   auto &listener_state = it->second;
 
@@ -309,6 +302,8 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
     return Status::OK();
   }
   entry->second.callbacks.erase(callback_id);
+  core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                       entry->second.owner_address, object_id.Binary());
   if (entry->second.callbacks.empty()) {
     listeners_.erase(entry);
   }

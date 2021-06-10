@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -41,6 +42,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// information from.
   OwnershipBasedObjectDirectory(instrumented_io_context &io_service,
                                 std::shared_ptr<gcs::GcsClient> &gcs_client,
+                                pubsub::SubscriberInterface *object_location_subscriber,
                                 std::function<void(const ObjectID &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
@@ -71,6 +73,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
  private:
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
+  /// The object location subscriber.
+  pubsub::SubscriberInterface *object_location_subscriber_;
   /// The callback used to mark an object as failed.
   std::function<void(const ObjectID &)> mark_as_failed_;
   /// Cache of gRPC clients to workers (not necessarily running on this node).
