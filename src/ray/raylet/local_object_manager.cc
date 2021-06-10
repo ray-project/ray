@@ -353,32 +353,22 @@ void LocalObjectManager::AddSpilledUrls(
       url_ref_count_[base_url_it->second] += 1;
     }
 
-    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
-      // spill RPC.
-      rpc::AddSpilledUrlRequest request;
-      request.set_object_id(object_id.Binary());
-      request.set_spilled_url(object_url);
-      request.set_spilled_node_id(node_id_object_spilled.Binary());
-      request.set_size(it->second.first->GetSize());
+    // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+    // spill RPC.
+    rpc::AddSpilledUrlRequest request;
+    request.set_object_id(object_id.Binary());
+    request.set_spilled_url(object_url);
+    request.set_spilled_node_id(node_id_object_spilled.Binary());
+    request.set_size(it->second.first->GetSize());
 
-      auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
-      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
-                     << object_id << " to owner "
-                     << WorkerID::FromBinary(it->second.second.worker_id());
-      // Send spilled URL, spilled node ID, and object size to owner.
-      owner_client->AddSpilledUrl(
-          request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
-            unpin_callback(status);
-          });
-    } else {
-      // Write to object directory. Wait for the write to finish before
-      // releasing the object to make sure that the spilled object can
-      // be retrieved by other raylets.
-      RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-          object_id, object_url, node_id_object_spilled, it->second.first->GetSize(),
-          unpin_callback));
-    }
+    auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
+    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
+                   << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
+    // Send spilled URL, spilled node ID, and object size to owner.
+    owner_client->AddSpilledUrl(
+        request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+          unpin_callback(status);
+        });
   }
 }
 

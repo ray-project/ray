@@ -55,26 +55,6 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
            env_bool("RAY_EVENT_STATS", false))
 
-/// Whether to enable fair queueing between task classes in raylet. When
-/// fair queueing is enabled, the raylet will try to balance the number
-/// of running tasks by class (i.e., function name). This prevents one
-/// type of task from starving other types (see issue #3664).
-RAY_CONFIG(bool, fair_queueing_enabled, true)
-
-/// Whether to enable distributed reference counting for objects. When this is
-/// enabled, an object's ref count will include any references held by other
-/// processes, such as when an ObjectID is serialized and passed as an argument
-/// to another task. It will also include any references due to nesting, i.e.
-/// if the object ID is nested inside another object that is still in scope.
-/// When this is disabled, an object's ref count will include only local
-/// information:
-///  1. Local Python references to the ObjectID.
-///  2. Pending tasks submitted by the local process that depend on the object.
-/// If both this flag is turned on, then an object
-/// will not be LRU evicted until it is out of scope in ALL processes in the
-/// cluster and all objects that contain it are also out of scope.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
-
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
 /// creating object references.
@@ -301,10 +281,6 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
-/// Whether to release worker CPUs during plasma fetches.
-/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
-RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
-
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
@@ -353,9 +329,6 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
-
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, ownership_based_object_directory_enabled, true)
 
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)

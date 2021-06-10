@@ -84,8 +84,6 @@ struct NodeManagerConfig {
   std::string agent_command;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled;
   /// Whether to enable automatic object deletion for object spilling.
   bool automatic_object_deletion_enabled;
   /// The store socket name.

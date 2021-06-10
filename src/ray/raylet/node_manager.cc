@@ -206,7 +206,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       object_directory_(object_directory),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
-      fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
       worker_pool_(io_service, self_node_id_, config.node_manager_address,
