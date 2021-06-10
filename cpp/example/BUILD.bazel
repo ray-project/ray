@@ -6,9 +6,11 @@ cc_binary(
     args = [
         "--ray-dynamic-library-path $(location example.so)",
     ],
+    data = [
+        "example.so",
+    ],
     linkstatic = True,
     deps = [
-        ":example.so",
         "@ray_api_libs//:ray_api",
     ],
 )
