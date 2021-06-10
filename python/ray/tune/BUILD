@@ -418,7 +418,7 @@ py_test(
 py_test(
     name = "test_horovod_client",
     size = "medium",
-    srcs = ["tests/test_horovod_client.py"],
+    srcs = ["tests/test_horovod.py"],
     tags = ["exclusive", "client", "py37"],
     deps = [":tune_lib"],
 )

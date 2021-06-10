@@ -12,19 +12,26 @@ except ImportError:
     pass  # This shouldn't be reached - the test should be skipped.
 
 
-@pytest.fixture
-def ray_start_client():
-    def ray_connect_handler(job_config=None):
-        # Ray client will disconnect from ray when
-        # num_clients == 0.
-        if ray.is_initialized():
-            return
-        else:
-            return ray.init(job_config=job_config, num_cpus=4)
+# For each test, run it once with ray.init() and again with ray.util.connect().
+@pytest.fixture(params=[False, True])
+def ray_start_4_cpus(request):
+    if request.param:
+        def ray_connect_handler(job_config=None):
+            # Ray client will disconnect from ray when
+            # num_clients == 0.
+            if ray.is_initialized():
+                return
+            else:
+                return ray.init(job_config=job_config, num_cpus=4)
 
-    assert not ray.util.client.ray.is_connected()
-    with ray_start_client_server(ray_connect_handler=ray_connect_handler):
+        assert not ray.util.client.ray.is_connected()
+        with ray_start_client_server(ray_connect_handler=ray_connect_handler):
+            assert ray.util.client.ray.is_connected()
+            yield
+    else:
+        ray.init(num_cpus=4)
         yield
+        ray.shutdown()
 
 
 def _train(batch_size=32, batch_per_iter=10):
@@ -64,12 +71,10 @@ def _train(batch_size=32, batch_per_iter=10):
 
 @pytest.mark.skipif(
     not gloo_built(), reason="Gloo is required for Ray integration")
-def test_remote_client_train(ray_start_client):
+def test_train(ray_start_4_cpus):
     def simple_fn(worker):
         local_rank = _train()
         return local_rank
-
-    assert ray.util.client.ray.is_connected()
 
     setting = RayExecutor.create_settings(timeout_s=30)
     hjob = RayExecutor(
@@ -81,6 +86,11 @@ def test_remote_client_train(ray_start_client):
     assert set(result) == {0, 1, 2}
     hjob.shutdown()
 
+@pytest.mark.skipif(
+    not gloo_built(), reason="Gloo is required for Ray integration")
+def test_tensorflow_mnist_example(ray_start_4_cpus):
+    from ray.util.horovod.tensorflow_mnist_ray import main
+    main()
 
 if __name__ == "__main__":
     import pytest
