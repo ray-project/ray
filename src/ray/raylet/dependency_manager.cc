@@ -64,8 +64,10 @@ void DependencyManager::StartOrUpdateWaitRequest(
       if (it->second.wait_request_id == 0) {
         // NOTE(ekl): we set is_worker_request to false so that wait requests don't
         // trigger fallback allocation. This effectively deprios wait requests.
-        it->second.wait_request_id = object_manager_.Pull({ref},
-                                                          /*is_worker_request=*/false);
+        bool is_priority_request = !RayConfig::instance().plasma_unlimited();
+        it->second.wait_request_id =
+            object_manager_.Pull({ref},
+                                 /*is_worker_request=*/is_priority_request);
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
                        << " request: " << it->second.wait_request_id;
       }
