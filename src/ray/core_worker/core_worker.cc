@@ -2593,7 +2593,8 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
   send_reply_callback(status, nullptr, nullptr);
 }
 
-void CoreWorker::ProcessSubscribeObjectLocations(const rpc::WorkerObjectLocationsSubMessage &message) {
+void CoreWorker::ProcessSubscribeObjectLocations(
+    const rpc::WorkerObjectLocationsSubMessage &message) {
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_.GetWorkerID()) {
     RAY_LOG(INFO) << "The ProcessSubscribeObjectLocations message is for "

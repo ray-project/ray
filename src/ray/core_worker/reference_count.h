@@ -420,7 +420,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       LOCKS_EXCLUDED(mutex_);
 
   /// SANG-TODO Doc
-  Status FillObjectInformation(const ObjectID &object_id, rpc::GetObjectLocationsOwnerReply *reply) LOCKS_EXCLUDED(mutex_);
+  Status FillObjectInformation(const ObjectID &object_id,
+                               rpc::GetObjectLocationsOwnerReply *reply)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get an object's size. This will return 0 if the object is out of scope.
   ///

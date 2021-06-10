@@ -1148,7 +1148,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
   /// SANG-TODO doc
-  void ProcessSubscribeObjectLocations(const rpc::WorkerObjectLocationsSubMessage &message);
+  void ProcessSubscribeObjectLocations(
+      const rpc::WorkerObjectLocationsSubMessage &message);
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 

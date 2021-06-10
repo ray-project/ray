@@ -323,7 +323,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
                 },
-                /*core_worker_subscriber=*/subscriber_),
+                /*core_worker_subscriber=*/subscriber_.get()),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize("object_spilling_config,YQ==");
   }

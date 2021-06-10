@@ -50,8 +50,7 @@ ObjectStoreRunner::~ObjectStoreRunner() {
 
 ObjectManager::ObjectManager(
     instrumented_io_context &main_service, const NodeID &self_node_id,
-    const ObjectManagerConfig &config,
-    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
@@ -60,7 +59,7 @@ ObjectManager::ObjectManager(
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
-      object_directory_(std::move(object_directory)),
+      object_directory_(object_directory),
       object_store_internal_(
           config, spill_objects_callback, object_store_full_callback,
           /*add_object_callback=*/

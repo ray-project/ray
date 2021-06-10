@@ -275,7 +275,7 @@ class Subscriber : public SubscriberInterface {
                     wait_for_object_eviction_channel_},
                    {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                     wait_for_ref_removed_channel_},
-                    {rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                   {rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
                     object_locations_channel_}}) {}
 
   ~Subscriber() = default;
@@ -399,8 +399,7 @@ class Subscriber : public SubscriberInterface {
       GUARDED_BY(mutex_);
 
   /// WaitForRefRemoved channel.
-  std::shared_ptr<ObjectLocationsChannel> object_locations_channel_
-      GUARDED_BY(mutex_);
+  std::shared_ptr<ObjectLocationsChannel> object_locations_channel_ GUARDED_BY(mutex_);
 
   /// Mapping of channel type to channels.
   absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>

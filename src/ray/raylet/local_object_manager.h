@@ -46,7 +46,7 @@ class LocalObjectManager {
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber)
+      pubsub::SubscriberInterface *core_worker_subscriber)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -284,7 +284,7 @@ class LocalObjectManager {
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  pubsub::SubscriberInterface *core_worker_subscriber_;
 
   ///
   /// Stats

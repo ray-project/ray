@@ -76,7 +76,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
 
               ))),
       node_manager_(main_service, self_node_id_, node_manager_config,
-                    object_manager_config, gcs_client_, object_directory_),
+                    object_manager_config, gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

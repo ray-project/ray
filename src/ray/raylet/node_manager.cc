@@ -170,12 +170,39 @@ void HeartbeatSender::Heartbeat() {
 NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config,
                          const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
       io_service_(io_service),
+      gcs_client_(gcs_client),
+      worker_pool_(io_service, self_node_id_, config.node_manager_address,
+                   config.num_workers_soft_limit,
+                   config.num_initial_python_workers_for_first_job,
+                   config.maximum_startup_concurrency, config.min_worker_port,
+                   config.max_worker_port, config.worker_ports, gcs_client_,
+                   config.worker_commands,
+                   /*starting_worker_timeout_callback=*/
+                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      client_call_manager_(io_service),
+      worker_rpc_pool_(client_call_manager_),
+      core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
+          self_node_id_, config.node_manager_address, config.node_manager_port,
+          RayConfig::instance().max_command_batch_size(), worker_rpc_pool_))
+          object_directory_(
+              RayConfig::instance().ownership_based_object_directory_enabled()
+                  ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(
+                        std::make_unique<OwnershipBasedObjectDirectory>(
+                            io_service_, gcs_client_,
+                            [this](const ObjectID &obj_id) {
+                              rpc::ObjectReference ref;
+                              ref.set_object_id(obj_id.Binary());
+                              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                                  {ref}, JobID::Nil());
+                            }))
+                  : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
+                        std::make_unique<ObjectDirectory>(io_service_, gcs_client_))),
       object_manager_(
-          io_service, self_node_id, object_manager_config, object_directory,
+          io_service, self_node_id, object_manager_config, object_directory_.get(),
           [this](const ObjectID &object_id, const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(object_id, object_url,
@@ -202,29 +229,16 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
           /*delete_object_callback=*/
           [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }),
-      gcs_client_(gcs_client),
-      object_directory_(object_directory),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
       initial_config_(config),
-      worker_pool_(io_service, self_node_id_, config.node_manager_address,
-                   config.num_workers_soft_limit,
-                   config.num_initial_python_workers_for_first_job,
-                   config.maximum_startup_concurrency, config.min_worker_port,
-                   config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands,
-                   /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       dependency_manager_(object_manager_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
       agent_manager_service_handler_(
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
-      client_call_manager_(io_service),
-      worker_rpc_pool_(client_call_manager_),
       local_object_manager_(
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
@@ -244,10 +258,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/
-          std::make_shared<pubsub::Subscriber>(
-              self_node_id_, config.node_manager_address, config.node_manager_port,
-              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_)),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
