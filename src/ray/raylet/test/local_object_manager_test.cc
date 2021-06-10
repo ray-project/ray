@@ -1169,7 +1169,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   ASSERT_EQ(deleted_urls_size, 1);
 }
 
-}  // namespace ray
+}  // namespace raylet
 
 }  // namespace ray
 
