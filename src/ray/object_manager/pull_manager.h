@@ -80,7 +80,8 @@ class PullManager {
 
   /// Helper method that deactivates requests from the given queue until the pull
   /// memory usage is within quota.
-  void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
+  void DeactivateUntilWithinQuota(const std::string &debug_name,
+                                  std::map<uint64_t, PullBundleRequest> &bundles,
                                   uint64_t *highest_id_for_bundle);
 
   /// Called when the available locations for a given object change.
