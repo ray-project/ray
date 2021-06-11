@@ -25,13 +25,21 @@ import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 modin_compatible_version = sys.version_info >= (3, 7, 0)
+modin_installed = True
+
+if modin_compatible_version:
+    try:
+        import modin  # noqa: F401
+    except ModuleNotFoundError:
+        modin_installed = False
+
+skip = not modin_compatible_version or not modin_installed
 
 # These tests are written for versions of Modin that require python 3.7+
 pytestmark = pytest.mark.skipif(
-    not modin_compatible_version,
-    reason="Newer versions of Modin require Python 3.7+")
+    skip, reason="Outdated or missing Modin dependency")
 
-if modin_compatible_version:
+if not skip:
     from ray.tests.modin.modin_test_utils import df_equals
     import modin.pandas as pd
 
