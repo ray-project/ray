@@ -56,4 +56,3 @@ genrule(
     local = 1,
     visibility = ["//visibility:public"],
 )
-
