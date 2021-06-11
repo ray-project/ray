@@ -331,7 +331,8 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
   dependency_manager_.RemoveTaskDependencies(task_id);
 
   TaskID task_id2 = RandomTaskId();
-  ready = dependency_manager_.RequestTaskDependencies(task_id2, ObjectIdsToRefs(arguments));
+  ready =
+      dependency_manager_.RequestTaskDependencies(task_id2, ObjectIdsToRefs(arguments));
   ASSERT_TRUE(ready);
   ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
   dependency_manager_.RemoveTaskDependencies(task_id2);

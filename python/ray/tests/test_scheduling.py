@@ -473,15 +473,13 @@ def test_many_args(ray_start_cluster):
         object_store_memory=(4 * object_size * 25))
     for _ in range(3):
         cluster.add_node(
-            num_cpus=1,
-            object_store_memory=(4 * object_size * 25))
+            num_cpus=1, object_store_memory=(4 * object_size * 25))
     ray.init(address=cluster.address)
 
     @ray.remote
     def f(i, *args):
         print(i)
         return
-
 
     @ray.remote
     def put():
