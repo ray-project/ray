@@ -48,7 +48,7 @@ def compute_advantages(rollout: SampleBatch,
     if use_gae:
         vpred_t = np.concatenate(
             [rollout[SampleBatch.VF_PREDS],
-             np.array([last_r])])
+             np.array([last_r.cpu()])]) 
         delta_t = (
             rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
         # This formula for the advantage comes from:
