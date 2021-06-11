@@ -11,7 +11,7 @@ cc_binary(
     ],
     linkstatic = True,
     deps = [
-        "@ray_api_libs//:ray_api",
+        ":ray_api",
     ],
 )
 
@@ -23,6 +23,39 @@ cc_binary(
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "@ray_api_libs//:ray_api",
+        ":ray_api",
     ],
 )
+
+cc_library(
+    name = "ray_api",
+    srcs = [
+        "thirdparty/lib/libray_api.so"
+    ],
+    hdrs = glob([
+        "thirdparty/include/**/*.h",
+        "thirdparty/include/**/*.hpp",
+        "thirdparty/include/**/**/*.h",
+        "thirdparty/include/**/**/*.hpp",
+    ]),
+    strip_include_prefix = "thirdparty/include", 
+    linkopts = ["-Wl,-rpath, ./"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "cpp_example_pkg",
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        echo $$WORK_DIR &&
+        PARENT_DIR=$$(dirname $$WORK_DIR) &&
+        echo 000 $$PARENT_DIR &&
+        cp -f -r "$$PARENT_DIR/temp_dir/.bazelrc" "$$WORK_DIR/cpp/example/" &&
+        cp -f -r "$$PARENT_DIR/temp_dir/thirdparty" "$$WORK_DIR/cpp/example/" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)
+

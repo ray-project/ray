@@ -82,15 +82,15 @@ genrule(
         cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        mkdir -p "$$WORK_DIR/cpp/example/thirdparty/include/" &&
-        mkdir -p "$$WORK_DIR/cpp/example/thirdparty/lib/" &&
-        cp -f "$$WORK_DIR/.bazelrc" "$$WORK_DIR/cpp/example/" &&
-        cp -f -r "$$WORK_DIR/external/msgpack/include/msgpack" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        cp -f "$$WORK_DIR/external/msgpack/include/msgpack.h" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        cp -f "$$WORK_DIR/external/msgpack/include/msgpack.hpp" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        cp -f $(locations libray_api.so) "$$WORK_DIR/cpp/example/thirdparty/lib/" &&
-        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$WORK_DIR/cpp/example/thirdparty/include" &&        
+        PARENT_DIR=$$(dirname $$WORK_DIR) &&
+        mkdir -p "$$PARENT_DIR/temp_dir/" &&
+        mkdir -p "$$PARENT_DIR/temp_dir/thirdparty/include/" &&
+        mkdir -p "$$PARENT_DIR/temp_dir/thirdparty/lib/" &&
+        cp -f "$$WORK_DIR/.bazelrc" "$$PARENT_DIR/temp_dir/" &&
+        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PARENT_DIR/temp_dir/thirdparty/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/" "$$PARENT_DIR/temp_dir/thirdparty/include" &&
+        cp -f $(locations libray_api.so) "$$PARENT_DIR/temp_dir/thirdparty/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$PARENT_DIR/temp_dir/thirdparty/include" &&        
         echo "$$WORK_DIR" > $@
     """,
     local = 1,

@@ -201,8 +201,8 @@ test_cpp() {
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run the cpp example
-  cd cpp/example
-  bazel run //:example
+  bazel build //cpp/example:cpp_example_pkg
+  bazel run //cpp/example:example
 
 }
 
