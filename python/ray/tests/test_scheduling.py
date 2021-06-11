@@ -466,7 +466,7 @@ def test_many_args(ray_start_cluster):
     cluster.add_node(
         num_cpus=1,
         _system_config={
-            "object_manager_default_chunk_size": 1024,
+            "object_manager_default_chunk_size": object_size // 100,
             "asio_stats_print_interval_ms": 1000,
             "asio_event_loop_stats_collection_enabled": True,
         },
@@ -487,11 +487,19 @@ def test_many_args(ray_start_cluster):
 
     xs = [put.remote() for _ in range(100)]
     ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    num_tasks_submitted_before, num_leases_requested_before = ray.worker.global_worker.core_worker.get_task_submission_stats()
     tasks = []
     for i in range(100):
         args = [np.random.choice(xs) for _ in range(25)]
         tasks.append(f.remote(i, *args))
     ray.get(tasks)
+
+    num_tasks_submitted, num_leases_requested = ray.worker.global_worker.core_worker.get_task_submission_stats()
+    num_tasks_submitted -= num_tasks_submitted_before
+    num_leases_requested -= num_leases_requested_before
+    print("submitted:", num_tasks_submitted, "leases requested:", num_leases_requested)
+    assert num_tasks_submitted == 100
+    assert num_leases_requested <= 3 * num_tasks_submitted
 
 
 if __name__ == "__main__":
