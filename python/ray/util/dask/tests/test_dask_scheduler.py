@@ -7,8 +7,16 @@ import ray
 from ray.util.client.common import ClientObjectRef
 
 
+@pytest.fixture
+def ray_start_1_cpu():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
-def test_ray_dask_basic(ray_start_regular_shared):
+def test_ray_dask_basic(ray_start_1_cpu):
     from ray.util.dask import ray_dask_get
 
     @ray.remote
@@ -36,7 +44,7 @@ def test_ray_dask_basic(ray_start_regular_shared):
 
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
-def test_ray_dask_persist(ray_start_regular_shared):
+def test_ray_dask_persist(ray_start_1_cpu):
     from ray.util.dask import ray_dask_get
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
