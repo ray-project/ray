@@ -799,9 +799,11 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   };
 
   // If the borrower is failed, this callback will be called.
-  const auto publisher_failed_callback = [this, addr, object_id]() {
+  const auto publisher_failed_callback = [this,
+                                          addr](const std::string &object_id_binary) {
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
+    const auto object_id = ObjectID::FromBinary(object_id_binary);
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
@@ -1111,14 +1113,16 @@ Status ReferenceCounter::FillObjectInformation(const ObjectID &object_id,
   if (it == object_id_refs_.end()) {
     return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
+
+  auto object_info = reply->mutable_object_location_info();
   for (const auto &node_id : it->second.locations) {
-    reply->add_node_ids(node_id.Binary());
+    object_info->add_node_ids(node_id.Binary());
   }
-  reply->set_object_size(it->second.object_size);
-  reply->set_spilled_url(it->second.spilled_url);
-  reply->set_spilled_node_id(it->second.spilled_node_id.Binary());
+  object_info->set_object_size(it->second.object_size);
+  object_info->set_spilled_url(it->second.spilled_url);
+  object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
-  reply->set_primary_node_id(primary_node_id.Binary());
+  object_info->set_primary_node_id(primary_node_id.Binary());
   return Status::OK();
 }
 
