@@ -58,8 +58,13 @@ class PlasmaAllocator {
   /// \return Number of bytes allocated by Plasma so far.
   static int64_t Allocated();
 
+  /// Get the number of bytes fallback allocated by Plasma so far.
+  /// \return Number of bytes fallback allocated by Plasma so far.
+  static int64_t FallbackAllocated();
+
  private:
   static int64_t allocated_;
+  static int64_t fallback_allocated_;
   static int64_t footprint_limit_;
 };
 

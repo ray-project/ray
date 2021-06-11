@@ -447,14 +447,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
 
-  // If distributed ref counting is not enabled, then delete the object as soon
-  // as its local ref count goes to 0.
-  size_t local_ref_count =
-      it->second.local_ref_count + it->second.submitted_task_ref_count;
-  if (!distributed_ref_counting_enabled_ && local_ref_count == 0) {
-    should_delete_value = true;
-  }
-
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.

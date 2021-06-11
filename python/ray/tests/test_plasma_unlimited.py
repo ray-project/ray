@@ -17,7 +17,7 @@ def _init_ray():
         _system_config={"plasma_unlimited": 1})
 
 
-def _check_spilled_mb(address, spilled=None, restored=None):
+def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
     def ok():
         s = memory_summary(address=address["redis_address"], stats_only=True)
         print(s)
@@ -32,6 +32,13 @@ def _check_spilled_mb(address, spilled=None, restored=None):
                 return False
         else:
             if "Spilled" in s:
+                return False
+        if fallback:
+            if "Plasma filesystem mmap usage: {} MiB".format(
+                    fallback) not in s:
+                return False
+        else:
+            if "Plasma filesystem mmap usage:" in s:
                 return False
         return True
 
@@ -50,7 +57,7 @@ def test_fallback_when_spilling_impossible_on_put():
         x2p = ray.get(x2)
         del x1p
         del x2p
-        _check_spilled_mb(address, spilled=None)
+        _check_spilled_mb(address, spilled=None, fallback=400)
     finally:
         ray.shutdown()
 
@@ -82,7 +89,7 @@ def test_fallback_when_spilling_impossible_on_get():
         _check_spilled_mb(address, spilled=800, restored=400)
         # x2 will be restored, triggering a fallback allocation.
         x2p = ray.get(x2)
-        _check_spilled_mb(address, spilled=800, restored=800)
+        _check_spilled_mb(address, spilled=800, restored=800, fallback=400)
         del x1p
         del x2p
     finally:
@@ -130,7 +137,7 @@ def test_task_unlimited():
 
         # round 1
         ray.get(consume.remote(refs))
-        _check_spilled_mb(address, spilled=500, restored=400)
+        _check_spilled_mb(address, spilled=500, restored=400, fallback=400)
 
         del x2p
         del sentinel
@@ -158,7 +165,7 @@ def test_task_unlimited_multiget_args():
             return os.getpid()
 
         ray.get([consume.remote(refs) for _ in range(1000)])
-        _check_spilled_mb(address, spilled=2000, restored=2000)
+        _check_spilled_mb(address, spilled=2000, restored=2000, fallback=2000)
         del x2p
     finally:
         ray.shutdown()

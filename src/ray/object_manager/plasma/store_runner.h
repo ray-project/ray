@@ -12,7 +12,8 @@ namespace plasma {
 class PlasmaStoreRunner {
  public:
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                    bool hugepages_enabled, std::string plasma_directory);
+                    bool hugepages_enabled, std::string plasma_directory,
+                    std::string fallback_directory);
   void Start(ray::SpillObjectsCallback spill_objects_callback,
              std::function<void()> object_store_full_callback,
              ray::AddObjectCallback add_object_callback,
@@ -35,6 +36,7 @@ class PlasmaStoreRunner {
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
+  std::string fallback_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaStore> store_;
 };

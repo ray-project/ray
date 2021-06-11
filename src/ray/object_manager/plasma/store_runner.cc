@@ -14,7 +14,8 @@ namespace plasma {
 void SetMallocGranularity(int value);
 
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                                     bool hugepages_enabled, std::string plasma_directory)
+                                     bool hugepages_enabled, std::string plasma_directory,
+                                     std::string fallback_directory)
     : hugepages_enabled_(hugepages_enabled) {
   // Sanity check.
   if (socket_name.empty()) {
@@ -39,8 +40,11 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
     plasma_directory = "/tmp";
 #endif
   }
+  if (fallback_directory.empty()) {
+    fallback_directory = "/tmp";
+  }
   RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                << " and huge page support "
+                << ", fallback " << fallback_directory << ", and huge page support "
                 << (hugepages_enabled ? "enabled" : "disabled");
 #ifdef __linux__
   if (!hugepages_enabled) {
@@ -71,6 +75,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 #endif
   system_memory_ = system_memory;
   plasma_directory_ = plasma_directory;
+  fallback_directory_ = fallback_directory;
 }
 
 void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
@@ -81,10 +86,11 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
   {
     absl::MutexLock lock(&store_runner_mutex_);
-    store_.reset(new PlasmaStore(
-        main_service_, plasma_directory_, hugepages_enabled_, socket_name_,
-        RayConfig::instance().object_store_full_delay_ms(), spill_objects_callback,
-        object_store_full_callback, add_object_callback, delete_object_callback));
+    store_.reset(new PlasmaStore(main_service_, plasma_directory_, fallback_directory_,
+                                 hugepages_enabled_, socket_name_,
+                                 RayConfig::instance().object_store_full_delay_ms(),
+                                 spill_objects_callback, object_store_full_callback,
+                                 add_object_callback, delete_object_callback));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single

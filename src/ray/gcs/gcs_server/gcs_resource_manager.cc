@@ -81,15 +81,19 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-      // TODO (Alex): We need to move this into ResourceBatchData. It's currently a
-      // message-reodering nightmare.
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
+      if (redis_broadcast_enabled_) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                           node_resource_change.SerializeAsString(),
+                                           nullptr));
+      } else {
+        absl::MutexLock guard(&resource_buffer_mutex_);
+        resources_buffer_proto_.add_batch()->mutable_change()->Swap(
+            &node_resource_change);
+      }
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
@@ -136,9 +140,15 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
+      if (redis_broadcast_enabled_) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                           node_resource_change.SerializeAsString(),
+                                           nullptr));
+      } else {
+        absl::MutexLock guard(&resource_buffer_mutex_);
+        resources_buffer_proto_.add_batch()->mutable_change()->Swap(
+            &node_resource_change);
+      }
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
@@ -367,10 +377,13 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast(
-    rpc::ResourceUsageBatchData &buffer) {
+    rpc::ResourceUsageBroadcastData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
+  resources_buffer_proto_.Swap(&buffer);
   if (!resources_buffer_.empty()) {
-    GetResourceUsageBatchForBroadcast_Locked(buffer);
+    for (auto &resources : resources_buffer_) {
+      buffer.add_batch()->mutable_data()->Swap(&resources.second);
+    }
     resources_buffer_.clear();
   }
 }

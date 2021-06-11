@@ -313,7 +313,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          RayConfig::instance().release_resources_during_plasma_fetch()));
+          /*release_resources_during_plasma_fetch=*/false));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -369,7 +369,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          RayConfig::instance().release_resources_during_plasma_fetch()));
+          /*release_resources_during_plasma_fetch=*/false));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(

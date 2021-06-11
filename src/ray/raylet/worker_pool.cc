@@ -1138,8 +1138,10 @@ void WorkerPool::WarnAboutSize() {
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
+      std::string warning_message_str = warning_message.str();
+      RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",
-                                                      warning_message.str(), get_time_());
+                                                      warning_message_str, get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
