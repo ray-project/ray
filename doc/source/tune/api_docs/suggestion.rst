@@ -203,7 +203,7 @@ In order to use this search algorithm, you will need to install ``flaml``:
 
 .. code-block:: bash
 
-    $ pip install flaml[blendsearch]
+    $ pip install 'flaml[blendsearch]'
 
 See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
 
