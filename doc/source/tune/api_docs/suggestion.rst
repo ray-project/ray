@@ -212,7 +212,7 @@ See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and docu
 .. _CFO:
 
 CFO (tune.suggest.flaml.CFO)
----------------------------------
+----------------------------
 
 CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
 It allows the users to specify a low-cost initial point as input if such point exists.
