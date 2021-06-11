@@ -187,8 +187,12 @@ class TorchRunner:
                 ]
             })
         # Check if fp16 is True and if NVIDIA Apex is imported.
-        if self.use_fp16 and self.training_operator._amp:
-            state.update({"amp": self.training_operator._amp.state_dict()})
+        if self.use_fp16_apex and self.training_operator._amp:
+            state.update({
+                "amp_apex": self.training_operator._amp.state_dict()
+            })
+        elif self.use_fp16_native:
+            state.update({"amp_native": self._amp_scaler.state_dict()})
 
         return state
 
@@ -205,8 +209,14 @@ class TorchRunner:
             for scheduler, state_dict in zip(schedulers, state["schedulers"]):
                 scheduler.load_state_dict(state_dict)
 
-        if self.use_fp16 and "amp" in state and self.training_operator._amp:
-            self.training_operator._amp.load_state_dict(state["amp"])
+        if self.use_fp16_apex and self.training_operator._amp:
+            if "amp_apex" in state:
+                self.training_operator._amp.load_state_dict(state["amp_apex"])
+            elif "amp" in state:
+                # backwards compatibility
+                self.training_operator._amp.load_state_dict(state["amp"])
+        elif self.use_fp16_native and "amp_native" in state:
+            self.training_operator._amp.load_state_dict(state["amp_native"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state["operator"])
 

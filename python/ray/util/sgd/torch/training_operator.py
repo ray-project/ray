@@ -17,9 +17,9 @@ from ray.util.sgd.torch.constants import (
 
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
+from torch.cuda import amp
 
 logger = logging.getLogger(__name__)
-amp = None
 
 try:
     from collections.abc import Iterable
@@ -27,7 +27,7 @@ except ImportError:
     from collections import Iterable
 
 try:
-    from apex import amp
+    from apex import amp as apex_amp
 except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
@@ -151,15 +151,22 @@ class TrainingOperator:
         """Passes in the timers from the Runner."""
         self.timers = timers
 
-    def _configure_amp(self, amp, models, optimizers, apex_args):
+    def _configure_apex_amp(self, amp, models, optimizers, apex_args):
         models, optimizers = amp.initialize(models, optimizers, **apex_args)
         return models, optimizers
 
     def _configure_ddp(self, models, device_ids, ddp_args):
-        return [
+        models = [
             DistributedDataParallel(model, device_ids=device_ids, **ddp_args)
             for model in models
         ]
+        if self.use_fp16_native:
+            # this is hacky but that's how pytorch lighting does it
+            # not sure if we should revert back to original forward after
+            # training is done, and if so, where to do that
+            for model in models:
+                model.forward = self._amp.autocast()(model.forward)
+        return models
 
     def _return_items(self, items, original_items):
         """Helper method to return items in same format as original_items."""
@@ -310,14 +317,22 @@ class TrainingOperator:
         else:
             self._criterion = None
 
-        if self.use_fp16 and amp:
-            logger.debug("Setting up Apex.")
-            self._amp = amp
-            self._original_models, self._optimizers = self._configure_amp(
-                self._amp,
-                self._original_models,
-                self._optimizers,
-                apex_args=apex_args)
+        if self.use_fp16:
+            if self.use_fp16_apex:
+                if not apex_amp:
+                    raise ValueError("apex library must be installed to "
+                                     "use apex backend for fp16")
+                logger.debug("Setting up Apex.")
+                self._amp = apex_amp
+                self._original_models, self._optimizers = (
+                    self._configure_apex_amp(
+                        self._amp,
+                        self._original_models,
+                        self._optimizers,
+                        apex_args=apex_args))
+            else:
+                self._amp = amp
+                self._amp_scaler = amp.GradScaler()
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
@@ -584,21 +599,32 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
             optimizer.zero_grad()
-            if self.use_fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+            if self.use_fp16_apex:
+                with self._amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
+            elif self.use_fp16_native:
+                self._amp_scaler.scale(loss).backward()
             else:
                 loss.backward()
 
         # Call step of optimizer to update model params.
         with self.timers.record("apply"):
-            optimizer.step()
+            if self.use_fp16_native:
+                self._amp_scaler.step(optimizer)
+                self._amp_scaler.update()
+            else:
+                optimizer.step()
 
         return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
@@ -913,8 +939,18 @@ class TrainingOperator:
 
     @property
     def use_fp16(self):
-        """bool: Whether the model and optimizer have been FP16 enabled."""
+        """Union[bool, str]: Whether FP16 has been enabled."""
         return self._use_fp16
+
+    @property
+    def use_fp16_apex(self):
+        """bool: Whether FP16 is enabled and using Apex as a backend."""
+        return self._use_fp16 == "apex"
+
+    @property
+    def use_fp16_native(self):
+        """bool: Whether FP16 is enabled and using native PyTorch backend."""
+        return self._use_fp16 and self._use_fp16 != "apex"
 
     @property
     def use_tqdm(self):
