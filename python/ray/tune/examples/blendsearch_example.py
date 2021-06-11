@@ -52,13 +52,14 @@ def run_blendsearch_tune(smoke_test=False):
 def run_blendsearch_tune_w_budget(time_budget_s=10):
     """run BlendSearch with given time_budget_s
     """
-    algo = BlendSearch(metric="mean_loss",
-                       mode="min",
-                       space={"width": tune.uniform(0, 20),
-                              "height": tune.uniform(-100, 100),
-                              "activation": tune.choice(["relu", "tanh"])
-                              }
-                       )
+    algo = BlendSearch(
+        metric="mean_loss",
+        mode="min",
+        space={
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
+        })
     algo.set_search_properties(config={"time_budget_s": time_budget_s})
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
@@ -72,8 +73,7 @@ def run_blendsearch_tune_w_budget(time_budget_s=10):
         num_samples=-1,
         config={
             "steps": 100,
-        }
-       )
+        })
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
