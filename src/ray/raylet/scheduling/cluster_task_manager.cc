@@ -1117,14 +1117,14 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
       auto task_request = allocated_instances->ToTaskRequest();
       for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
-        if (task_request.predefined_resources[i].demand > 0) {
+        if (task_request.predefined_resources[i] > 0) {
           total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              task_request.predefined_resources[i].demand;
+              task_request.predefined_resources[i];
         }
       }
       for (auto &entry : task_request.custom_resources) {
-        if (entry.demand > 0) {
-          total_normal_task_resources[string_id_map.Get(entry.id)] += entry.demand;
+        if (entry.second > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
         }
       }
     }
