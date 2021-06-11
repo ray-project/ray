@@ -315,8 +315,8 @@ class ZOOptSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, Uniform):
-                    return (ValueType.DISCRETE, [domain.lower, domain.upper],
-                            True)
+                    return (ValueType.DISCRETE,
+                            [domain.lower, domain.upper - 1], True)
 
             elif isinstance(domain, Categorical):
                 # Categorical variables would use ValueType.DISCRETE with

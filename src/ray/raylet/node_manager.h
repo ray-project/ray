@@ -752,6 +752,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Manage all runtime env locally
   RuntimeEnvManager runtime_env_manager_;
+
+  /// Next resource broadcast seq no. Non-incrementing sequence numbers
+  /// indicate network issues (dropped/duplicated/ooo packets, etc).
+  int64_t next_resource_seq_no_;
 };
 
 }  // namespace raylet

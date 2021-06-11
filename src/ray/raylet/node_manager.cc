@@ -256,7 +256,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
         return DeleteLocalURI(uri, cb);
-      }) {
+      }),
+      next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
@@ -1499,9 +1500,45 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(
     const rpc::UpdateResourceUsageRequest &request, rpc::UpdateResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  ResourceUsageBatchData batch;
-  batch.ParseFromString(request.serialized_resource_usage_batch());
-  ResourceUsageBatchReceived(batch);
+  rpc::ResourceUsageBroadcastData resource_usage_batch;
+  resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
+
+  if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
+    RAY_LOG(WARNING)
+        << "Raylet may have missed a resource broadcast. This either means that GCS has "
+           "restarted, the network is heavily congested and is dropping, reordering, or "
+           "duplicating packets. Expected seq#: "
+        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
+    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
+    // pull a full resource "snapshot" from gcs to make sure our state doesn't
+    // diverge from GCS.
+  }
+  next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
+
+  for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
+    if (resource_change_or_data.has_data()) {
+      const auto &resource_usage = resource_change_or_data.data();
+      const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
+      if (node_id == self_node_id_) {
+        // Skip messages from self.
+        continue;
+      }
+      UpdateResourceUsage(node_id, resource_usage);
+    } else if (resource_change_or_data.has_change()) {
+      const auto &resource_notification = resource_change_or_data.change();
+      auto id = NodeID::FromBinary(resource_notification.node_id());
+      if (resource_notification.updated_resources_size() != 0) {
+        ResourceSet resource_set(
+            MapFromProtobuf(resource_notification.updated_resources()));
+        ResourceCreateUpdated(id, resource_set);
+      }
+
+      if (resource_notification.deleted_resources_size() != 0) {
+        ResourceDeleted(id,
+                        VectorFromProtobuf(resource_notification.deleted_resources()));
+      }
+    }
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2171,6 +2208,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_object_store_bytes_fallback(
+        store_stats.object_store_bytes_fallback() +
+        cur_store.object_store_bytes_fallback());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +

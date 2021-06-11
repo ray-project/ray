@@ -341,7 +341,7 @@ void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data)
   if (config_.grpc_based_resource_broadcast) {
     grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
         raylet_client_pool_,
-        [this](rpc::ResourceUsageBatchData &buffer) {
+        [this](rpc::ResourceUsageBroadcastData &buffer) {
           gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
         }
 
