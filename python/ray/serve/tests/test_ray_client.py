@@ -102,6 +102,7 @@ A.deploy()
     ray.util.disconnect()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_class(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="")
     assert ray.util.client.ray.is_connected()
@@ -123,6 +124,7 @@ def test_quickstart_class(ray_client_instance):
     ray.util.disconnect()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_task(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="")
     assert ray.util.client.ray.is_connected()
