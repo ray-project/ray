@@ -15,7 +15,7 @@ from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                 get_release_wheel_url)
+                                get_release_wheel_url)
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
