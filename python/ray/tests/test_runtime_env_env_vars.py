@@ -236,7 +236,7 @@ def test_override_environment_variables_complex(shutdown_only,
 
 @pytest.mark.parametrize("use_runtime_env", [True, False])
 def test_override_environment_variables_reuse(shutdown_only, use_runtime_env):
-    """Test that previously set env vars don't pollute newer calls."""
+    """Test that new tasks don't incorrectly reuse previous environments."""
     ray.init()
 
     env_var_name = "TEST123"

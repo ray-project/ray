@@ -77,7 +77,7 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.  However, if all values are None this is set to {}.
+        # unspecified.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
@@ -118,12 +118,13 @@ class RuntimeEnvDict:
                                 "dict")
 
         self._dict["pip"] = None
-        if "pip" in runtime_env_json:
+        if "pip" in runtime_env_json and runtime_env_json["pip"] is not None:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if "conda" in runtime_env_json:
+            if ("conda" in runtime_env_json
+                    and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
                     "runtime_env cannot both be specified.  To use "
@@ -189,12 +190,6 @@ class RuntimeEnvDict:
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker
-
-        # TODO(architkulkarni) This is to make it easy for the worker caching
-        # code in C++ to check if the env is empty without deserializing and
-        # parsing it.  We should use a less confusing approach here.
-        if all(val is None for val in self._dict.values()):
-            self._dict = {}
 
     def get_parsed_dict(self) -> dict:
         return self._dict
