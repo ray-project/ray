@@ -117,11 +117,20 @@ if [ "${CI-}" = true ]; then
 build --google_credentials="${translated_path}"
 EOF
   elif [ -n "${BUILDKITE-}" ]; then
-    echo "Using buildkite secret store to communicate with cache address"
 
+    if [ "${platform}" = "darwin" ]; then
+      echo "Using local disk cache on mac"
     cat <<EOF >> ~/.bazelrc
+build --disk_cache=/tmp/bazel-cache
+build --repository_cache=/tmp/bazel-repo-cache
+EOF
+    else
+      echo "Using buildkite secret store to communicate with cache address"
+      cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
+    fi
+
   else
     echo "Using remote build cache in read-only mode." 1>&2
     cat <<EOF >> ~/.bazelrc

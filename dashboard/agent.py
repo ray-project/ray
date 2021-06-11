@@ -45,6 +45,7 @@ class DashboardAgent(object):
                  dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
+                 runtime_env_dir=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
@@ -56,6 +57,7 @@ class DashboardAgent(object):
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
+        self.runtime_env_dir = runtime_env_dir
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -289,6 +291,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--runtime-env-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the resource directory used by runtime_env.")
 
     args = parser.parse_args()
     try:
@@ -316,6 +324,7 @@ if __name__ == "__main__":
             args.dashboard_agent_port,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
+            runtime_env_dir=args.runtime_env_dir,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,

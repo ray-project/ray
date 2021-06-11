@@ -31,6 +31,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -183,6 +184,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Set the node manager port.
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
   void SetNodeManagerPort(int node_manager_port);
+
+  /// Set agent manager.
+  void SetAgentManager(std::shared_ptr<AgentManager> agent_manager);
 
   /// Handles the event that a job is started.
   ///
@@ -426,6 +430,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_io_workers = 0;
   };
 
+  /// Some basic information about the starting worker process.
+  struct StartingWorkerProcessInfo {
+    /// The number of workers in the worker process.
+    int num_workers;
+    /// The number of pending registration workers in the worker process.
+    int num_starting_workers;
+    /// The type of the worker.
+    rpc::WorkerType worker_type;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -449,14 +463,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of starting worker processes
-    /// to the number of their unregistered workers.
-    std::unordered_map<Process, int> starting_worker_processes;
+    /// A map from the pids of starting worker processes to the extra information
+    /// of the process.
+    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
-    /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    /// All tasks that have associated dedicated workers.
+    std::unordered_set<TaskID> tasks_with_dedicated_workers;
+    /// All tasks that have pending runtime envs.
+    std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -593,6 +609,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// A callback to get the current time.
   const std::function<double()> get_time_;
+  /// Agent manager.
+  std::shared_ptr<AgentManager> agent_manager_;
 };
 
 }  // namespace raylet

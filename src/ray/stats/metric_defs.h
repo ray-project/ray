@@ -59,6 +59,10 @@ static Gauge ObjectStoreUsedMemory(
     "object_store_used_memory",
     "Amount of memory currently occupied in the object store.", "bytes");
 
+static Gauge ObjectStoreFallbackMemory(
+    "object_store_fallback_memory",
+    "Amount of memory in fallback allocations in the filesystem.", "bytes");
+
 static Gauge ObjectStoreLocalObjects("object_store_num_local_objects",
                                      "Number of objects currently in the object store.",
                                      "objects");

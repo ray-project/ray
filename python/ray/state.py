@@ -834,19 +834,6 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
-
-    Args:
-        object_ref: An object ref to fetch information about. If this is None,
-            then the entire object table is fetched.
-
-    Returns:
-        Information from the object table.
-    """
-    return state.object_table(object_ref=object_ref)
-
-
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.

@@ -34,7 +34,7 @@
       --test_env=CONDA_DEFAULT_ENV
       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
+      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -290,7 +290,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
@@ -298,6 +298,12 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
+
+- label: ":potable_water: Workflow tests and examples"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/...
 
 - label: ":book: Doc tests and examples"
   conditions:
