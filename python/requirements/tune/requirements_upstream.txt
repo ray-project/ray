@@ -4,3 +4,4 @@
 
 tune-sklearn==0.3.0
 xgboost_ray==0.0.5
+modin>=0.10.0; python_version >= '3.7'
