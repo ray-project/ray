@@ -41,3 +41,30 @@ def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
         rank=world_rank,
         world_size=world_size,
         timeout=timeout)
+
+
+def choose_amp_backend(use_fp16, native_amp=None, apex_amp=None):
+    """Validate and choose applicable amp backend."""
+    if use_fp16 not in (True, False, "apex"):
+        raise ValueError("use_fp16 must be a bool or 'apex'.")
+
+    if not use_fp16:
+        return use_fp16
+
+    if use_fp16 == "apex":
+        if not apex_amp:
+            raise ImportError(
+                "Please install apex from "
+                "https://www.github.com/nvidia/apex to use fp16 training "
+                "with apex.")
+    else:
+        if not native_amp:
+            use_fp16 = "apex"
+            if not apex_amp:
+                raise ImportError(
+                    "Neither native PyTorch amp nor apex are available."
+                    "Please either upgrade to PyTorch>=1.6 or install apex "
+                    "from https://www.github.com/nvidia/apex to use fp16"
+                    " training.")
+
+    return use_fp16

@@ -17,7 +17,18 @@ if __name__ == "__main__":
             fp16=True,
             test_mode=False)
     except Exception as e:
-        print(f"The test failed with {e}")
+        print(f"(native fp16) The test failed with {e}")
+        success = False
+
+    try:
+        train_cifar(
+            num_workers=2,
+            use_gpu=True,
+            num_epochs=5,
+            fp16="apex",
+            test_mode=False)
+    except Exception as e:
+        print(f"(apex fp16) The test failed with {e}")
         success = False
 
     delta = time.time() - start_time

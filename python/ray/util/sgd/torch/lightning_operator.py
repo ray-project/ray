@@ -364,7 +364,11 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         untouched_loss = loss.detach().clone()
 
         with self.timers.record("grad"):
-            model.backward(loss, optimizer, optimizer_idx=0)
+            if self.use_fp16_apex:
+                with self._amp.scale_loss(loss, optimizer) as scaled_loss:
+                    model.backward(scaled_loss, optimizer, optimizer_idx=0)
+            else:
+                model.backward(loss, optimizer, optimizer_idx=0)
 
         if self.is_function_implemented("on_after_backward", model):
             model.on_after_backward()

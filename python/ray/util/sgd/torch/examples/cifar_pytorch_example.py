@@ -153,7 +153,7 @@ if __name__ == "__main__":
         "--fp16",
         action="store_true",
         default=False,
-        help="Enables FP16 training with apex. Requires `use-gpu`.")
+        help="Enables FP16 training. Requires `use-gpu`.")
     parser.add_argument(
         "--smoke-test",
         action="store_true",

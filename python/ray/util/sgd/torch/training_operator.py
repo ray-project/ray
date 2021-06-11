@@ -14,12 +14,14 @@ from ray.util.sgd.torch.constants import (
     NUM_STEPS,
     SCHEDULER_STEP_BATCH,
 )
+from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
-from torch.cuda import amp
 
 logger = logging.getLogger(__name__)
+amp = None
+apex_amp = None
 
 try:
     from collections.abc import Iterable
@@ -33,6 +35,12 @@ except ImportError:
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
     logger.debug("apex is not installed.")
+    pass
+
+try:
+    from torch.cuda import amp
+except ImportError:
+    logger.debug("torch.cuda.amp is not available.")
     pass
 
 tqdm = None
@@ -133,7 +141,7 @@ class TrainingOperator:
         self._local_rank = local_rank
         self._config = config
         self._is_distributed = is_distributed
-        self._use_fp16 = use_fp16
+        self._use_fp16 = choose_amp_backend(use_fp16, amp, apex_amp)
         self._device = device
         self._use_gpu = use_gpu and torch.cuda.is_available()
         if tqdm is None and use_tqdm:
@@ -156,17 +164,10 @@ class TrainingOperator:
         return models, optimizers
 
     def _configure_ddp(self, models, device_ids, ddp_args):
-        models = [
+        return [
             DistributedDataParallel(model, device_ids=device_ids, **ddp_args)
             for model in models
         ]
-        if self.use_fp16_native:
-            # this is hacky but that's how pytorch lighting does it
-            # not sure if we should revert back to original forward after
-            # training is done, and if so, where to do that
-            for model in models:
-                model.forward = self._amp.autocast()(model.forward)
-        return models
 
     def _return_items(self, items, original_items):
         """Helper method to return items in same format as original_items."""
@@ -213,8 +214,8 @@ class TrainingOperator:
         Calling register will perform the following steps in this order:
             1. If using GPU, Move model(s) and criterion to the corresponding
                 Cuda device.
-            2. If using fp16, initializes amp with model(s), optimizer(s),
-                and apex_args.
+            2. If using fp16, initializes amp (if using apex - with model(s),
+                optimizer(s), and apex_args).
             3. If using distributed training and wrap_ddp is True,
                 wraps model(s) with DistributedDataParallel.
 
@@ -267,6 +268,7 @@ class TrainingOperator:
                 By default, the models and optimizers are passed in.
                 Consider using "num_losses" if operating over multiple
                 models and optimizers.
+                Ignored if apex is not used for fp16.
 
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
@@ -317,8 +319,10 @@ class TrainingOperator:
         else:
             self._criterion = None
 
-        if self.use_fp16:
-            if self.use_fp16_apex:
+        # using attributes instead of properties because those check
+        # for self._amp which has not been set yet
+        if self._use_fp16:
+            if self._use_fp16 == "apex":
                 if not apex_amp:
                     raise ValueError("apex library must be installed to "
                                      "use apex backend for fp16")
@@ -331,6 +335,7 @@ class TrainingOperator:
                         self._optimizers,
                         apex_args=apex_args))
             else:
+                logger.debug("Setting up native amp.")
                 self._amp = amp
                 self._amp_scaler = amp.GradScaler()
 
@@ -711,8 +716,13 @@ class TrainingOperator:
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
@@ -939,18 +949,21 @@ class TrainingOperator:
 
     @property
     def use_fp16(self):
-        """Union[bool, str]: Whether FP16 has been enabled."""
-        return self._use_fp16
+        """bool: Whether FP16 has been enabled and is available."""
+        return self._use_fp16 and getattr(self, "_amp", None)
 
     @property
     def use_fp16_apex(self):
         """bool: Whether FP16 is enabled and using Apex as a backend."""
-        return self._use_fp16 == "apex"
+        # second condition is for backwards compatibility
+        return self.use_fp16 and (self._use_fp16 == "apex" or
+                                  (self._use_fp16
+                                   and hasattr(self._amp, "scale_loss")))
 
     @property
     def use_fp16_native(self):
         """bool: Whether FP16 is enabled and using native PyTorch backend."""
-        return self._use_fp16 and self._use_fp16 != "apex"
+        return self.use_fp16 and self._use_fp16 != "apex"
 
     @property
     def use_tqdm(self):
