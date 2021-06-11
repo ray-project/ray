@@ -3,6 +3,7 @@ from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.common cimport (
+    CObjectLocation,
     CGcsClientOptions,
 )
 

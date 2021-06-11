@@ -235,10 +235,8 @@ def get_ray_address_to_use_or_die():
     Returns:
         A string to pass into `ray.init(address=...)`
     """
-    if "RAY_ADDRESS" in os.environ:
-        return os.environ.get("RAY_ADDRESS")
-
-    return find_redis_address_or_die()
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          find_redis_address_or_die())
 
 
 def find_redis_address_or_die():
@@ -1462,7 +1460,7 @@ def start_raylet(redis_address,
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir)
+            session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1514,6 +1512,7 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--runtime-env-dir={resource_dir}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1640,7 +1639,7 @@ def build_java_worker_command(
 
 def build_cpp_worker_command(cpp_worker_options, redis_address,
                              plasma_store_name, raylet_name, redis_password,
-                             session_dir, log_dir):
+                             session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
 
     Args:
@@ -1651,14 +1650,21 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        log_dir (str): The path of logs.
+        node_ip_address (str): The ip address for this node.
     Returns:
         The command string for starting CPP worker.
     """
 
     command = [
-        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
-        session_dir, log_dir
+        DEFAULT_WORKER_EXECUTABLE,
+        f"--ray-plasma-store-socket-name={plasma_store_name}",
+        f"--ray-raylet-socket-name={raylet_name}",
+        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray-redis-address={redis_address}",
+        f"--ray-redis-password={redis_password}",
+        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}"
     ]
 
     return command

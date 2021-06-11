@@ -29,6 +29,7 @@ from ray.includes.common cimport (
     CActorCreationOptions,
     CBuffer,
     CPlacementGroupCreationOptions,
+    CObjectLocation,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -168,11 +169,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
-                              CAddress *owner_address)
+                              CAddress *owner_address,
+                              c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CAddress &owner_address)
+                const CAddress &owner_address,
+                const c_string &object_status)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
@@ -207,6 +210,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        CRayStatus GetLocationFromOwner(
+                const c_vector[CObjectID] &object_ids,
+                int64_t timeout_ms,
+                c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 

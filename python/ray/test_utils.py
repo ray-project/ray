@@ -506,6 +506,13 @@ def client_test_enabled() -> bool:
     return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
 def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
@@ -590,6 +597,27 @@ def get_master_wheel_url(
         py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
-
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
     return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
-            f"{ray_commit}/{get_wheel_filename()}")
+            f"{ray_commit}/{filename}")
+
+
+def get_release_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel for a specific release."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
+            f"{ray_version}/{ray_commit}/{filename}")
+    # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
+    # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
+    # 4_x86_64.whl

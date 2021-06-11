@@ -301,6 +301,11 @@ class OptunaSearch(Searcher):
             if isinstance(sampler, Quantized):
                 quantize = sampler.q
                 sampler = sampler.sampler
+                if isinstance(sampler, LogUniform):
+                    logger.warning(
+                        "Optuna does not handle quantization in loguniform "
+                        "sampling. The parameter will be passed but it will "
+                        "probably be ignored.")
 
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
@@ -321,10 +326,14 @@ class OptunaSearch(Searcher):
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     return ot.distributions.IntLogUniformDistribution(
-                        domain.lower, domain.upper, step=quantize or 1)
+                        domain.lower, domain.upper - 1, step=quantize or 1)
                 elif isinstance(sampler, Uniform):
+                    # Upper bound should be inclusive for quantization and
+                    # exclusive otherwise
                     return ot.distributions.IntUniformDistribution(
-                        domain.lower, domain.upper, step=quantize or 1)
+                        domain.lower,
+                        domain.upper - int(bool(not quantize)),
+                        step=quantize or 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return ot.distributions.CategoricalDistribution(

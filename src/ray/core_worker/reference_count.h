@@ -52,9 +52,10 @@ class ReferenceCounterInterface {
 };
 
 // Callback for location subscriptions.
-using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
-                       const NodeID &, int64_t)>;
+using LocationSubscriptionCallback = std::function<void(
+    const absl::flat_hash_set<NodeID> & /* node_ids */, int64_t /* object_size */,
+    const std::string & /* spilled_url */, const NodeID & /* spilled_node_id */,
+    int64_t /* current_version */, const absl::optional<NodeID> & /* primary_node_id */)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
@@ -70,11 +71,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    pubsub::PublisherInterface *object_status_publisher,
                    pubsub::SubscriberInterface *object_status_subscriber,
-                   bool distributed_ref_counting_enabled = true,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
-        distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         borrower_pool_(client_factory),
         object_status_publisher_(object_status_publisher),
@@ -89,6 +88,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Return true if the worker owns any object.
   bool OwnObjects() const;
+
+  /// Return true if the object is owned by us.
+  bool OwnedByUs(const ObjectID &object_id) const;
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -774,11 +776,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
   rpc::WorkerAddress rpc_address_;
-
-  /// Feature flag for distributed ref counting. If this is false, then we will
-  /// keep the distributed ref count, but only the local ref count will be used
-  /// to decide when objects can be evicted.
-  const bool distributed_ref_counting_enabled_;
 
   /// Feature flag for lineage pinning. If this is false, then we will keep the
   /// lineage ref count, but this will not be used to decide when the object's
