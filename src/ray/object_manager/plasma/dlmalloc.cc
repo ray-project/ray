@@ -73,6 +73,11 @@ constexpr int GRANULARITY_MULTIPLIER = 2;
 // Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
 static bool allocated_once = false;
 
+// Populated on the first allocation so we can track which allocations fall within
+// the initial region vs outside.
+static char *initial_region_ptr = nullptr;
+static size_t initial_region_size = 0;
+
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
 static void *pointer_retreat(void *p, ptrdiff_t n) { return (unsigned char *)p - n; }
@@ -141,8 +146,12 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
       RAY_LOG(ERROR)
           << "  (this probably means you have to increase /proc/sys/vm/nr_hugepages)";
     }
+  } else if (!allocated_once) {
+    initial_region_ptr = static_cast<char *>(*pointer);
+    initial_region_size = size;
   }
 }
+
 #endif
 
 void *fake_mmap(size_t size) {
@@ -210,6 +219,14 @@ int fake_munmap(void *addr, int64_t size) {
 }
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }
+
+// Returns whether the given pointer is outside the initially allocated region.
+bool IsOutsideInitialAllocation(void *p) {
+  if (initial_region_ptr == nullptr) {
+    return false;
+  }
+  return (p < initial_region_ptr) || (p >= (initial_region_ptr + initial_region_size));
+}
 
 const PlasmaStoreInfo *plasma_config;
 

@@ -901,6 +901,7 @@ std::string ObjectManager::DebugString() const {
 void ObjectManager::RecordMetrics() const {
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
+  stats::ObjectStoreFallbackMemory().Record(plasma::PlasmaAllocator::FallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
 }
@@ -908,6 +909,7 @@ void ObjectManager::RecordMetrics() const {
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   auto stats = reply->mutable_store_stats();
   stats->set_object_store_bytes_used(used_memory_);
+  stats->set_object_store_bytes_fallback(plasma::PlasmaAllocator::FallbackAllocated());
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
