@@ -366,8 +366,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param node_id The remote node's id.
   /// \param spilled_url The url of the spilled object.
   /// \return Void.
-  void PushSpilledObject(const ObjectID &object_id, const NodeID &node_id,
-                         const std::string &spilled_url);
+  void PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+                          const std::string &spilled_url);
 
   /// The internal implementation of pushing an object.
   ///

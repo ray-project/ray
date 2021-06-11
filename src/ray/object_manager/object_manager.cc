@@ -338,8 +338,8 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
   // Push from spilled object directly if the object is on local disk.
   auto object_url = get_spilled_object_url_(object_id);
-  if (!object_url.empty()) {
-    return PushSpilledObject(object_id, node_id, object_url);
+  if (!object_url.empty() && RayConfig::instance().is_external_storage_type_fs()) {
+    return PushFromFilesystem(object_id, node_id, object_url);
   }
 
   // Avoid setting duplicated timer for the same object and node pair.
@@ -410,8 +410,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
                      std::move(release_chunk_callback));
 }
 
-void ObjectManager::PushSpilledObject(const ObjectID &object_id, const NodeID &node_id,
-                                      const std::string &spilled_url) {
+void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+                                       const std::string &spilled_url) {
   // SpilledObject::CreateSpilledObject does synchronous IO; schedule it off
   // main thread.
   rpc_service_.post(
@@ -419,8 +419,8 @@ void ObjectManager::PushSpilledObject(const ObjectID &object_id, const NodeID &n
         auto optional_spilled_object =
             SpilledObject::CreateSpilledObject(spilled_url, chunk_size);
         if (!optional_spilled_object.has_value()) {
-          RAY_LOG(WARNING) << "Failed to load splled object " << object_id
-                           << ". It may have been evicted.";
+          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
+                         << ". It may have been evicted.";
           return;
         }
 
@@ -438,9 +438,9 @@ void ObjectManager::PushSpilledObject(const ObjectID &object_id, const NodeID &n
                                                rpc::PushRequest &push_request) -> Status {
           auto optional_chunk = spilled_object->GetChunk(chunk_index);
           if (!optional_chunk.has_value()) {
-            RAY_LOG(WARNING) << "Read chunk " << chunk_index << " of object " << object_id
-                             << " failed. "
-                             << " It may have been evicted.";
+            RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
+                           << " failed. "
+                           << " It may have been evicted.";
             return Status::IOError("Failed to read spilled object");
           }
           push_request.set_data(std::move(optional_chunk.value()));
@@ -458,7 +458,7 @@ void ObjectManager::PushSpilledObject(const ObjectID &object_id, const NodeID &n
                                  std::move(spilled_object_chunk_reader),
                                  [](uint64_t) { /* do nothing to release chunk */ });
             },
-            "ObjectManager.PushSpilledObjectInternal");
+            "ObjectManager.PushLocalSpilledObjectInternal");
       },
       "ObjectManager.CreateSpilledObject");
 }
