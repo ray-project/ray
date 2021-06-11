@@ -105,7 +105,7 @@
 
   run:
     timeout: 3000
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000 --npartitions 10 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
   smoke_test:
     cluster:
