@@ -434,8 +434,9 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: Serializable information on the
                 `self.exploration` object.
         """
-        return self.exploration.get_info()
+        return self.exploration.get_state()
 
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
         deprecation_warning("get_exploration_info", "get_exploration_state")
         return self.get_exploration_state()

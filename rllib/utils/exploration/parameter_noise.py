@@ -14,7 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import convert_to_numpy, softmax, SMALL_NUMBER
+from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType
 
 if TYPE_CHECKING:
@@ -269,7 +269,7 @@ class ParameterNoise(Exploration):
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
                            (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_info(
+            current_epsilon = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_epsilon"]
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)

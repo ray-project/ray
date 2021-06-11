@@ -479,8 +479,13 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
+    def get_exploration_state(self) -> Dict[str, TensorType]:
+        return self.exploration.get_state(sess=self.get_session())
+
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.exploration.get_info(sess=self.get_session())
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @override(Policy)
     @DeveloperAPI

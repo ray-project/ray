@@ -66,8 +66,8 @@ class EpsilonGreedy(Exploration):
             dtype=np.int64)
 
         # Build the tf-info-op.
-        if self.framework in ["tf2", "tf", "tfe"]:
-            self._tf_info_op = self.get_info()
+        if self.framework == "tf":
+            self._tf_state_op = self.get_state()
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -196,7 +196,7 @@ class EpsilonGreedy(Exploration):
     @override(Exploration)
     def get_state(self, sess: Optional["tf.Session"] = None):
         if sess:
-            return sess.run(self._tf_info_op)
+            return sess.run(self._tf_state_op)
         eps = self.epsilon_schedule(self.last_timestep)
         return {
             "cur_epsilon": convert_to_numpy(eps)
