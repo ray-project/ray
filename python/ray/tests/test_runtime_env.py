@@ -692,15 +692,20 @@ def test_get_release_wheel_url():
 
 
 def test_container_option_serialize():
-    runtime_env = {"container_option":{"image":"ray:latest","run_options":["--name=test"]}}
+    runtime_env = {
+        "container_option": {
+            "image": "ray:latest",
+            "run_options": ["--name=test"]
+        }
+    }
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
-    assert job_config_serialized.count(b'--name=test') == 3
+    assert job_config_serialized.count(b"--name=test") == 3
 
-    runtime_env1 = {"container_option":{"image":"ray:latest"}}
+    runtime_env1 = {"container_option": {"image": "ray:latest"}}
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env1)
     job_config_serialized = job_config.serialize()
-    assert job_config_serialized.count(b'image') == 2
+    assert job_config_serialized.count(b"image") == 2
 
 
 if __name__ == "__main__":

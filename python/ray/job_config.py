@@ -4,7 +4,7 @@ import uuid
 import json
 
 from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
-from ray.core.generated.common_pb2 import ContainerOption as ContainerOptionPB
+
 
 class JobConfig:
     """A class used to store the configurations of a job.
@@ -110,7 +110,7 @@ class JobConfig:
 
     def get_runtime_env_container_options(self):
         if self.runtime_env.get("container_option"):
-            return self.runtime_env.get("container_option");
+            return self.runtime_env.get("container_option")
         return dict()
 
     def set_runtime_env_uris(self, uris):
@@ -126,7 +126,8 @@ class JobConfig:
         runtime_env.uris[:] = self.get_runtime_env_uris()
         container_option_dict = self.get_runtime_env_container_options()
         if container_option_dict.get("image"):
-            runtime_env.container_option.image = container_option_dict.get("image")
+            runtime_env.container_option.image = container_option_dict.get(
+                "image")
         if container_option_dict.get("run_options"):
             runtime_env.container_option.run_options. \
                 extend(container_option_dict.get("run_options"))

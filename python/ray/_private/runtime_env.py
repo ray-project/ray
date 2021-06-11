@@ -59,8 +59,8 @@ class RuntimeEnvDict:
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
-        container_option (dict): Require a given (Docker) container image. The Ray
-            worker process will run in a container with this image.
+        container_option (dict): Require a given (Docker) container image.
+            The Ray worker process will run in a container with this image.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
             Examples:
@@ -150,7 +150,8 @@ class RuntimeEnvDict:
             self._dict["uris"] = runtime_env_json["uris"]
 
         if "container_option" in runtime_env_json:
-            self._dict["container_option"] = runtime_env_json["container_option"]
+            self._dict["container_option"] = runtime_env_json[
+                "container_option"]
 
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
