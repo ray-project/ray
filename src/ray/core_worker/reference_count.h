@@ -419,9 +419,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                   const LocationSubscriptionCallback &callback)
       LOCKS_EXCLUDED(mutex_);
 
-  /// SANG-TODO Doc
+  /// Fill up the object information to the given reply.
+  ///
+  /// \param[in] object_id The object id
+  /// \param[out] The object information that will be filled by a given object id.
+  /// \return OK status if object information is filled. Non OK status otherwise.
+  /// It can return non-OK status, for example, if the object for the object id
+  /// doesn't exist.
   Status FillObjectInformation(const ObjectID &object_id,
-                               rpc::GetObjectLocationsOwnerReply *reply)
+                               rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get an object's size. This will return 0 if the object is out of scope.

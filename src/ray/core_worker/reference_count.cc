@@ -1106,15 +1106,14 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   }
 }
 
-Status ReferenceCounter::FillObjectInformation(const ObjectID &object_id,
-                                               rpc::GetObjectLocationsOwnerReply *reply) {
+Status ReferenceCounter::FillObjectInformation(
+    const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
 
-  auto object_info = reply->mutable_object_location_info();
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
