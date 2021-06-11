@@ -239,11 +239,11 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_locations_message()->Swap(request.get());
 
-    object_location_subscriber_->Subscribe(std::move(sub_message),
-                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                       owner_address, object_id.Binary(),
-                                       /*Success callback*/ msg_published_callback,
-                                       /*Failure callback*/ failure_callback);
+    object_location_subscriber_->Subscribe(
+        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+        owner_address, object_id.Binary(),
+        /*Success callback*/ msg_published_callback,
+        /*Failure callback*/ failure_callback);
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
@@ -288,8 +288,9 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
     return Status::OK();
   }
   entry->second.callbacks.erase(callback_id);
-  object_location_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                       entry->second.owner_address, object_id.Binary());
+  object_location_subscriber_->Unsubscribe(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
+      object_id.Binary());
   if (entry->second.callbacks.empty()) {
     listeners_.erase(entry);
   }
