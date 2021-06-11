@@ -24,7 +24,6 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
-from ray.tune.suggest.flaml import BlendSearch
 from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
