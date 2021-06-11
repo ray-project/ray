@@ -27,6 +27,17 @@ def ray_client_instance(scope="module"):
         subprocess.check_output(["ray", "stop", "--force"])
 
 
+@pytest.fixture
+def serve_with_client(ray_client_instance):
+    ray.util.connect(ray_client_instance, namespace="")
+    assert ray.util.client.ray.is_connected()
+
+    yield
+
+    serve.shutdown()
+    ray.util.disconnect()
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
 def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="")
@@ -103,10 +114,7 @@ A.deploy()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_quickstart_class(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
-    assert ray.util.client.ray.is_connected()
-
+def test_quickstart_class(serve_with_client):
     serve.start()
 
     @serve.deployment
@@ -120,15 +128,9 @@ def test_quickstart_class(ray_client_instance):
     response = requests.get("http://127.0.0.1:8000/hello?name=serve").text
     assert response == "Hello serve!"
 
-    serve.shutdown()
-    ray.util.disconnect()
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_quickstart_task(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
-    assert ray.util.client.ray.is_connected()
-
+def test_quickstart_task(serve_with_client):
     serve.start()
 
     @serve.deployment
@@ -146,9 +148,6 @@ def test_quickstart_task(ray_client_instance):
     # Query our endpoint in two different ways: from HTTP and from Python.
     assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
     assert ray.get(Counter.get_handle().remote()) == {"count": 2}
-
-    serve.shutdown()
-    ray.util.disconnect()
 
 
 if __name__ == "__main__":
