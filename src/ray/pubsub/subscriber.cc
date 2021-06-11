@@ -76,8 +76,7 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 }
 
 template <typename KeyIdType>
-std::shared_ptr<SubscriptionCallback>
-SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
+SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
     const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
@@ -95,7 +94,7 @@ SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   if (maybe_subscription_callback.has_value()) {
     // If the object id is still subscribed, return a subscribe callback.
-    return std::make_shared<SubscriptionCallback>(maybe_subscription_callback.value());
+    return maybe_subscription_callback.value();
   } else {
     return nullptr;
   }
@@ -229,28 +228,30 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     commands_.erase(publisher_id);
   } else {
     // Otherwise, iterate on the reply and pass published messages to channels.
-    std::queue<std::shared_ptr<SubscriptionCallback>> subscription_callbacks;
+    std::deque<SubscriptionCallback> subscription_callbacks;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
-      subscription_callbacks.push(
+      subscription_callbacks.emplace_back(
           Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }
-    // We need to unlock here because the subscription callback could call Subscriber APIs
-    // which needs to hold a lock. Note that we don't allow to call subscriber APIs inside
-    // the failure callback right now, so we don't need to do the same thing for that.
-    mutex_.Unlock();
-    for (int i = 0; i < reply.pub_messages_size(); i++) {
-      const auto &msg = reply.pub_messages(i);
-      const auto &subscription_callback = subscription_callbacks.front();
-      if (subscription_callback) {
-        // Q: Should we post this to the io service?
-        (*subscription_callback)(msg);
-      }
-      subscription_callbacks.pop();
-    }
-    RAY_CHECK(subscription_callbacks.empty());
-    mutex_.Lock();
+
+    // Post to the provided io service so that the callback is always running on that
+    // thread.
+    callback_service_->post(
+        [subscription_callbacks = std::move(subscription_callbacks),
+         reply = std::move(reply)]() {
+          auto pubsub_message_size = reply.pub_messages_size();
+          RAY_CHECK(pubsub_message_size == subscription_callbacks.size());
+          for (int i = 0; i < pubsub_message_size; i++) {
+            const auto &msg = reply.pub_messages(i);
+            const auto &subscription_callback = subscription_callbacks.at(i);
+            if (subscription_callback) {
+              subscription_callback(msg);
+            }
+          }
+        },
+        "Subscriber.HandleLongPollingResponse");
   }
 
   if (SubscriptionExists(publisher_id)) {

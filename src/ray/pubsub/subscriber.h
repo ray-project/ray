@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -84,7 +85,7 @@ class SubscribeChannelInterface {
   /// \param publisher_address The address of the publisher.
   /// \param pub_message The message to handle from the publisher.
   /// \return the subscription callback registered. nullptr otherwise.
-  virtual std::shared_ptr<SubscriptionCallback> GetCallbackForPubMessage(
+  virtual SubscriptionCallback GetCallbackForPubMessage(
       const rpc::Address &publisher_address,
       const rpc::PubMessage &pub_message) const = 0;
 
@@ -119,7 +120,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   bool CheckNoLeaks() const override;
 
-  std::shared_ptr<SubscriptionCallback> GetCallbackForPubMessage(
+  SubscriptionCallback GetCallbackForPubMessage(
       const rpc::Address &publisher_address,
       const rpc::PubMessage &pub_message) const override;
 
@@ -200,6 +201,8 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
 class SubscriberInterface {
  public:
   /// Subscribe to the object.
+  /// NOTE(sang): All the callbacks could be executed in a different thread from a caller.
+  /// For example, Subscriber executes callbacks on a passed io_service.
   ///
   /// \param sub_message The subscription message.
   /// \param channel_type The channel to subscribe to.
@@ -252,8 +255,10 @@ class Subscriber : public SubscriberInterface {
   explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
                       const int64_t max_command_batch_size,
-                      rpc::CoreWorkerClientPool &publisher_client_pool)
-      : subscriber_id_(subscriber_id),
+                      rpc::CoreWorkerClientPool &publisher_client_pool,
+                      instrumented_io_context *callback_service)
+      : callback_service_(callback_service),
+        subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
@@ -350,6 +355,10 @@ class Subscriber : public SubscriberInterface {
       return p.second->SubscriptionExists(publisher_id);
     });
   }
+
+  /// An event loop to execute RPC callbacks. This should be equivalent to the client
+  /// pool's io service.
+  instrumented_io_context *callback_service_;
 
   /// Self node's address information.
   const SubscriberID subscriber_id_;

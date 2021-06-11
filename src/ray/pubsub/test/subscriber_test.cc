@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/pubsub/subscriber.h"
+#include "ray/common/asio/instrumented_io_context.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -90,9 +91,9 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ =
-        std::make_shared<Subscriber>(self_node_id_, self_node_address_, self_node_port_,
-                                     /*max_command_batch_size*/ 3, client_pool);
+    subscriber_ = std::make_shared<Subscriber>(
+        self_node_id_, self_node_address_, self_node_port_,
+        /*max_command_batch_size*/ 3, client_pool, &callback_service_);
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -114,8 +115,16 @@ class SubscriberTest : public ::testing::Test {
     return sub_message;
   }
 
+  bool ReplyLongPolling(rpc::ChannelType channel_type, std::vector<ObjectID> &object_ids,
+                        Status status = Status::OK()) {
+    auto success = owner_client->ReplyLongPolling(channel_type, object_ids, status);
+    callback_service_.poll();
+    return success;
+  }
+
   void TearDown() {}
 
+  instrumented_io_context callback_service_;
   const NodeID self_node_id_;
   const std::string self_node_address_;
   const int self_node_port_;
@@ -143,7 +152,7 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
 
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
@@ -153,7 +162,7 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
   }
 
   // Here, once the long polling request is replied, the metadata is cleaned up.
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }
 
@@ -180,7 +189,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   }
 
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
 
   // Make sure the long polling batch works as expected.
@@ -209,7 +218,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   // The object information is published.
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_TRUE(object_subscribed_.count(object_id) > 0);
   objects_batched.clear();
   object_subscribed_.clear();
@@ -217,7 +226,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   // New long polling should be made because the subscription is still alive.
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_TRUE(object_subscribed_.count(object_id) > 0);
 }
 
@@ -241,7 +250,7 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   // The object information is published.
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id_not_subscribed);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
   // Since this object id wasn't subscribed, the callback shouldn't be called.
   ASSERT_EQ(object_subscribed_.count(object_id_not_subscribed), 0);
@@ -266,7 +275,7 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   // Make sure the batched object won't invoke the callback since it is already
   // unsubscribed before long polling is replied.
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
@@ -292,8 +301,7 @@ TEST_F(SubscriberTest, TestLongPollingFailure) {
 
   // Long polling failed.
   std::vector<ObjectID> objects_batched;
-  ASSERT_TRUE(
-      owner_client->ReplyLongPolling(channel, objects_batched, Status::NotFound("")));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, Status::NotFound("")));
   // Callback is not invoked.
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
   // Failure callback is invoked.
@@ -324,7 +332,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
 
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
 
   // Since we unsubscribe the object in the subscription callback, there shouldn't be any
   // long polling request in flight.
@@ -358,7 +366,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchSingleEntry) {
   ASSERT_EQ(owner_client->ReplyCommandBatch(), nullptr);
 
   std::vector<ObjectID> objects_batched;
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   // Regardless of the long polling request, there's no more command batch.
   // Note that the long polling request here is independent from the
   // command batch request.
@@ -389,7 +397,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
 
   // The long polling request is replied. New batch will be sent.
   std::vector<ObjectID> objects_batched;
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
 
   // The first batch is always processed right away.
   auto first_batch = owner_client->ReplyCommandBatch();
@@ -449,7 +457,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
 
   // The long polling request is replied.
   std::vector<ObjectID> objects_batched;
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
 
   // The first batch is always processed right away.
   ASSERT_EQ(owner_client->ReplyCommandBatch()->commands().size(), 1);
@@ -460,7 +468,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
   ASSERT_EQ(commands.size(), 3);
 
   // Long polling is replied again.
-  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   r = owner_client->ReplyCommandBatch();
   commands = r->commands();
   ASSERT_EQ(commands.size(), 1);
@@ -533,8 +541,7 @@ TEST_F(SubscriberTest, TestCommandsCleanedUponPublishFailure) {
 
   std::vector<ObjectID> objects_batched;
   // The publisher failed. In this case, the queue should be cleaned up.
-  ASSERT_TRUE(
-      owner_client->ReplyLongPolling(channel, objects_batched, Status::Invalid("")));
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, Status::Invalid("")));
   // The reply from the first batch.
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   // We shouldn't have the second batch request because the publisher is already dead and
