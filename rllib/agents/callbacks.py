@@ -212,8 +212,7 @@ class DefaultCallbacks:
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
-    """
-    MemoryTrackingCallbacks can be used to trace and track memory usage
+    """MemoryTrackingCallbacks can be used to trace and track memory usage
     in rollout workers.
 
     The Memory Tracking Callbacks uses tracemalloc and psutil to track
@@ -224,12 +223,13 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     can therefore be viewed in tensorboard
     (or in WandB etc..)
 
-    Warning: This class is meant for debugging and should not be used
-    in production code as tracemalloc incurs
-    a significant slowdown in execution speed.
-
     Add MemoryTrackingCallbacks callback to the tune config
     e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+
+    Note:
+        This class is meant for debugging and should not be used
+        in production code as tracemalloc incurs
+        a significant slowdown in execution speed.
     """
 
     def __init__(self):
@@ -268,18 +268,19 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
 
 class MultiCallbacks(DefaultCallbacks):
-    """
-    MultiCallback allows multiple callbacks to be registered at the same
-    time in the config of the environment
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
 
-    For example:
+    Example:
 
-    'callbacks': MultiCallbacks([
-        MyCustomStatsCallbacks,
-        MyCustomVideoCallbacks,
-        MyCustomTraceCallbacks,
-        ....
-    ])
+        .. code-block:: python
+
+            'callbacks': MultiCallbacks([
+                MyCustomStatsCallbacks,
+                MyCustomVideoCallbacks,
+                MyCustomTraceCallbacks,
+                ....
+            ])
     """
 
     def __init__(self, callback_class_list):

@@ -94,9 +94,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
-  if (automatic_object_deletion_enabled_) {
-    spilled_object_pending_delete_.push(object_id);
-  }
+  spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
     pinned_objects_.erase(object_id);
@@ -118,16 +116,13 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
-  if (automatic_object_deletion_enabled_) {
-    // Deletion wouldn't work when the object pinning is not enabled.
-    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  }
+  // Deletion wouldn't work when the object pinning is not enabled.
+  ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return;
   }
 
@@ -151,8 +146,7 @@ bool LocalObjectManager::IsSpillingInProgress() {
 }
 
 bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 
@@ -317,9 +311,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
 void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
-  // Batch up RPC requests to the owner to avoid excess RPC traffic.
-  absl::flat_hash_map<WorkerID, rpc::AddSpilledUrlRequest> requests_to_send;
-
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
@@ -338,6 +329,9 @@ void LocalObjectManager::AddSpilledUrls(
     // directory. By adding the spilled url "before" adding it to the object directory, we
     // can process the restore request before object directory replies.
     spilled_objects_url_.emplace(object_id, object_url);
+    auto unpin_callback =
+        std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
+                  object_url, num_remaining, callback, std::placeholders::_1);
 
     // Update the object_id -> url_ref_count to use it for deletion later.
     // We need to track the references here because a single file can contain
@@ -353,48 +347,21 @@ void LocalObjectManager::AddSpilledUrls(
       url_ref_count_[base_url_it->second] += 1;
     }
 
-    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      auto owner_id = WorkerID::FromBinary(it->second.second.worker_id());
-      auto &request = requests_to_send[owner_id];
-      auto url = request.add_spilled_urls();
-      url->set_object_id(object_id.Binary());
-      url->set_spilled_url(object_url);
-      url->set_spilled_node_id(node_id_object_spilled.Binary());
-      url->set_size(it->second.first->GetSize());
+    // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+    // spill RPC.
+    rpc::AddSpilledUrlRequest request;
+    request.set_object_id(object_id.Binary());
+    request.set_spilled_url(object_url);
+    request.set_spilled_node_id(node_id_object_spilled.Binary());
+    request.set_size(it->second.first->GetSize());
 
-      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
-                     << object_id << " to owner "
-                     << WorkerID::FromBinary(it->second.second.worker_id());
-    } else {
-      auto unpin_callback =
-          std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
-                    object_url, num_remaining, callback, std::placeholders::_1);
-      // Write to object directory. Wait for the write to finish before
-      // releasing the object to make sure that the spilled object can
-      // be retrieved by other raylets.
-      RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-          object_id, object_url, node_id_object_spilled, it->second.first->GetSize(),
-          unpin_callback));
-    }
-  }
-
-  // Batch send the AddSpilledUrl RPCs.
-  for (const auto &pair : requests_to_send) {
-    auto &request = pair.second;
-    // Get the client connection for the batch.
-    const ObjectID oid0 = ObjectID::FromBinary(request.spilled_urls(0).object_id());
-    auto owner_client =
-        owner_client_pool_.GetOrConnect(objects_pending_spill_.find(oid0)->second.second);
+    auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
+    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
+                   << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
     // Send spilled URL, spilled node ID, and object size to owner.
     owner_client->AddSpilledUrl(
-        request, [this, num_remaining, request, callback](
-                     Status status, const rpc::AddSpilledUrlReply &reply) {
-          for (const auto &url : request.spilled_urls()) {
-            const ObjectID object_id = ObjectID::FromBinary(url.object_id());
-            const std::string &spilled_url = url.spilled_url();
-            UnpinSpilledObjectCallback(object_id, spilled_url, num_remaining, callback,
-                                       status);
-          }
+        request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+          unpin_callback(status);
         });
   }
 }

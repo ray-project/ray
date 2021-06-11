@@ -145,6 +145,10 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
   node_manager_port_ = node_manager_port;
 }
 
+void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
+  agent_manager_ = agent_manager;
+}
+
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     const std::vector<std::string> &dynamic_options,
@@ -834,6 +838,23 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
+  auto start_worker_process_fn = [this](const TaskSpecification &task_spec, State &state,
+                                        std::vector<std::string> dynamic_options,
+                                        bool dedicated) -> Process {
+    Process proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                                      task_spec.JobId(), dynamic_options,
+                                      task_spec.SerializedRuntimeEnv(),
+                                      task_spec.OverrideEnvironmentVariables());
+    if (proc.IsValid()) {
+      WarnAboutSize();
+      if (dedicated) {
+        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+        state.tasks_with_dedicated_workers.emplace(task_spec.TaskId());
+      }
+    }
+    return proc;
+  };
+
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
@@ -850,7 +871,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Because we found a worker that can perform this task,
       // we can remove it from dedicated_workers_to_tasks.
       state.dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
+      state.tasks_with_dedicated_workers.erase(task_spec.TaskId());
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
@@ -858,11 +879,25 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options);
-      if (proc.IsValid()) {
-        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
+
+      // create runtime env.
+      if (task_spec.HasRuntimeEnv()) {
+        state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
+        agent_manager_->CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(),
+            [start_worker_process_fn, &state, task_spec, dynamic_options](bool done) {
+              state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
+              if (!done) {
+                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
+                // failed.
+                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
+                                  "Wait for next time to retry or reschedule.";
+                return;
+              }
+              start_worker_process_fn(task_spec, state, dynamic_options, true);
+            });
+      } else {
+        proc = start_worker_process_fn(task_spec, state, dynamic_options, true);
       }
     }
   } else {
@@ -902,10 +937,22 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     if (worker == nullptr) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), {}, /* dynamic_options */
-                                task_spec.SerializedRuntimeEnv(),
-                                task_spec.OverrideEnvironmentVariables());
+
+      if (task_spec.HasRuntimeEnv()) {
+        // create runtime env.
+        agent_manager_->CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(),
+            [start_worker_process_fn, &state, task_spec](bool successful) {
+              if (!successful) {
+                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
+                // failed.
+                return;
+              }
+              start_worker_process_fn(task_spec, state, {}, false);
+            });
+      } else {
+        proc = start_worker_process_fn(task_spec, state, {}, false);
+      }
     }
   }
 
@@ -923,9 +970,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      !(task_spec.SerializedRuntimeEnv() == "{}" ||
-        task_spec.SerializedRuntimeEnv() == "")) {
+      task_spec.OverrideEnvironmentVariables().size() > 0 || task_spec.HasRuntimeEnv()) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
@@ -1093,8 +1138,10 @@ void WorkerPool::WarnAboutSize() {
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
+      std::string warning_message_str = warning_message.str();
+      RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",
-                                                      warning_message.str(), get_time_());
+                                                      warning_message_str, get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
@@ -1103,8 +1150,12 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  auto it = state.tasks_to_dedicated_workers.find(task_id);
-  return it != state.tasks_to_dedicated_workers.end();
+  auto runtime_env_it = state.tasks_with_pending_runtime_envs.find(task_id);
+  if (runtime_env_it != state.tasks_with_pending_runtime_envs.end()) {
+    return true;
+  }
+  auto it = state.tasks_with_dedicated_workers.find(task_id);
+  return it != state.tasks_with_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {

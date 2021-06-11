@@ -82,11 +82,16 @@ install_miniconda() {
       msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
     esac
 
-    local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
+    local miniconda_version="Miniconda3-py37_4.9.2" miniconda_platform="" exe_suffix=".sh"
     case "${OSTYPE}" in
       linux*) miniconda_platform=Linux;;
       darwin*) miniconda_platform=MacOSX;;
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
+    esac
+
+    case "${OSTYPE}" in
+      # The hosttype variable is deprecated.
+      darwin*) HOSTTYPE="x86_64";;
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
@@ -109,15 +114,6 @@ install_miniconda() {
         # Unfortunately it inhibits PATH modifications as a side effect.
         "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
-        ;;
-    esac
-  else
-    case "${OSTYPE}" in
-      darwin*)
-        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
-        local miniconda_dir="/usr/local/miniconda"
-        sudo mkdir -p -- "${miniconda_dir}"
-        sudo chown -R "${USER}" "${miniconda_dir}"
         ;;
     esac
   fi
@@ -222,33 +218,36 @@ install_upgrade_pip() {
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
       "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
+
+    "${python}" -m ensurepip
   fi
 }
 
 install_node() {
-  if command -v node; then
-    if [ -n "${BUILDKITE-}" ]; then
-      echo "Node existed, skipping install";
+  if [ "${OSTYPE}" = msys ] ; then
+    { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
+    return
+  fi
+
+  if [ -n "${BUILDKITE-}" ] ; then
+    if [[ "${OSTYPE}" = darwin* ]]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+    else
+      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      sudo apt-get install -y nodejs
       return
     fi
   fi
 
-  if [ "${OSTYPE}" = msys ] ; then
-    { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
-  elif [ -n "${BUILDKITE-}" ] ; then
-    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-  else
-    # Install the latest version of Node.js in order to build the dashboard.
-    (
-      set +x # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
-      npm config set loglevel warn  # make NPM quieter
-    )
-  fi
+  # Install the latest version of Node.js in order to build the dashboard.
+  (
+    set +x # suppress set -x since it'll get very noisy here
+    . "${HOME}/.nvm/nvm.sh"
+    nvm install node
+    nvm use --silent node
+    npm config set loglevel warn  # make NPM quieter
+  )
 }
 
 install_toolchains() {
@@ -266,19 +265,23 @@ download_mnist() {
 install_dependencies() {
 
   install_bazel
-
   install_base
   install_toolchains
-  install_nvm
-  install_upgrade_pip
 
+  install_upgrade_pip
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
     # Upgrade the miniconda pip.
     install_upgrade_pip
   fi
 
+  install_nvm
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+    install_node
+  fi
+
   # Install modules needed in all jobs.
+  alias pip="python -m pip"
   pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
@@ -363,10 +366,6 @@ install_dependencies() {
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
     HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
-  fi
-
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

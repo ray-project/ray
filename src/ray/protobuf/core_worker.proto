@@ -231,6 +231,9 @@ message GetObjectLocationsOwnerReply {
   bytes spilled_node_id = 4;
   // The version of the returned location updates.
   int64 current_version = 5;
+  // The ID of the node that stores the primary copy in plasma.
+  // This could be Nil if the object has been evicted or inlined.
+  bytes primary_node_id = 6;
 }
 
 message KillActorRequest {
@@ -346,7 +349,7 @@ message DeleteSpilledObjectsRequest {
 message DeleteSpilledObjectsReply {
 }
 
-message SpilledURL {
+message AddSpilledUrlRequest {
   // Object that was spilled.
   bytes object_id = 1;
   // For objects that have been spilled to external storage, the URL from which
@@ -357,11 +360,6 @@ message SpilledURL {
   bytes spilled_node_id = 3;
   // The size of the object in bytes.
   int64 size = 4;
-}
-
-// Batched add spill URLs (add one or more URLs with the given attributes).
-message AddSpilledUrlRequest {
-  repeated SpilledURL spilled_urls = 1;
 }
 
 message AddSpilledUrlReply {

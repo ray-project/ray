@@ -131,8 +131,8 @@ GetRequest::GetRequest(instrumented_io_context &io_context,
 }
 
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
-                         bool hugepages_enabled, const std::string &socket_name,
-                         uint32_t delay_on_oom_ms,
+                         std::string fallback_directory, bool hugepages_enabled,
+                         const std::string &socket_name, uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -155,6 +155,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           []() { return absl::GetCurrentTimeNanos(); },
           [this]() { return GetDebugDump(); }) {
   store_info_.directory = directory;
+  store_info_.fallback_directory = fallback_directory;
   store_info_.hugepages_enabled = hugepages_enabled;
   const auto asio_stats_print_interval_ms =
       RayConfig::instance().asio_stats_print_interval_ms();
@@ -267,7 +268,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
   // Fallback to allocating from the filesystem.
   if (pointer == nullptr && RayConfig::instance().plasma_unlimited() &&
       fallback_allocator) {
-    RAY_LOG(ERROR)
+    RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
         << size;
     pointer = reinterpret_cast<uint8_t *>(
@@ -560,30 +561,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       // If necessary, record that this client is using this object. In the case
       // where entry == NULL, this will be called from SealObject.
       AddToClientObjectIds(object_id, entry, client);
-    } else if (entry && entry->state == ObjectState::PLASMA_EVICTED) {
-      // Make sure the object pointer is not already allocated
-      RAY_CHECK(!entry->pointer);
-
-      PlasmaError error = PlasmaError::OK;
-      // TODO(ekl) this is dead code (we don't use the plasma eviction path).
-      // We should remove this.
-      entry->pointer =
-          AllocateMemory(entry->data_size + entry->metadata_size, &entry->fd,
-                         &entry->map_size, &entry->offset, client, /*is_create=*/false,
-                         /*fallback_allocator=*/true, &error);
-      if (entry->pointer) {
-        // TODO(suquark): Not sure if this old behavior is still compatible
-        // with our current object spilling mechanics.
-        entry->state = ObjectState::PLASMA_CREATED;
-        entry->create_time = std::time(nullptr);
-        eviction_policy_.ObjectCreated(object_id, client.get(), false);
-        AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
-      } else {
-        // We are out of memory and cannot allocate memory for this object.
-        // Change the state of the object back to PLASMA_EVICTED so some
-        // other request can try again.
-        entry->state = ObjectState::PLASMA_EVICTED;
-      }
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -674,8 +651,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
 // Check if an object is present.
 ObjectStatus PlasmaStore::ContainsObject(const ObjectID &object_id) {
   auto entry = GetObjectTableEntry(&store_info_, object_id);
-  return entry && (entry->state == ObjectState::PLASMA_SEALED ||
-                   entry->state == ObjectState::PLASMA_EVICTED)
+  return entry && entry->state == ObjectState::PLASMA_SEALED
              ? ObjectStatus::OBJECT_FOUND
              : ObjectStatus::OBJECT_NOT_FOUND;
 }

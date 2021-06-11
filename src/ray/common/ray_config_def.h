@@ -55,26 +55,6 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
            env_bool("RAY_EVENT_STATS", false))
 
-/// Whether to enable fair queueing between task classes in raylet. When
-/// fair queueing is enabled, the raylet will try to balance the number
-/// of running tasks by class (i.e., function name). This prevents one
-/// type of task from starving other types (see issue #3664).
-RAY_CONFIG(bool, fair_queueing_enabled, true)
-
-/// Whether to enable distributed reference counting for objects. When this is
-/// enabled, an object's ref count will include any references held by other
-/// processes, such as when an ObjectID is serialized and passed as an argument
-/// to another task. It will also include any references due to nesting, i.e.
-/// if the object ID is nested inside another object that is still in scope.
-/// When this is disabled, an object's ref count will include only local
-/// information:
-///  1. Local Python references to the ObjectID.
-///  2. Pending tasks submitted by the local process that depend on the object.
-/// If both this flag is turned on, then an object
-/// will not be LRU evicted until it is out of scope in ALL processes in the
-/// cluster and all objects that contain it are also out of scope.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
-
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
 /// creating object references.
@@ -108,8 +88,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
-RAY_CONFIG(bool, preallocate_plasma_memory,
-           env_bool("RAY_PREALLOCATE_PLASMA_MEMORY", false))
+RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
 /// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
 /// in /tmp, creating a new file per object. This degrades performance since filesystem
@@ -117,21 +96,15 @@ RAY_CONFIG(bool, preallocate_plasma_memory,
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, env_bool("RAY_PLASMA_UNLIMITED", false))
-
-/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
-/// uniform random from the valid options. The other mode is more likely to spill back
-/// many tasks to the same node.
-RAY_CONFIG(bool, scheduler_loadbalance_spillback,
-           env_bool("RAY_SCHEDULER_LOADBALANCE_SPILLBACK", false))
+RAY_CONFIG(bool, plasma_unlimited, false)
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, env_bool("RAY_SCHEDULER_HYBRID", true))
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
-RAY_CONFIG(float, scheduler_hybrid_threshold,
-           env_float("RAY_SCHEDULER_HYBRID_THRESHOLD", 0.5))
+RAY_CONFIG(float, scheduler_spread_threshold,
+           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -301,10 +274,6 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
-/// Whether to release worker CPUs during plasma fetches.
-/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
-RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
-
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
@@ -329,6 +298,10 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// If the agent manager fails to communicate with the dashboard agent, we will retry
+/// after this interval.
+RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
@@ -341,7 +314,7 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart, env_bool("RAY_ENABLE_WORKER_PRESTART", true))
+RAY_CONFIG(bool, enable_worker_prestart, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -349,9 +322,6 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
-
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, ownership_based_object_directory_enabled, true)
 
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
@@ -387,12 +357,8 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
-/// Whether to enable automatic object deletion when refs are gone out of scope.
-/// When it is true, manual (force) spilling is not available.
-/// TODO(sang): Fix it.
-RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
-
 /// Grace period until we throw the OOM error to the application in seconds.
+/// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
 /// Whether or not the external storage is file system.
@@ -441,3 +407,5 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes.
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
+
+RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
