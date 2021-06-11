@@ -53,8 +53,8 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
       SetRedisAddress(FLAGS_ray_redis_address);
     }
     google::CommandLineFlagInfo info;
-    // Don't rewrite `redis_password` when it is not set in the command line.
-    if (GetCommandLineFlagInfo("redis_password", &info) && !info.is_default) {
+    // Don't rewrite `ray_redis_password` when it is not set in the command line.
+    if (GetCommandLineFlagInfo("ray_redis_password", &info) && !info.is_default) {
       redis_password = FLAGS_ray_redis_password;
     }
     if (!FLAGS_ray_job_id.empty()) {
