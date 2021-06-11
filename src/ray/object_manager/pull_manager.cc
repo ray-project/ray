@@ -37,10 +37,10 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     }
   }
   Queue::iterator bundle_it;
-  if (prio == BundlePriority::WORKER_GET) {
+  if (prio == BundlePriority::GET_REQUEST) {
     bundle_it =
         get_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
-  } else if (prio == BundlePriority::WORKER_WAIT) {
+  } else if (prio == BundlePriority::WAIT_REQUEST) {
     bundle_it =
         wait_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   } else {
@@ -195,7 +195,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   while (get_requests_remaining) {
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
                                object_ids_to_cancel, &highest_task_req_id_being_pulled_);
-    DeactivateUntilWithinQuota("worker wait request", wait_request_bundles_,
+    DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
                                object_ids_to_cancel, &highest_wait_req_id_being_pulled_);
 
     // Activate the next get request if we have space. Fallback allocation is allowed
@@ -238,13 +238,13 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
                              object_ids_to_cancel, &highest_task_req_id_being_pulled_);
-  DeactivateUntilWithinQuota("worker wait request", wait_request_bundles_,
-                             object_ids_to_cancel, &highest_wait_req_id_being_pulled_);
+  DeactivateUntilWithinQuota("wait request", wait_request_bundles_, object_ids_to_cancel,
+                             &highest_wait_req_id_being_pulled_);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilWithinQuota("worker get request", get_request_bundles_,
-                               object_ids_to_cancel, &highest_get_req_id_being_pulled_);
+    DeactivateUntilWithinQuota("get request", get_request_bundles_, object_ids_to_cancel,
+                               &highest_get_req_id_being_pulled_);
     RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
   }
 
@@ -266,20 +266,24 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 }
 
 void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (highest_worker_req_id_being_pulled_ > 0 || highest_task_req_id_being_pulled_ > 0) {
-    // At least one worker request is being actively pulled, so there is
+  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
+      highest_task_req_id_being_pulled_ > 0) {
+    // At least one request is being actively pulled, so there is
     // currently enough space.
     return;
   }
 
   // No requests are being pulled. Check whether this is because we don't have
   // object size information yet.
-  auto head = worker_request_bundles_.begin();
-  if (head == worker_request_bundles_.end()) {
-    head = task_argument_bundles_.begin();
-    if (head == task_argument_bundles_.end()) {
-      // No requests queued.
-      return;
+  auto head = get_request_bundles_.begin();
+  if (head == get_request_bundles_.end()) {
+    head = wait_argument_bundles_.begin();
+    if (head == wait_request_bundles_.end()) {
+      head = task_argument_bundles_.begin();
+      if (head == task_argument_bundles_.end()) {
+        // No requests queued.
+        return;
+      }
     }
   }
   if (head->second.num_object_sizes_missing > 0) {
@@ -312,15 +316,21 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   Queue *request_queue = nullptr;
   uint64_t *highest_req_id_being_pulled = nullptr;
-  auto bundle_it = worker_request_bundles_.find(request_id);
-  if (bundle_it != worker_request_bundles_.end()) {
-    request_queue = &worker_request_bundles_;
-    highest_req_id_being_pulled = &highest_worker_req_id_being_pulled_;
+  auto bundle_it = get_request_bundles_.find(request_id);
+  if (bundle_it != get_request_bundles_.end()) {
+    request_queue = &get_request_bundles_;
+    highest_req_id_being_pulled = &highest_get_req_id_being_pulled_;
   } else {
-    bundle_it = task_argument_bundles_.find(request_id);
-    request_queue = &task_argument_bundles_;
-    highest_req_id_being_pulled = &highest_task_req_id_being_pulled_;
-    RAY_CHECK(bundle_it != task_argument_bundles_.end());
+    bundle_it = wait_request_bundles_.find(request_id);
+    if (bundle_it != wait_request_bundles_.end()) {
+      request_queue = &wait_request_bundles_;
+      highest_req_id_being_pulled = &highest_wait_req_id_being_pulled_;
+    } else {
+      bundle_it = task_argument_bundles_.find(request_id);
+      request_queue = &task_argument_bundles_;
+      highest_req_id_being_pulled = &highest_task_req_id_being_pulled_;
+      RAY_CHECK(bundle_it != task_argument_bundles_.end());
+    }
   }
 
   // If the pull request was being actively pulled, deactivate it now.
@@ -378,10 +388,13 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
-      auto bundle_it = worker_request_bundles_.find(bundle_request_id);
-      if (bundle_it == worker_request_bundles_.end()) {
-        bundle_it = task_argument_bundles_.find(bundle_request_id);
-        RAY_CHECK(bundle_it != task_argument_bundles_.end());
+      auto bundle_it = get_request_bundles_.find(bundle_get_id);
+      if (bundle_it == get_request_bundles_.end()) {
+        bundle_it = wait_request_bundles_.find(bundle_request_id);
+        if (bundle_it == wait_request_bundles_.end()) {
+          bundle_it = task_argument_bundles_.find(bundle_request_id);
+          RAY_CHECK(bundle_it != task_argument_bundles_.end());
+        }
       }
       bundle_it->second.RegisterObjectSize(object_size);
     }
@@ -550,13 +563,18 @@ bool PullManager::IsObjectActive(const ObjectID &object_id, bool *object_require
 
 bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
   const uint64_t *highest_req_id_being_pulled = nullptr;
-  auto bundle_it = worker_request_bundles_.find(request_id);
-  if (bundle_it != worker_request_bundles_.end()) {
-    highest_req_id_being_pulled = &highest_worker_req_id_being_pulled_;
+  auto bundle_it = get_request_bundles_.find(request_id);
+  if (bundle_it != get_request_bundles_.end()) {
+    highest_req_id_being_pulled = &highest_get_req_id_being_pulled_;
   } else {
-    bundle_it = task_argument_bundles_.find(request_id);
-    RAY_CHECK(bundle_it != task_argument_bundles_.end());
-    highest_req_id_being_pulled = &highest_task_req_id_being_pulled_;
+    bundle_it = wait_request_bundles_.find(request_id);
+    if (bundle_it != wait_request_bundles_.end()) {
+      highest_req_id_being_pulled = &highest_wait_req_id_being_pulled_;
+    } else {
+      bundle_it = task_argument_bundles_.find(request_id);
+      RAY_CHECK(bundle_it != task_argument_bundles_.end());
+      highest_req_id_being_pulled = &highest_task_req_id_being_pulled_;
+    }
   }
 
   if (request_id <= *highest_req_id_being_pulled) {
@@ -572,7 +590,8 @@ std::string PullManager::DebugString() const {
   result << "PullManager:";
   result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
   result << "\n- num bytes being pulled: " << num_bytes_being_pulled_;
-  result << "\n- num worker request bundles: " << worker_request_bundles_.size();
+  result << "\n- num get request bundles: " << get_request_bundles_.size();
+  result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "

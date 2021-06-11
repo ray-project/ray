@@ -22,9 +22,9 @@ namespace ray {
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
-  WORKER_GET,
+  GET_REQUEST,
   /// Bundle requested by ray.wait().
-  WORKER_WAIT,
+  WAIT_REQUEST,
   /// Bundle requested for fetching task arguments.
   TASK_ARG,
 };
