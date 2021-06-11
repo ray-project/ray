@@ -274,7 +274,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     pointer = reinterpret_cast<uint8_t *>(
         PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
     if (pointer == nullptr) {
-      RAY_LOG(FATAL) << "Plasma fallback allocator failed, likely out of disk space.";
+      RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
   }
 
