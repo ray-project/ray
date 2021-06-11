@@ -96,7 +96,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, true)
+RAY_CONFIG(bool, plasma_unlimited, false)
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
@@ -359,7 +359,7 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
 /// Grace period until we throw the OOM error to the application in seconds.
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
-RAY_CONFIG(int64_t, oom_grace_period_s, 2)
+RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
