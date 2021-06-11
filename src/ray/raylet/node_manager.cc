@@ -884,7 +884,6 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
-    // RAY_LOG(ERROR) << "Updating resource capacity of: " << resource_label;
     cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
                                                         new_resource_capacity);
   }
