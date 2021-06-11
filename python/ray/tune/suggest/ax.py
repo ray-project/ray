@@ -331,7 +331,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.lower, domain.upper],
+                        "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
                         "log_scale": True
                     }
@@ -339,7 +339,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.lower, domain.upper],
+                        "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
                         "log_scale": False
                     }

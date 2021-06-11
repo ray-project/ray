@@ -192,13 +192,13 @@ For a high-level overview, see this example:
         # Sample a integer uniformly between -9 (inclusive) and 15 (exclusive)
         "randint": tune.randint(-9, 15),
 
-        # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
-        # while sampling in log space
-        "lograndint": tune.lograndint(1, 10),
-
         # Sample a random uniformly between -21 (inclusive) and 12 (inclusive (!))
         # rounding to increments of 3 (includes 12)
         "qrandint": tune.qrandint(-21, 12, 3),
+
+        # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
+        # while sampling in log space
+        "lograndint": tune.lograndint(1, 10),
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
         # while sampling in log space and rounding to increments of 2
@@ -255,6 +255,16 @@ tune.qrandint
 ~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.qrandint
+
+tune.lograndint
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.lograndint
+
+tune.qlograndint
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qlograndint
 
 tune.choice
 ~~~~~~~~~~~
