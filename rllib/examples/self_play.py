@@ -6,14 +6,14 @@ to make new matches, and edits the policies_to_train list.
 """
 
 import argparse
-from gym.spaces import Tuple, MultiDiscrete, Dict, Discrete
+from gym.spaces import Dict, MultiDiscrete, Tuple
 import os
+import pyspiel
 
 import ray
 from ray import tune
-from ray.tune import register_env, grid_search
-from ray.rllib.env.multi_agent_env import ENV_STATE
-from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.tune import register_env
+from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -52,9 +52,12 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    grouping = {
-        "group_1": [0, 1],
-    }
+    ray.init(num_cpus=args.num_cpus or None)
+
+    dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
+    obs = dummy_env.reset()
+    obs, reward, done, _ = dummy_env.step({0: 4})
+
     obs_space = Tuple([
         Dict({
             "obs": MultiDiscrete([2, 2, 2, 3]),
@@ -70,78 +73,21 @@ if __name__ == "__main__":
         TwoStepGame.action_space,
     ])
     register_env(
-        "grouped_twostep",
-        lambda config: TwoStepGame(config).with_agent_groups(
-            grouping, obs_space=obs_space, act_space=act_space))
+        "connect_four",
+        lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
-    if args.run == "contrib/MADDPG":
-        obs_space_dict = {
-            "agent_1": Discrete(6),
-            "agent_2": Discrete(6),
-        }
-        act_space_dict = {
-            "agent_1": TwoStepGame.action_space,
-            "agent_2": TwoStepGame.action_space,
-        }
-        config = {
-            "learning_starts": 100,
-            "env_config": {
-                "actions_are_logits": True,
-            },
-            "multiagent": {
-                "policies": {
-                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                        "agent_id": 0,
-                    }),
-                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                        "agent_id": 1,
-                    }),
-                },
-                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
-            },
-            "framework": args.framework,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        }
-        group = False
-    elif args.run == "QMIX":
-        config = {
-            "rollout_fragment_length": 4,
-            "train_batch_size": 32,
-            "exploration_config": {
-                "epsilon_timesteps": 5000,
-                "final_epsilon": 0.05,
-            },
-            "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
-            "env_config": {
-                "separate_state_space": True,
-                "one_hot_state_encoding": True
-            },
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        }
-        group = True
-    else:
-        config = {
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
-        }
-        group = False
-
-    ray.init(num_cpus=args.num_cpus or None)
+    config = {
+        "env": "connect_four",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "framework": args.framework,
+    }
 
     stop = {
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
-
-    config = dict(config, **{
-        "env": "grouped_twostep" if group else TwoStepGame,
-    })
 
     results = tune.run(args.run, stop=stop, config=config, verbose=1)
 

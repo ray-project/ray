@@ -1,3 +1,7 @@
+from gym.spaces import Box, Discrete
+import numpy as np
+import pyspiel
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -5,63 +9,49 @@ class OpenSpielEnv(MultiAgentEnv):
 
     def __init__(self, env):
         self.env = env
-        # agent idx list
-        self.agents = self.env.possible_agents
 
-        # Get dictionaries of obs_spaces and act_spaces
-        self.observation_spaces = self.env.observation_spaces
-        self.action_spaces = self.env.action_spaces
+        # Agent IDs are ints, starting from 0.
+        self.num_agents = self.env.num_players()
+        # Store the open-spiel game type.
+        self.type = self.env.get_type()
+        # Stores the current open-spiel game state.
+        self.state = None
 
-        # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.observation_spaces[self.agents[0]]
-
-        # Get first action space, assuming all agents have equal space
-        self.action_space = self.action_spaces[self.agents[0]]
-
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.env.observation_spaces.values()), \
-            "Observation spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_observations wrapper can help (useage: " \
-            "`supersuit.aec_wrappers.pad_observations(env)`"
-
-        assert all(act_space == self.action_space
-                   for act_space in self.env.action_spaces.values()), \
-            "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
-            "`supersuit.aec_wrappers.pad_action_space(env)`"
-
-        self.reset()
+        # Extract observation- and action spaces from game.
+        self.observation_space = Box(float("-inf"), float("inf"),
+                                     self.env.observation_tensor_shape())
+        self.action_space = Discrete(self.env.num_distinct_actions())
 
     def reset(self):
-        self.env.reset()
-        return {
-            self.env.agent_selection: self.env.observe(
-                self.env.agent_selection)
-        }
+        self.state = self.env.new_initial_state()
+        return self._get_obs()
 
     def step(self, action):
-        self.env.step(action[self.env.agent_selection])
-        obs_d = {}
-        rew_d = {}
-        done_d = {}
-        info_d = {}
-        while self.env.agents:
-            obs, rew, done, info = self.env.last()
-            a = self.env.agent_selection
-            obs_d[a] = obs
-            rew_d[a] = rew
-            done_d[a] = done
-            info_d[a] = info
-            if self.env.dones[self.env.agent_selection]:
-                self.env.step(None)
-            else:
-                break
+        # Sequential game:
+        if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
+            curr_player = self.state.current_player()
+            assert curr_player in action
+            self.state.apply_action(action[curr_player])
+            # Compile rewards dict.
+            rewards = {curr_player: self.state.returns()[curr_player]}
+            # Are we done?
+            dones = {curr_player: self.state.is_terminal(),
+                     "__all__": self.state.is_terminal()}
+        # Simultaneous game.
+        else:
+            raise NotImplementedError
 
-        all_done = not self.env.agents
-        done_d["__all__"] = all_done
+        return self._get_obs, rewards, dones, {}
 
-        return obs_d, rew_d, done_d, info_d
+    def _get_obs(self):
+        # Sequential game:
+        if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
+            return {
+                self.state.current_player(): np.array(self.state.observation_tensor())
+            }
+        # Simultaneous game.
+        else:
+            raise NotImplementedError
 
     def close(self):
         self.env.close()
@@ -71,52 +61,3 @@ class OpenSpielEnv(MultiAgentEnv):
 
     def render(self, mode="human"):
         return self.env.render(mode)
-
-
-class ParallelPettingZooEnv(MultiAgentEnv):
-    def __init__(self, env):
-        self.par_env = env
-        # agent idx list
-        self.agents = self.par_env.possible_agents
-
-        # Get dictionaries of obs_spaces and act_spaces
-        self.observation_spaces = self.par_env.observation_spaces
-        self.action_spaces = self.par_env.action_spaces
-
-        # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.observation_spaces[self.agents[0]]
-
-        # Get first action space, assuming all agents have equal space
-        self.action_space = self.action_spaces[self.agents[0]]
-
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.par_env.observation_spaces.values()), \
-            "Observation spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_observations wrapper can help (useage: " \
-            "`supersuit.aec_wrappers.pad_observations(env)`"
-
-        assert all(act_space == self.action_space
-                   for act_space in self.par_env.action_spaces.values()), \
-            "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
-            "`supersuit.aec_wrappers.pad_action_space(env)`"
-
-        self.reset()
-
-    def reset(self):
-        return self.par_env.reset()
-
-    def step(self, action_dict):
-        obss, rews, dones, infos = self.par_env.step(action_dict)
-        dones["__all__"] = all(dones.values())
-        return obss, rews, dones, infos
-
-    def close(self):
-        self.par_env.close()
-
-    def seed(self, seed=None):
-        self.par_env.seed(seed)
-
-    def render(self, mode="human"):
-        return self.par_env.render(mode)
