@@ -14,7 +14,7 @@
 - name: modin_xgboost_test
   owner:
     mail: "matt@anyscale.com"
-    slack: "@ml-team"
+    slack: "@team_ml"
 
   cluster:
     app_config: modin_xgboost_app_config.yaml
