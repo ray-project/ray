@@ -62,6 +62,15 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 to use (instead of constructing one from the given parameters).
             framework (Optional[str]): One of None, "tf", "torch".
         """
+        # The current OU-state value (gets updated each time, an eploration
+        # action is computed).
+        self.ou_state = get_variable(
+            np.array(action_space.low.size * [.0], dtype=np.float32),
+            framework=framework,
+            tf_name="ou_state",
+            torch_tensor=True,
+            device=None)
+
         super().__init__(
             action_space,
             framework=framework,
@@ -75,15 +84,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         self.ou_theta = ou_theta
         self.ou_sigma = ou_sigma
         self.ou_base_scale = ou_base_scale
-
-        # The current OU-state value (gets updated each time, an eploration
-        # action is computed).
-        self.ou_state = get_variable(
-            np.array(self.action_space.low.size * [.0], dtype=np.float32),
-            framework=self.framework,
-            tf_name="ou_state",
-            torch_tensor=True,
-            device=self.device)
+        # Now that we know the device, move ou_state there, in case of PyTorch.
+        if self.framework == "torch" and self.device is not None:
+            self.ou_state = self.ou_state.to(self.device)
 
     @override(GaussianNoise)
     def _get_tf_exploration_action_op(self, action_dist: ActionDistribution,
