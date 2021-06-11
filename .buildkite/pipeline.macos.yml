@@ -1,0 +1,50 @@
+common: &common
+  artifact_paths:
+    - "/tmp/bazel_event_logs/*"
+  env:
+    BUILDKITE: "true"
+    CI: "true"
+    PYTHON: "3.6"
+    RAY_USE_RANDOM_PORTS: "1"
+    RAY_DEFAULT_BUILD: "1"
+    LC_ALL: en_US.UTF-8
+    LANG: en_US.UTF-8
+    # TODO(simon): Can't figure out how get the JDK working yet.
+    # RAY_INSTALL_JAVA: "1"
+
+steps:
+- label: ":mac: :apple: Ray Core+Libraries"
+  <<: *common
+  commands:
+    - ./ci/travis/upload_build_info.sh
+    - (which bazel && bazel clean) || true;
+    - . ./ci/travis/ci.sh init && source ~/.zshrc
+    - . ./ci/travis/ci.sh build
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky --
+      //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
+
+- label: ":mac: :apple: Medium A-J"
+  <<: *common
+  commands:
+    - ./ci/travis/upload_build_info.sh
+    - (which bazel && bazel clean) || true;
+    - . ./ci/travis/ci.sh init && source ~/.zshrc
+    - . ./ci/travis/ci.sh build
+    - ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky
+      python/ray/tests/...
+
+
+    # The follow is running in Travis for now.
+    # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
+    # - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
+    # - bazel test --config=ci $(./scripts/bazel_export_options)
+    #       --test_tag_filters=-kubernetes,-jenkins_only,flaky
+    #       --test_env=CONDA_EXE
+    #       --test_env=CONDA_PYTHON_EXE
+    #       --test_env=CONDA_SHLVL
+    #       --test_env=CONDA_PREFIX
+    #       --test_env=CONDA_DEFAULT_ENV
+    #       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
