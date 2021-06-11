@@ -1810,11 +1810,6 @@ cdef class CoreWorker:
         Returns:
             The resulting merged JSON-serialized runtime env.
         """
-
-        # Short-circuit in the common case.
-        if (runtime_env_dict == {}):
-            return self.current_runtime_env_dict
-
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
         result_dict.update(runtime_env_dict)
 

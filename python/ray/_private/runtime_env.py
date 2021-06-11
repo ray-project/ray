@@ -118,7 +118,7 @@ class RuntimeEnvDict:
                                 "dict")
 
         self._dict["pip"] = None
-        if "pip" in runtime_env_json and runtime_env_json["pip"] is not None:
+        if "pip" in runtime_env_json:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
@@ -127,8 +127,10 @@ class RuntimeEnvDict:
                     and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
-                    "runtime_env cannot both be specified.  To use "
-                    "pip with conda, please only set the 'conda' "
+                    "runtime_env cannot both be specified.\n"
+                    f"specified pip field: {runtime_env_json['pip']}\n"
+                    f"specified conda field: {runtime_env_json['conda']}\n"
+                    "To use pip with conda, please only set the 'conda' "
                     "field, and specify your pip dependencies "
                     "within the conda YAML config dict: see "
                     "https://conda.io/projects/conda/en/latest/"
