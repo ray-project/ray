@@ -166,12 +166,12 @@ void PullManager::DeactivatePullBundleRequest(
 }
 
 void PullManager::DeactivateUntilWithinQuota(
-    const std::string &debug_name, Queue &bundles,
-    std::unordered_set<ObjectID> *object_ids_to_cancel, uint64_t *highest_id_for_bundle) {
+    const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
+    std::unordered_set<ObjectID> *object_ids_to_cancel) {
   while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
-    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " < < < <
-        *highest_id_for_bundle << " num bytes being pulled: " << num_bytes_being_pulled_
-                               << " num bytes available: " << num_bytes_available_;
+    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
+                   << " num bytes being pulled: " << num_bytes_being_pulled_
+                   << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
