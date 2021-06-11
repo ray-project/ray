@@ -175,7 +175,7 @@ void PullManager::DeactivateUntilWithinQuota(
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
-                                &object_ids_to_cancel);
+                                object_ids_to_cancel);
   }
 }
 
@@ -198,8 +198,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
                                &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
 
-    // Activate the next get request if we have space. Fallback allocation is allowed
-    // for get requests.
+    // Activate the next get request if we have space, or are in unlimited allocation
+    // mode.
     if (num_bytes_being_pulled_ < num_bytes_available_ ||
         RayConfig::instance().plasma_unlimited()) {
       get_requests_remaining = ActivateNextPullBundleRequest(
@@ -215,8 +215,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
                                &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
 
-    // Activate the next wait request if we have space. Fallback allocation is NOT
-    // allowed for wait requests.
+    // Activate the next wait request if we have space.
     if (num_bytes_being_pulled_ < num_bytes_available_) {
       wait_requests_remaining = ActivateNextPullBundleRequest(
           wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
@@ -225,7 +224,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
   }
 
-  // Do the same but for task arg requests (lowest priority). Fallback allocation is NOT
+  // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     if (!ActivateNextPullBundleRequest(task_argument_bundles_,
