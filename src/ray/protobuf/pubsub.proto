@@ -44,6 +44,8 @@ message PubMessage {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
+    // The message that indicates the given key id is not available anymore.
+    FailureMessage failure_message = 6;
   }
 }
 
@@ -76,6 +78,9 @@ message WorkerObjectLocationsPubMessage {
   // This could be Nil if the object has been evicted or inlined.
   bytes primary_node_id = 6;
 }
+
+/// Indicating the subscriber needs to handle failure callback.
+message FailureMessage {}
 
 ///
 /// Subscribe

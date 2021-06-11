@@ -214,8 +214,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
-  auto publishers_connected_it = publishers_connected_.find(publisher_id);
-  RAY_CHECK(publishers_connected_it != publishers_connected_.end());
+  RAY_CHECK(publishers_connected_.count(publisher_id));
+
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
     RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
@@ -228,14 +228,26 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
-    // Otherwise, iterate on the reply and pass published messages to channels.
+    // Otherwise, invoke subscription callbacks.
+    // Note that instead of invoking them one by one, we should queue them in order to
+    // run all of them while we are releasing the lock.
     std::queue<std::shared_ptr<SubscriptionCallback>> subscription_callbacks;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
-      subscription_callbacks.push(
+      // If the published message is a failure message, the publisher indicates
+      // this key id is failed. Invoke the failure callback.
+      if (msg.has_failure_message()) {
+        Channel(channel_type)->HandlePublisherFailure(publisher_address);
+        subscription_callbacks.emplace(nullptr);
+        continue;
+      }
+
+      // Otherwise, register the subscription callback.
+      subscription_callbacks.emplace(
           Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }
+
     // We need to unlock here because the subscription callback could call Subscriber APIs
     // which needs to hold a lock. Note that we don't allow to call subscriber APIs inside
     // the failure callback right now, so we don't need to do the same thing for that.

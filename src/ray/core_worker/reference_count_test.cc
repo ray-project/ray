@@ -195,6 +195,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     return false;
   }
 
+  void PublishFailure(const rpc::ChannelType channel_type,
+                      const std::string &key_id_binary) {
+    RAY_CHECK(false) << "No need to implement it for testing.";
+  }
+
   void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
                const std::string &key_id_binary) {
     auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
@@ -278,7 +283,9 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     for (const auto it : subscription_failure_callback_map) {
       auto &callback_map = it.second;
       for (const auto callback_it : callback_map) {
-        callback_it.second();
+        const auto object_id = callback_it.first;
+        const auto failure_callback = callback_it.second;
+        failure_callback(object_id.Binary());
       }
     }
     subscription_failure_callback_map.clear();

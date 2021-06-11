@@ -2599,19 +2599,22 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
 void CoreWorker::ProcessSubscribeObjectLocations(
     const rpc::WorkerObjectLocationsSubMessage &message) {
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
+  const auto object_id = ObjectID::FromBinary(message.object_id());
+
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(INFO) << "The ProcessSubscribeObjectLocations message is for "
-                  << intended_worker_id << ", but the current worker id is "
-                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+    RAY_LOG(ERROR) << "The ProcessSubscribeObjectLocations message is for "
+                   << intended_worker_id << ", but the current worker id is "
+                   << worker_context_.GetWorkerID() << ". This will be no-op.";
+    object_status_publisher_->PublishFailure(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
   }
 
-  auto object_id = ObjectID::FromBinary(message.object_id());
-  const auto &callback = [this, object_id](
-                             const absl::flat_hash_set<NodeID> &locations,
-                             int64_t object_size, const std::string &spilled_url,
-                             const NodeID &spilled_node_id, int64_t current_version,
-                             const absl::optional<NodeID> &optional_primary_node_id) {
+  const auto callback = [this, object_id](
+                            const absl::flat_hash_set<NodeID> &locations,
+                            int64_t object_size, const std::string &spilled_url,
+                            const NodeID &spilled_node_id, int64_t current_version,
+                            const absl::optional<NodeID> &optional_primary_node_id) {
     auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
@@ -2637,7 +2640,11 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   };
 
   auto status = reference_counter_->SubscribeObjectLocations(
-      object_id, message.last_version(), callback);
+      object_id, message.last_version(), std::move(callback));
+  if (!status.ok()) {
+    object_status_publisher_->PublishFailure(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
+  }
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(
