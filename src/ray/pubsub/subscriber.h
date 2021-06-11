@@ -398,7 +398,7 @@ class Subscriber : public SubscriberInterface {
   std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_
       GUARDED_BY(mutex_);
 
-  /// WaitForRefRemoved channel.
+  /// ObjectLocationsChannel channel.
   std::shared_ptr<ObjectLocationsChannel> object_locations_channel_ GUARDED_BY(mutex_);
 
   /// Mapping of channel type to channels.

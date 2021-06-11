@@ -2658,36 +2658,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     return;
   }
   auto object_id = ObjectID::FromBinary(object_location_request.object_id());
-  // SANG-TODO
-  // reference_counter_->FillObjectInformation(object_id, reply);
-  const auto &callback = [object_id, reply, send_reply_callback](
-                             const absl::flat_hash_set<NodeID> &locations,
-                             int64_t object_size, const std::string &spilled_url,
-                             const NodeID &spilled_node_id, int64_t current_version,
-                             const absl::optional<NodeID> &optional_primary_node_id) {
-    auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-    RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
-                   << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, spilled url: " << spilled_url
-                   << ", spilled node ID: " << spilled_node_id
-                   << ", and object size: " << object_size
-                   << ", and primary node ID: " << primary_node_id;
-    const auto object_info = reply->mutable_object_location_info();
-    for (const auto &node_id : locations) {
-      object_info->add_node_ids(node_id.Binary());
-    }
-    object_info->set_object_size(object_size);
-    object_info->set_spilled_url(spilled_url);
-    object_info->set_spilled_node_id(spilled_node_id.Binary());
-    object_info->set_current_version(current_version);
-    object_info->set_primary_node_id(primary_node_id.Binary());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
-  auto status = reference_counter_->SubscribeObjectLocations(
-      object_id, object_location_request.last_version(), callback);
-  if (!status.ok()) {
-    send_reply_callback(status, nullptr, nullptr);
-  }
+  auto object_info = reply->mutable_object_location_info();
+  auto status = reference_counter_->FillObjectInformation(object_id, object_info);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::ProcessSubscribeForRefRemoved(
