@@ -94,18 +94,18 @@ py_test(
 )
 
 py_test(
-    name = "dask_ray_shuffle_example",
+    name = "dask_ray_shuffle_optimization",
     size = "medium",
-    srcs = ["examples/dask_ray_shuffle_example.py"],
+    srcs = ["examples/dask_ray_shuffle_optimization.py"],
     tags = ["exclusive"],
     deps = [":dask_lib"],
 )
 
 py_test(
-    name = "dask_ray_shuffle_example_client_mode",
+    name = "dask_ray_shuffle_optimization_client_mode",
     size = "medium",
-    main = "dask_ray_shuffle_example.py",
-    srcs = ["examples/dask_ray_shuffle_example.py"],
+    main = "dask_ray_shuffle_optimization.py",
+    srcs = ["examples/dask_ray_shuffle_optimization.py"],
     tags = ["exclusive", "client"],
     deps = [":dask_lib"],
 )

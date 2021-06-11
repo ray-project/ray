@@ -26,3 +26,5 @@ with dask.config.set(
     df.set_index(
         ["age"], shuffle="tasks", max_branch=float("inf")).head(
             10, npartitions=-1)
+
+ray.shutdown()

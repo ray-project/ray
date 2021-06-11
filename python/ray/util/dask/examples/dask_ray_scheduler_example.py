@@ -24,3 +24,5 @@ df = dd.from_pandas(
         np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]),
     npartitions=2)
 df.groupby(["age"]).mean().compute()
+
+ray.shutdown()
