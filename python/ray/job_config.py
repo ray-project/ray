@@ -125,7 +125,8 @@ class JobConfig:
         runtime_env = RuntimeEnvPB()
         runtime_env.uris[:] = self.get_runtime_env_uris()
         container_option_dict = self.get_runtime_env_container_options()
-        runtime_env.container_option.image = container_option_dict.get("image")
+        if container_option_dict.get("image"):
+            runtime_env.container_option.image = container_option_dict.get("image")
         if container_option_dict.get("run_options"):
             runtime_env.container_option.run_options. \
                 extend(container_option_dict.get("run_options"))
