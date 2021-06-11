@@ -100,7 +100,7 @@ def create_searcher(
         "sigopt": _import_sigopt_search,
         "hebo": _import_hebo_search,
         "blendsearch": _import_blendsearch_search,
-        'cfo': _import_cfo_search,
+        "cfo": _import_cfo_search,
     }
     search_alg = search_alg.lower()
     if search_alg not in SEARCH_ALG_IMPORT:

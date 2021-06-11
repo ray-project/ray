@@ -87,7 +87,7 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=BlendSearch(),
             config=self.config,
-            metric='_metric',
+            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -116,7 +116,7 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=CFO(),
             config=self.config,
-            metric='_metric',
+            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)

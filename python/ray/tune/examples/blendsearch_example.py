@@ -59,7 +59,7 @@ def run_blendsearch_tune_w_budget(time_budget_s=10):
                               "activation": tune.choice(["relu", "tanh"])
                               }
                        )
-    algo.set_search_properties(config={'time_budget_s': time_budget_s})
+    algo.set_search_properties(config={"time_budget_s": time_budget_s})
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
     analysis = tune.run(
