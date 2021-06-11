@@ -2645,8 +2645,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto &object_location_request = request.object_location_request();
-  if (HandleWrongRecipient(WorkerID::FromBinary(object_location_request.intended_worker_id()),
-                           send_reply_callback)) {
+  if (HandleWrongRecipient(
+          WorkerID::FromBinary(object_location_request.intended_worker_id()),
+          send_reply_callback)) {
     return;
   }
   auto object_id = ObjectID::FromBinary(object_location_request.object_id());
