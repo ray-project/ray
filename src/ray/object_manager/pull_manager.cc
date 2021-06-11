@@ -44,7 +44,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     bundle_it =
         wait_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   } else {
-    RAY_CHECK(prio == BundlePriority::TASK_ARG);
+    RAY_CHECK(prio == BundlePriority::TASK_ARGS);
     bundle_it =
         task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   }
@@ -277,7 +277,7 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
   // object size information yet.
   auto head = get_request_bundles_.begin();
   if (head == get_request_bundles_.end()) {
-    head = wait_argument_bundles_.begin();
+    head = wait_request_bundles_.begin();
     if (head == wait_request_bundles_.end()) {
       head = task_argument_bundles_.begin();
       if (head == task_argument_bundles_.end()) {
@@ -388,7 +388,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
-      auto bundle_it = get_request_bundles_.find(bundle_get_id);
+      auto bundle_it = get_request_bundles_.find(bundle_request_id);
       if (bundle_it == get_request_bundles_.end()) {
         bundle_it = wait_request_bundles_.find(bundle_request_id);
         if (bundle_it == wait_request_bundles_.end()) {

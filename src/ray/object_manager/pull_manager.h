@@ -26,7 +26,7 @@ enum BundlePriority {
   /// Bundle requested by ray.wait().
   WAIT_REQUEST,
   /// Bundle requested for fetching task arguments.
-  TASK_ARG,
+  TASK_ARGS,
 };
 
 class PullManager {
