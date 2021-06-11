@@ -254,6 +254,15 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
   }
 }
 
+void Publisher::PublishFailure(const rpc::ChannelType channel_type,
+                               const std::string &key_id_binary) {
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(key_id_binary);
+  pub_message.set_channel_type(channel_type);
+  pub_message.mutable_failure_message();
+  Publish(channel_type, pub_message, key_id_binary);
+}
+
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
                                        const SubscriberID &subscriber_id,
                                        const std::string &key_id_binary) {
