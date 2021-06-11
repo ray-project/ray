@@ -99,8 +99,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
   // plasma_allocator.cc.
   if (allocated_once && RayConfig::instance().plasma_unlimited()) {
-    // TODO(ekl) get this from the node manager config.
-    file_template = "/tmp";
+    file_template = plasma_config->fallback_directory;
   }
 
   file_template += "/plasmaXXXXXX";
