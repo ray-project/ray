@@ -2457,3 +2457,27 @@ py_test(
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
     args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
 )
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
+    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+)

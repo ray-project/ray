@@ -4,6 +4,7 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
+
 from ray.rllib.contrib.bandits.agents import LinTSTrainer
 from ray.rllib.contrib.bandits.envs import WheelBanditEnv
 
@@ -28,7 +29,7 @@ def plot_model_weights(means, covs):
 
 
 if __name__ == "__main__":
-    num_iter = 20
+    num_iter = 10
     print("Running training for %s time steps" % num_iter)
     trainer = LinTSTrainer(env=WheelBanditEnv)
 
@@ -42,7 +43,7 @@ if __name__ == "__main__":
         trainer.train()
 
     info = trainer.train()
-    print(info["learner"])
+    print(info["info"]["learner"])
 
     # Get model parameters
     means = [model.arms[i].theta.numpy() for i in range(5)]
