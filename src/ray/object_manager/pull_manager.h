@@ -78,12 +78,6 @@ class PullManager {
   /// available to store objects pulled from another node.
   void UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available);
 
-  /// Helper method that deactivates requests from the given queue until the pull
-  /// memory usage is within quota.
-  void DeactivateUntilWithinQuota(const std::string &debug_name,
-                                  std::map<uint64_t, PullBundleRequest> &bundles,
-                                  uint64_t *highest_id_for_bundle);
-
   /// Called when the available locations for a given object change.
   ///
   /// \param object_id The ID of the object which is now available in a new location.
@@ -211,6 +205,12 @@ class PullManager {
                                    const Queue::iterator &request_it,
                                    uint64_t *highest_req_id_being_pulled,
                                    std::unordered_set<ObjectID> *objects_to_cancel);
+
+  /// Helper method that deactivates requests from the given queue until the pull
+  /// memory usage is within quota.
+  void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
+                                  uint64_t *highest_id_for_bundle,
+                                  std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the

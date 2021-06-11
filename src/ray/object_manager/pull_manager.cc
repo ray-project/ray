@@ -167,7 +167,7 @@ void PullManager::DeactivatePullBundleRequest(
 
 void PullManager::DeactivateUntilWithinQuota(
     const std::string &debug_name, Queue &bundles,
-    std::unordered_set<ObjectID> &object_ids_to_cancel, uint64_t *highest_id_for_bundle) {
+    std::unordered_set<ObjectID> *object_ids_to_cancel, uint64_t *highest_id_for_bundle) {
   while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
     RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " < < < <
         *highest_id_for_bundle << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -194,9 +194,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   bool get_requests_remaining = !get_request_bundles_.empty();
   while (get_requests_remaining) {
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               object_ids_to_cancel, &highest_task_req_id_being_pulled_);
+                               &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
     DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
-                               object_ids_to_cancel, &highest_wait_req_id_being_pulled_);
+                               &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
 
     // Activate the next get request if we have space. Fallback allocation is allowed
     // for get requests.
@@ -213,7 +213,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   bool wait_requests_remaining = !wait_request_bundles_.empty();
   while (wait_requests_remaining) {
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               object_ids_to_cancel, &highest_task_req_id_being_pulled_);
+                               &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
 
     // Activate the next wait request if we have space. Fallback allocation is NOT
     // allowed for wait requests.
@@ -237,14 +237,14 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                             object_ids_to_cancel, &highest_task_req_id_being_pulled_);
-  DeactivateUntilWithinQuota("wait request", wait_request_bundles_, object_ids_to_cancel,
-                             &highest_wait_req_id_being_pulled_);
+                             &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
+  DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
+                             &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilWithinQuota("get request", get_request_bundles_, object_ids_to_cancel,
-                               &highest_get_req_id_being_pulled_);
+    DeactivateUntilWithinQuota("get request", get_request_bundles_,
+                               &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
     RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
   }
 
