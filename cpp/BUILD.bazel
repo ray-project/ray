@@ -89,11 +89,6 @@ genrule(
         cp -f "$$WORK_DIR/external/msgpack/include/msgpack.h" "$$WORK_DIR/cpp/example/thirdparty/include" &&
         cp -f "$$WORK_DIR/external/msgpack/include/msgpack.hpp" "$$WORK_DIR/cpp/example/thirdparty/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        cp -f -r "$$WORK_DIR/external/com_google_absl/absl/" "$$WORK_DIR/cpp/example/thirdparty/include" &&
-        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/BUILD.bazel" &&
-        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/utility/BUILD.bazel" &&
-        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/base/BUILD.bazel" &&
-        rm -rf "$$WORK_DIR/cpp/example/thirdparty/include/absl/meta/BUILD.bazel" &&
         cp -f $(locations libray_api.so) "$$WORK_DIR/cpp/example/thirdparty/lib/" &&
         cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$WORK_DIR/cpp/example/thirdparty/include" &&        
         echo "$$WORK_DIR" > $@
