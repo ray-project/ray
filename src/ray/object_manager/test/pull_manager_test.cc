@@ -771,10 +771,11 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
 
 TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   /// Test prioritizing worker requests over task argument requests during
-  /// admission control.
+  /// admission control, and gets over waits.
   int object_size = 2;
   std::vector<ObjectID> task_oids;
-  std::vector<ObjectID> worker_oids;
+  std::vector<ObjectID> get_oids;
+  std::vector<ObjectID> wait_oids;
 
   // First submit two task args requests that can be pulled at the same time.
   std::vector<rpc::ObjectReference> objects_to_locate;
@@ -800,72 +801,98 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[1]));
 
-  // A worker request comes in.
+  // A wait request comes in. It takes priority over the task requests.
   refs = CreateObjectRefs(1);
-  auto worker_req_id1 =
-      pull_manager_.Pull(refs, BundlePriority::GET_REQUEST, &objects_to_locate);
-  worker_oids.push_back(ObjectRefsToIds(refs)[0]);
-  // Nothing has changed yet because the size information for the worker's
-  // request is not available.
+  auto wait_req_id =
+      pull_manager_.Pull(refs, BundlePriority::WAIT_REQUEST, &objects_to_locate);
+  wait_oids.push_back(ObjectRefsToIds(refs)[0]);
+  pull_manager_.OnLocationChange(wait_oids[0], client_ids, "", NodeID::Nil(),
+                                 object_size);
   AssertNumActiveRequestsEquals(2);
-  ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
-  ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[1]));
-  // Worker request takes priority over the task requests once its size is
-  // available.
-  for (auto &oid : worker_oids) {
-    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), object_size);
-  }
-  AssertNumActiveRequestsEquals(2);
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
-  // Another worker request comes in. It takes priority over the task requests
-  // once its size is available.
+  // A worker request comes in.
   refs = CreateObjectRefs(1);
-  auto worker_req_id2 =
+  auto get_req_id1 =
       pull_manager_.Pull(refs, BundlePriority::GET_REQUEST, &objects_to_locate);
-  worker_oids.push_back(ObjectRefsToIds(refs)[0]);
+  get_oids.push_back(ObjectRefsToIds(refs)[0]);
+  // Nothing has changed yet because the size information for the worker's
+  // request is not available.
   AssertNumActiveRequestsEquals(2);
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
-  for (auto &oid : worker_oids) {
+  // Worker request takes priority over the wait and task requests once its size is
+  // available.
+  for (auto &oid : get_oids) {
     pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), object_size);
   }
   AssertNumActiveRequestsEquals(2);
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[1]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
+
+  // Another worker request comes in. It takes priority over the wait request
+  // once its size is available.
+  refs = CreateObjectRefs(1);
+  auto get_req_id2 =
+      pull_manager_.Pull(refs, BundlePriority::GET_REQUEST, &objects_to_locate);
+  get_oids.push_back(ObjectRefsToIds(refs)[0]);
+  AssertNumActiveRequestsEquals(2);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
+  for (auto &oid : get_oids) {
+    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), object_size);
+  }
+  AssertNumActiveRequestsEquals(2);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
   // Only 1 request can run at a time. We should prioritize between requests of
   // the same type by FIFO order.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(2);
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
   if (RayConfig::instance().plasma_unlimited()) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[1]));
+    ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
   } else {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[1]));
+    ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
   }
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
-  pull_manager_.CancelPull(worker_req_id1);
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[0]));
-  ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[1]));
+  pull_manager_.CancelPull(get_req_id1);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
-  pull_manager_.CancelPull(worker_req_id2);
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[0]));
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[1]));
+  pull_manager_.CancelPull(get_req_id2);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
+
+  pull_manager_.CancelPull(wait_req_id);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
   pull_manager_.CancelPull(task_req_id1);
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[0]));
-  ASSERT_FALSE(pull_manager_.IsObjectActive(worker_oids[1]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[0]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[1]));
 
