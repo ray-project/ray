@@ -1,1 +1,4 @@
-from flaml import BlendSearch, CFO
+try:
+    from flaml import BlendSearch, CFO
+except ImportError:
+    BlendSearch = CFO = None
