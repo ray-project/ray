@@ -23,7 +23,7 @@ PullManager::PullManager(
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                           bool is_worker_request,
+                           BundlePriority prio,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
   // To avoid edge cases dealing with duplicated object ids in the bundle,
   // canonicalize the set up-front by dropping all duplicates.
@@ -37,10 +37,14 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     }
   }
   Queue::iterator bundle_it;
-  if (is_worker_request) {
+  if (prio == BundlePriority::WORKER_GET) {
     bundle_it =
-        worker_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
+        get_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
+  } else if (prio == BundlePriority::WORKER_WAIT) {
+    bundle_it =
+        wait_request_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   } else {
+    RAY_CHECK(prio == BundlePriority::TASK_ARG);
     bundle_it =
         task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   }
@@ -161,6 +165,20 @@ void PullManager::DeactivatePullBundleRequest(
   }
 }
 
+void PullManager::DeactivateUntilWithinQuota(
+    const std::string &debug_name, Queue &bundles,
+    std::unordered_set<ObjectID> &object_ids_to_cancel, uint64_t *highest_id_for_bundle) {
+  while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
+    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " < < < <
+        *highest_id_for_bundle << " num bytes being pulled: " << num_bytes_being_pulled_
+                               << " num bytes available: " << num_bytes_available_;
+    const auto last_request_it = bundles.find(*highest_id_for_bundle);
+    RAY_CHECK(last_request_it != bundles.end());
+    DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
+                                &object_ids_to_cancel);
+  }
+}
+
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
@@ -168,44 +186,47 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   num_bytes_available_ = num_bytes_available;
   std::vector<ObjectID> objects_to_pull;
   std::unordered_set<ObjectID> object_ids_to_cancel;
-  // If there are any worker requests queued, try to activate them. Since we
-  // prioritize worker requests over task requests, task requests will be
+  // If there are any get requests (highest priority), try to activate them. Since we
+  // prioritize get requests over task and wait requests, these requests will be
   // canceled as necessary to make space. We may exit this block over capacity
-  // if we run out of task requests to cancel, but this will be remedied later
-  // by canceling worker requests.
-  bool worker_requests_remaining = !worker_request_bundles_.empty();
-  while (worker_requests_remaining) {
-    while (num_bytes_being_pulled_ > num_bytes_available_ &&
-           highest_task_req_id_being_pulled_ != 0) {
-      // We are over capacity and there is at least one active task request.
-      // Try to cancel a task request to make space for the next worker
-      // request.
-      RAY_LOG(DEBUG) << "Deactivating task args request "
-                     << highest_task_req_id_being_pulled_
-                     << " num bytes being pulled: " << num_bytes_being_pulled_
-                     << " num bytes available: " << num_bytes_available_;
-      const auto last_request_it =
-          task_argument_bundles_.find(highest_task_req_id_being_pulled_);
-      RAY_CHECK(last_request_it != task_argument_bundles_.end());
-      DeactivatePullBundleRequest(task_argument_bundles_, last_request_it,
-                                  &highest_task_req_id_being_pulled_,
-                                  &object_ids_to_cancel);
-    }
+  // if we run out of requests to cancel, but this will be remedied later
+  // by canceling get and wait requests.
+  bool get_requests_remaining = !get_request_bundles_.empty();
+  while (get_requests_remaining) {
+    DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
+                               object_ids_to_cancel, &highest_task_req_id_being_pulled_);
+    DeactivateUntilWithinQuota("worker wait request", wait_request_bundles_,
+                               object_ids_to_cancel, &highest_wait_req_id_being_pulled_);
 
-    // Activate the next worker request if we have space.
-    // TODO(ekl) consider throttling wait requests based on `num_returns`.
+    // Activate the next get request if we have space. Fallback allocation is allowed
+    // for get requests.
     if (num_bytes_being_pulled_ < num_bytes_available_ ||
         RayConfig::instance().plasma_unlimited()) {
-      worker_requests_remaining = ActivateNextPullBundleRequest(
-          worker_request_bundles_, &highest_worker_req_id_being_pulled_,
-          &objects_to_pull);
+      get_requests_remaining = ActivateNextPullBundleRequest(
+          get_request_bundles_, &highest_get_req_id_being_pulled_, &objects_to_pull);
     } else {
       break;
     }
   }
 
-  // If we still have capacity after processing worker requests, try to
-  // activate task requests.
+  // Do the same but for wait requests (medium priority).
+  bool wait_requests_remaining = !wait_request_bundles_.empty();
+  while (wait_requests_remaining) {
+    DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
+                               object_ids_to_cancel, &highest_task_req_id_being_pulled_);
+
+    // Activate the next wait request if we have space. Fallback allocation is NOT
+    // allowed for wait requests.
+    if (num_bytes_being_pulled_ < num_bytes_available_) {
+      wait_requests_remaining = ActivateNextPullBundleRequest(
+          wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
+    } else {
+      break;
+    }
+  }
+
+  // Do the same but for task arg requests (lowest priority). Fallback allocation is NOT
+  // allowed for task arg requests.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     if (!ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
@@ -214,42 +235,16 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
   }
 
-  // While we are over capacity, deactivate requests starting from the back of
-  // the task request queue.
-  while (num_bytes_being_pulled_ > num_bytes_available_ &&
-         highest_task_req_id_being_pulled_ != 0) {
-    RAY_LOG(DEBUG) << "Deactivating task args request "
-                   << highest_task_req_id_being_pulled_
-                   << " num bytes being pulled: " << num_bytes_being_pulled_
-                   << " num bytes available: " << num_bytes_available_;
-    const auto last_request_it =
-        task_argument_bundles_.find(highest_task_req_id_being_pulled_);
-    RAY_CHECK(last_request_it != task_argument_bundles_.end());
-    DeactivatePullBundleRequest(task_argument_bundles_, last_request_it,
-                                &highest_task_req_id_being_pulled_,
-                                &object_ids_to_cancel);
-  }
-
-  // If we are still over capacity, deactivate requests starting from the back
-  // of the worker request queue.
-  while (num_bytes_being_pulled_ > num_bytes_available_ &&
-         highest_worker_req_id_being_pulled_ != 0 &&
-         !RayConfig::instance().plasma_unlimited()) {
-    RAY_LOG(DEBUG) << "Deactivating worker request "
-                   << highest_worker_req_id_being_pulled_
-                   << " num bytes being pulled: " << num_bytes_being_pulled_
-                   << " num bytes available: " << num_bytes_available_;
-    const auto last_request_it =
-        worker_request_bundles_.find(highest_worker_req_id_being_pulled_);
-    RAY_CHECK(last_request_it != worker_request_bundles_.end());
-    DeactivatePullBundleRequest(worker_request_bundles_, last_request_it,
-                                &highest_worker_req_id_being_pulled_,
-                                &object_ids_to_cancel);
-  }
-
+  // While we are over capacity, deactivate requests starting from the back of the queues.
+  DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
+                             object_ids_to_cancel, &highest_task_req_id_being_pulled_);
+  DeactivateUntilWithinQuota("worker wait request", wait_request_bundles_,
+                             object_ids_to_cancel, &highest_wait_req_id_being_pulled_);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
+    DeactivateUntilWithinQuota("worker get request", get_request_bundles_,
+                               object_ids_to_cancel, &highest_get_req_id_being_pulled_);
     RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
   }
 
