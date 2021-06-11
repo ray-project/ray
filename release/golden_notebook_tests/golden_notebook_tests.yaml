@@ -1,7 +1,7 @@
 - name: dask_xgboost_test
   owner:
     mail: "matt@anyscale.com"
-    slack: "@ml-team"
+    slack: "@team_ml"
 
   cluster:
     app_config: dask_xgboost_app_config.yaml
