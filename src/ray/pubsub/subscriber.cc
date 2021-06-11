@@ -112,15 +112,15 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   }
   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
-  std::vector<KeyIdType> key_ids_to_unsubscribe;
+  std::vector<std::string> key_ids_to_unsubscribe;
   for (const auto &key_id_it : subscription_callback_map) {
     const auto &key_id = key_id_it.first;
-    key_ids_to_unsubscribe.push_back(key_id);
+    key_ids_to_unsubscribe.push_back(key_id.Binary());
 
     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
     if (maybe_failure_callback.has_value()) {
       const auto &failure_callback = maybe_failure_callback.value();
-      failure_callback();
+      failure_callback(key_id.Binary());
     }
   }
 
@@ -128,7 +128,7 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
     // If the publisher is failed, we automatically unsubscribe objects from this
     // publishers. If the failure callback called UnsubscribeObject, this will raise
     // check failures.
-    RAY_CHECK(Unsubscribe(publisher_address, key_id.Binary()))
+    RAY_CHECK(Unsubscribe(publisher_address, key_id))
         << "Calling UnsubscribeObject inside a failure callback is not allowed.";
   }
 }

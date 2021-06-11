@@ -91,6 +91,9 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
                             const rpc::GetObjectLocationsOwnerReply &reply);
 
+  /// Internal callback function used by object location subscription.
+  void ObjectLocationSubscriptionCallback(const rpc::PubMessage &pub_message, const ObjectID &object_id);
+
   /// Metrics
 
   /// Number of object locations added to this object directory.

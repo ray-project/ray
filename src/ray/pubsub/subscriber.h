@@ -33,7 +33,7 @@ namespace pubsub {
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
 using SubscriptionCallback = std::function<void(const rpc::PubMessage &)>;
-using SubscriptionFailureCallback = std::function<void()>;
+using SubscriptionFailureCallback = std::function<void(const std::string &)>;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// SubscriberChannel Abstraction

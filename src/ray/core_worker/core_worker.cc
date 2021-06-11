@@ -80,14 +80,16 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
 ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
   std::vector<NodeID> node_ids;
-  node_ids.reserve(reply.node_ids_size());
-  for (auto i = 0; i < reply.node_ids_size(); i++) {
-    node_ids.push_back(NodeID::FromBinary(reply.node_ids(i)));
+  const auto object_info = reply.object_location_info();
+  node_ids.reserve(object_info.node_ids_size());
+  for (auto i = 0; i < object_info.node_ids_size(); i++) {
+    node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
-  bool is_spilled = !reply.spilled_url().empty();
-  return ObjectLocation(NodeID::FromBinary(reply.primary_node_id()), reply.object_size(),
-                        std::move(node_ids), is_spilled, reply.spilled_url(),
-                        NodeID::FromBinary(reply.spilled_node_id()));
+  bool is_spilled = !object_info.spilled_url().empty();
+  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
+                        object_info.object_size(), std::move(node_ids), is_spilled,
+                        object_info.spilled_url(),
+                        NodeID::FromBinary(object_info.spilled_node_id()));
 }
 }  // namespace
 
@@ -1383,9 +1385,10 @@ Status CoreWorker::GetLocationFromOwner(
     auto owner_address = GetOwnerAddress(object_id);
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
-    request.set_intended_worker_id(owner_address.worker_id());
-    request.set_object_id(object_id.Binary());
-    request.set_last_version(-1);
+    auto object_location_request = request.mutable_object_location_request();
+    object_location_request->set_intended_worker_id(owner_address.worker_id());
+    object_location_request->set_object_id(object_id.Binary());
+    object_location_request->set_last_version(-1);
     client->GetObjectLocationsOwner(
         request,
         [object_id, mutex, num_remaining, ready_promise, location_by_id](
@@ -2641,11 +2644,12 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     const rpc::GetObjectLocationsOwnerRequest &request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+  auto &object_location_request = request.object_location_request();
+  if (HandleWrongRecipient(WorkerID::FromBinary(object_location_request.intended_worker_id()),
                            send_reply_callback)) {
     return;
   }
-  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto object_id = ObjectID::FromBinary(object_location_request.object_id());
   // SANG-TODO
   // reference_counter_->FillObjectInformation(object_id, reply);
   const auto &callback = [object_id, reply, send_reply_callback](
@@ -2660,18 +2664,19 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                    << ", spilled node ID: " << spilled_node_id
                    << ", and object size: " << object_size
                    << ", and primary node ID: " << primary_node_id;
+    const auto object_info = reply->mutable_object_location_info();
     for (const auto &node_id : locations) {
-      reply->add_node_ids(node_id.Binary());
+      object_info->add_node_ids(node_id.Binary());
     }
-    reply->set_object_size(object_size);
-    reply->set_spilled_url(spilled_url);
-    reply->set_spilled_node_id(spilled_node_id.Binary());
-    reply->set_current_version(current_version);
-    reply->set_primary_node_id(primary_node_id.Binary());
+    object_info->set_object_size(object_size);
+    object_info->set_spilled_url(spilled_url);
+    object_info->set_spilled_node_id(spilled_node_id.Binary());
+    object_info->set_current_version(current_version);
+    object_info->set_primary_node_id(primary_node_id.Binary());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
   auto status = reference_counter_->SubscribeObjectLocations(
-      object_id, request.last_version(), callback);
+      object_id, object_location_request.last_version(), callback);
   if (!status.ok()) {
     send_reply_callback(status, nullptr, nullptr);
   }
