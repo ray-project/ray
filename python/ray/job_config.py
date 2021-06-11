@@ -61,8 +61,13 @@ class JobConfig:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
+            # Remove working_dir from the dict here, since that needs to be
+            # uploaded to the GCS after the job starts.
+            without_dir = dict(runtime_env)
+            if "working_dir" in without_dir:
+                del without_dir["working_dir"]
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
-                runtime_env)
+                without_dir)
             self.worker_env.update(
                 self._parsed_runtime_env.get_parsed_dict().get("env_vars")
                 or {})
