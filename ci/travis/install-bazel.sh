@@ -56,13 +56,15 @@ else
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
   if [[ -n "${BUILDKITE}" ]] && [ "${platform}" = "darwin" ]; then
-    "${target}" --user > /dev/null
+    "${target}" --user
+    echo 'PATH=$HOME/bin:$PATH' >> ~/.zshrc
+    source ~/.zshrc
   elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
   else
     "${target}" --user > /dev/null
   fi
-  which bazel > /dev/null
+  which bazel
   rm -f "${target}"
 fi
 
