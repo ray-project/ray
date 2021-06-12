@@ -58,7 +58,9 @@ else
   if [[ -n "${BUILDKITE}" ]] && [ "${platform}" = "darwin" ]; then
     "${target}" --user
     # Add bazel to the path.
-    echo '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+    # shellcheck disable=SC2016
+    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+    # shellcheck disable=SC1090
     source ~/.zshrc
   elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
