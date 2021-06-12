@@ -131,8 +131,8 @@ GetRequest::GetRequest(instrumented_io_context &io_context,
 }
 
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
-                         bool hugepages_enabled, const std::string &socket_name,
-                         uint32_t delay_on_oom_ms,
+                         std::string fallback_directory, bool hugepages_enabled,
+                         const std::string &socket_name, uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -155,6 +155,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           []() { return absl::GetCurrentTimeNanos(); },
           [this]() { return GetDebugDump(); }) {
   store_info_.directory = directory;
+  store_info_.fallback_directory = fallback_directory;
   store_info_.hugepages_enabled = hugepages_enabled;
   const auto asio_stats_print_interval_ms =
       RayConfig::instance().asio_stats_print_interval_ms();
