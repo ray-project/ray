@@ -22,28 +22,24 @@ logger = logging.getLogger(__name__)
 class TrainableUtil:
     @staticmethod
     def process_checkpoint(checkpoint, parent_dir, trainable_state):
-        saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if not checkpoint.startswith(parent_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         parent_dir, checkpoint))
+            saved_as_dict = False
             checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            checkpoint_path = os.path.join(parent_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
+            checkpoint_path = parent_dir
+            with open(os.path.join(parent_dir, "checkpoint"), "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
             raise ValueError("Returned unexpected type {}. "
                              "Expected str or dict.".format(type(checkpoint)))
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+        with open(os.path.join(checkpoint_path, ".tune_metadata"), "wb") as f:
             trainable_state["saved_as_dict"] = saved_as_dict
             pickle.dump(trainable_state, f)
         return checkpoint_path
@@ -61,7 +57,6 @@ class TrainableUtil:
         # Use normpath so that a directory path isn't mapped to empty string.
         name = os.path.relpath(
             os.path.normpath(checkpoint_path), checkpoint_dir)
-        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
         data_dict = pickle.dumps({
             "checkpoint_name": name,
             "data": data,
@@ -153,16 +148,11 @@ class TrainableUtil:
             os.path.join(glob.escape(logdir), "checkpoint_*/.is_checkpoint"))
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
-            chkpt_dir = os.path.dirname(marker_path)
-            metadata_file = glob.glob(
-                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata"))
-            if len(metadata_file) != 1:
+            chkpt_path = os.path.dirname(marker_path)
+            if not os.path.exists(os.path.join(chkpt_path, ".tune_metadata")):
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(
-                        chkpt_dir))
-
-            chkpt_path = metadata_file[0][:-len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
+                    "{} lacks .tune_metadata file.".format(chkpt_path))
+            chkpt_iter = int(chkpt_path[chkpt_path.rfind("_") + 1:])
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
         chkpt_df = pd.DataFrame(
