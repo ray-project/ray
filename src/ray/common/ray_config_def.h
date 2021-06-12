@@ -405,7 +405,7 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 
 // This is the minimum time an actor will remain in the actor table before
-// being garbage collected when a job finishes.
+// being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
