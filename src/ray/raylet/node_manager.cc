@@ -1371,7 +1371,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (worker) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
-      dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), refs);
+      dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
