@@ -149,8 +149,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
     if (!exist) {
       return absl::nullopt;
     }
-    auto subscription_callback = callback_it->second.first;
-    return absl::optional<SubscriptionCallback>{subscription_callback};
+    return absl::optional<SubscriptionCallback>{callback_it->second.first};
   }
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
@@ -167,8 +166,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
     if (!exist) {
       return absl::nullopt;
     }
-    auto subscription_failure_callback = callback_it->second.second;
-    return absl::optional<SubscriptionFailureCallback>{subscription_failure_callback};
+    return absl::optional<SubscriptionFailureCallback>{callback_it->second.second};
   }
 
   /// Mapping of the publisher ID -> subscription info.

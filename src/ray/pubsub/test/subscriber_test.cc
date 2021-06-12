@@ -118,7 +118,11 @@ class SubscriberTest : public ::testing::Test {
   bool ReplyLongPolling(rpc::ChannelType channel_type, std::vector<ObjectID> &object_ids,
                         Status status = Status::OK()) {
     auto success = owner_client->ReplyLongPolling(channel_type, object_ids, status);
-    callback_service_.poll();
+    // Need to call this to invoke callback when the reply comes.
+    // The io service basically executes the queued handler in a blocking manner, and
+    // reset should be called in order to run the poll_one again.
+    callback_service_.poll_one();
+    callback_service_.reset();
     return success;
   }
 
@@ -336,6 +340,10 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
 
   // Since we unsubscribe the object in the subscription callback, there shouldn't be any
   // long polling request in flight.
+  // NOTE(sang): Since the callback is called asynchronously, the long polling request is
+  // sent "one more time" before unsubscribe API is called. To ensure it is unsubscribed,
+  // one more long polling request should be replied.
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
   ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }

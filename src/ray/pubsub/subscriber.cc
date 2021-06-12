@@ -94,7 +94,7 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   if (maybe_subscription_callback.has_value()) {
     // If the object id is still subscribed, return a subscribe callback.
-    return maybe_subscription_callback.value();
+    return std::move(maybe_subscription_callback.value());
   } else {
     return nullptr;
   }
@@ -236,8 +236,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
           Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }
 
-    // Post to the provided io service so that the callback is always running on that
-    // thread.
+    // Post to the provided io service so that the callback is
+    // always running on the io service thread.
     callback_service_->post(
         [subscription_callbacks = std::move(subscription_callbacks),
          reply = std::move(reply)]() {

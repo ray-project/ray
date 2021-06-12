@@ -2518,7 +2518,8 @@ void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {
     RAY_LOG(FATAL)
-        << "Invalid command type " << channel_type
+        << "Invalid command has received: "
+        << static_cast<int>(sub_message.sub_message_one_of_case())
         << " has received. If you see this message, please report to Ray Github.";
   }
 }
@@ -2533,7 +2534,9 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
       ProcessSubscribeMessage(command.subscribe_message(), command.channel_type(),
                               command.key_id(), subscriber_id);
     } else {
-      RAY_LOG(FATAL) << "Invalid command has received. If you see this message, please "
+      RAY_LOG(FATAL) << "Invalid command has received, "
+                     << static_cast<int>(command.command_message_one_of_case())
+                     << ". If you see this message, please "
                         "report to Ray "
                         "Github.";
     }
