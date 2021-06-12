@@ -207,6 +207,8 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
     RAY_LOG(INFO) << "No victim available with address distinct from thief!";
+    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
+                  << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
 
@@ -421,7 +423,7 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
-      RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
+      RAY_LOG(INFO) << "Connecting to raylet " << raylet_id;
       it = remote_lease_clients_
                .emplace(raylet_id, lease_client_factory_(raylet_address->ip_address(),
                                                          raylet_address->port()))

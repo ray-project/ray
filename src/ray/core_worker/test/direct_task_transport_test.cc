@@ -165,7 +165,9 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   // Trigger reply to RequestWorkerLease.
   bool GrantWorkerLease(const std::string &address, int port,
-                        const NodeID &retry_at_raylet_id, bool cancel = false) {
+                        const NodeID &retry_at_raylet_id, bool cancel = false,
+                        bool work_stealing_test = false,
+                        std::string worker_id = std::string()) {
     rpc::RequestWorkerLeaseReply reply;
     if (cancel) {
       reply.set_canceled(true);
@@ -177,6 +179,9 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_ip_address(address);
       reply.mutable_worker_address()->set_port(port);
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
+      if (work_stealing_test) {
+        reply.mutable_worker_address()->set_worker_id(worker_id);
+      }
     }
     if (callbacks.size() == 0) {
       return false;
@@ -1606,8 +1611,9 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
 
   // Grant a worker lease, and check that one more worker was requested due to the Eager
   // Worker Requesting Mode.
-
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
+  std::string worker1_id = "worker1_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil(), false,
+                                              true, worker1_id));
 
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1618,7 +1624,9 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::FromRandom()));
+  std::string worker2_id = "worker2_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil(), false,
+                                              true, worker2_id));
 
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1629,12 +1637,11 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(worker_client->callbacks.size(), 20);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 
-  // reply push tasks on first 10 tasks -> first worker is now done and starts stealing
-
+  // First worker runs the first 10 tasks
   for (int i = 1; i <= 10; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
-
+  // First worker begins stealing from the second worker
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1644,11 +1651,10 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
 
-  // 5 tasks get stolen
+  // 5 tasks get stolen!
   for (int i = 1; i <= 5; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
   }
-
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1658,12 +1664,15 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(worker_client->callbacks.size(), 5);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
 
+  // The 5 stolen tasks are forwarded from the victim (2nd worker) to the thief (1st
+  // worker)
   std::vector<TaskSpecification> tasks_stolen;
   for (int i = 0; i < 5; i++) {
     tasks_stolen.push_back(BuildEmptyTaskSpec());
   }
   ASSERT_TRUE(worker_client->ReplyStealTasks(Status::OK(), tasks_stolen));
-
+  tasks_stolen.clear();
+  ASSERT_TRUE(tasks_stolen.empty());
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1673,7 +1682,63 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 
-  for (int i = 1; i <= 10; i++) {
+  // The second worker finishes its workload of 5 tasks and begins stealing from the first
+  // worker
+  for (int i = 1; i <= 5; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 15);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 5);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
+  // The second worker steals floor(5/2)=2 tasks from the first worker
+  for (int i = 1; i <= 2; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 15);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 3);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 1);
+  ASSERT_TRUE(tasks_stolen.empty());
+  for (int i = 0; i < 2; i++) {
+    tasks_stolen.push_back(BuildEmptyTaskSpec());
+  }
+  ASSERT_FALSE(tasks_stolen.empty());
+  ASSERT_TRUE(worker_client->ReplyStealTasks(Status::OK(), tasks_stolen));
+  tasks_stolen.clear();
+  ASSERT_TRUE(tasks_stolen.empty());
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 15);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 5);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // The first worker executes the remaining 3 tasks (the ones not stolen) and returns
+  for (int i = 1; i <= 3; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 18);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_EQ(worker_client->callbacks.size(), 2);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // The second worker executes the stolen 2 tasks and returns.
+  for (int i = 1; i <= 2; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
 
@@ -1682,7 +1747,7 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 20);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 2);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }
