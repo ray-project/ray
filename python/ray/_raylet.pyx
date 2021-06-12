@@ -1813,6 +1813,11 @@ cdef class CoreWorker:
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
         result_dict.update(runtime_env_dict)
 
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
+        if all(val is None for val in result_dict.values()):
+            result_dict = {}
+
         # TODO(architkulkarni): We should just use RuntimeEnvDict here
         # so all the serialization and validation is done in one place
         return json.dumps(result_dict, sort_keys=True)

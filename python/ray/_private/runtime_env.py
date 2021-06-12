@@ -77,7 +77,7 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.
+        # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
@@ -192,6 +192,12 @@ class RuntimeEnvDict:
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker
+        
+        # TODO(architkulkarni) This is to make it easy for the worker caching
+        # code in C++ to check if the env is empty without deserializing and
+        # parsing it.  We should use a less confusing approach here.
+        if all(val is None for val in self._dict.values()):
+            self._dict = {}
 
     def get_parsed_dict(self) -> dict:
         return self._dict
