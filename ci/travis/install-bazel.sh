@@ -57,10 +57,8 @@ else
   chmod +x "${target}"
   if [[ -n "${BUILDKITE}" ]] && [ "${platform}" = "darwin" ]; then
     "${target}" --user
-    echo >> ~/.zshrc
-    echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
-    echo >> ~/.zshrc
-    cat -n ~/.zshrc
+    # Add bazel to the path.
+    echo '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
     source ~/.zshrc
   elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
