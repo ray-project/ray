@@ -57,6 +57,7 @@ else
   chmod +x "${target}"
   if [[ -n "${BUILDKITE}" ]] && [ "${platform}" = "darwin" ]; then
     "${target}" --user
+    echo '' >> ~/.zshrc
     echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
     echo '' >> ~/.zshrc
     tail ~/.zshrc
