@@ -516,6 +516,11 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
+  bool at_capacity = object_manager_.PullManagerAtCapacity();
+  cluster_resource_scheduler_->UpdateObjectPullsQueuedLocally(at_capacity);
+  if (!at_capacity) {
+    RAY_LOG(DEBUG) << "FREE";
+  }
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);

@@ -702,8 +702,10 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
   bool still_required;
   if (!pull_manager_->IsObjectActive(object_id, &still_required)) {
     if (still_required) {
+      RAY_LOG(DEBUG) << "Chunk would put us over the pull manager's threshold";
       num_chunks_received_thrashed_++;
     } else {
+      RAY_LOG(DEBUG) << "Chunk no longer needed";
       num_chunks_received_cancelled_++;
     }
     // This object is no longer being actively pulled. Do not create the object.

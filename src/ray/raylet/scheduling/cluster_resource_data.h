@@ -139,12 +139,15 @@ class NodeResources {
   NodeResources() {}
   NodeResources(const NodeResources &other)
       : predefined_resources(other.predefined_resources),
-        custom_resources(other.custom_resources) {}
+        custom_resources(other.custom_resources),
+        object_pulls_queued(other.object_pulls_queued) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  bool object_pulls_queued = false;
+
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;

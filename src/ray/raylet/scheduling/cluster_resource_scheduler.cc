@@ -105,6 +105,8 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
     for (auto &entry : node_resources.custom_resources) {
       local_view.custom_resources[entry.first].available = entry.second.available;
     }
+
+    local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
   AddOrUpdateNode(node_id, local_view);
@@ -1016,6 +1018,10 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
+  //if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
+    resources_data.set_object_pulls_queued(last_report_resources_->object_pulls_queued);
+  //}
+
   if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
   }

@@ -114,6 +114,11 @@ class PullManager {
   /// earlier request is waiting for metadata.
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
+  /// Whether we are at capacity in the object store. This means that
+  /// we are already pulling as many requests as we can, and there
+  /// are additional requests queued.
+  bool AtCapacity() const;
+
   std::string DebugString() const;
 
  private:
@@ -200,6 +205,8 @@ class PullManager {
   /// more space than the bytes available. This is needed to make room for the
   /// request.
   void TriggerOutOfMemoryHandlingIfNeeded();
+
+  bool QueueAtCapacity(const Queue &bundles, uint64_t highest_req_id_being_pulled) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;

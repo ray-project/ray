@@ -572,6 +572,26 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
+bool PullManager::QueueAtCapacity(const Queue &bundles, uint64_t highest_req_id_being_pulled) const {
+  auto last_request_it = bundles.find(highest_req_id_being_pulled);
+  if (last_request_it == bundles.end()) {
+    // No requests are active.
+    return false;
+  }
+
+  last_request_it++;
+  if (last_request_it == bundles.end()) {
+    // No other requests in the queue.
+    return false;
+  }
+
+  return true;
+}
+
+bool PullManager::AtCapacity() const {
+  return QueueAtCapacity(worker_request_bundles_, highest_worker_req_id_being_pulled_) || QueueAtCapacity(task_argument_bundles_, highest_task_req_id_being_pulled_);
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
   std::stringstream result;

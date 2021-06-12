@@ -188,6 +188,10 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
 }
 
 bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
+  if (object_pulls_queued) {
+    return false;
+  }
+  
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
@@ -214,6 +218,7 @@ bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
       return false;
     }
   }
+
   return true;
 }
 

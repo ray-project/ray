@@ -75,6 +75,12 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
     }
   }
 
+  if (best_is_available) {
+    RAY_LOG(DEBUG) << "Best node is available";
+  } else {
+    RAY_LOG(DEBUG) << "Best node is not available";
+  }
+
   return best_node_id;
 }
 

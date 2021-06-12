@@ -470,10 +470,10 @@ def test_many_args(ray_start_cluster):
             "asio_stats_print_interval_ms": 1000,
             "asio_event_loop_stats_collection_enabled": True,
         },
-        object_store_memory=(4 * object_size * 25))
+        object_store_memory=int(1e8))
     for _ in range(3):
         cluster.add_node(
-            num_cpus=1, object_store_memory=(4 * object_size * 25))
+            num_cpus=1, object_store_memory=int(1e8))
     ray.init(address=cluster.address)
 
     @ray.remote
