@@ -134,7 +134,7 @@ bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
 int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
 
 void PlasmaStoreRunner::EvictObjectsIfPossible() {
-  RAY_LOG(ERROR) << "Attempting to evict objects from the plasma store";
+  RAY_LOG(DEBUG) << "Attempting to evict objects from the plasma store";
   if (evicting_) {
     return;
   }

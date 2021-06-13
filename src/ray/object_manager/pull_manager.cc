@@ -106,9 +106,10 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
-    bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
-    active_object_pull_requests_[obj_id].insert(next_request_it->first);
+    bool start_pull =
+        !object_is_local_(obj_id) && active_object_pull_requests_.count(obj_id) == 0;
     if (start_pull) {
+      active_object_pull_requests_[obj_id].insert(next_request_it->first);
       RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
