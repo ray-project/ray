@@ -105,6 +105,8 @@ def node_stats(node_manager_address=None,
 def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
+    # TODO(ekl) it would be nice if we could provide a full memory usage
+    # breakdown by type (e.g., pinned by worker, primary, etc.)
     store_summary += (
         "Plasma memory usage {} MiB, {} objects, {}% full, {}% "
         "primary object copies\n".format(
