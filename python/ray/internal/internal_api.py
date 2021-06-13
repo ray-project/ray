@@ -106,7 +106,7 @@ def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
     store_summary += (
-        "Plasma memory usage {} MiB, {} objects, {}% full, {}% referenced\n".
+        "Plasma memory usage {} MiB, {} objects, {}% full, {}% primary object copies\n".
         format(
             int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
             reply.store_stats.num_local_objects,
@@ -114,7 +114,7 @@ def store_stats_summary(reply):
                 100 * reply.store_stats.object_store_bytes_used /
                 reply.store_stats.object_store_bytes_avail, 2),
             round(
-                100 * reply.store_stats.object_store_bytes_referenced /
+                100 * reply.store_stats.object_store_bytes_primary_copy /
                 reply.store_stats.object_store_bytes_avail, 2)))
     if reply.store_stats.object_store_bytes_fallback > 0:
         store_summary += ("Plasma filesystem mmap usage: {} MiB\n".format(
