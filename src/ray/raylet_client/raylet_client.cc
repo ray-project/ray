@@ -86,7 +86,8 @@ raylet::RayletClient::RayletClient(
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
-    NodeID *raylet_id, int *port, std::string *serialized_job_config)
+    NodeID *raylet_id, int *port, std::string *serialized_job_config,
+    pid_t worker_shim_pid)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -95,6 +96,7 @@ raylet::RayletClient::RayletClient(
   // TODO(architkulkarni) this creates the message
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
+      worker_shim_pid,
       to_flatbuf(fbb, job_id), runtime_env_hash, language, fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);

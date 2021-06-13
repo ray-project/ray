@@ -1033,6 +1033,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
+  pid_t worker_shim_pid = message->worker_shim_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
@@ -1073,7 +1074,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       worker_type == rpc::WorkerType::RESTORE_WORKER ||
       worker_type == rpc::WorkerType::UTIL_WORKER) {
     // Register the new worker.
-    auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
+    auto status = worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, send_reply_callback);
     if (!status.ok()) {
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by

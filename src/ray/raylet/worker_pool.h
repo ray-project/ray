@@ -212,11 +212,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
+  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
+                        pid_t worker_shim_pid,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
