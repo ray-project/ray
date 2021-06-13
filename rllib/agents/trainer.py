@@ -1101,7 +1101,7 @@ class Trainer(Trainable):
                    observation_space: Optional[gym.spaces.Space] = None,
                    action_space: Optional[gym.spaces.Space] = None,
                    config: Optional[PartialTrainerConfigDict] = None,
-                   ):
+                   ) -> Policy:
         """Adds a new policy to this Trainer.
 
         Args:
@@ -1112,6 +1112,10 @@ class Trainer(Trainable):
                 of the policy to add.
             config (Optional[PartialTrainerConfigDict]): The config overrides
                 for the policy to add.
+
+        Returns:
+            Policy: The newly added policy (the copy that got added to the
+                local worker).
         """
         self.workers.foreach_worker(lambda w: w.add_policy(
             policy_id=policy_id,
@@ -1126,6 +1130,7 @@ class Trainer(Trainable):
                 action_space=action_space,
                 config=config,
             ))
+        return self.get_policy(policy_id)
 
     @PublicAPI
     def remove_policy(self, *, policy_id: PolicyID = DEFAULT_POLICY_ID):
