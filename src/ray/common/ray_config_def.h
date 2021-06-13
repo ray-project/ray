@@ -96,7 +96,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, false)
+RAY_CONFIG(bool, plasma_unlimited, true)
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
@@ -360,7 +360,7 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
 /// Grace period until we throw the OOM error to the application in seconds.
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
-RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
@@ -406,7 +406,7 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 
 // This is the minimum time an actor will remain in the actor table before
-// being garbage collected when a job finishes.
+// being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
