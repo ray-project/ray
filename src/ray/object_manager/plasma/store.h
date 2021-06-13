@@ -213,7 +213,7 @@ class PlasmaStore {
   /// Evict unused objects from the store. This function can be called repeatedly in a
   /// loop until enough space is freed up.
   void EvictObjectsIfPossible() {
-    // The rviction size request doesn't really matter, plasma will internally batch
+    // The eviction size request doesn't really matter, plasma will internally batch
     // evict a minimum of 20% of the store size.
     int64_t dummy_size = 1 * 1024 * 1024;
     std::vector<ObjectID> objects_to_evict;
