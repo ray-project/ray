@@ -1361,6 +1361,8 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
+  // non-direct call support.
   if (message->fetch_only()) {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     if (!worker) {
@@ -2208,6 +2210,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_object_store_bytes_fallback(
+        store_stats.object_store_bytes_fallback() +
+        cur_store.object_store_bytes_fallback());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +

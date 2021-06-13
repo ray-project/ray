@@ -224,6 +224,7 @@ int main(int argc, char *argv[]) {
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
+        object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =
