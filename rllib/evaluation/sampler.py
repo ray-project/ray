@@ -590,6 +590,7 @@ def _env_runner(
         # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
+        print(f"iter={perf_stats.iters} obs={unfiltered_obs[0].keys()} r={rewards[0].keys()} d={dones[0].items()}")
         perf_stats.env_wait_time += time.time() - t0
 
         if log_once("env_returns"):
@@ -781,6 +782,15 @@ def _process_observations(
                                    dict(episode.agent_rewards),
                                    episode.custom_metrics, {},
                                    episode.hist_data, episode.media))
+            # Check whether we have to create a fake-last observation
+            # for some agents (the environment is not required to do so if
+            # dones[__all__]=True).
+            for ag_id in episode.get_agents():
+                if ag_id not in all_agents_obs:
+                    # Create a fake (all-0s) observation.
+                    all_agents_obs[ag_id] = \
+                        np.zeros_like(policies[episode.policy_for(
+                            ag_id)].observation_space.sample())
         else:
             hit_horizon = False
             all_agents_done = False
@@ -869,7 +879,7 @@ def _process_observations(
                     episode.rnn_state_for(agent_id), None
                     if last_observation is None else
                     episode.last_action_for(agent_id),
-                    rewards[env_id][agent_id] or 0.0)
+                    rewards[env_id].get(agent_id, 0.0))
                 to_eval[policy_id].append(item)
 
         # Invoke the `on_episode_step` callback after the step is logged

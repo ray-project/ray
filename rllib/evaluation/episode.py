@@ -198,6 +198,16 @@ class MultiAgentEpisode:
 
         return self._agent_to_last_pi_info[agent_id]
 
+    @DeveloperAPI
+    def get_agents(self) -> List[AgentID]:
+        """Returns list of agent IDs that have appeared in this episode.
+
+        Returns:
+            List[AgentID]: The list of all agents that have appeared so
+                far in this episode.
+        """
+        return list(self._agent_to_index.keys())
+
     def _add_agent_rewards(self, reward_dict: Dict[AgentID, float]) -> None:
         for agent_id, reward in reward_dict.items():
             if reward is not None:

@@ -6,22 +6,43 @@ to make new matches, and edits the policies_to_train list.
 """
 
 import argparse
-from gym.spaces import Dict, MultiDiscrete, Tuple
 import os
 import pyspiel
 
 import ray
 from ray import tune
-from ray.tune import register_env
+from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune import register_env
+
+class SelfPlayCallback(DefaultCallbacks):
+    def __init__(self):
+        super().__init__()
+        # 0=RandomPolicy, 1=1st main policy snapshot,
+        # 2=2nd main policy snapshot, etc..
+        self.current_opponent = 0
+
+    def on_train_result(self, *, trainer, result, **kwargs):
+        # Get the win rate:
+        won = 0
+        for r_main in result["hist_stats"]["policy_main_reward"]:
+            if r_main > 0.0:
+                won += 1
+        win_rate = won / len(result["hist_stats"]["policy_main_reward"])
+        # If win rate is good -> Store current policy and play against
+        # it next.
+        if win_rate > 0.75:
+            self.current_opponent += 1
+            new_policy = trainer.add_policy(
+                policy_id=f"main_{self.current_opponent}",
+                observatio_space=
+            )
+            trainer.workers.for
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--run",
-    type=str,
-    default="PG",
-    help="The RLlib-registered algorithm to use.")
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
@@ -52,32 +73,31 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
 
     dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
+    obs_space = dummy_env.observation_space
+    action_space = dummy_env.action_space
     obs = dummy_env.reset()
-    obs, reward, done, _ = dummy_env.step({0: 4})
+    obs, rewards, dones, _ = dummy_env.step({0: 4})
 
-    obs_space = Tuple([
-        Dict({
-            "obs": MultiDiscrete([2, 2, 2, 3]),
-            ENV_STATE: MultiDiscrete([2, 2, 2])
-        }),
-        Dict({
-            "obs": MultiDiscrete([2, 2, 2, 3]),
-            ENV_STATE: MultiDiscrete([2, 2, 2])
-        }),
-    ])
-    act_space = Tuple([
-        TwoStepGame.action_space,
-        TwoStepGame.action_space,
-    ])
     register_env(
         "connect_four",
         lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
     config = {
         "env": "connect_four",
+        "num_workers": 0, #TODOremove
+        "callbacks": SelfPlayCallback,
+        "multiagent": {
+            # Initial policy map: Random and PPO.
+            "policies": {
+                "main": (None, obs_space, action_space, {}),
+                "opponent": (RandomPolicy, obs_space, action_space, {}),
+            },
+            "policy_mapping_fn": lambda agent_id: "main" if agent_id == 0 else "opponent",
+            "policies_to_train": ["main"],
+        },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
@@ -89,7 +109,7 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

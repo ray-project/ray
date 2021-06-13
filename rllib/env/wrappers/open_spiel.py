@@ -19,7 +19,7 @@ class OpenSpielEnv(MultiAgentEnv):
 
         # Extract observation- and action spaces from game.
         self.observation_space = Box(float("-inf"), float("inf"),
-                                     self.env.observation_tensor_shape())
+                                     (self.env.observation_tensor_size(), ))
         self.action_space = Discrete(self.env.num_distinct_actions())
 
     def reset(self):
@@ -31,33 +31,46 @@ class OpenSpielEnv(MultiAgentEnv):
         if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
             curr_player = self.state.current_player()
             assert curr_player in action
-            self.state.apply_action(action[curr_player])
-            # Compile rewards dict.
-            rewards = {curr_player: self.state.returns()[curr_player]}
+            penalty = None
+            try:
+                self.state.apply_action(action[curr_player])
+            # TODO: (sven) resolve this hack by publishing legal actions
+            #  with each step.
+            except pyspiel.SpielError as e:
+                self.state.apply_action(
+                    np.random.choice(self.state.legal_actions()))
+                penalty = -1.0
+
             # Are we done?
-            dones = {curr_player: self.state.is_terminal(),
-                     "__all__": self.state.is_terminal()}
+            is_done = self.state.is_terminal()
+            dones = dict(
+                {ag: is_done for ag in range(self.num_agents)},
+                **{"__all__": is_done}
+            )
+
+            # Compile rewards dict.
+            rewards = {ag: r for ag, r in enumerate(self.state.returns())}
+            if penalty:
+                rewards[curr_player] += penalty
         # Simultaneous game.
         else:
             raise NotImplementedError
 
-        return self._get_obs, rewards, dones, {}
+        return self._get_obs(), rewards, dones, {}
 
     def _get_obs(self):
+        curr_player = self.state.current_player()
         # Sequential game:
         if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
+            if self.state.is_terminal():
+                return {}
             return {
-                self.state.current_player(): np.array(self.state.observation_tensor())
+                curr_player: np.reshape(self.state.observation_tensor(), [-1])
             }
         # Simultaneous game.
         else:
             raise NotImplementedError
 
-    def close(self):
-        self.env.close()
-
-    def seed(self, seed=None):
-        self.env.seed(seed)
-
-    def render(self, mode="human"):
-        return self.env.render(mode)
+    def render(self, mode=None) -> None:
+        if mode == "human":
+            print(self.state)
