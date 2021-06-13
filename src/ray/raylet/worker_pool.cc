@@ -451,6 +451,9 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   RAY_CHECK(worker);
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
+  if (worker_shim_pid == 0){
+    worker_shim_pid = pid;
+  }
   auto shim_process = Process::FromPid(worker_shim_pid);
 
   if (state.starting_worker_processes.count(shim_process) == 0) {
