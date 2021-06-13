@@ -189,9 +189,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             // NOTE: It means the local object manager should be thread-safe.
             io_service_.post(
                 [this]() {
-                  if (global_gc_throttler_.AbleToRun()) {
-                    TriggerGlobalGC();
-                  }
+                  TriggerGlobalGC();
                   plasma::plasma_store_runner->EvictObjectsIfPossible();
                   GetLocalObjectManager().SpillObjectUptoMaxThroughput();
                 },
