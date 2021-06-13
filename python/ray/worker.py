@@ -1145,7 +1145,7 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=None):
+            worker_shim_pid=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
