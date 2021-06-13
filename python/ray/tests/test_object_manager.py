@@ -430,10 +430,13 @@ def test_ray_get_task_args_deadlock(shutdown_only):
 
     @ray.remote
     def test_deadlock(get_args, task_args):
-        foo.remote(*task_args)
+#        foo.remote(*task_args)
         ray.get(get_args)
 
     for i in range(5):
+        import gc
+        gc.collect()
+        time.sleep(.1)
         start = time.time()
         get_args = [
             ray.put(np.zeros(object_size, dtype=np.uint8))

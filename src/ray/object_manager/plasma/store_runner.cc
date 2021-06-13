@@ -133,6 +133,20 @@ bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
 
 int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
 
+void PlasmaStoreRunner::EvictObjectsIfPossible() {
+  RAY_LOG(ERROR) << "Attempting to evict objects from the plasma store";
+  if (evicting_) {
+    return;
+  }
+  evicting_ = true;
+  main_service_.post(
+      [this]() {
+        store_->EvictObjectsIfPossible();
+        evicting_ = false;
+      },
+      "PlasmaStoreRunner.EvictObjectsIfPossible");
+}
+
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
 
 }  // namespace plasma
