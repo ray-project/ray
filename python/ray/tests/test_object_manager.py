@@ -430,7 +430,7 @@ def test_ray_get_task_args_deadlock(shutdown_only):
 
     @ray.remote
     def test_deadlock(get_args, task_args):
-#        foo.remote(*task_args)
+        foo.remote(*task_args)
         ray.get(get_args)
 
     for i in range(5):
