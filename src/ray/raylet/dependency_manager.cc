@@ -97,26 +97,36 @@ void DependencyManager::StartOrUpdateGetRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
-  std::vector<rpc::ObjectReference> missing;
-  auto &entry = get_requests_[worker_id];
-
+  auto &get_request = get_requests_[worker_id];
+  bool modified = false;
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    if (entry.first.insert(obj_id).second) {
+    if (get_request.first.insert(obj_id).second) {
       RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.get on object " << obj_id;
       auto it = GetOrInsertRequiredObject(obj_id, ref);
       it->second.dependent_get_requests.insert(worker_id);
-      missing.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
+      modified = true;
     }
   }
 
-  // Create a new pull requests for the missing dependencies.
-  if (missing.size() > 0) {
-    uint64_t new_request_id = object_manager_.Pull(missing, BundlePriority::GET_REQUEST);
-    entry.second.insert(new_request_id);
-
+  if (modified) {
+    std::vector<rpc::ObjectReference> refs;
+    for (auto &obj_id : get_request.first) {
+      auto it = required_objects_.find(obj_id);
+      RAY_CHECK(it != required_objects_.end());
+      refs.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
+    }
+    // Pull the new dependencies before canceling the old request, in case some
+    // of the old dependencies are still being fetched.
+    uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST);
+    if (get_request.second != 0) {
+      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                     << " request: " << get_request.second;
+      object_manager_.CancelPull(get_request.second);
+    }
+    get_request.second = new_request_id;
     RAY_LOG(DEBUG) << "Started pull for get request from worker " << worker_id
-                   << " request: " << new_request_id;
+                   << " request: " << get_request.second;
   }
 }
 
@@ -127,11 +137,9 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
     return;
   }
 
-  for (auto pull_id : it->second.second) {
-    RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                   << " request: " << pull_id;
-    object_manager_.CancelPull(pull_id);
-  }
+  RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                 << " request: " << it->second.second;
+  object_manager_.CancelPull(it->second.second);
 
   for (const auto &obj_id : it->second.first) {
     auto it = required_objects_.find(obj_id);
