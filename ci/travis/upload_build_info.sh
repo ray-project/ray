@@ -8,10 +8,7 @@ RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
 cd "${RAY_DIR}"
 
-# Cleanup old entries, this is needed in macOS shared environment.
-rm -rf /tmp/bazel_event_logs
-mkdir /tmp/bazel_event_logs
-
+mkdir -p /tmp/bazel_event_logs
 ./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
 if [[ -z "${BUILDKITE}" ]]; then
@@ -30,11 +27,7 @@ if [[ -z "${BUILDKITE}" ]]; then
 
     aws s3 cp --recursive /tmp/bazel_event_logs "${DST}"
 else
-    if [[ "${OSTYPE}" = darwin* ]]; then
-        echo "Using Buildkite Artifact Store on macOS"
-    else
-        # Codepath for Buildkite
-        pip install -q docker aws_requests_auth boto3
-        python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
-    fi
+    # Codepath for Buildkite
+    pip install -q docker aws_requests_auth boto3
+    python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
 fi
