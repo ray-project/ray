@@ -14,7 +14,8 @@ import ray
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
-from ray.test_utils import get_wheel_filename, get_master_wheel_url
+from ray.test_utils import (get_wheel_filename, get_master_wheel_url,
+                            get_release_wheel_url)
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -48,8 +49,13 @@ def setup(input_args):
             assert conda_dict is not None
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
+            ray_pip = current_ray_pip_specifier()
+            if ray_pip and not runtime_env.get("_skip_inject_ray"):
+                extra_pip_dependencies = [ray_pip, "ray[default]"]
+            else:
+                extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
-                                             [current_ray_pip_specifier()])
+                                             extra_pip_dependencies)
             # Locking to avoid multiple processes installing concurrently
             conda_hash = hashlib.sha1(
                 json.dumps(conda_dict,
@@ -153,7 +159,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Running on a nightly wheel.
         return get_master_wheel_url()
     else:
-        return f"ray[all]=={ray.__version__}"
+        return get_release_wheel_url()
 
 
 def inject_dependencies(

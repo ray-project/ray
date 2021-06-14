@@ -519,6 +519,11 @@ class GlobalState:
 
                 all_events.append(new_event)
 
+        if not all_events:
+            logger.warning(
+                "No profiling events found. Ray profiling must be enabled "
+                "by setting RAY_PROFILING=1.")
+
         if filename is not None:
             with open(filename, "w") as outfile:
                 json.dump(all_events, outfile)
@@ -829,22 +834,12 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
-
-    Args:
-        object_ref: An object ref to fetch information about. If this is None,
-            then the entire object table is fetched.
-
-    Returns:
-        Information from the object table.
-    """
-    return state.object_table(object_ref=object_ref)
-
-
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
+
+    Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
+    variable prior to starting Ray.
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

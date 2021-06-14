@@ -597,7 +597,9 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
-    head_node_config = copy.deepcopy(config["head_node"])
+    head_node_config = copy.deepcopy(config.get("head_node", {}))
+    # The above `head_node` field is deprecated in favor of per-node-type
+    # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
     if "head_node_type" in config:
         head_node_type = config["head_node_type"]

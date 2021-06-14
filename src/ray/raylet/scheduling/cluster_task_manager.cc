@@ -369,6 +369,7 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
   for (auto &arg : args) {
     task_arg_bytes += arg->GetSize();
   }
+  RAY_LOG(DEBUG) << "Task " << spec.TaskId() << " has args of size " << task_arg_bytes;
   PinTaskArgs(spec, std::move(args));
   RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
   if (max_pinned_task_arguments_bytes_ == 0) {

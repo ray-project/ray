@@ -62,8 +62,9 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     if (object_buffer.data == nullptr) {
       RAY_LOG(INFO)
           << "Failed to get a chunk of the object: " << object_id
-          << ". It is mostly because the object is already evicted or spilled when the "
-             "pull request is received. The caller will retry the pull request again.";
+          << ". This is most likely because the object was evicted or spilled before the "
+             "pull request was received. The caller will retry the pull request after a "
+             "timeout.";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));

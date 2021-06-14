@@ -176,17 +176,22 @@ def build_trainer(
                 # No parallelism.
                 if not self.config["evaluation_parallel_to_training"]:
                     res = next(self.train_exec_impl)
+
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    eval_future = executor.submit(self.evaluate)
-                    # Parallelism.
-                    if self.config["evaluation_parallel_to_training"]:
+                # Parallel eval + training.
+                if self.config["evaluation_parallel_to_training"]:
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        eval_future = executor.submit(self.evaluate)
                         res = next(self.train_exec_impl)
-                    evaluation_metrics = eval_future.result()
-                    assert isinstance(evaluation_metrics, dict), \
-                        "_evaluate() needs to return a dict."
-                    res.update(evaluation_metrics)
+                        evaluation_metrics = eval_future.result()
+                # Sequential: train (already done above), then eval.
+                else:
+                    evaluation_metrics = self.evaluate()
+
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.
             if self.config["env_task_fn"] is not None:
