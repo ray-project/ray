@@ -427,6 +427,11 @@ To get information about the current available resource capacity of your cluster
 
 Runtime Environments (Experimental)
 -----------------------------------
+
+.. note::
+
+    Runtime environments are currently an experimental feature and under active development. The API is subject to change.
+
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
 The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.

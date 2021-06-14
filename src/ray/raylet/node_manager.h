@@ -84,10 +84,6 @@ struct NodeManagerConfig {
   std::string agent_command;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled;
-  /// Whether to enable automatic object deletion for object spilling.
-  bool automatic_object_deletion_enabled;
   /// The store socket name.
   std::string store_socket_name;
   /// The path to the ray temp dir.
@@ -640,8 +636,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last resource report was sent at. Used to make sure we are
   /// keeping up with resource reports.
   uint64_t last_resource_report_at_ms_;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;
@@ -758,6 +752,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Manage all runtime env locally
   RuntimeEnvManager runtime_env_manager_;
+
+  /// Next resource broadcast seq no. Non-incrementing sequence numbers
+  /// indicate network issues (dropped/duplicated/ooo packets, etc).
+  int64_t next_resource_seq_no_;
 };
 
 }  // namespace raylet

@@ -105,10 +105,6 @@ cdef class Config:
         return RayConfig.instance().enable_timeline()
 
     @staticmethod
-    def automatic_object_deletion_enabled():
-        return RayConfig.instance().automatic_object_deletion_enabled()
-
-    @staticmethod
     def plasma_unlimited():
         return RayConfig.instance().plasma_unlimited()
 
