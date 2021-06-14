@@ -207,10 +207,9 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 }
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                             bool is_worker_request) {
+                             BundlePriority prio) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id =
-      pull_manager_->Pull(object_refs, is_worker_request, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
@@ -944,7 +943,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n  - num chunks received thrashed: " << num_chunks_received_thrashed_;
   result << "\n  - num chunks received, plasma error : "
          << num_chunks_received_failed_due_to_plasma_;
-  result << "\nEvent loop stats:" << rpc_service_.StatsString();
+  result << "\nEvent stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();

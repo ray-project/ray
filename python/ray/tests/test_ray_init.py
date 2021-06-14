@@ -1,4 +1,6 @@
 import os
+import sys
+
 import pytest
 import redis
 
@@ -121,6 +123,26 @@ def test_ports_assignment(ray_start_cluster):
     with pytest.raises(ValueError):
         head_node = cluster.add_node(
             **pre_selected_ports, min_worker_port=25000, max_worker_port=35000)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_ray_init_from_workers(ray_start_cluster):
+    cluster = ray_start_cluster
+    # add first node
+    node1 = cluster.add_node(node_ip_address="127.0.0.2")
+    # add second node
+    node2 = cluster.add_node(node_ip_address="127.0.0.3")
+    address = cluster.address
+    password = cluster.redis_password
+    assert address.split(":")[0] == "127.0.0.2"
+    assert node1.node_manager_port != node2.node_manager_port
+    info = ray.init(
+        address, _redis_password=password, _node_ip_address="127.0.0.3")
+    assert info["node_ip_address"] == "127.0.0.3"
+
+    address_info = ray._private.services.get_address_info_from_redis(
+        address, "127.0.0.3", redis_password=password, log_warning=False)
+    assert address_info["node_manager_port"] == node2.node_manager_port
 
 
 if __name__ == "__main__":
