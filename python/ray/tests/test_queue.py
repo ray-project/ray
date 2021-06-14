@@ -226,7 +226,6 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
             is_done = False
             while True:
                 if not pending:
-                    print("Getting a batch")
                     for item in self.queue.get_batch(
                             self.batch_size, total_timeout=0):
                         if item is None:
