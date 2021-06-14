@@ -282,7 +282,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   // If all objects were fetched already, return.
   if (remaining.empty() || *got_exception) {
-    return Status::OK();
+    return UnblockIfNeeded(raylet_client_, ctx);
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
