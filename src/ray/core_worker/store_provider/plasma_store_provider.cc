@@ -177,8 +177,14 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results,
-                                      /*is_from_worker=*/true));
+  auto status = store_client_.Get(batch_ids, 0, &plasma_results,
+                                  /*is_from_worker=*/true);
+  if (!status.ok()) {
+    plasma_results.clear();
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, 0, &plasma_results,
+                                        /*is_from_worker=*/true));
+  }
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -319,6 +325,12 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                    /*fetch_only=*/false, ctx.CurrentTaskIsDirectCall(),
                                    ctx.GetCurrentTaskID(), results, got_exception));
+
+    absl::flat_hash_set<ObjectID> wait_results;
+    RAY_RETURN_NOT_OK(
+        Wait(absl::flat_hash_set<ObjectID>(batch_ids.begin(), batch_ids.end()),
+             batch_ids.size(), batch_timeout, ctx, &wait_results));
+
     should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
