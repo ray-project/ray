@@ -178,13 +178,13 @@ Status raylet::RayletClient::TaskDone() {
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses, bool fetch_only,
-    bool mark_worker_blocked, const TaskID &current_task_id) {
+    const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = protocol::CreateFetchOrReconstruct(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), fetch_only,
-      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }
@@ -196,30 +196,30 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
+Status raylet::RayletClient::NotifyTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
+  auto message = protocol::CreateNotifyTaskBlocked(fbb, release_resources);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+  return conn_->WriteMessage(MessageType::NotifyTaskBlocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
+Status raylet::RayletClient::NotifyTaskUnblocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  auto message = protocol::CreateNotifyTaskUnblocked(fbb);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
+  return conn_->WriteMessage(MessageType::NotifyTaskUnblocked, &fbb);
 }
 
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  bool mark_worker_blocked, const TaskID &current_task_id,
+                                  const TaskID &current_task_id,
                                   WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, mark_worker_blocked,
+      num_returns, timeout_milliseconds,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;

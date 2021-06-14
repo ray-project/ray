@@ -976,19 +976,12 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+  case protocol::MessageType::NotifyTaskBlocked: {
+    ProcessTaskBlocked(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
+  case protocol::MessageType::NotifyTaskUnblocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
-  } break;
-  case protocol::MessageType::NotifyUnblocked: {
-    // TODO(ekl) this is still used from core worker even in direct call mode to
-    // finish up get requests.
-    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()),
-                              /*was_blocked*/ true);
+    HandleTaskUnblocked(worker);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1379,18 +1372,17 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     // pulled from remote node managers. If an object's owner dies, an error
     // will be stored as the object's value.
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-    AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true,
-                        /*mark_worker_blocked*/ message->mark_worker_blocked());
+    AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true);
   }
 }
 
-void NodeManager::ProcessDirectCallTaskBlocked(
+void NodeManager::ProcessTaskBlocked(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
+      flatbuffers::GetRoot<protocol::NotifyTaskBlocked>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, release_resources);
+  HandleTaskBlocked(worker, release_resources);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -1414,21 +1406,19 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  bool was_blocked = message->mark_worker_blocked();
   if (resolve_objects) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
-                        /*mark_worker_blocked*/ was_blocked);
+    AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false);
   }
   int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   // TODO Remove in the future since it should have already be done in other place
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, wait_ms, num_required_objects,
-      [this, resolve_objects, was_blocked, client, current_task_id](
+      [this, resolve_objects, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
@@ -1442,7 +1432,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1467,8 +1457,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   for (const auto &ref : refs) {
     owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
   }
-  AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
-                      /*mark_worker_blocked*/ false);
+  AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false);
   // Reply to the client once a location has been found for all arguments.
   // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
   // has been found, so the object may still be on a remote node when the
@@ -1664,7 +1653,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
       if (worker->IsBlocked()) {
-        HandleDirectCallTaskUnblocked(worker);
+        HandleTaskUnblocked(worker);
       }
       cluster_task_manager_->ReturnWorkerResources(worker);
       HandleWorkerAvailable(worker);
@@ -1745,7 +1734,7 @@ void NodeManager::MarkObjectsAsFailed(
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(
+void NodeManager::HandleTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
   if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
       !release_resources) {
@@ -1755,7 +1744,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(
+void NodeManager::HandleTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -1774,7 +1763,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
 void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
-    const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
+    const TaskID &current_task_id, bool ray_get) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -1795,8 +1784,7 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
-    bool was_blocked) {
+    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply
@@ -1810,10 +1798,6 @@ void NodeManager::AsyncResolveObjectsFinish(
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
-  // Mark the task as unblocked.
-  if (was_blocked) {
-    worker->RemoveBlockedTaskId(current_task_id);
-  }
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {

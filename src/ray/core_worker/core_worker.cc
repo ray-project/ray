@@ -753,7 +753,7 @@ void CoreWorker::Exit(
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+      local_raylet_client_->NotifyTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {

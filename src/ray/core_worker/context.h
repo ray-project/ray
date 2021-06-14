@@ -62,13 +62,6 @@ class WorkerContext {
   /// This only applies to direct task calls.
   bool ShouldReleaseResourcesOnBlockingCalls() const;
 
-  /// Returns whether we are in a direct call actor.
-  bool CurrentActorIsDirectCall() const;
-
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
-  bool CurrentTaskIsDirectCall() const;
-
   int CurrentActorMaxConcurrency() const;
 
   bool CurrentActorIsAsync() const;
@@ -82,8 +75,8 @@ class WorkerContext {
 
  protected:
   // allow unit test to set.
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
+  bool is_actor_worker_ = false;
+  bool is_task_worker_ = false;
 
  private:
   const WorkerType worker_type_;
