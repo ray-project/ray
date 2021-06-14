@@ -4,14 +4,21 @@ import time
 
 import ray
 from ray.util.sgd.torch.examples.cifar_pytorch_example import train_cifar
+import traceback
 
 if __name__ == "__main__":
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"))
     start_time = time.time()
     success = True
     try:
+        from apex import amp  # noqa: F401
+    except ImportError:
+        traceback.print_exc()
+        success = False
+
+    try:
         train_cifar(
-            num_workers=2,
+            num_workers=1,
             use_gpu=True,
             num_epochs=5,
             fp16=True,
@@ -22,7 +29,7 @@ if __name__ == "__main__":
 
     try:
         train_cifar(
-            num_workers=2,
+            num_workers=1,
             use_gpu=True,
             num_epochs=5,
             fp16="apex",
