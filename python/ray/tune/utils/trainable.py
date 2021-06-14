@@ -160,6 +160,7 @@ class TrainableUtil:
             # that are not matched by '*' and '?' patterns.
             metadata_file += glob.glob(
                 os.path.join(glob.escape(chkpt_dir), ".tune_metadata"))
+            metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
                 raise ValueError(
                     "{} has zero or more than one tune_metadata.".format(
