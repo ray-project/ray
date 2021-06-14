@@ -8,7 +8,7 @@
     compute_template: single_node.yaml
 
   run:
-    timeout: 600
+    timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
 
@@ -36,6 +36,6 @@
     compute_template: distributed.yaml
 
   run:
-    timeout: 600
+    timeout: 3600 # 1hr
     prepare: sleep 0
     script: python distributed/test_distributed.py

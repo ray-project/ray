@@ -4,6 +4,8 @@ import ray
 import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
 
+import json
+import os
 from time import perf_counter
 from tqdm import trange, tqdm
 
@@ -189,3 +191,18 @@ print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
 print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
 print(f"Ray.get large object time: {large_object_time} "
       f"({MAX_RAY_GET_SIZE} bytes)")
+
+if "TEST_OUTPUT_JSON" in os.environ:
+    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+    results = {
+        "args_time": args_time,
+        "num_args": MAX_ARGS,
+        "returns_time": returns_time,
+        "num_returns": MAX_RETURNS,
+        "get_time": MAX_RAY_GET_ARGS,
+        "queued_time": queued_time,
+        "num_queued": MAX_QUEUED_TASKS,
+        "large_object_time": large_object_time,
+        "large_object_size": MAX_RAY_GET_SIZE
+    }
+    json.dump(results, out_file)
