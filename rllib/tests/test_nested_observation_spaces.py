@@ -457,9 +457,9 @@ class NestedSpacesTest(unittest.TestCase):
                             PGTFPolicy, DICT_SPACE, act_space,
                             {"model": {"custom_model": "dict_spy"}}),
                     },
-                    "policy_mapping_fn": lambda a: {
+                    "policy_mapping_fn": lambda agent_id, **k: {
                         "tuple_agent": "tuple_policy",
-                        "dict_agent": "dict_policy"}[a],
+                        "dict_agent": "dict_policy"}[agent_id],
                 },
                 "framework": "tf",
             })

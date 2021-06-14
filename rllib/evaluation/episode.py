@@ -6,9 +6,11 @@ from typing import List, Dict, Callable, Any, TYPE_CHECKING
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvActionType, EnvID, EnvInfoDict, EnvObsType
+from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sample_batch_builder import \
@@ -48,7 +50,8 @@ class MultiAgentEpisode:
     """
 
     def __init__(self, policies: Dict[PolicyID, Policy],
-                 policy_mapping_fn: Callable[[AgentID], PolicyID],
+                 policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
+                                             PolicyID],
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
                  extra_batch_callback: Callable[[SampleBatchType], None],
@@ -68,9 +71,10 @@ class MultiAgentEpisode:
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
         self.media: Dict[str, Any] = {}
-        self._policy_map: Dict[PolicyID, Policy] = policies
-        self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
-            policy_mapping_fn
+        self.policy_map: Dict[PolicyID, Policy] = policies
+        self._policies = self.policy_map  # backward compatibility
+        self._policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
+                                          PolicyID] = policy_mapping_fn
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
@@ -113,11 +117,26 @@ class MultiAgentEpisode:
         """
 
         if agent_id not in self._agent_to_policy:
-            policy_id = self._agent_to_policy[agent_id] = \
-                self._policy_mapping_fn(agent_id)
+            # Try new API: pass in agent_id and episode as named args.
+            # New signature should be: (*, agent_id, episode, **kwargs)
+            try:
+                policy_id = self._agent_to_policy[agent_id] = \
+                    self._policy_mapping_fn(agent_id=agent_id, episode=self)
+            except TypeError as e:
+                if "positional argument" in e.args[0] or \
+                        "unexpected keyword argument" in e.args[0]:
+                    if log_once("policy_mapping_new_signature"):
+                        deprecation_warning(
+                            old="policy_mapping_fn(agent_id)",
+                            new="policy_mapping_fn(*, agent_id, episode, "
+                            "**kwargs)")
+                    policy_id = self._agent_to_policy[agent_id] = \
+                        self._policy_mapping_fn(agent_id)
+                else:
+                    raise e
         else:
             policy_id = self._agent_to_policy[agent_id]
-        if policy_id not in self._policy_map:
+        if policy_id not in self.policy_map:
             raise KeyError("policy_mapping_fn returned invalid policy id "
                            f"'{policy_id}'!")
         return policy_id
@@ -153,7 +172,7 @@ class MultiAgentEpisode:
                 self._agent_to_last_action[agent_id])
         else:
             policy_id = self.policy_for(agent_id)
-            policy = self._policy_map[policy_id]
+            policy = self.policy_map[policy_id]
             flat = flatten_to_single_ndarray(policy.action_space.sample())
             if hasattr(policy.action_space, "dtype"):
                 return np.zeros_like(flat, dtype=policy.action_space.dtype)
@@ -188,7 +207,7 @@ class MultiAgentEpisode:
 
         if agent_id not in self._agent_to_rnn_state:
             policy_id = self.policy_for(agent_id)
-            policy = self._policy_map[policy_id]
+            policy = self.policy_map[policy_id]
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 

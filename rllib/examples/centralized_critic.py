@@ -239,7 +239,8 @@ if __name__ == "__main__":
                     "framework": args.framework,
                 }),
             },
-            "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+            "policy_mapping_fn": (
+                lambda agent_id, **k: "pol1" if agent_id == 0 else "pol2"),
         },
         "model": {
             "custom_model": "cc_model",

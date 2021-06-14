@@ -756,9 +756,10 @@ def _process_observations(
                 if not episode.last_done_for(
                         ag_id) and ag_id not in all_agents_obs:
                     # Create a fake (all-0s) observation.
-                    all_agents_obs[ag_id] = \
-                        np.zeros_like(worker.policy_map[episode.policy_for(
-                            ag_id)].observation_space.sample())
+                    obs_sp = worker.policy_map[episode.policy_for(
+                        ag_id)].observation_space
+                    obs_sp = getattr(obs_sp, "original_space", obs_sp)
+                    all_agents_obs[ag_id] = np.zeros_like(obs_sp.sample())
         else:
             hit_horizon = False
             all_agents_done = False
@@ -821,7 +822,7 @@ def _process_observations(
                     # Action (slot 0) taken at timestep t.
                     "actions": episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
-                    "rewards": rewards[env_id][agent_id],
+                    "rewards": rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
                     "dones": (False if (no_done_at_end
                                         or (hit_horizon and soft_horizon)) else

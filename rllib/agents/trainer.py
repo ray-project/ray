@@ -32,7 +32,7 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, \
+from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
@@ -1103,7 +1103,8 @@ class Trainer(Trainable):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
+                                                 PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
     ) -> Policy:
         """Adds a new policy to this Trainer.

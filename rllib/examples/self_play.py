@@ -8,7 +8,6 @@ to make new matches, and edits the policies_to_train list.
 import argparse
 import os
 import pyspiel
-import random
 
 import ray
 from ray import tune
@@ -39,7 +38,7 @@ parser.add_argument(
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
-    default=0.7,
+    default=0.85,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against it from here on.")
 args = parser.parse_args()
@@ -74,8 +73,12 @@ class SelfPlayCallback(DefaultCallbacks):
             self.current_opponent += 1
             new_pol_id = f"main_{self.current_opponent}"
 
-            def policy_mapping_fn(agent_id):
-                return "main" if random.random() > 0.5 else new_pol_id
+            def policy_mapping_fn(*, agent_id, episode, **kwargs):
+                # agent_id = [0|1] -> policy depends on episode ID
+                # This way, we make sure that both policies sometimes play
+                # agent0 (start player) and sometimes agent1.
+                return "main" if episode.episode_id % 2 == agent_id \
+                    else new_pol_id
 
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
@@ -104,9 +107,16 @@ if __name__ == "__main__":
     register_env("connect_four",
                  lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
+    def policy_mapping_fn(*, agent_id, episode, **kwargs):
+        # agent_id = [0|1] -> policy depends on episode ID
+        # This way, we make sure that both policies sometimes play agent0
+        # (start player) and sometimes agent1.
+        return "main" if episode.episode_id % 2 == agent_id else "random"
+
     config = {
         "env": "connect_four",
         "callbacks": SelfPlayCallback,
+        "num_workers": 2,
         "multiagent": {
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
@@ -119,10 +129,10 @@ if __name__ == "__main__":
                 "random": (RandomPolicy, OBS_SPACE, ACTION_SPACE, {}),
             },
             # Assign agent 0 and 1 randomly to the "main" policy or
-            # to the opponent ("random" at first).
-            "policy_mapping_fn": (
-                lambda agent_id: "main" if random.random() > 0.5 else "random"
-            ),
+            # to the opponent ("random" at first). Make sure (via episode_id)
+            # that "main" always plays against "random" (and not against
+            # another "main).
+            "policy_mapping_fn": policy_mapping_fn,
             # Always just train the "main" policy.
             "policies_to_train": ["main"],
         },

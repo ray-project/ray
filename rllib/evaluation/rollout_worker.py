@@ -47,6 +47,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode import MultiAgentEpisode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
@@ -106,7 +107,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
-        ...   policy_mapping_fn=lambda agent_id:
+        ...   policy_mapping_fn=lambda *, agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(worker.sample())
@@ -141,7 +142,8 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_spec: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
@@ -200,12 +202,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn can also be set (if not, will map all agents
                 to DEFAULT_POLICY_ID).
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): A
-                callable that maps agent ids to policy ids in multi-agent mode.
-                This function will be called each time a new agent appears in
-                an episode, to bind that agent to a policy for the duration of
-                the episode. If not provided, will map all agents to
-                DEFAULT_POLICY_ID.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): A callable that maps agent ids to policy ids in
+                multi-agent mode. This function will be called each time a new
+                agent appears in an episode, to bind that agent to a policy
+                for the duration of the episode. If not provided, will map all
+                agents to DEFAULT_POLICY_ID.
             policies_to_train (Optional[List[PolicyID]]): Optional list of
                 policies to train, or None for all policies.
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
@@ -361,7 +363,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
-        self.policy_mapping_fn = lambda agent_id: DEFAULT_POLICY_ID
+        self.policy_mapping_fn = lambda **kwargs: DEFAULT_POLICY_ID
         self.set_policy_mapping_fn(policy_mapping_fn)
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
@@ -1017,7 +1019,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
@@ -1032,11 +1035,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 of the policy to add.
             config (Optional[PartialTrainerConfigDict]): The config overrides
                 for the policy to add.
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
-                optional (updated) policy mapping function to use from here on.
-                Note that already ongoing episodes will not change their
-                mapping but will use the old mapping till the end of the
-                episode.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): An optional (updated) policy mapping function to
+                use from here on. Note that already ongoing episodes will not
+                change their mapping but will use the old mapping till the
+                end of the episode.
             policies_to_train (Optional[List[PolicyID]]): An optional list of
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
@@ -1299,7 +1302,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     else:
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
-                with tf1.variable_scope(name):
+                with tf1.variable_scope(name + "_wk" + str(self.worker_index)):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             # non-tf.
             else:
