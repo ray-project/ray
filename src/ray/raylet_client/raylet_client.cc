@@ -96,8 +96,8 @@ raylet::RayletClient::RayletClient(
   // TODO(architkulkarni) this creates the message
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid,
-      to_flatbuf(fbb, job_id), runtime_env_hash, language, fbb.CreateString(ip_address),
+      worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
