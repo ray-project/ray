@@ -16,7 +16,12 @@ from xgboost_ray import RayParams
 from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
-    ray.client().job_name(os.environ["RAY_JOB_NAME"]).connect()
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "train_small")
+    if addr.startswith("anyscale://"):
+        ray.client(address=addr).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
 
     ray_params = RayParams(
         elastic_training=False,
