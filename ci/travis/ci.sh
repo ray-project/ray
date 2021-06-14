@@ -200,6 +200,9 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  # run cluster mode test with external cluster
+  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
+    --test_arg=--ray-redis-password="1234"
   # run the cpp example
   bazel run //cpp/example:example
 

@@ -182,7 +182,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   int64_t updated_commands = 0;
   while (!commands_.empty() && updated_commands < max_command_batch_size_) {
     auto &command = commands_.front();
-    auto *new_command = long_polling_request.add_commands();
+    auto new_command = long_polling_request.add_commands();
     new_command->Swap(command.get());
     commands_.pop();
     updated_commands += 1;
