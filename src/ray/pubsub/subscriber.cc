@@ -242,8 +242,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         [subscription_callbacks = std::move(subscription_callbacks),
          reply = std::move(reply)]() {
           auto pubsub_message_size = reply.pub_messages_size();
-          RAY_CHECK(pubsub_message_size ==
-                    static_cast<size_t>(subscription_callbacks.size()));
+          RAY_CHECK(static_cast<size_t>(pubsub_message_size) ==
+                    subscription_callbacks.size());
           for (int i = 0; i < pubsub_message_size; i++) {
             const auto &msg = reply.pub_messages(i);
             const auto &subscription_callback = subscription_callbacks.at(i);
