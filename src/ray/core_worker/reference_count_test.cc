@@ -280,9 +280,9 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
   void FailAllWaitForRefRemovedRequests() {
     // Invoke all failure callbacks so that we can simulate the borrower failure scenario.
-    for (const auto it : subscription_failure_callback_map) {
+    for (const auto &it : subscription_failure_callback_map) {
       auto &callback_map = it.second;
-      for (const auto callback_it : callback_map) {
+      for (const auto &callback_it : callback_map) {
         const auto object_id = callback_it.first;
         const auto failure_callback = callback_it.second;
         failure_callback(object_id.Binary());
