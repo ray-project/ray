@@ -148,6 +148,9 @@ RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 
+/// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
+RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
+
 // Whether to inline object status in serialized references.
 // See https://github.com/ray-project/ray/issues/16025 for more details.
 RAY_CONFIG(bool, inline_object_status_in_refs, true)
