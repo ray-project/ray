@@ -221,11 +221,11 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
-    std::shared_ptr<GcsPlacementGroup> placement_group, bool is_retryable) {
+    std::shared_ptr<GcsPlacementGroup> placement_group, bool is_infeasible) {
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
 
-  if (!is_retryable) {
+  if (!is_infeasible) {
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
@@ -290,8 +290,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     MarkSchedulingStarted(placement_group_id);
     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_retryable) {
-          OnPlacementGroupCreationFailed(std::move(placement_group), is_retryable);
+        [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+          OnPlacementGroupCreationFailed(std::move(placement_group), is_insfeasble);
         },
         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
           OnPlacementGroupCreationSuccess(std::move(placement_group));
@@ -588,9 +588,8 @@ void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
     pending_placement_groups_.insert(end_it, infeasible_placement_groups_.cbegin(),
                                      infeasible_placement_groups_.cend());
     infeasible_placement_groups_.clear();
-
-    SchedulePendingPlacementGroups();
   }
+  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(

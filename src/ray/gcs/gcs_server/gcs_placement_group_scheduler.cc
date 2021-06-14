@@ -51,7 +51,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status) {
   ScheduleMap schedule_map;
-  if (status == SUCCESSFUL && !selected_nodes.empty()) {
+  if (status == SUCCESS && !selected_nodes.empty()) {
     RAY_CHECK(bundles.size() == selected_nodes.size());
     int index = 0;
     for (const auto &bundle : bundles) {
@@ -152,11 +152,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto result_status = scheduling_result.first;
   auto selected_nodes = scheduling_result.second;
 
-  if (result_status != SUCCESSFUL) {
+  if (result_status != SUCCESS) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
                    << ", because current reource can't satisfied this required resource.";
-    const bool &retryable = (result_status == FAILED_BUT_RETRYABLE) ? true : false;
+    const bool &retryable = (result_status == FAILED) ? true : false;
     failure_callback(placement_group, retryable);
     return;
   }

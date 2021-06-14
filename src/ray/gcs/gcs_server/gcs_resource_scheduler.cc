@@ -65,7 +65,7 @@ SchedulingResult GcsResourceScheduler::Schedule(
       FilterCandidateNodes(cluster_resources, node_filter_func);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
-    return std::make_pair(SchedulingResultStatus::FAILED_AND_NON_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
                           std::vector<NodeID>());
   }
 
@@ -124,7 +124,7 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
                    << required_resources_list.size()
                    << " is greater than the number of candidate nodes "
                    << candidate_nodes.size() << ", scheduling fails.";
-    return std::make_pair(SchedulingResultStatus::FAILED_AND_NON_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
                           std::vector<NodeID>());
   }
 
@@ -147,10 +147,10 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
 
   if (result_nodes.size() != required_resources_list.size()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::FAILED,
                           std::vector<NodeID>());
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESSFUL, result_nodes);
+  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 SchedulingResult GcsResourceScheduler::SpreadSchedule(
@@ -188,10 +188,10 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
 
   if (result_nodes.size() != required_resources_list.size()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::FAILED,
                           std::vector<NodeID>());
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESSFUL, result_nodes);
+  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 SchedulingResult GcsResourceScheduler::StrictPackSchedule(
@@ -214,7 +214,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   if (right_node_it == cluster_resource.end()) {
     RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
                       "whole cluster, schedule failed.";
-    return std::make_pair(SchedulingResultStatus::FAILED_AND_NON_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
                           std::vector<NodeID>());
   }
 
@@ -232,11 +232,11 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   }
   if (result_nodes.empty()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::FAILED,
                           std::vector<NodeID>());
   }
 
-  return std::make_pair(SchedulingResultStatus::SUCCESSFUL, result_nodes);
+  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 SchedulingResult GcsResourceScheduler::PackSchedule(
@@ -285,10 +285,10 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
 
   if (!required_resources_list_copy.empty()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED_BUT_RETRYABLE,
+    return std::make_pair(SchedulingResultStatus::FAILED,
                           std::vector<NodeID>());
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESSFUL, result_nodes);
+  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 std::list<NodeScore> GcsResourceScheduler::ScoreNodes(

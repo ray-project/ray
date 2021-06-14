@@ -38,11 +38,11 @@ enum SchedulingType {
 // Status of resource scheduling result.
 enum SchedulingResultStatus {
   // Scheduling failed but retryable.
-  FAILED_BUT_RETRYABLE = 0,
+  FAILED = 0,
   // Scheduling failed and non-retryable.
-  FAILED_AND_NON_RETRYABLE = 1,
+  INFEASIBLE = 1,
   // Scheduling successful.
-  SUCCESSFUL = 2,
+  SUCCESS = 2,
 };
 
 typedef std::pair<NodeID, double> NodeScore;

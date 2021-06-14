@@ -70,7 +70,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESSFUL);
+    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
     ASSERT_EQ(result1.second.size(), 3);
 
     // Check for resource leaks.
@@ -81,7 +81,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     required_resources_list.emplace_back(resource_map);
     const auto &result2 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED_BUT_RETRYABLE);
+    ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED);
     ASSERT_EQ(result2.second.size(), 0);
 
     // Check for resource leaks.
@@ -118,14 +118,14 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   const auto &result1 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
       [](const NodeID &) { return false; });
-  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::FAILED_AND_NON_RETRYABLE);
+  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
   ASSERT_EQ(result1.second.size(), 0);
 
   // Scheduling succeeded.
   const auto &result2 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
       [](const NodeID &) { return true; });
-  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESSFUL);
+  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESS);
   ASSERT_EQ(result2.second.size(), 1);
 }
 
@@ -148,7 +148,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 
   const auto &result1 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
-  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::FAILED_AND_NON_RETRYABLE);
+  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
   ASSERT_EQ(result1.second.size(), 0);
 
   // Check for resource leaks.
@@ -164,7 +164,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 
   const auto &result2 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_PACK);
-  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED_AND_NON_RETRYABLE);
+  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::INFEASIBLE);
   ASSERT_EQ(result2.second.size(), 0);
 
   // Check for resource leaks.
