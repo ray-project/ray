@@ -16,7 +16,7 @@ def test_shuffle():
 def test_shuffle_hang():
     try:
         shuffle.main(
-            object_store_size=1e9, num_partitions=200, partition_size=10e6)
+            object_store_memory=1e9, num_partitions=200, partition_size=10e6)
     finally:
         ray.shutdown()
 
