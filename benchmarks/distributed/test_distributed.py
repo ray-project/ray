@@ -218,5 +218,3 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "num_nodes": MAX_NUM_NODES
     }
     json.dump(results, out_file)
-
-
