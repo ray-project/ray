@@ -8,39 +8,16 @@ to make new matches, and edits the policies_to_train list.
 import argparse
 import os
 import pyspiel
+import random
 
 import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import register_env
 
-class SelfPlayCallback(DefaultCallbacks):
-    def __init__(self):
-        super().__init__()
-        # 0=RandomPolicy, 1=1st main policy snapshot,
-        # 2=2nd main policy snapshot, etc..
-        self.current_opponent = 0
-
-    def on_train_result(self, *, trainer, result, **kwargs):
-        # Get the win rate:
-        won = 0
-        for r_main in result["hist_stats"]["policy_main_reward"]:
-            if r_main > 0.0:
-                won += 1
-        win_rate = won / len(result["hist_stats"]["policy_main_reward"])
-        # If win rate is good -> Store current policy and play against
-        # it next.
-        if win_rate > 0.75:
-            self.current_opponent += 1
-            new_policy = trainer.add_policy(
-                policy_id=f"main_{self.current_opponent}",
-                observatio_space=
-            )
-            trainer.workers.for
-
+OBS_SPACE = ACTION_SPACE = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -50,52 +27,103 @@ parser.add_argument(
     help="The DL framework specifier.")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
-parser.add_argument(
     "--stop-iters",
     type=int,
-    default=200,
+    default=20000,
     help="Number of iterations to train.")
 parser.add_argument(
     "--stop-timesteps",
     type=int,
-    default=50000,
+    default=1000000,
     help="Number of timesteps to train.")
 parser.add_argument(
-    "--stop-reward",
+    "--win-rate-threshold",
     type=float,
-    default=7.0,
-    help="Reward at which we stop training.")
+    default=0.7,
+    help="Win-rate at which we setup another opponent by freezing the "
+    "current main policy and playing against it from here on.")
+args = parser.parse_args()
+
+
+class SelfPlayCallback(DefaultCallbacks):
+    def __init__(self):
+        super().__init__()
+        # 0=RandomPolicy, 1=1st main policy snapshot,
+        # 2=2nd main policy snapshot, etc..
+        self.current_opponent = 0
+
+    def on_train_result(self, *, trainer, result, **kwargs):
+        # Get the win rate for the train batch.
+        # Note that normally, one should set up a proper evaluation config,
+        # such that evaluation always happens on the already updated policy,
+        # instead of on the already used train_batch.
+        opponent_rew = result["hist_stats"]["policy_{}_reward".format(
+            "main_" + str(self.current_opponent)
+            if self.current_opponent > 0 else "random")]
+        won = 0
+        for r_main, r_opponent in zip(
+                result["hist_stats"]["policy_main_reward"], opponent_rew):
+            if r_main > r_opponent:
+                won += 1
+        win_rate = won / len(result["hist_stats"]["policy_main_reward"])
+        print(f"Win rate={win_rate} -> ", end="")
+        # If win rate is good -> Snapshot current policy and play against
+        # it next, keeping the snapshot fixed and only improving the "main"
+        # policy.
+        if win_rate > args.win_rate_threshold:
+            self.current_opponent += 1
+            new_pol_id = f"main_{self.current_opponent}"
+
+            def policy_mapping_fn(agent_id):
+                return "main" if random.random() > 0.5 else new_pol_id
+
+            new_policy = trainer.add_policy(
+                policy_id=new_pol_id,
+                policy_cls=type(trainer.get_policy("main")),
+                observation_space=OBS_SPACE,
+                action_space=ACTION_SPACE,
+                config={},
+                policy_mapping_fn=policy_mapping_fn,
+            )
+            # Set the weights of the new policy to the main policy.
+            # We'll keep training the main policy, whereas `new_pol_id` will
+            # remain fixed.
+            new_policy.set_state(trainer.get_policy("main").get_state())
+            print("Play against better opponent next.")
+        else:
+            print("Not good enough, keep learning.")
+
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
-    obs_space = dummy_env.observation_space
-    action_space = dummy_env.action_space
-    obs = dummy_env.reset()
-    obs, rewards, dones, _ = dummy_env.step({0: 4})
+    OBS_SPACE = dummy_env.observation_space
+    ACTION_SPACE = dummy_env.action_space
 
-    register_env(
-        "connect_four",
-        lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+    register_env("connect_four",
+                 lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
     config = {
         "env": "connect_four",
-        "num_workers": 0, #TODOremove
         "callbacks": SelfPlayCallback,
         "multiagent": {
-            # Initial policy map: Random and PPO.
+            # Initial policy map: Random and PPO. This will be expanded
+            # to more policy snapshots taken from "main" against which "main"
+            # will then play (instead of "random"). This is done in the
+            # custom callback defined above (`SelfPlayCallback`).
             "policies": {
-                "main": (None, obs_space, action_space, {}),
-                "opponent": (RandomPolicy, obs_space, action_space, {}),
+                # Our main policy, we'd like to optimize.
+                "main": (None, OBS_SPACE, ACTION_SPACE, {}),
+                # An initial random opponent to play against.
+                "random": (RandomPolicy, OBS_SPACE, ACTION_SPACE, {}),
             },
-            "policy_mapping_fn": lambda agent_id: "main" if agent_id == 0 else "opponent",
+            # Assign agent 0 and 1 randomly to the "main" policy or
+            # to the opponent ("random" at first).
+            "policy_mapping_fn": (
+                lambda agent_id: "main" if random.random() > 0.5 else "random"
+            ),
+            # Always just train the "main" policy.
             "policies_to_train": ["main"],
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -104,14 +132,10 @@ if __name__ == "__main__":
     }
 
     stop = {
-        "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
 
     results = tune.run("PPO", stop=stop, config=config, verbose=1)
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
 
     ray.shutdown()

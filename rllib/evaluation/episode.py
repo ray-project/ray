@@ -117,9 +117,8 @@ class MultiAgentEpisode:
         else:
             policy_id = self._agent_to_policy[agent_id]
         if policy_id not in self._policy_map:
-            raise KeyError(
-                "policy_mapping_fn returned invalid policy id "
-                f"'{policy_id}'!")
+            raise KeyError("policy_mapping_fn returned invalid policy id "
+                           f"'{policy_id}'!")
         return policy_id
 
     @DeveloperAPI

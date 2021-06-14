@@ -32,8 +32,8 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.typing import TrainerConfigDict, \
-    PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
+from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, \
+    PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -1095,57 +1095,98 @@ class Trainer(Trainable):
         self.workers.local_worker().set_weights(weights)
 
     @PublicAPI
-    def add_policy(self,
-                   *,
-                   policy_id: PolicyID = DEFAULT_POLICY_ID,
-                   observation_space: Optional[gym.spaces.Space] = None,
-                   action_space: Optional[gym.spaces.Space] = None,
-                   config: Optional[PartialTrainerConfigDict] = None,
-                   ) -> Policy:
+    def add_policy(
+            self,
+            *,
+            policy_id: PolicyID,
+            policy_cls: Type[Policy],
+            observation_space: Optional[gym.spaces.Space] = None,
+            action_space: Optional[gym.spaces.Space] = None,
+            config: Optional[PartialTrainerConfigDict] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> Policy:
         """Adds a new policy to this Trainer.
 
         Args:
-            policy_id (Optional[PolicyID]): ID of the policy to add.
+            policy_id (PolicyID): ID of the policy to add.
+            policy_cls (Type[Policy]): The Policy class to use for
+                constructing the new Policy.
             observation_space (Optional[gym.spaces.Space]): The observation
                 space of the policy to add.
             action_space (Optional[gym.spaces.Space]): The action space
                 of the policy to add.
             config (Optional[PartialTrainerConfigDict]): The config overrides
                 for the policy to add.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
 
         Returns:
             Policy: The newly added policy (the copy that got added to the
                 local worker).
         """
-        self.workers.foreach_worker(lambda w: w.add_policy(
-            policy_id=policy_id,
-            observation_space=observation_space,
-            action_space=action_space,
-            config=config,
-        ))
-        if self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(lambda w: w.add_policy(
+
+        def fn(worker):
+            # `foreach_worker` function: Adds the policy the the worker (and
+            # maybe changes its policy_mapping_fn - if provided here).
+            return worker.add_policy(
                 policy_id=policy_id,
+                policy_cls=policy_cls,
                 observation_space=observation_space,
                 action_space=action_space,
                 config=config,
-            ))
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
+
+        # Run foreach_worker fn on all workers (incl. evaluation workers).
+        self.workers.foreach_worker(fn)
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(fn)
+
+        # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
 
     @PublicAPI
-    def remove_policy(self, *, policy_id: PolicyID = DEFAULT_POLICY_ID):
+    def remove_policy(
+            self,
+            *,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> None:
         """Removes a new policy from this Trainer.
 
         Args:
             policy_id (Optional[PolicyID]): ID of the policy to be removed.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
         """
-        self.workers.foreach_worker(lambda w: w.remove_policy(
-            policy_id=policy_id,
-        ))
-        if self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(lambda w: w.remove_policy(
+
+        def fn(worker):
+            return worker.remove_policy(
                 policy_id=policy_id,
-            ))
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
+
+        self.workers.foreach_worker(fn)
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
     def export_policy_model(self,

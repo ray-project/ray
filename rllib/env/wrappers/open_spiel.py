@@ -6,7 +6,6 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 class OpenSpielEnv(MultiAgentEnv):
-
     def __init__(self, env):
         self.env = env
 
@@ -18,8 +17,9 @@ class OpenSpielEnv(MultiAgentEnv):
         self.state = None
 
         # Extract observation- and action spaces from game.
-        self.observation_space = Box(float("-inf"), float("inf"),
-                                     (self.env.observation_tensor_size(), ))
+        self.observation_space = Box(
+            float("-inf"), float("inf"),
+            (self.env.observation_tensor_size(), ))
         self.action_space = Discrete(self.env.num_distinct_actions())
 
     def reset(self):
@@ -36,17 +36,16 @@ class OpenSpielEnv(MultiAgentEnv):
                 self.state.apply_action(action[curr_player])
             # TODO: (sven) resolve this hack by publishing legal actions
             #  with each step.
-            except pyspiel.SpielError as e:
+            except pyspiel.SpielError:
                 self.state.apply_action(
                     np.random.choice(self.state.legal_actions()))
-                penalty = -1.0
+                penalty = -0.1
 
             # Are we done?
             is_done = self.state.is_terminal()
-            dones = dict(
-                {ag: is_done for ag in range(self.num_agents)},
-                **{"__all__": is_done}
-            )
+            dones = dict({ag: is_done
+                          for ag in range(self.num_agents)},
+                         **{"__all__": is_done})
 
             # Compile rewards dict.
             rewards = {ag: r for ag, r in enumerate(self.state.returns())}

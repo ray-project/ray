@@ -423,10 +423,6 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            #if set(obs.keys()) != set(rewards.keys()):
-            #    raise ValueError(
-            #        "Key set for obs and rewards must be the same: "
-            #        "{} vs {}".format(obs.keys(), rewards.keys()))
             if set(infos).difference(set(obs)):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
@@ -496,12 +492,7 @@ class _MultiAgentEnvState:
                     dones[ag] = self.last_dones[ag]
                     del self.last_dones[ag]
 
-        #obs, rew, dones, info = (self.last_obs, self.last_rewards,
-        #                         self.last_dones, self.last_infos)
-        #self.reset()
-        #self.last_obs = {}
-        #self.last_rewards = {}
-        self.last_dones["__all__"] = False# = {"__all__": False}
+        self.last_dones["__all__"] = False
         self.last_infos = {}
         return observations, rewards, dones, infos
 
@@ -525,15 +516,4 @@ class _MultiAgentEnvState:
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
         self.last_infos = {}
-
-        #self.last_rewards = {
-        #    agent_id: None
-        #    for agent_id in self.last_obs.keys()
-        #}
-        #self.last_dones = {
-        #    agent_id: False
-        #    for agent_id in self.last_obs.keys()
-        #}
-        #self.last_infos = {agent_id: {} for agent_id in self.last_obs.keys()}
-        #self.last_dones["__all__"] = False
         return self.last_obs
