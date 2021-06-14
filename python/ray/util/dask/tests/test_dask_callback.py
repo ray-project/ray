@@ -5,6 +5,14 @@ import ray
 from ray.util.dask import ray_dask_get, RayDaskCallback
 
 
+@pytest.fixture
+def ray_start_1_cpu():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @dask.delayed
 def add(x, y):
     return x + y
@@ -20,7 +28,7 @@ def test_callback_active():
     assert not RayDaskCallback.ray_active
 
 
-def test_presubmit_shortcircuit(ray_start_regular_shared):
+def test_presubmit_shortcircuit(ray_start_1_cpu):
     """
     Test that presubmit return short-circuits task submission, and that task's
     result is set to the presubmit return value.
@@ -41,7 +49,7 @@ def test_presubmit_shortcircuit(ray_start_regular_shared):
     assert result == 0
 
 
-def test_pretask_posttask_shared_state(ray_start_regular_shared):
+def test_pretask_posttask_shared_state(ray_start_1_cpu):
     """
     Test that pretask return value is passed to corresponding posttask
     callback.
@@ -61,7 +69,7 @@ def test_pretask_posttask_shared_state(ray_start_regular_shared):
     assert result == 5
 
 
-def test_postsubmit(ray_start_regular_shared):
+def test_postsubmit(ray_start_1_cpu):
     """
     Test that postsubmit is called after each task.
     """
@@ -94,7 +102,7 @@ def test_postsubmit(ray_start_regular_shared):
     assert result == 5
 
 
-def test_postsubmit_all(ray_start_regular_shared):
+def test_postsubmit_all(ray_start_1_cpu):
     """
     Test that postsubmit_all is called once.
     """
@@ -126,7 +134,7 @@ def test_postsubmit_all(ray_start_regular_shared):
     assert result == 5
 
 
-def test_finish(ray_start_regular_shared):
+def test_finish(ray_start_1_cpu):
     """
     Test that finish callback is called once.
     """
@@ -158,7 +166,7 @@ def test_finish(ray_start_regular_shared):
     assert result == 5
 
 
-def test_multiple_callbacks(ray_start_regular_shared):
+def test_multiple_callbacks(ray_start_1_cpu):
     """
     Test that multiple callbacks are supported.
     """
@@ -194,7 +202,7 @@ def test_multiple_callbacks(ray_start_regular_shared):
     assert result == 5
 
 
-def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
+def test_pretask_posttask_shared_state_multi(ray_start_1_cpu):
     """
     Test that pretask return values are passed to the correct corresponding
     posttask callbacks when multiple callbacks are given.

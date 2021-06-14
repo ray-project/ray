@@ -11,7 +11,6 @@ $ python get_build_info.py
 """
 
 import os
-import sys
 import json
 
 import requests
@@ -50,11 +49,7 @@ def get_build_env():
             "TRAVIS_COMMIT": os.environ["BUILDKITE_COMMIT"],
             "TRAVIS_JOB_WEB_URL": (os.environ["BUILDKITE_BUILD_URL"] + "#" +
                                    os.environ["BUILDKITE_BUILD_ID"]),
-            "TRAVIS_OS_NAME":  # The map is used to stay consistent with Travis
-            {
-                "linux": "linux",
-                "darwin": "osx"
-            }[sys.platform],
+            "TRAVIS_OS_NAME": "linux",
         }
 
     keys = [
