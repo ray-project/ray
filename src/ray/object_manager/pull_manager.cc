@@ -273,7 +273,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 }
 
 void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (num_bytes_being_pulled_ > 0) {
+  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
+      highest_task_req_id_being_pulled_ > 0) {
     // At least one request is being actively pulled, so there is
     // currently enough space.
     return;
