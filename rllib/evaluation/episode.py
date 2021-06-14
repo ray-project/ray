@@ -77,6 +77,7 @@ class MultiAgentEpisode:
         self._agent_to_rnn_state: Dict[AgentID, List[Any]] = {}
         self._agent_to_last_obs: Dict[AgentID, EnvObsType] = {}
         self._agent_to_last_raw_obs: Dict[AgentID, EnvObsType] = {}
+        self._agent_to_last_done: Dict[AgentID, bool] = {}
         self._agent_to_last_info: Dict[AgentID, EnvInfoDict] = {}
         self._agent_to_last_action: Dict[AgentID, EnvActionType] = {}
         self._agent_to_last_pi_info: Dict[AgentID, dict] = {}
@@ -192,6 +193,13 @@ class MultiAgentEpisode:
         return self._agent_to_rnn_state[agent_id]
 
     @DeveloperAPI
+    def last_done_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> bool:
+        """Returns the last done flag received for the specified agent."""
+        if agent_id not in self._agent_to_last_done:
+            self._agent_to_last_done[agent_id] = False
+        return self._agent_to_last_done[agent_id]
+
+    @DeveloperAPI
     def last_pi_info_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> dict:
         """Returns the last info object for the specified agent."""
 
@@ -223,6 +231,9 @@ class MultiAgentEpisode:
 
     def _set_last_raw_obs(self, agent_id, obs):
         self._agent_to_last_raw_obs[agent_id] = obs
+
+    def _set_last_done(self, agent_id, done):
+        self._agent_to_last_done[agent_id] = done
 
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info

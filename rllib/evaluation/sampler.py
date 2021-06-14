@@ -753,7 +753,8 @@ def _process_observations(
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
             for ag_id in episode.get_agents():
-                if ag_id not in all_agents_obs:
+                if not episode.last_done_for(
+                        ag_id) and ag_id not in all_agents_obs:
                     # Create a fake (all-0s) observation.
                     all_agents_obs[ag_id] = \
                         np.zeros_like(worker.policy_map[episode.policy_for(
@@ -801,6 +802,7 @@ def _process_observations(
 
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
+            episode._set_last_done(agent_id, agent_done)
             # Infos from the environment.
             agent_infos = infos[env_id].get(agent_id, {})
             episode._set_last_info(agent_id, agent_infos)
