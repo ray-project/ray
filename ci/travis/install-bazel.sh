@@ -55,7 +55,7 @@ else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [[ -n "${BUILDKITE}" ]] && [ "${platform}" = "darwin" ]; then
+  if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
     "${target}" --user
     # Add bazel to the path.
     # shellcheck disable=SC2016
