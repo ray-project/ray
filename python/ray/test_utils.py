@@ -631,13 +631,12 @@ class BatchQueue(Queue):
         actor_options = actor_options or {}
         self.maxsize = maxsize
         self.actor = ray.remote(_BatchQueueActor).options(
-            **actor_options).remote(
-                self.maxsize)
+            **actor_options).remote(self.maxsize)
 
-    def get_batch(
-            self, batch_size: int = None,
-            total_timeout: Optional[float] = None,
-            first_timeout: Optional[float] = None) -> List[Any]:
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
         """Gets batch of items from the queue and returns them in a
         list in order.
 
@@ -645,14 +644,15 @@ class BatchQueue(Queue):
             Empty: if the queue does not contain the desired number of items
         """
         return ray.get(
-            self.actor.get_batch.remote(
-                batch_size, total_timeout, first_timeout))
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
 
 
 class _BatchQueueActor(_QueueActor):
-    async def get_batch(
-            self, batch_size=None, total_timeout=None,
-            first_timeout=None):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
         start = timeit.default_timer()
         try:
             batch = [await asyncio.wait_for(self.queue.get(), first_timeout)]
@@ -667,9 +667,8 @@ class _BatchQueueActor(_QueueActor):
             while True:
                 try:
                     start = timeit.default_timer()
-                    batch.append(
-                        await asyncio.wait_for(
-                            self.queue.get(), total_timeout))
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
                     if total_timeout:
                         end = timeit.default_timer()
                         total_timeout = max(total_timeout - (end - start), 0)
@@ -679,9 +678,8 @@ class _BatchQueueActor(_QueueActor):
             for _ in range(batch_size - 1):
                 try:
                     start = timeit.default_timer()
-                    batch.append(
-                        await asyncio.wait_for(
-                            self.queue.get(), total_timeout))
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
                     if total_timeout:
                         end = timeit.default_timer()
                         total_timeout = max(total_timeout - (end - start), 0)

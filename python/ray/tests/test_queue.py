@@ -265,8 +265,8 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
     data = list(range(batch_size * num_batches))
     for idx in range(0, len(data), batch_size):
         time.sleep(1)
-        q.put_nowait_batch([
-            dummy.remote(item) for item in data[idx:idx + batch_size]])
+        q.put_nowait_batch(
+            [dummy.remote(item) for item in data[idx:idx + batch_size]])
     q.put_nowait(None)
     consumed_data = ray.get(consumer.get_data.remote())
     assert len(consumed_data) == len(data)
