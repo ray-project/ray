@@ -17,6 +17,7 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
+
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -208,15 +209,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
       initial_config_(config),
-      worker_pool_(io_service, self_node_id_, config.node_manager_address,
-                   config.num_workers_soft_limit,
-                   config.num_initial_python_workers_for_first_job,
-                   config.maximum_startup_concurrency, config.min_worker_port,
-                   config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands,
-                   /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(
+          io_service, self_node_id_, config.node_manager_address,
+          config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
+          config.maximum_startup_concurrency, config.min_worker_port,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands,
+          /*starting_worker_timeout_callback=*/
+          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       dependency_manager_(object_manager_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -1376,10 +1377,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   }
 }
 
-void NodeManager::ProcessTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyTaskBlocked>(message_data);
+void NodeManager::ProcessTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                     const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::NotifyTaskBlocked>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleTaskBlocked(worker, release_resources);
@@ -1418,8 +1418,8 @@ void NodeManager::ProcessWaitRequestMessage(
   // TODO Remove in the future since it should have already be done in other place
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, wait_ms, num_required_objects,
-      [this, resolve_objects, client, current_task_id](
-          std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> found,
+                                                       std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1734,8 +1734,8 @@ void NodeManager::MarkObjectsAsFailed(
   }
 }
 
-void NodeManager::HandleTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
+void NodeManager::HandleTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
+                                    bool release_resources) {
   if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
@@ -1744,8 +1744,7 @@ void NodeManager::HandleTaskBlocked(
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::HandleTaskUnblocked(
-    const std::shared_ptr<WorkerInterface> &worker) {
+void NodeManager::HandleTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
