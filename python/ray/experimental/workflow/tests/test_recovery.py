@@ -51,11 +51,11 @@ def test_recovery():
     workflow_id = "test_recovery"
     with pytest.raises(RayTaskError):
         # internally we get WorkerCrashedError
-        output = workflow.run(fork_join.step("input"), workflow_id=workflow_id)
+        output = workflow.run(fork_join.step("x"), workflow_id=workflow_id)
         ray.get(output)
 
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
-    r = "join(join(input[append1], [source1][append2]), join(input, [source1]))"
+    r = "join(join(x[append1], [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
     ray.shutdown()

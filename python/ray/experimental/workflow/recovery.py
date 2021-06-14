@@ -35,10 +35,9 @@ def _load_output_object_remote(job_path: pathlib.Path,
 
 @WorkflowStepFunction
 def _recover_workflow_step(
-    workflow_root_dir: pathlib.Path, workflow_id: str, step_id: str,
-    input_placeholder_id: str,
-    input_object_refs: List[str], workflow_results: List[Any],
-    instant_workflow_outputs: Dict[int, str]):
+        workflow_root_dir: pathlib.Path, workflow_id: str, step_id: str,
+        input_placeholder_id: str, input_object_refs: List[str],
+        workflow_results: List[Any], instant_workflow_outputs: Dict[int, str]):
     # NOTE: this overrides the workflow context, this changes the way
     # checkpointing behaves.
     context = workflow_context.WorkflowStepContext(workflow_id,
@@ -83,16 +82,17 @@ def _construct_resume_workflow_from_step(reader: storage.WorkflowStorageReader,
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     recovery_workflow = _recover_workflow_step.step(
-        reader.workflow_root_dir, reader.job_id, step_id, result.input_placeholder,
-        result.input_object_refs, input_workflows, instant_workflow_outputs)
+        reader.workflow_root_dir, reader.job_id, step_id,
+        result.input_placeholder, result.input_object_refs, input_workflows,
+        instant_workflow_outputs)
     # skip saving the inputs of a recovery workflow step
     recovery_workflow.skip_saving_inputs = True
     recovery_workflow._step_id = step_id
     return recovery_workflow
 
 
-def resume_workflow_job(job_id: str, workflow_root_dir=None) -> Union[
-    ray.ObjectRef, Workflow]:
+def resume_workflow_job(
+        job_id: str, workflow_root_dir=None) -> Union[ray.ObjectRef, Workflow]:
     """
     Resume a workflow job.
 

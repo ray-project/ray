@@ -54,7 +54,8 @@ def set_workflow_step_context(context: Optional[WorkflowStepContext]):
     _context = context
 
 
-def update_workflow_step_context(context: Optional[WorkflowStepContext], step_id: str):
+def update_workflow_step_context(context: Optional[WorkflowStepContext],
+                                 step_id: str):
     global _context
     _context = context
     _context.workflow_scope.append(step_id)
