@@ -244,17 +244,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
-    cdef cppclass CRuntimeEnv "ray::RuntimeEnv":
-        CRuntimeEnv()
-        CRuntimeEnv(c_string conda_env_name)
-
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
-                     CRuntimeEnv runtime_env,
+                     c_string serialized_runtime_env,
                      const unordered_map[c_string, c_string]
                      &override_environment_variables)
 
@@ -270,7 +266,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached, c_string &name, c_bool is_asyncio,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
-            CRuntimeEnv runtime_env,
+            c_string serialized_runtime_env,
             const unordered_map[c_string, c_string]
             &override_environment_variables)
 

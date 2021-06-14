@@ -1,7 +1,6 @@
 import inspect
 import logging
 import weakref
-import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -22,6 +21,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
@@ -701,12 +701,16 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
         else:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+            runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -725,7 +729,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env=parsed_runtime_env,
+            runtime_env_dict=runtime_env_dict,
             override_environment_variables=override_environment_variables
             or dict())
 
@@ -1076,10 +1080,9 @@ def exit_actor():
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise an interrupt signal to the main thread to tell it to exit.
+        # raise a custom error to the main thread to tell it to exit.
         if worker.core_worker.current_actor_is_asyncio():
-            _thread.interrupt_main()
-            return
+            raise AsyncioActorExit()
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.

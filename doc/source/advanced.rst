@@ -431,7 +431,7 @@ Conda Environments for Tasks and Actors
 Starting with Ray 1.3.0, Ray supports starting tasks and actors in `conda environments <https://docs.conda.io/en/latest/>`_.
 This allows you to use tasks and actors with different (possibly conflicting) package dependencies within a single Ray runtime.
 You will need to have the desired conda environments installed beforehand on all nodes in your Ray cluster, and they
-must all use the same Python minor version (e.g., Python 3.8).
+must all use the same Python minor version (e.g., Python 3.8).  Note that this feature is currently unavailable on Windows.
 
 To start a specific task or an actor in an existing conda environment, pass in the environment name to your task or 
 actor via the ``runtime_env`` parameter as follows:

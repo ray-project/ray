@@ -1,4 +1,5 @@
 import time
+from typing import List, Optional, Tuple
 import os
 import ray
 import numpy as np
@@ -6,12 +7,13 @@ import numpy as np
 from contextlib import contextmanager
 
 # Only run tests matching this filter pattern.
+
 filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 
 
-def timeit(name, fn, multiplier=1):
+def timeit(name, fn, multiplier=1) -> List[Optional[Tuple[str, float, float]]]:
     if filter_pattern not in name:
-        return
+        return [None]
     # warmup
     start = time.time()
     while time.time() - start < 1:
@@ -26,8 +28,11 @@ def timeit(name, fn, multiplier=1):
             count += 1
         end = time.time()
         stats.append(multiplier * count / (end - start))
-    print(name, "per second", round(np.mean(stats), 2), "+-",
-          round(np.std(stats), 2))
+
+    mean = np.mean(stats)
+    sd = np.std(stats)
+    print(name, "per second", round(mean, 2), "+-", round(sd, 2))
+    return [(name, mean, sd)]
 
 
 @contextmanager

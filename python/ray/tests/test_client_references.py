@@ -72,7 +72,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address)
+        real_ray.init(address=cluster.address, namespace="")
 
         def test_cond():
             return len(real_ray.state.objects()) == 0
@@ -134,7 +134,7 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address)
+        real_ray.init(address=cluster.address, namespace="")
 
         wait_for_condition(test_cond, timeout=10)
 
@@ -202,7 +202,7 @@ def test_named_actor_refcount(ray_start_regular):
 
         def connect_api():
             api = RayAPIStub()
-            api.connect("localhost:50051")
+            api.connect("localhost:50051", namespace="")
             api.get_actor("actor")
             return api
 

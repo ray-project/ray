@@ -16,7 +16,11 @@ from ray.rllib.models import ModelCatalog
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=4)
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
@@ -25,7 +29,8 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     ModelCatalog.register_custom_model(
-        "fast_model", TorchFastModel if args.torch else FastModel)
+        "fast_model", TorchFastModel
+        if args.framework == "torch" else FastModel)
 
     config = {
         "env": FastImageEnv,
@@ -44,7 +49,7 @@ if __name__ == "__main__":
         "train_batch_size": sample_from(
             lambda spec: 1000 * max(1, spec.config.num_gpus or 1)),
         "fake_sampler": True,
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {

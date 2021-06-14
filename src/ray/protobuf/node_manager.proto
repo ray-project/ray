@@ -212,8 +212,28 @@ message RequestResourceReportReply {
   ResourcesData resources = 1;
 }
 
+message UpdateResourceUsageRequest {
+  // This is a serialized version of ResourceUsageBatchData. This extra layer of
+  // serialization allows the sender to cache the expensive operation of serializing a
+  // `ResourceUsageBatchData` when sending this request to all nodes.
+  bytes serialized_resource_usage_batch = 1;
+}
+
+message UpdateResourceUsageReply {
+}
+
+message GetGcsServerAddressRequest {
+}
+
+message GetGcsServerAddressReply {
+  string ip = 1;
+  int32 port = 2;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
+  // Update the node's view of the cluster resource usage
+  rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
   // Request the current resource usage from this raylet
   rpc RequestResourceReport(RequestResourceReportRequest)
       returns (RequestResourceReportReply);
@@ -261,4 +281,6 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
+  // Get gcs server address.
+  rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
 }

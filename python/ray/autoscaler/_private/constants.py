@@ -1,4 +1,5 @@
 import os
+import sys
 
 from ray.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
@@ -8,7 +9,11 @@ from ray.ray_constants import (  # noqa F401
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        val = os.environ[key]
+        if val == "inf":
+            return sys.maxsize
+        else:
+            return int(val)
     return default
 
 
@@ -55,6 +60,9 @@ AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.
 AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
+
+# Port that autoscaler prometheus metrics will be exported to
+AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)

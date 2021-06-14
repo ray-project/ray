@@ -95,7 +95,10 @@ done
 # hack, we should use auditwheel instead.
 for path in .whl/*.whl; do
   if [ -f "${path}" ]; then
-    mv "${path}" "${path//linux/manylinux2014}"
+    out="${path//-linux/-manylinux2014}"
+    if [ "$out" != "$path" ]; then
+        mv "${path}" "${out}"
+    fi
   fi
 done
 

@@ -342,6 +342,13 @@ class ConcurrencyLimiter(Searcher):
         self.batch = batch
         self.live_trials = set()
         self.cached_results = {}
+
+        if not isinstance(searcher, Searcher):
+            raise RuntimeError(
+                f"The `ConcurrencyLimiter` only works with `Searcher` "
+                f"objects (got {type(searcher)}). Please try to pass "
+                f"`max_concurrent` to the search generator directly.")
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 

@@ -7,6 +7,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED,
                                  NODE_KIND_WORKER)
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
 
 logger = logging.getLogger(__name__)
@@ -19,12 +20,14 @@ class NodeLauncher(threading.Thread):
                  provider,
                  queue,
                  pending,
+                 prom_metrics=None,
                  node_types=None,
                  index=None,
                  *args,
                  **kwargs):
         self.queue = queue
         self.pending = pending
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
@@ -58,6 +61,7 @@ class NodeLauncher(threading.Thread):
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         self.provider.create_node(node_config, node_tags, count)
+        self.prom_metrics.started_nodes.inc(count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")
@@ -69,9 +73,11 @@ class NodeLauncher(threading.Thread):
             try:
                 self._launch_node(config, count, node_type)
             except Exception:
+                self.prom_metrics.node_launch_exceptions.inc()
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)
+                self.prom_metrics.pending_nodes.set(self.pending.value)
 
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)

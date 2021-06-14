@@ -4,6 +4,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents.dqn.dqn_tf_policy import _adjust_nstep
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 
@@ -78,6 +79,20 @@ class TestDQN(unittest.TestCase):
                 break
         assert learnt, "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"
         trainer.stop()
+
+    def test_dqn_n_step(self):
+        obs = [1, 2, 3, 4, 5, 6, 7]
+        actions = ["a", "b", "a", "a", "a", "b", "a"]
+        rewards = [10.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+        new_obs = [2, 3, 4, 5, 6, 7, 8]
+        dones = [0, 0, 0, 0, 0, 0, 1]
+        _adjust_nstep(3, 0.9, obs, actions, rewards, new_obs, dones)
+        self.assertEqual(obs, [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(actions, ["a", "b", "a", "a", "a", "b", "a"])
+        self.assertEqual(new_obs, [4, 5, 6, 7, 8, 8, 8])
+        self.assertEqual(dones, [0, 0, 0, 0, 1, 1, 1])
+        self.assertEqual(rewards,
+                         [91.0, 171.0, 271.0, 271.0, 271.0, 190.0, 100.0])
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""

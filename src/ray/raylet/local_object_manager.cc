@@ -66,16 +66,22 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 
           // If the subscription succeeds, register the subscription callback.
           // Callback that is invoked when the owner publishes the object to evict.
-          auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
+          auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
+            RAY_CHECK(msg.has_worker_object_eviction_message());
+            const auto object_eviction_msg = msg.worker_object_eviction_message();
+            const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
             ReleaseFreedObject(object_id);
-            core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
+            core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 owner_address, object_id.Binary());
           };
+
           // Callback that is invoked when the owner of the object id is dead.
-          auto owner_dead_callback = [this](const ObjectID &object_id) {
+          auto owner_dead_callback = [this, object_id]() {
             ReleaseFreedObject(object_id);
           };
-          core_worker_subscriber_->SubcribeObject(
-              owner_address, object_id, subscription_callback, owner_dead_callback);
+          core_worker_subscriber_->Subscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                             owner_address, object_id.Binary(),
+                                             subscription_callback, owner_dead_callback);
         });
   }
 }

@@ -49,10 +49,8 @@ class TestApexDQN(unittest.TestCase):
 
             check_compute_single_action(trainer)
 
-            # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
-            #            for i in range(1):
-            #                results = trainer.train()
-            #                print(results)
+            for i in range(2):
+                print(trainer.train())
 
             # Test again per-worker epsilon distribution
             # (should not have changed).

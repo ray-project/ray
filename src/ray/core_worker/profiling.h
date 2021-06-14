@@ -52,6 +52,9 @@ class Profiler {
   // until they are flushed.
   std::shared_ptr<rpc::ProfileTableData> rpc_profile_data_ GUARDED_BY(mutex_);
 
+  /// Whether a profile flush is already in progress.
+  bool profile_flush_active_ GUARDED_BY(mutex_) = false;
+
   // Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 };

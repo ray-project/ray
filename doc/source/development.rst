@@ -46,8 +46,8 @@ Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscale
     # This replaces miniconda3/lib/python3.7/site-packages/ray/tune
     # with your local `ray/python/ray/tune`.
 
-Building Ray on Linux (full)
-----------------------------
+Building Ray on Linux & MacOS (full)
+------------------------------------
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 

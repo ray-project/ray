@@ -1,7 +1,7 @@
 import dask
 import dask.dataframe as dd
 from dask.dataframe.shuffle import SimpleShuffleLayer
-import mock
+from unittest import mock
 import numpy as np
 import pandas as pd
 import pytest

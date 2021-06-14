@@ -730,3 +730,6 @@ to contribute an example, feel free to create a `pull request here <https://gith
 
 - `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.
+
+- `Deep Graph Library (DGL) example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/deep_graph/README.md>`__
+   Training a graph attention network on a Reddit Dataset. It implements a custom graph learning model and uses a custom training operator.

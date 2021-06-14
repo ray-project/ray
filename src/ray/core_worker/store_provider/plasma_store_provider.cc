@@ -90,7 +90,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
-                           owner_address, &data));
+                           owner_address, &data, /*created_by_worker=*/true));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
@@ -111,11 +111,16 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
-                                             std::shared_ptr<Buffer> *data) {
+                                             std::shared_ptr<Buffer> *data,
+                                             bool created_by_worker) {
   uint64_t retry_with_request_id = 0;
+  auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  if (!created_by_worker) {
+    source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
+  }
   Status status = store_client_.Create(
       object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-      metadata ? metadata->Size() : 0, &retry_with_request_id, data,
+      metadata ? metadata->Size() : 0, &retry_with_request_id, data, source,
       /*device_num=*/0);
 
   while (retry_with_request_id > 0) {
@@ -436,7 +441,8 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
+  RAY_RETURN_NOT_OK(
+      Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, true));

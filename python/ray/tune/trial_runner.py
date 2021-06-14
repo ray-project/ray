@@ -9,6 +9,7 @@ import time
 import traceback
 import warnings
 
+import ray
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
@@ -219,7 +220,22 @@ class TrialRunner:
         if max_pending_trials == "auto":
             # Auto detect
             if isinstance(self._search_alg, BasicVariantGenerator):
-                self._max_pending_trials = 1000
+                # Use a minimum of 16 to trigger fast autoscaling
+                # Scale up to at most the number of available cluster CPUs
+                cluster_cpus = ray.cluster_resources().get("CPU", 1.)
+                self._max_pending_trials = max(16, int(cluster_cpus * 1.1))
+
+                if self._max_pending_trials > 128:
+                    logger.warning(
+                        f"The maximum number of pending trials has been "
+                        f"automatically set to the number of available "
+                        f"cluster CPUs, which is high "
+                        f"({self._max_pending_trials} CPUs/pending trials). "
+                        f"If you're running an experiment with a large number "
+                        f"of trials, this could lead to scheduling overhead. "
+                        f"In this case, consider setting the "
+                        f"`TUNE_MAX_PENDING_TRIALS_PG` environment variable "
+                        f"to the desired maximum number of concurrent trials.")
             else:
                 self._max_pending_trials = 1
         else:

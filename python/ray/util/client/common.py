@@ -1,9 +1,12 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
 import asyncio
 import concurrent.futures
+from dataclasses import dataclass
+import grpc
 import os
 import uuid
 import inspect
@@ -26,6 +29,25 @@ from typing import Union
 #
 # Currently, this is 2GiB, the max for a signed int.
 GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
+
+# 30 seconds because ELB timeout is 60 seconds
+GRPC_KEEPALIVE_TIME_MS = 1000 * 30
+
+# 20 seconds (gRPC) default
+GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 20
+
+GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
+    ("grpc.keepalive_permit_without_calls", 1),
+    # Send an infinite number of pings
+    ("grpc.max_pings_without_data", 0),
+    ("grpc.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    # Allow many strikes
+    ("grpc.max_ping_strikes", 0)
+]
 
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
@@ -402,3 +424,17 @@ def remote_decorator(options: Optional[Dict[str, Any]]):
                             "either a function or to a class.")
 
     return decorator
+
+
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: ray_client_pb2_grpc.RayletDriverServicer
+    data_servicer: ray_client_pb2_grpc.RayletDataStreamerServicer
+    logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
+    grpc_server: grpc.Server
+
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)

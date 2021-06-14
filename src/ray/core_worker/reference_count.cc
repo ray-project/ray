@@ -754,6 +754,19 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   }
 }
 
+void ReferenceCounter::CleanupBorrowersOnRefRemoved(
+    const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
+    const rpc::WorkerAddress &borrower_addr) {
+  // Merge in any new borrowers that the previous borrower learned of.
+  MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
+
+  // Erase the previous borrower.
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end()) << object_id;
+  RAY_CHECK(it->second.borrowers.erase(borrower_addr));
+  DeleteReferenceInternal(it, nullptr);
+}
+
 void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
@@ -766,6 +779,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
       *ref_it->second.owner_address);
   request.set_contained_in_id(contained_in_id.Binary());
   request.set_intended_worker_id(addr.worker_id.Binary());
+  request.set_subscriber_worker_id(rpc_address_.ToProto().worker_id());
 
   auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
 
@@ -778,18 +792,41 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                        const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
                        << addr.port << " of object " << object_id;
+        // If the message is published, this callback will be invoked.
+        const auto message_published_callback = [this, addr,
+                                                 object_id](const rpc::PubMessage &msg) {
+          RAY_CHECK(msg.has_worker_ref_removed_message());
+          const ReferenceTable new_borrower_refs =
+              ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
+
+          absl::MutexLock lock(&mutex_);
+          CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
+          // Unsubscribe the object once the message is published.
+          RAY_CHECK(object_status_subscriber_->Unsubscribe(
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
+              object_id.Binary()));
+        };
+
+        // If the borrower is failed, this callback will be called.
+        const auto publisher_failed_callback = [this, addr, object_id]() {
+          // When the request is failed, there's no new borrowers ref published from this
+          // borrower.
+          absl::MutexLock lock(&mutex_);
+          CleanupBorrowersOnRefRemoved({}, object_id, addr);
+        };
+
+        // If the request was failed, we just invoke the failure callback right away.
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Ref removed subscription to " << addr.ip_address << ":"
+                        << addr.port << " for an object " << object_id << " has failed.";
+          publisher_failed_callback();
+          return;
+        }
+
         absl::MutexLock lock(&mutex_);
-
-        // Merge in any new borrowers that the previous borrower learned of.
-        const ReferenceTable new_borrower_refs =
-            ReferenceTableFromProto(reply.borrowed_refs());
-        MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
-
-        // Erase the previous borrower.
-        auto it = object_id_refs_.find(object_id);
-        RAY_CHECK(it != object_id_refs_.end());
-        RAY_CHECK(it->second.borrowers.erase(addr));
-        DeleteReferenceInternal(it, nullptr);
+        object_status_subscriber_->Subscribe(
+            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
+            object_id.Binary(), message_published_callback, publisher_failed_callback);
       });
 }
 
@@ -850,8 +887,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
 }
 
 void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
-                                        rpc::WaitForRefRemovedReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+                                        const WorkerID &subscriber_worker_id) {
   ReferenceTable borrowed_refs;
   RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
@@ -866,12 +902,23 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
     // okay to delete the object, if it wasn't already deleted.
     RAY_CHECK(it->second.OutOfScope(lineage_pinning_enabled_));
   }
-  // Send the owner information about any new borrowers.
-  ReferenceTableToProto(borrowed_refs, reply->mutable_borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has "
-                 << reply->borrowed_refs().size();
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // Send the owner information about any new borrowers.
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(object_id.Binary());
+  pub_message.set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
+  auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
+  ReferenceTableToProto(borrowed_refs,
+                        worker_ref_removed_message->mutable_borrowed_refs());
+
+  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
+                 << worker_ref_removed_message->borrowed_refs().size()
+                 << " borrowed references.";
+  object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    pub_message, object_id.Binary());
+  object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(

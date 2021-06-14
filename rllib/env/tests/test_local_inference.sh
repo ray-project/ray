@@ -21,4 +21,4 @@ done
 
 sleep 2
 python $basedir/cartpole_client.py --stop-reward=150 --inference-mode=local
-kill $pid
+kill $pid || true

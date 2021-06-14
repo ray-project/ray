@@ -109,6 +109,32 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "sum of `min_workers` of all the available node types.")
 
 
+def check_legacy_fields(config: Dict[str, Any]) -> None:
+    """For use in providers that have completed the migration to
+    available_node_types.
+
+    Warns user that head_node and worker_nodes fields are being ignored.
+    Throws an error if available_node_types and head_node_type aren't
+    specified.
+    """
+    # log warning if non-empty head_node field
+    if "head_node" in config and config["head_node"]:
+        cli_logger.warning(
+            "The `head_node` field is deprecated and will be ignored. "
+            "Use `head_node_type` and `available_node_types` instead.")
+    # log warning if non-empty worker_nodes field
+    if "worker_nodes" in config and config["worker_nodes"]:
+        cli_logger.warning(
+            "The `worker_nodes` field is deprecated and will be ignored. "
+            "Use `available_node_types` instead.")
+    if "available_node_types" not in config:
+        cli_logger.error("`available_node_types` not specified in config")
+        raise ValueError("`available_node_types` not specified in config")
+    if "head_node_type" not in config:
+        cli_logger.error("`head_node_type` not specified in config")
+        raise ValueError("`head_node_type` not specified in config")
+
+
 def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     The returned config has the following properties:

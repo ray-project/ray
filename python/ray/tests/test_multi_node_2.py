@@ -255,14 +255,14 @@ def test_wait_for_nodes(ray_start_cluster_head):
     ],
     indirect=True)
 def test_ray_client(call_ray_start):
-    from ray.util.client import ray
-    ray.connect("localhost:20000")
+    from ray.util.client import ray as ray_client
+    ray.client("localhost:20000").connect()
 
     @ray.remote
     def f():
         return "hello client"
 
-    assert ray.get(f.remote()) == "hello client"
+    assert ray_client.get(f.remote()) == "hello client"
 
 
 if __name__ == "__main__":

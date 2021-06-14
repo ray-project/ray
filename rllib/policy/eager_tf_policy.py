@@ -186,7 +186,7 @@ def build_eager_tf_policy(
         postprocess_fn=None,
         stats_fn=None,
         optimizer_fn=None,
-        gradients_fn=None,
+        compute_gradients_fn=None,
         apply_gradients_fn=None,
         grad_stats_fn=None,
         extra_learn_fetches_fn=None,
@@ -199,10 +199,12 @@ def build_eager_tf_policy(
         action_sampler_fn=None,
         action_distribution_fn=None,
         mixins=None,
-        obs_include_prev_action_reward=DEPRECATED_VALUE,
         get_batch_divisibility_req=None,
         # Deprecated args.
-        extra_action_fetches_fn=None):
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        extra_action_fetches_fn=None,
+        gradients_fn=None,
+):
     """Build an eager TF policy.
 
     An eager policy runs all operations in eager mode, which makes debugging
@@ -216,6 +218,9 @@ def build_eager_tf_policy(
 
     base = add_mixins(Policy, mixins)
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     if extra_action_fetches_fn is not None:
         deprecation_warning(
             old="extra_action_fetches_fn",
@@ -223,8 +228,10 @@ def build_eager_tf_policy(
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
-    if obs_include_prev_action_reward != DEPRECATED_VALUE:
-        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+    if gradients_fn is not None:
+        deprecation_warning(
+            old="gradients_fn", new="compute_gradients_fn", error=False)
+        compute_gradients_fn = gradients_fn
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
@@ -709,7 +716,8 @@ def build_eager_tf_policy(
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            with tf.GradientTape(persistent=gradients_fn is not None) as tape:
+            with tf.GradientTape(persistent=compute_gradients_fn is not None) \
+                    as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             if isinstance(self.model, tf.keras.Model):
@@ -717,7 +725,7 @@ def build_eager_tf_policy(
             else:
                 variables = self.model.trainable_variables()
 
-            if gradients_fn:
+            if compute_gradients_fn:
 
                 class OptimizerWrapper:
                     def __init__(self, tape):
@@ -727,8 +735,9 @@ def build_eager_tf_policy(
                         return list(
                             zip(self.tape.gradient(loss, var_list), var_list))
 
-                grads_and_vars = gradients_fn(self, OptimizerWrapper(tape),
-                                              loss)
+                grads_and_vars = compute_gradients_fn(self,
+                                                      OptimizerWrapper(tape),
+                                                      loss)
             else:
                 grads_and_vars = list(
                     zip(tape.gradient(loss, variables), variables))

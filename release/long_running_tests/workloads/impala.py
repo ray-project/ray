@@ -2,7 +2,7 @@
 
 import ray
 from ray.tune import run_experiments
-from ray.cluster_utils import Cluster
+import os
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -16,19 +16,23 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 # Simulate a cluster on one machine.
 
-cluster = Cluster()
-for i in range(num_nodes):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=10,
-        num_gpus=0,
-        resources={str(i): 2},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0")
-ray.init(address=cluster.address)
+# cluster = Cluster()
+# for i in range(num_nodes):
+#     cluster.add_node(
+#         redis_port=6379 if i == 0 else None,
+#         num_redis_shards=num_redis_shards if i == 0 else None,
+#         num_cpus=10,
+#         num_gpus=0,
+#         resources={str(i): 2},
+#         object_store_memory=object_store_memory,
+#         redis_max_memory=redis_max_memory,
+#         dashboard_host="0.0.0.0")
+# ray.init(address=cluster.address)
 
+if "RAY_ADDRESS" in os.environ:
+    del os.environ["RAY_ADDRESS"]
+
+ray.init(num_cpus=10)
 # Run the workload.
 
 run_experiments({

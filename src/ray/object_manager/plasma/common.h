@@ -25,6 +25,7 @@
 
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/compat.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 
 namespace plasma {
 
@@ -83,6 +84,8 @@ struct ObjectTableEntry {
   int64_t construct_duration;
   /// The state of the object, e.g., whether it is open or sealed.
   ObjectState state;
+  /// The source of the object. Used for debugging purposes.
+  plasma::flatbuf::ObjectSource source;
 };
 
 /// Mapping from ObjectIDs to information about the object.

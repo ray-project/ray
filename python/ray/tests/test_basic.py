@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message)
+from ray.test_utils import (client_test_enabled, get_error_message,
+                            run_string_as_driver)
 
 import ray
 
@@ -163,6 +164,28 @@ def test_invalid_arguments(shutdown_only):
             @ray.remote(max_task_retries=opt)
             class A2:
                 x = 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_user_setup_function():
+    script = """
+import ray
+ray.init()
+@ray.remote
+def get_pkg_dir():
+    return ray._private.runtime_env.VAR
+
+print("remote", ray.get(get_pkg_dir.remote()))
+print("local", ray._private.runtime_env.VAR)
+
+
+"""
+
+    out = run_string_as_driver(
+        script, {"RAY_USER_SETUP_FUNCTION": "ray.test_utils.set_setup_func"})
+    (remote_out, local_out) = out.strip().split("\n")[-2:]
+    assert remote_out == "remote hello world"
+    assert local_out == "local hello world"
 
 
 def test_put_get(shutdown_only):

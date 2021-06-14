@@ -14,9 +14,16 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <boost/any.hpp>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 
@@ -24,24 +31,184 @@ namespace pubsub {
 
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
-using SubscriptionCallback = std::function<void(const ObjectID &)>;
-using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
+using SubscriptionCallback = std::function<void(const rpc::PubMessage &)>;
+using SubscriptionFailureCallback = std::function<void()>;
+
+///////////////////////////////////////////////////////////////////////////////
+/// SubscriberChannel Abstraction
+///////////////////////////////////////////////////////////////////////////////
+
+/// Subscription info stores metadata that is needed for subscription.
+template <typename KeyIdType>
+struct SubscriptionInfo {
+  SubscriptionInfo() {}
+
+  // Message ID -> subscription_callback
+  absl::flat_hash_map<const KeyIdType,
+                      std::pair<SubscriptionCallback, SubscriptionFailureCallback>>
+      subscription_callback_map;
+};
+
+/// Subscriber channel is an abstraction for each channel.
+/// Through the channel interface, components can subscribe data that belongs to each
+/// channel. NOTE: channel is not supposed to be exposed.
+class SubscribeChannelInterface {
+ public:
+  virtual ~SubscribeChannelInterface(){};
+
+  /// Subscribe to the object.
+  ///
+  /// \param publisher_address Address of the publisher to subscribe the object.
+  /// \param message id The message id to subscribe from the publisher.
+  /// \param subscription_callback A callback that is invoked whenever the given object
+  /// information is published.
+  /// \param subscription_failure_callback A callback that is
+  /// invoked whenever the publisher is dead (or failed).
+  virtual void Subscribe(const rpc::Address &publisher_address,
+                         const std::string &key_id_binary,
+                         SubscriptionCallback subscription_callback,
+                         SubscriptionFailureCallback subscription_failure_callback) = 0;
+
+  /// Unsubscribe the object.
+  /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
+  ///
+  /// \param publisher_address The publisher address that it will unsubscribe to.
+  /// \param key_id The message id to unsubscribe.
+  /// \return True if the publisher is unsubscribed.
+  virtual bool Unsubscribe(const rpc::Address &publisher_address,
+                           const std::string &key_id_binary) = 0;
+
+  /// Handle the published message from the publisher_address.
+  ///
+  /// \param publisher_address The address of the publisher.
+  /// \param pub_message The message to handle from the publisher.
+  virtual void HandlePublishedMessage(const rpc::Address &publisher_address,
+                                      const rpc::PubMessage &pub_message) = 0;
+
+  /// Handle the failure of the given publisher.
+  ///
+  /// \param publisher_address The address of the publisher.
+  /// \param pub_message The message to handle from the publisher.
+  virtual void HandlePublisherFailure(const rpc::Address &publisher_address) = 0;
+
+  /// Return true if the subscription exists for a given publisher id.
+  virtual bool SubscriptionExists(const PublisherID &publisher_id) = 0;
+
+  /// Return the channel type of this subscribe channel.
+  virtual const rpc::ChannelType GetChannelType() const = 0;
+
+  /// Return true if there's no metadata leak.
+  virtual bool CheckNoLeaks() const = 0;
+};
+
+template <typename KeyIdType>
+class SubscriberChannel : public SubscribeChannelInterface {
+ public:
+  SubscriberChannel() {}
+  ~SubscriberChannel() = default;
+
+  void Subscribe(const rpc::Address &publisher_address, const std::string &key_id,
+                 SubscriptionCallback subscription_callback,
+                 SubscriptionFailureCallback subscription_failure_callback) override;
+
+  bool Unsubscribe(const rpc::Address &publisher_address,
+                   const std::string &key_id) override;
+
+  bool CheckNoLeaks() const override;
+
+  void HandlePublishedMessage(const rpc::Address &publisher_address,
+                              const rpc::PubMessage &pub_message) override;
+
+  void HandlePublisherFailure(const rpc::Address &publisher_address) override;
+
+  bool SubscriptionExists(const PublisherID &publisher_id) override {
+    return subscription_map_.count(publisher_id);
+  }
+
+  const rpc::ChannelType GetChannelType() const override { return channel_type_; }
+
+ protected:
+  rpc::ChannelType channel_type_;
+
+  /// Returns a subscription callback; Returns a nullopt if the object id is not
+  /// subscribed.
+  absl::optional<SubscriptionCallback> GetSubscriptionCallback(
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const {
+    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    auto subscription_it = subscription_map_.find(publisher_id);
+    if (subscription_it == subscription_map_.end()) {
+      return absl::nullopt;
+    }
+    auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
+    bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+    if (!exist) {
+      return absl::nullopt;
+    }
+    auto subscription_callback = callback_it->second.first;
+    return absl::optional<SubscriptionCallback>{subscription_callback};
+  }
+
+  /// Returns a publisher failure callback; Returns a nullopt if the object id is not
+  /// subscribed.
+  absl::optional<SubscriptionFailureCallback> GetFailureCallback(
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const {
+    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    auto subscription_it = subscription_map_.find(publisher_id);
+    if (subscription_it == subscription_map_.end()) {
+      return absl::nullopt;
+    }
+    auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
+    bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+    if (!exist) {
+      return absl::nullopt;
+    }
+    auto subscription_failure_callback = callback_it->second.second;
+    return absl::optional<SubscriptionFailureCallback>{subscription_failure_callback};
+  }
+
+  /// Mapping of the publisher ID -> subscription info.
+  absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
+};
+
+/// The below defines the list of channel implementation.
+
+class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
+ public:
+  WaitForObjectEvictionChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
+  }
+  ~WaitForObjectEvictionChannel() = default;
+};
+
+class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
+ public:
+  WaitForRefRemovedChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL;
+  }
+  ~WaitForRefRemovedChannel() = default;
+};
+
+///////////////////////////////////////////////////////////////////////////////
+/// Subscriber Abstraction
+///////////////////////////////////////////////////////////////////////////////
 
 /// Interface for the pubsub client.
 class SubscriberInterface {
  public:
   /// Subscribe to the object.
   ///
+  /// \param channel_type The channel to subscribe to.
   /// \param publisher_address Address of the publisher to subscribe the object.
-  /// \param object_id The object id to subscribe from the publisher.
+  /// \param key_id_binary The message id to subscribe from the publisher.
   /// \param subscription_callback A callback that is invoked whenever the given object
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
-  virtual void SubcribeObject(
-      const rpc::Address &publisher_address, const ObjectID &object_id,
-      SubscriptionCallback subscription_callback,
-      SubscriptionFailureCallback subscription_failure_callback) = 0;
+  virtual void Subscribe(const rpc::ChannelType channel_type,
+                         const rpc::Address &publisher_address,
+                         const std::string &key_id_binary,
+                         SubscriptionCallback subscription_callback,
+                         SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   /// Unsubscribe the object.
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
@@ -53,13 +220,12 @@ class SubscriberInterface {
   ///
   /// TODO(sang): Once it starts sending RPCs to unsubscribe, we should start handling
   /// message ordering.
+  /// \param channel_type The channel to unsubscribe to.
   /// \param publisher_address The publisher address that it will unsubscribe to.
-  /// \param object_id The object id to unsubscribe.
-  virtual bool UnsubscribeObject(const rpc::Address &publisher_address,
-                                 const ObjectID &object_id) = 0;
-
-  /// Testing only. Return true if there's no metadata remained in the private attribute.
-  virtual bool AssertNoLeak() const = 0;
+  /// \param key_id_binary The message id to unsubscribe.
+  virtual bool Unsubscribe(const rpc::ChannelType channel_type,
+                           const rpc::Address &publisher_address,
+                           const std::string &key_id_binary) = 0;
 
   virtual ~SubscriberInterface() {}
 };
@@ -73,42 +239,70 @@ class SubscriberInterface {
 /// - If long polling request is failed (if non-OK status is returned from the RPC),
 /// consider the publisher is dead.
 ///
+/// How to extend new channels.
+///
+/// - Modify pubsub.proto to add a new channel and pub_message.
+/// - Create a new channel implementation. Look WaitForObjectEvictionChannel as an
+/// example.
+/// - Define the newly created channel implementation in subscriber.cc file, so that
+/// compiler can see them.
+/// - Update channels_ field in the constructor.
+///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(const PublisherID subscriber_id,
+  explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
                       rpc::CoreWorkerClientPool &publisher_client_pool)
       : subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
-        publisher_client_pool_(publisher_client_pool) {}
+        publisher_client_pool_(publisher_client_pool),
+        wait_for_object_eviction_channel_(
+            std::make_shared<WaitForObjectEvictionChannel>()),
+        wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
+        /// This is used to define new channel_type -> Channel abstraction.
+        channels_({{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                    wait_for_object_eviction_channel_},
+                   {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                    wait_for_ref_removed_channel_}}) {}
+
   ~Subscriber() = default;
 
-  void SubcribeObject(const rpc::Address &publisher_address, const ObjectID &object_id,
-                      SubscriptionCallback subscription_callback,
-                      SubscriptionFailureCallback subscription_failure_callback) override;
+  void Subscribe(const rpc::ChannelType channel_type,
+                 const rpc::Address &publisher_address, const std::string &key_id_binary,
+                 SubscriptionCallback subscription_callback,
+                 SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool UnsubscribeObject(const rpc::Address &publisher_address,
-                         const ObjectID &object_id) override;
+  bool Unsubscribe(const rpc::ChannelType channel_type,
+                   const rpc::Address &publisher_address,
+                   const std::string &key_id_binary) override;
 
-  bool AssertNoLeak() const override;
+  /// Return the Channel of the given channel type.
+  std::shared_ptr<SubscribeChannelInterface> Channel(
+      const rpc::ChannelType channel_type) const {
+    const auto it = channels_.find(channel_type);
+    RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
+    return it->second;
+  }
 
  private:
-  /// Encapsulates the subscription information such as subscribed object ids ->
-  /// callbacks.
-  /// TODO(sang): Use a channel abstraction instead of publisher address once OBOD uses
-  /// the pubsub.
-  struct SubscriptionInfo {
-    SubscriptionInfo(const rpc::Address &pubsub_server_address)
-        : pubsub_server_address_(pubsub_server_address) {}
+  ///
+  /// Testing fields
+  ///
 
-    /// Address of the pubsub server.
-    const rpc::Address pubsub_server_address_;
-    // Object ID -> subscription_callback
-    absl::flat_hash_map<const ObjectID,
-                        std::pair<SubscriptionCallback, SubscriptionFailureCallback>>
-        subscription_callback_map_;
-  };
+  FRIEND_TEST(SubscriberTest, TestBasicSubscription);
+  FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
+  FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
+  FRIEND_TEST(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject);
+  FRIEND_TEST(SubscriberTest, TestIgnoreBatchAfterUnsubscription);
+  FRIEND_TEST(SubscriberTest, TestLongPollingFailure);
+  FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
+  // Testing only. Check if there are leaks.
+  bool CheckNoLeaks() const;
+
+  ///
+  /// Private fields
+  ///
 
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.
@@ -129,26 +323,34 @@ class Subscriber : public SubscriberInterface {
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
 
-  /// Returns a subscription callback; Returns a nullopt if the object id is not
-  /// subscribed.
-  absl::optional<SubscriptionCallback> GetSubscriptionCallback(
-      const rpc::Address &publisher_address, const ObjectID &object_id) const;
-
-  /// Returns a publisher failure callback; Returns a nullopt if the object id is not
-  /// subscribed.
-  absl::optional<SubscriptionCallback> GetFailureCallback(
-      const rpc::Address &publisher_address, const ObjectID &object_id) const;
+  /// Return true if the given publisher id has subscription to any of channel.
+  bool SubscriptionExists(const PublisherID &publisher_id) {
+    return std::any_of(channels_.begin(), channels_.end(), [publisher_id](const auto &p) {
+      return p.second->SubscriptionExists(publisher_id);
+    });
+  }
 
   /// Self node's address information.
   const SubscriberID subscriber_id_;
   const std::string subscriber_address_;
   const int subscriber_port_;
 
-  /// Mapping of the publisher ID -> subscription info.
-  absl::flat_hash_map<PublisherID, SubscriptionInfo> subscription_map_;
-
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;
+
+  /// A set to cache the connected publisher ids. "Connected" means the long polling
+  /// request is in flight.
+  absl::flat_hash_set<PublisherID> publishers_connected_;
+
+  /// WaitForObjectEviction channel.
+  std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_;
+
+  /// WaitForRefRemoved channel.
+  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_;
+
+  /// Mapping of channel type to channels.
+  absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
+      channels_;
 };
 
 }  // namespace pubsub

@@ -233,11 +233,11 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
-    num_nodes = 5
-    num_gpus_per_raylet = 5
+    num_nodes = 3
+    num_gpus_per_raylet = 2
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet,
+            num_cpus=4 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
             _system_config={"num_heartbeats_timeout": 100} if i == 0 else {})
     ray.init(address=cluster.address)

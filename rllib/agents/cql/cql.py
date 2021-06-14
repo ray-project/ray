@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Type, List
 
 from ray.actor import ActorHandle
+from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.sac.sac import SACTrainer, \
@@ -51,8 +52,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
 def validate_config(config: TrainerConfigDict):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-    if config["framework"] == "tf":
-        raise ValueError("Tensorflow CQL not implemented yet!")
 
 
 replay_buffer = None
@@ -199,7 +198,7 @@ CQLTrainer = SACTrainer.with_updates(
     name="CQL",
     default_config=CQL_DEFAULT_CONFIG,
     validate_config=validate_config,
-    default_policy=CQLTorchPolicy,
+    default_policy=CQLTFPolicy,
     get_policy_class=get_policy_class,
     after_init=after_init,
     execution_plan=execution_plan,

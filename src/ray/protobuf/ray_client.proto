@@ -157,6 +157,7 @@ message ClusterInfoType {
     AVAILABLE_RESOURCES = 3;
     RUNTIME_CONTEXT = 4;
     TIMELINE = 5;
+    PING = 6;
   }
 }
 
@@ -172,7 +173,9 @@ message ClusterInfoResponse {
   message RuntimeContext {
     bytes job_id = 1;
     bytes node_id = 2;
-    bool capture_client_tasks = 3;
+    string namespace = 3;
+    string runtime_env = 4;
+    bool capture_client_tasks = 5;
   }
 
   ClusterInfoType.TypeEnum type = 1;

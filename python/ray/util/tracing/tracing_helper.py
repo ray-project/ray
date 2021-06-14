@@ -28,9 +28,8 @@ logger = logging.getLogger(__name__)
 
 try:
     from opentelemetry import context, trace
-    from opentelemetry import propagators
+    from opentelemetry import propagate
     from opentelemetry.context.context import Context
-    from opentelemetry.trace.propagation.textmap import DictGetter
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
         raise ImportError(
@@ -47,8 +46,9 @@ def sort_params_list(params_list: List[Parameter]):
     """Given a list of Parameters, if a kwargs Parameter exists,
     move it to the end of the list."""
     for i, param in enumerate(params_list):
-        if param.name == "kwargs":
+        if param.kind == Parameter.VAR_KEYWORD:
             params_list.append(params_list.pop(i))
+            break
     return params_list
 
 
@@ -110,12 +110,12 @@ class DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
         """Inject trace context into otel propagator."""
         context_dict: Dict[Any, Any] = {}
-        propagators.inject(dict.__setitem__, context_dict)
+        propagate.inject(context_dict)
         return context_dict
 
     def extract(context_dict: Dict[Any, Any]) -> "Context":
         """Given a trace context, extract as a Context."""
-        return cast(Context, propagators.extract(DictGetter(), context_dict))
+        return cast(Context, propagate.extract(context_dict))
 
 
 @contextmanager
@@ -449,11 +449,11 @@ def _inject_tracing_into_class(_cls):
                     return await method(self, *_args, **_kwargs)
             else:
                 with tracer.start_as_current_span(
-                        _actor_span_consumer_name(self._wrapped.__name__,
+                        _actor_span_consumer_name(self.__class__.__name__,
                                                   method.__name__),
                         kind=trace.SpanKind.CONSUMER,
                         attributes=_actor_hydrate_span_args(
-                            self._wrapped.__name__, method.__name__),
+                            self.__class__.__name__, method.__name__),
                 ):
                     return await method(self, *_args, **_kwargs)
 

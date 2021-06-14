@@ -3,8 +3,8 @@
 
 /// including the header
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
 #include "gflags/gflags.h"
+#include "ray/util/logging.h"
 
 /// using namespace
 using namespace ::ray::api;
@@ -14,16 +14,14 @@ int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
 int Plus(int x, int y) { return x + y; }
 
+RAY_REMOTE(Return1, Plus1, Plus);
+
 /// a class of user code
 class Counter {
  public:
   int count;
 
   Counter(int init) { count = init; }
-  template <typename... Args>
-  static Counter *GenericFactoryCreate(Args... args) {
-    return FactoryCreate(args...);
-  }
   static Counter *FactoryCreate() { return new Counter(0); }
   static Counter *FactoryCreate(int init) { return new Counter(init); }
   static Counter *FactoryCreate(int init1, int init2) {
@@ -40,26 +38,15 @@ class Counter {
   }
 };
 
-DEFINE_string(redis_address, "", "The ip address of redis server.");
-
-DEFINE_string(dynamic_library_path, "", "The local path of the dynamic library.");
+RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
+           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
 
 int main(int argc, char **argv) {
   /// configuration
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  const std::string dynamic_library_path = FLAGS_dynamic_library_path;
-  const std::string redis_address = FLAGS_redis_address;
-  gflags::ShutDownCommandLineFlags();
-  RAY_CHECK(!dynamic_library_path.empty())
-      << "Please add a local dynamic library by '--dynamic-library-path'";
-  ray::api::RayConfig::GetInstance()->lib_name = dynamic_library_path;
-  if (!redis_address.empty()) {
-    ray::api::RayConfig::GetInstance()->SetRedisAddress(redis_address);
-  }
-  ::ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
+  ray::api::RayConfig config;
 
   /// initialization
-  Ray::Init();
+  Ray::Init(config, &argc, &argv);
 
   /// put and get object
   auto obj = Ray::Put(12345);
@@ -77,20 +64,21 @@ int main(int argc, char **argv) {
   std::cout << "task_result2 = " << task_result2 << std::endl;
 
   /// actor task without args
-  ActorHandle<Counter> actor1 = Ray::Actor(Counter::GenericFactoryCreate<>).Remote();
+  ActorHandle<Counter> actor1 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
   int actor_result1 = *(Ray::Get(actor_object1));
   std::cout << "actor_result1 = " << actor_result1 << std::endl;
 
   /// actor task with args
-  ActorHandle<Counter> actor2 = Ray::Actor(Counter::GenericFactoryCreate<int>).Remote(1);
+  ActorHandle<Counter> actor2 =
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto actor_object2 = actor2.Task(&Counter::Add).Remote(5);
   int actor_result2 = *(Ray::Get(actor_object2));
   std::cout << "actor_result2 = " << actor_result2 << std::endl;
 
   /// actor task with args which pass by reference
   ActorHandle<Counter> actor3 =
-      Ray::Actor(Counter::GenericFactoryCreate<int, int>).Remote(6, 0);
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(6, 0);
   auto actor_object3 = actor3.Task(&Counter::Add).Remote(actor_object2);
   int actor_result3 = *(Ray::Get(actor_object3));
   std::cout << "actor_result3 = " << actor_result3 << std::endl;
@@ -112,14 +100,15 @@ int main(int argc, char **argv) {
             << std::endl;
 
   /// create actor and actor function remote call with args passed by value
-  ActorHandle<Counter> actor4 = Ray::Actor(Counter::GenericFactoryCreate<int>).Remote(10);
+  ActorHandle<Counter> actor4 =
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(10);
   auto r10 = actor4.Task(&Counter::Add).Remote(8);
   int actor_result4 = *(Ray::Get(r10));
   std::cout << "actor_result4 = " << actor_result4 << std::endl;
 
   /// create actor and task function remote call with args passed by reference
   ActorHandle<Counter> actor5 =
-      Ray::Actor(Counter::GenericFactoryCreate<int, int>).Remote(r10, 0);
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(r10, 0);
   auto r11 = actor5.Task(&Counter::Add).Remote(r0);
   auto r12 = actor5.Task(&Counter::Add).Remote(r11);
   auto r13 = actor5.Task(&Counter::Add).Remote(r10);

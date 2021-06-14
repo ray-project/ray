@@ -1,6 +1,7 @@
 from itertools import groupby
 import json
 import logging
+import pickle
 import random
 import string
 import time
@@ -91,7 +92,9 @@ def parse_request_item(request_item):
         # it in ServeRequest.
         if isinstance(arg, starlette.requests.Request):
             return (arg, ), {}
-        elif isinstance(arg, HTTPRequestWrapper):
+        elif request_item.metadata.http_arg_is_pickled:
+            assert isinstance(arg, bytes)
+            arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
         elif request_item.metadata.use_serve_request:
             return (ServeRequest(

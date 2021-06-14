@@ -1,13 +1,15 @@
 import asyncio
 import logging
+import pickle
 import traceback
 import inspect
-from typing import Union, Any, Callable, Type
+from typing import Any, Callable
 import time
 
 import starlette.responses
 
 import ray
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
@@ -28,19 +30,20 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
+def create_backend_replica(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    backend_def = backend_def
+    serialized_backend_def = serialized_backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
+            backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
             else:
@@ -84,10 +87,14 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
-                request_metadata: RequestMetadata,
+                pickled_request_metadata: bytes,
                 *request_args,
                 **request_kwargs,
         ):
+            # The request metadata should be pickled for performance.
+            request_metadata: RequestMetadata = pickle.loads(
+                pickled_request_metadata)
+
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
@@ -102,12 +109,7 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             while True:
                 await asyncio.sleep(10000)
 
-    if isinstance(backend_def, str):
-        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-            backend_def)
-    else:
-        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-            backend_def.__name__)
+    RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
 
 
@@ -306,7 +308,5 @@ class RayServeReplica:
             else:
                 logger.info(
                     f"Waiting for an additional {sleep_time}s to shut down "
-                    f"because there are {self.num_ongoing_requests}"
+                    f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
-
-        ray.actor.exit_actor()

@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/pubsub.proto";
 
 message ActiveObjectIDs {
   repeated bytes object_ids = 1;
@@ -186,7 +187,7 @@ message PubsubLongPollingRequest {
 
 message PubsubLongPollingReply {
   /// The object ids that are published.
-  repeated bytes object_ids = 1;
+  repeated PubMessage pub_messages = 1;
 }
 
 message AddObjectLocationOwnerRequest {
@@ -291,39 +292,11 @@ message WaitForRefRemovedRequest {
   // inside another object ID that we do not own. Then, we must notify the
   // outer ID's owner that the ID contains object_id.
   bytes contained_in_id = 3;
-}
-
-message ObjectReferenceCount {
-  // The reference that the worker has or had a reference to.
-  ObjectReference reference = 1;
-  // Whether the worker is still using the ObjectID locally. This means that
-  // it has a copy of the ObjectID in the language frontend, has a pending task
-  // that depends on the object, and/or owns an ObjectID that is in scope and
-  // that contains the ObjectID.
-  bool has_local_ref = 2;
-  // Any other borrowers that the worker created (by passing the ID on to them).
-  repeated Address borrowers = 3;
-  // The borrower may have returned the object ID nested inside the return
-  // value of a task that it executed. This list contains all task returns that
-  // were owned by a process other than the borrower. Then, the process that
-  // owns the task's return value is also a borrower for as long as it has the
-  // task return ID in scope. Note that only the object ID and owner address
-  // are used for elements in this list.
-  repeated ObjectReference stored_in_objects = 4;
-  // The borrowed object ID that contained this object, if any. This is used
-  // for nested object IDs.
-  bytes contained_in_borrowed_id = 5;
-  // The object IDs that this object contains, if any. This is used for nested
-  // object IDs.
-  repeated bytes contains = 6;
+  // The ID of the worker that waits for the ref removed message.
+  bytes subscriber_worker_id = 4;
 }
 
 message WaitForRefRemovedReply {
-  // The reference counts for the object that the worker was borrowing and
-  // any objects nested inside. The worker should no longer be using the object
-  // ID by the time it replies, but may have accumulated other borrowers or may
-  // still be borrowing an object ID that was nested inside.
-  repeated ObjectReferenceCount borrowed_refs = 1;
 }
 
 message LocalGCRequest {
