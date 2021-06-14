@@ -7,10 +7,9 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray.gcs_utils
-import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
-    as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import rest_response
+from ray.new_dashboard.modules.actor import actor_consts
 from ray.new_dashboard.modules.actor.actor_utils import \
     actor_classname_from_task_spec
 from ray.core.generated import node_manager_pb2_grpc
@@ -62,7 +61,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
-        key = "{}:*".format(stats_collector_consts.ACTOR_CHANNEL)
+        key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
         pattern = receiver.pattern(key)
         await aioredis_client.psubscribe(pattern)
         logger.info("Subscribed to %s", key)
@@ -96,7 +95,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                         job_actors.setdefault(job_id,
                                               {})[actor_id] = actor_table_data
                         # Update only when node_id is not Nil.
-                        if node_id != stats_collector_consts.NIL_NODE_ID:
+                        if node_id != actor_consts.NIL_NODE_ID:
                             node_actors.setdefault(
                                 node_id, {})[actor_id] = actor_table_data
                     DataSource.job_actors.reset(job_actors)
@@ -109,8 +108,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                         f"Failed to GetAllActorInfo: {reply.status.message}")
             except Exception:
                 logger.exception("Error Getting all actor info from GCS.")
-                await asyncio.sleep(stats_collector_consts.
-                                    RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
+                await asyncio.sleep(
+                    actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
 
         # Receive actors from channel.
         state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
@@ -138,7 +137,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
                 # Update node actors (only when node_id is not Nil).
-                if node_id != stats_collector_consts.NIL_NODE_ID:
+                if node_id != actor_consts.NIL_NODE_ID:
                     node_actors = dict(DataSource.node_actors.get(node_id, {}))
                     node_actors[actor_id] = actor_table_data
                     DataSource.node_actors[node_id] = node_actors
