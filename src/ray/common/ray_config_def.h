@@ -18,6 +18,19 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
+/// The duration between dumping debug info to logs, or 0 to disable.
+RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+
+/// Whether to enable Ray event stats collection.
+/// TODO(ekl) this seems to segfault Java unit tests when on by default?
+RAY_CONFIG(bool, event_stats, false)
+
+/// The interval of periodic event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires event_stats=1.
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, -1)
+
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t
@@ -46,14 +59,6 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
-
-/// The duration between dumping debug info to logs, or 0 to disable.
-RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
-
-/// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
-           env_bool("RAY_EVENT_STATS", false))
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
@@ -383,13 +388,6 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
-
-/// The interval of periodic asio event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
-/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
-RAY_CONFIG(int64_t, asio_stats_print_interval_ms,
-           env_int64_t("RAY_EVENT_STATS_INTERVAL_MS", -1))
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
