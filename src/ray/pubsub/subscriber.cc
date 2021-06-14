@@ -236,7 +236,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // this key id is failed. Invoke the failure callback.
       if (msg.has_failure_message()) {
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
-        subscription_callbacks.emplace(nullptr);
+        subscription_callbacks.emplace_back(nullptr);
         continue;
       }
       // Otherwise, register the subscription callback.

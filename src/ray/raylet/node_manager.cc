@@ -187,7 +187,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_, config.node_manager_address, config.node_manager_port,
-          RayConfig::instance().max_command_batch_size(), worker_rpc_pool_)),
+          RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
+          &io_service_)),
       object_directory_(std::dynamic_pointer_cast<ObjectDirectoryInterface>(
           std::make_shared<OwnershipBasedObjectDirectory>(
               io_service_, gcs_client_, core_worker_subscriber_.get(),
