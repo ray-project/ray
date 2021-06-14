@@ -538,7 +538,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
           std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
-              task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
+              task_main_io_service_, *waiter_, pool_, is_asyncio_, max_concurrency_)));
       it = result.first;
     }
 
@@ -574,16 +574,11 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
                                                           int max_concurrency) {
   RAY_CHECK(max_concurrency_ == 0)
       << "SetMaxActorConcurrency should only be called at most once.";
-  RAY_CHECK(fiber_state_ == nullptr);
   RAY_CHECK(pool_ == nullptr);
   RAY_CHECK(max_concurrency >= 1);
   max_concurrency_ = max_concurrency;
   is_asyncio_ = is_asyncio;
-  if (is_asyncio_) {
-    RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency_
-                  << ", creating new fiber thread.";
-    fiber_state_.reset(new FiberState(max_concurrency_));
-  } else if (max_concurrency_ > 1) {
+  if (!is_asyncio_ && max_concurrency_ > 1) {
     RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency_;
     pool_.reset(new BoundedExecutor(max_concurrency_));
   }

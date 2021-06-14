@@ -392,16 +392,20 @@ class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
                        std::shared_ptr<BoundedExecutor> pool = nullptr,
-                       bool is_asyncio = false,
-                       std::shared_ptr<FiberState> fiber_state = nullptr,
+                       bool is_asyncio = false, int max_concurrency = 1,
                        int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
         waiter_(waiter),
         pool_(pool),
-        is_asyncio_(is_asyncio),
-        fiber_state_(fiber_state) {}
+        is_asyncio_(is_asyncio) {
+    if (is_asyncio_) {
+      RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
+                    << ", creating new fiber thread.";
+      fiber_state_ = std::make_unique<FiberState>(max_concurrency);
+    }
+  }
 
   bool TaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
 
@@ -531,7 +535,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// If is_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
+  std::unique_ptr<FiberState> fiber_state_;
   friend class SchedulingQueueTest;
 };
 
@@ -667,9 +671,6 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
-  /// If is_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
 
   /// Set the max concurrency of an actor.
   /// This should be called once for the actor creation task.
