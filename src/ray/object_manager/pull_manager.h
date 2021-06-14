@@ -160,7 +160,7 @@ class PullManager {
     // Tracks bytes counted towards admission control when this bundle is
     // activated. This may be less than num_bytes_needed due to already-local
     // objects.
-    size_t activated_bytes = 0;
+    mutable size_t activated_bytes = 0;
 
     void RegisterObjectSize(size_t object_size) {
       RAY_CHECK(num_object_sizes_missing > 0);
