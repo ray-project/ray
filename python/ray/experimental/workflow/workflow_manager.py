@@ -91,9 +91,7 @@ class WorkflowStepFunction:
         def _func(context, task_id, step_inputs):
             # NOTE: must use 'set_current_store_dir' to ensure that we are
             # accessing the correct global variable.
-            workflow_context.set_workflow_step_context(context)
-            scope = workflow_context.get_scope()
-            scope.append(task_id)
+            workflow_context.update_workflow_step_context(context, task_id)
             args, kwargs, resolved_object_refs = _resolve_step_inputs(
                 step_inputs)
             # free references to potentially save memory

@@ -116,13 +116,20 @@ def workflow_args_resolving_context(
         _resolve_objectrefs = _resolve_objectrefs_bak
 
 
-class _KeepInputs:
-    def __init__(self, resolve_function, index: int):
-        self._resolve_function = resolve_function
+class _KeepWorkflowOutputs:
+    def __init__(self, index: int):
         self._index = index
 
     def __reduce__(self):
-        return self._resolve_function, (self._index, )
+        return _resolve_workflow_outputs, (self._index, )
+
+
+class _KeepObjectRefs:
+    def __init__(self, index: int):
+        self._index = index
+
+    def __reduce__(self):
+        return _resolve_objectrefs, (self._index, )
 
 
 @contextlib.contextmanager
@@ -137,10 +144,10 @@ def workflow_args_keeping_context() -> None:
 
     # we must capture the old functions to prevent self-referencing.
     def _keep_workflow_outputs(index: int):
-        return _KeepInputs(_resolve_workflow_outputs_bak, index)
+        return _KeepWorkflowOutputs(index)
 
     def _keep_objectrefs(index: int):
-        return _KeepInputs(_resolve_objectrefs_bak, index)
+        return _KeepObjectRefs(index)
 
     _resolve_workflow_outputs = _keep_workflow_outputs
     _resolve_objectrefs = _keep_objectrefs

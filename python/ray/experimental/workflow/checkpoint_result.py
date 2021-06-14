@@ -6,21 +6,18 @@ import ray.cloudpickle
 from ray.experimental.workflow import serialization_context
 
 
-def save_object_to_file(obj, checkpoints_dir):
-    assert isinstance(obj, ray.ObjectRef)
-    path: pathlib.Path = checkpoints_dir / obj.hex()
-    try:
-        with open(path, "xb") as f:
-            ray.cloudpickle.dump(ray.get(obj), f)
-    except FileExistsError:
-        pass
-
-
 @ray.remote
-def _save_to_checkpoints_task(checkpoints_dir, objs):
+def _save_to_checkpoints_task(checkpoints_dir, refs):
     with serialization_context.workflow_args_keeping_context():
-        for v in objs:
-            save_object_to_file(v, checkpoints_dir)
+        objs = ray.get(refs)
+    # NOTE: we MUST NOT serialize the object inside the context.
+    for ref, v in zip(refs, objs):
+        path: pathlib.Path = checkpoints_dir / ref.hex()
+        try:
+            with open(path, "xb") as f:
+                ray.cloudpickle.dump(v, f)
+        except FileExistsError:
+            pass
 
 
 def checkpoint_refs(refs, checkpoints_dir, nonblocking=True):

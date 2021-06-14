@@ -7,6 +7,7 @@ import ray
 from ray.experimental.workflow.workflow_manager import (
     WorkflowStepFunction, Workflow, resolve_object_ref, _commit_workflow)
 from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow import recovery
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,25 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     finally:
         workflow_context.set_workflow_step_context(None)
     return output
+
+
+def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
+    """
+    Resume a workflow asynchronously. This workflow maybe fail previously.
+
+    Args:
+        workflow_id: The ID of the workflow. The ID is used to identify
+            the workflow.
+        workflow_root_dir: The path of an external storage used for
+            checkpointing.
+
+    Returns:
+        The execution result of the workflow, represented by Ray ObjectRef.
+    """
+    r = recovery.resume_workflow_job(workflow_id, workflow_root_dir)
+    if isinstance(r, ray.ObjectRef):
+        return r
+    return run(r, workflow_root_dir, workflow_id)
 
 
 __all__ = ("step", "run")

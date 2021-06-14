@@ -63,11 +63,12 @@ class WorkflowStepLogger:
 
 
 def _save_workflow_inputs(workflow: Workflow):
-    step_logger = WorkflowStepLogger(workflow.id)
-    step_logger.save_objects([workflow._input_placeholder])
-    f = workflow._original_function
-    step_logger.save_task_body(f)
-    step_logger.save_inputs_metadata(workflow.get_metadata())
+    if not workflow.skip_saving_inputs:
+        step_logger = WorkflowStepLogger(workflow.id)
+        step_logger.save_objects([workflow._input_placeholder])
+        f = workflow._original_function
+        step_logger.save_task_body(f)
+        step_logger.save_inputs_metadata(workflow.get_metadata())
 
 
 def save_workflow_dag(workflow: Workflow):
@@ -103,7 +104,8 @@ def _file_integrity_check(path: pathlib.Path) -> bool:
     return True
 
 
-class StepInspectResult(dataclass):
+@dataclass
+class StepInspectResult:
     input_placeholder: Optional[str] = None
     input_placeholder_object_valid: bool = False
     input_object_refs: Optional[List[str]] = None
@@ -127,9 +129,11 @@ class WorkflowStorageReader:
 
     def __init__(self, job_id: str, workflow_root_dir: Optional[str] = None):
         if workflow_root_dir is not None:
-            job_dir = pathlib.Path(workflow_root_dir) / job_id
+            self._workflow_root_dir = pathlib.Path(workflow_root_dir)
         else:
-            job_dir = configs.get_default_workflow_root_dir() / job_id
+            self._workflow_root_dir = configs.get_default_workflow_root_dir()
+        self._job_id = job_id
+        job_dir = self._workflow_root_dir / job_id
         if not job_dir.exists():
             raise ValueError(f"Cannot find the workflow job '{job_dir}'")
         steps_dir = job_dir / STEPS_DIR
@@ -162,6 +166,14 @@ class WorkflowStorageReader:
     @property
     def entrypoint_step_id(self):
         return self._entrypoint_step_id
+
+    @property
+    def workflow_root_dir(self):
+        return self._workflow_root_dir
+
+    @property
+    def job_id(self):
+        return self._job_dir
 
     def get_object_path(self, object_id):
         return self._objects_dir / object_id
@@ -214,7 +226,7 @@ class WorkflowStorageReader:
         try:
             with open(step_dir / STEP_OUTPUTS_METADATA) as f:
                 metadata = json.load(f)
-                input_placeholder = metadata.get("output_type")
+                output_type = metadata.get("output_type")
                 if not isinstance(output_type, str):
                     output_type = None
                 else:
