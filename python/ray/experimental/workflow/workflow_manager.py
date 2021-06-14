@@ -101,7 +101,7 @@ class WorkflowStepFunction:
             output = _commit_workflow(_output)
             return output
 
-        self.func = func
+        self._func = func
         self._remote_function = ray.remote(_func)
         self._func_signature = list(
             inspect.signature(func).parameters.values())
@@ -130,7 +130,7 @@ class WorkflowStepFunction:
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
                 input_placeholder: RRef = ray.put((args, kwargs))
-            return Workflow(self.func, self._run_step, input_placeholder,
+            return Workflow(self._func, self._run_step, input_placeholder,
                             workflows, object_refs)
 
         self.step = _build_workflow

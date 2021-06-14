@@ -75,11 +75,10 @@ class Workflow:
                 w._visit_workflow_dag(visited_workflows)
 
     def get_metadata(self):
-        f = self._original_function
         return {
             "id": self.id,
-            "name": f.__module__ + "." + f.__qualname__,
-            "input_placeholder": self._input_placeholder.hex(),
+            "input_placeholder": self._input_placeholder,
+            "func_body": self._original_function,
             "input_object_refs": [r.hex() for r in self._input_object_refs],
             "input_workflows": [w.id for w in self._input_workflows],
         }

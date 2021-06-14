@@ -48,6 +48,13 @@ class WorkflowStepLogger:
             f.write(pickled_function)
 
     def save_inputs_metadata(self, metadata: Dict[str, Any]):
+        input_placeholder = metadata["input_placeholder"]
+        f = metadata["func_body"]
+        func_body = ray.put(f)
+        self.save_objects([input_placeholder, func_body])
+        metadata["input_placeholder"] = input_placeholder.hex()
+        metadata["func_body"] = func_body.hex()
+        metadata["name"] = f.__module__ + "." + f.__qualname__
         with open(self.step_dir / STEP_INPUTS_METADATA, "w") as f:
             json.dump(metadata, f, indent=4)
 
@@ -65,9 +72,6 @@ class WorkflowStepLogger:
 def _save_workflow_inputs(workflow: Workflow):
     if not workflow.skip_saving_inputs:
         step_logger = WorkflowStepLogger(workflow.id)
-        step_logger.save_objects([workflow._input_placeholder])
-        f = workflow._original_function
-        step_logger.save_task_body(f)
         step_logger.save_inputs_metadata(workflow.get_metadata())
 
 
@@ -108,9 +112,10 @@ def _file_integrity_check(path: pathlib.Path) -> bool:
 class StepInspectResult:
     input_placeholder: Optional[str] = None
     input_placeholder_object_valid: bool = False
+    func_body: Optional[str] = False
+    func_body_valid: bool = False
     input_object_refs: Optional[List[str]] = None
     input_workflows: Optional[List[str]] = None
-    task_body_valid: bool = False
     output_type: Optional[str] = None
     output_object_id: Optional[str] = None
     output_object_valid: bool = False
@@ -119,7 +124,7 @@ class StepInspectResult:
     def is_recoverable(self) -> bool:
         return (self.input_placeholder_object_valid
                 and self.input_object_refs is not None
-                and self.input_workflows is not None and self.task_body_valid)
+                and self.input_workflows is not None and self.func_body_valid)
 
 
 class WorkflowStorageReader:
@@ -193,20 +198,27 @@ class WorkflowStorageReader:
         if not step_dir.exists():
             return StepInspectResult()
 
+        def _check_object_field(data_dict: Dict, field_name: str):
+            value = data_dict.get(field_name)
+            if isinstance(value, str):
+                object_valid = _file_integrity_check(self._objects_dir / value)
+                return value, object_valid
+            return None, False
+
         # read inputs metadata
         input_placeholder = None
+        input_placeholder_object_valid = False
+        func_body = None
+        func_body_valid = False
         input_object_refs = None
         input_workflows = None
-        input_placeholder_object_valid = False
         try:
             with open(step_dir / STEP_INPUTS_METADATA) as f:
                 metadata = json.load(f)
-                input_placeholder = metadata.get("input_placeholder")
-                if not isinstance(input_placeholder, str):
-                    input_placeholder = None
-                else:
-                    input_placeholder_object_valid = _file_integrity_check(
-                        self._objects_dir / input_placeholder)
+                input_placeholder, input_placeholder_object_valid = (
+                    _check_object_field(metadata, "input_placeholder"))
+                func_body, func_body_valid = (_check_object_field(
+                    metadata, "func_body"))
                 input_object_refs = metadata.get("input_object_refs")
                 if not isinstance(input_object_refs, list):
                     input_object_refs = None
@@ -215,8 +227,6 @@ class WorkflowStorageReader:
                     input_workflows = None
         except (FileNotFoundError, json.JSONDecodeError):
             pass
-
-        task_body_valid = _file_integrity_check(step_dir / TASK_BODY_FILE)
 
         # read outputs metadata
         output_type = None
@@ -231,12 +241,8 @@ class WorkflowStorageReader:
                     output_type = None
                 else:
                     if output_type == "object":
-                        output_object_id = metadata.get("object_id")
-                        if isinstance(output_object_id, str):
-                            output_object_valid = _file_integrity_check(
-                                self._objects_dir / output_object_id)
-                        else:
-                            output_object_id = None
+                        output_object_id, output_object_valid = (
+                            _check_object_field(metadata, "object_id"))
                     elif output_type == "workflow":
                         output_step_id = metadata.get("step_id")
                         if not isinstance(output_step_id, str):
@@ -249,7 +255,8 @@ class WorkflowStorageReader:
             input_placeholder_object_valid=input_placeholder_object_valid,
             input_object_refs=input_object_refs,
             input_workflows=input_workflows,
-            task_body_valid=task_body_valid,
+            func_body=func_body,
+            func_body_valid=func_body_valid,
             output_type=output_type,
             output_object_id=output_object_id,
             output_object_valid=output_object_valid,

@@ -1,9 +1,8 @@
 import pathlib
-from typing import List, Any, Union, Dict
+from typing import List, Any, Union, Dict, Callable
 
 import ray
-from ray.experimental.workflow.constants import (STEPS_DIR, OBJECTS_DIR,
-                                                 TASK_BODY_FILE)
+from ray.experimental.workflow.constants import OBJECTS_DIR
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow import storage
@@ -19,8 +18,7 @@ class WorkflowStepNotRecoverableException(Exception):
         super().__init__(self.message)
 
 
-def _load_output_object(job_path: pathlib.Path,
-                        object_id_hex: str) -> ray.ObjectRef:
+def _load_object(job_path: pathlib.Path, object_id_hex: str) -> Any:
     object_file = job_path / OBJECTS_DIR / object_id_hex
     with open(object_file, "rb") as f:
         obj = ray.cloudpickle.load(f)
@@ -28,16 +26,17 @@ def _load_output_object(job_path: pathlib.Path,
 
 
 @ray.remote
-def _load_output_object_remote(job_path: pathlib.Path,
-                               object_id_hex: str) -> ray.ObjectRef:
-    return _load_output_object(job_path, object_id_hex)
+def _load_object_remote(job_path: pathlib.Path,
+                        object_id_hex: str) -> ray.ObjectRef:
+    return _load_object(job_path, object_id_hex)
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(
-        workflow_root_dir: pathlib.Path, workflow_id: str, step_id: str,
-        input_placeholder_id: str, input_object_refs: List[str],
-        workflow_results: List[Any], instant_workflow_outputs: Dict[int, str]):
+def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
+                           step_id: str, input_placeholder_id: str,
+                           func_body_id: str, input_object_refs: List[str],
+                           workflow_results: List[Any],
+                           instant_workflow_outputs: Dict[int, str]):
     # NOTE: this overrides the workflow context, this changes the way
     # checkpointing behaves.
     context = workflow_context.WorkflowStepContext(workflow_id,
@@ -45,17 +44,15 @@ def _recover_workflow_step(
     job_path = workflow_root_dir / workflow_id
     workflow_context.update_workflow_step_context(context, step_id)
     for index, object_id in instant_workflow_outputs.items():
-        workflow_results[index] = _load_output_object(job_path, object_id)
+        workflow_results[index] = _load_object(job_path, object_id)
     input_object_refs = [
-        _load_output_object_remote.remote(r) for r in input_object_refs
+        _load_object_remote.remote(r) for r in input_object_refs
     ]
     with serialization_context.workflow_args_resolving_context(
             workflow_results, input_object_refs):
-        args, kwargs = _load_output_object(job_path, input_placeholder_id)
+        args, kwargs = _load_object(job_path, input_placeholder_id)
 
-    task_body_file = job_path / STEPS_DIR / step_id / TASK_BODY_FILE
-    with open(task_body_file, "rb") as f:
-        func = ray.cloudpickle.load(f)
+    func: Callable = _load_object(job_path, func_body_id)
     return func(*args, **kwargs)
 
 
@@ -83,8 +80,8 @@ def _construct_resume_workflow_from_step(reader: storage.WorkflowStorageReader,
             instant_workflow_outputs[i] = r
     recovery_workflow = _recover_workflow_step.step(
         reader.workflow_root_dir, reader.job_id, step_id,
-        result.input_placeholder, result.input_object_refs, input_workflows,
-        instant_workflow_outputs)
+        result.input_placeholder, result.func_body, result.input_object_refs,
+        input_workflows, instant_workflow_outputs)
     # skip saving the inputs of a recovery workflow step
     recovery_workflow.skip_saving_inputs = True
     recovery_workflow._step_id = step_id
