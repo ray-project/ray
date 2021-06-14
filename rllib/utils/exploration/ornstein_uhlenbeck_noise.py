@@ -216,12 +216,13 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         Returns:
             Union[float,tf.Tensor[float]]: The current scale value.
         """
-        state = super().get_state()
         if sess:
             return sess.run(
-                dict(self._tf_info_op, **{
+                dict(self._tf_state_op, **{
                     "ou_state": self.ou_state,
                 }))
+
+        state = super().get_state()
         return dict(
             state, **{
                 "ou_state": convert_to_numpy(self.ou_state)
@@ -235,4 +236,4 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             self.ou_state.load(state["ou_state"], session=sess)
         else:
             self.ou_state = state["ou_state"]
-        super().set_state(state)
+        super().set_state(state, sess=sess)
