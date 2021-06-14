@@ -98,6 +98,9 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// spilling).
 RAY_CONFIG(bool, plasma_unlimited, true)
 
+/// DEBUG-ONLY: When spilling, also trigger object eviction.
+RAY_CONFIG(bool, evict_while_spilling, false)
+
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).

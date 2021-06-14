@@ -191,7 +191,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                 [this]() {
                   auto &mgr = GetLocalObjectManager();
                   mgr.SpillObjectUptoMaxThroughput();
-                  if (!mgr.IsSpillingInProgress()) {
+                  if (!mgr.IsSpillingInProgress() && RayConfig::instance().evict_while_spilling()) {
                     plasma::plasma_store_runner->EvictObjectsIfPossible();
                   }
                   TriggerGlobalGC();
