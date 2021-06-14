@@ -80,7 +80,8 @@ message WorkerObjectLocationsPubMessage {
 }
 
 /// Indicating the subscriber needs to handle failure callback.
-message FailureMessage {}
+message FailureMessage {
+}
 
 ///
 /// Subscribe
