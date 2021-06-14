@@ -17,7 +17,7 @@ except ImportError:
 
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
-    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
+    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION, EXPR_RESULT_FILE
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
@@ -172,8 +172,8 @@ class Analysis:
         fail_count = 0
         for path in self._get_trial_paths():
             try:
-                self.trial_dataframes[path] = pd.read_csv(
-                    os.path.join(path, EXPR_PROGRESS_FILE))
+                data = [json.loads(line) for line in open(os.path.join(path, EXPR_RESULT_FILE), 'r').read().split('\n') if line]
+                self.trial_dataframes[path] = pd.json_normalize(data, sep="/")
             except Exception:
                 fail_count += 1
 
@@ -306,6 +306,8 @@ class Analysis:
         assert mode is None or mode in ["max", "min"]
         rows = {}
         for path, df in self.trial_dataframes.items():
+            if metric not in df:
+                continue
             if mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
