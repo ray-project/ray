@@ -180,8 +180,11 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=mode, runtime_env_hash=args.runtime_env_hash,
-                       worker_shim_pid=args.worker_shim_pid)
+    ray.worker.connect(
+        node,
+        mode=mode,
+        runtime_env_hash=args.runtime_env_hash,
+        worker_shim_pid=args.worker_shim_pid)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
