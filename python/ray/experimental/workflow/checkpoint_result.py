@@ -16,6 +16,10 @@ def _save_to_checkpoints_task(checkpoints_dir, refs):
         try:
             with open(path, "xb") as f:
                 ray.cloudpickle.dump(v, f)
+            digest_path = checkpoints_dir / (ref.hex() + ".digest")
+            # TODO(suquark): use a functional sha1 sum later.
+            with open(digest_path, "x") as f:
+                f.write("00" * 20)
         except FileExistsError:
             pass
 

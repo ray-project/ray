@@ -13,8 +13,8 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import configs
 
 from ray.experimental.workflow.constants import (
-    STEPS_DIR, TASK_BODY_FILE, OBJECTS_DIR, NON_BLOCKING_CHECKPOINTING,
-    STEP_INPUTS_METADATA, STEP_OUTPUTS_METADATA)
+    STEPS_DIR, OBJECTS_DIR, NON_BLOCKING_CHECKPOINTING, STEP_INPUTS_METADATA,
+    STEP_OUTPUTS_METADATA)
 
 
 def _get_current_store_dir():
@@ -41,11 +41,6 @@ class WorkflowStepLogger:
             step_dir.mkdir(parents=True, exist_ok=False)
         self.objects_dir = objects_dir
         self.step_dir = step_dir
-
-    def save_task_body(self, func):
-        pickled_function = ray.cloudpickle.dumps(func)
-        with open(self.step_dir / TASK_BODY_FILE, "wb") as f:
-            f.write(pickled_function)
 
     def save_inputs_metadata(self, metadata: Dict[str, Any]):
         input_placeholder = metadata["input_placeholder"]
@@ -104,7 +99,18 @@ def save_workflow_output(output: Any):
 def _file_integrity_check(path: pathlib.Path) -> bool:
     if not path.exists():
         return False
-    # TODO(suquark): check the digest file.
+    digest_path = pathlib.Path(str(path) + ".digest")
+    if not digest_path.exists():
+        return False
+    with open(digest_path) as f:
+        digest = f.read()
+        if digest == "00" * 20:
+            # All "0"s means skip checking. In this case the digest file only
+            # shows the object has been fully written to the filesystem.
+            return True
+        else:
+            # TODO(suquark): check the digest of file.
+            raise NotImplementedError
     return True
 
 
