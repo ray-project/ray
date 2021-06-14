@@ -908,21 +908,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                     rpc::WaitForActorOutOfScopeReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleSubscribeForObjectEviction(
-      const rpc::SubscribeForObjectEvictionRequest &request,
-      rpc::SubscribeForObjectEvictionReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
-
   // Implements gRPC server handler.
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                rpc::PubsubLongPollingReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
-                               rpc::WaitForRefRemovedReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  // Implements gRPC server handler.
+  void HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+                                rpc::PubsubCommandBatchReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
@@ -1141,6 +1135,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   std::vector<std::shared_ptr<RayObject>> *args,
                                   std::vector<ObjectID> *arg_reference_ids,
                                   std::vector<ObjectID> *pinned_ids);
+
+  /// Process a subscribe message for wait for object eviction.
+  /// The object eviction message will be published once the object
+  /// needs to be evicted.
+  void ProcessSubscribeForObjectEviction(
+      const rpc::WorkerObjectEvictionSubMessage &message);
+
+  /// Process a subscribe message for wait for ref removed.
+  /// It is used for the ref counting protocol. When the borrower
+  /// stops using the reference, the message will be published to the owner.
+  void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
+
+  using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
+
+  /// Process the subscribe message received from the subscriber.
+  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                               rpc::ChannelType channel_type, const std::string &key_id,
+                               const NodeID &subscriber_id);
+
+  /// A single endpoint to process different types of pubsub commands.
+  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  /// messages.
+  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
