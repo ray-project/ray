@@ -226,11 +226,11 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// dependencies are all local or not.
   absl::flat_hash_map<TaskID, TaskDependencies> queued_task_requests_;
 
-  /// A map from worker ID to the set of objects that the worker called
-  /// `ray.get` on and a pull request ID for these objects. The pull request ID
-  /// should be used to cancel the pull request in the object manager once the
-  /// worker cancels the `ray.get` request.
-  absl::flat_hash_map<WorkerID, std::pair<absl::flat_hash_set<ObjectID>, uint64_t>>
+  /// A map from worker ID to the set of objects and pull request ids for it.
+  /// The pull request IDs should be used to cancel the pull request in the
+  /// object manager once the worker cancels the `ray.get` requests.
+  absl::flat_hash_map<
+      WorkerID, std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<uint64_t>>>
       get_requests_;
 
   /// A map from worker ID to the set of objects that the worker called

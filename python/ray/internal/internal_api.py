@@ -109,7 +109,7 @@ def store_stats_summary(reply):
     # breakdown by type (e.g., pinned by worker, primary, etc.)
     store_summary += (
         "Plasma memory usage {} MiB, {} objects, {}% full, {}% "
-        "primary object copies\n".format(
+        "needed\n".format(
             int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
             reply.store_stats.num_local_objects,
             round(

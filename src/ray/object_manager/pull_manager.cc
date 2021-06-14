@@ -107,11 +107,12 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
                  << " num bytes being pulled: " << num_bytes_being_pulled_
                  << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
+  size_t activated_bytes = 0;
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
-    bool start_pull =
-        !object_is_local_(obj_id) && active_object_pull_requests_.count(obj_id) == 0;
+    bool is_local = object_is_local_(obj_id);
+    bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     if (start_pull) {
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
@@ -119,12 +120,17 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       // Add the size to the number of bytes being pulled.
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
-      num_bytes_being_pulled_ += it->second.object_size;
+      // Don't count this towards the admission threshold to avoid deadlock.
+      if (!is_local) {
+        activated_bytes += it->second.object_size;
+      }
       objects_to_pull->push_back(obj_id);
 
       ResetRetryTimer(obj_id);
     }
   }
+  num_bytes_being_pulled_ += activated_bytes;
+  next_request_it->second.activated_bytes = activated_bytes;
 
   // Update the pointer to the last pull request that we are actively pulling.
   RAY_CHECK(next_request_it->first > *highest_req_id_being_pulled);
@@ -149,11 +155,12 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
-      num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(it->first);
       objects_to_cancel->insert(obj_id);
     }
   }
+  num_bytes_being_pulled_ -= request_it->second.activated_bytes;
+  request_it->second.activated_bytes = 0;
 
   // If this was the last active request, update the pointer to its
   // predecessor, if one exists.
@@ -266,8 +273,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 }
 
 void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
-      highest_task_req_id_being_pulled_ > 0) {
+  if (num_bytes_being_pulled_ > 0) {
     // At least one request is being actively pulled, so there is
     // currently enough space.
     return;
@@ -584,6 +590,17 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
+std::string PullManager::BundleInfo(const Queue &bundles) const {
+  auto it = bundles.begin();
+  if (it == bundles.end()) {
+    return "N/A";
+  }
+  auto bundle = it->second;
+  std::stringstream result;
+  result << bundle.num_bytes_needed << " bytes, " << bundle.objects.size() << " objects";
+  return result.str();
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
   std::stringstream result;
@@ -593,6 +610,9 @@ std::string PullManager::DebugString() const {
   result << "\n- num get request bundles: " << get_request_bundles_.size();
   result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();
+  result << "\n- first get request bundle size: " << BundleInfo(get_request_bundles_);
+  result << "\n- first wait request bundle size: " << BundleInfo(wait_request_bundles_);
+  result << "\n- first task request bundle size: " << BundleInfo(task_argument_bundles_);
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
