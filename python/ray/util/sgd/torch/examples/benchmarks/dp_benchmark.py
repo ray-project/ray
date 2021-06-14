@@ -58,7 +58,7 @@ if args.amp_fp16:
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
 model = DataParallel(model)
-    
+
 # Set up fixed fake data
 data = torch.randn(args.batch_size, 3, 224, 224)
 target = torch.LongTensor(args.batch_size).random_() % 1000
