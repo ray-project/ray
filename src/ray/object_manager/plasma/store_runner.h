@@ -43,7 +43,7 @@ class PlasmaStoreRunner {
   std::unique_ptr<PlasmaStore> store_;
 
   // Used to deduplicate calls to EvictObjectsIfPossible().
-  bool evicting_ = false;
+  std::atomic<bool> evicting_{false};
 };
 
 // We use a global variable for Plasma Store instance here because:
