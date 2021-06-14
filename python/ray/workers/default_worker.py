@@ -119,12 +119,6 @@ parser.add_argument(
     default=0,
     help="The computed hash of the runtime env for this worker.")
 parser.add_argument(
-    "--runtime-env-hash",
-    required=False,
-    type=int,
-    default=0,
-    help="The computed hash of the runtime env for this worker.")
-parser.add_argument(
     "--worker-shim-pid",
     required=False,
     type=int,
