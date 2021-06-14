@@ -29,7 +29,7 @@ RAY_CONFIG(bool, event_stats, false)
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, -1)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
