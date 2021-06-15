@@ -63,6 +63,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
 
+  // TODO(ekl) why is this corrupting memory?
   //  // Immediately fulfill it using the fallback allocator.
   //  if (RayConfig::instance().plasma_unlimited()) {
   //    PlasmaError error = create_callback(&result, /*fallback_allocator=*/true);
