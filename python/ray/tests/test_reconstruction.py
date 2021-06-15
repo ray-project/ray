@@ -148,7 +148,6 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         return
 
     obj = large_object.options(resources={"node1": 1}).remote()
-    print("1")
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
@@ -156,7 +155,6 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
-        print("2")
         ray.get(dependent_task.remote(obj))
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:

@@ -1122,6 +1122,7 @@ Status ReferenceCounter::FillObjectInformation(
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
+  object_info->set_current_version(it->second.location_version);
   return Status::OK();
 }
 

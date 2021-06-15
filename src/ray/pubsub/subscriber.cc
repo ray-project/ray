@@ -102,7 +102,7 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
 
 template <typename KeyIdType>
 void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
-    const rpc::Address &publisher_address) {
+    const rpc::Address &publisher_address, bool unsubscribe) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -121,6 +121,10 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
       const auto &failure_callback = maybe_failure_callback.value();
       failure_callback(key_id.Binary());
     }
+  }
+
+  if (!unsubscribe) {
+    return;
   }
 
   for (const auto &key_id : key_ids_to_unsubscribe) {
@@ -143,6 +147,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
   // Batch a subscribe command.
+  RAY_LOG(DEBUG) << "Subscribe " << key_id_binary;
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
   command->set_key_id(key_id_binary);
@@ -162,6 +167,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
 bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
                              const std::string &key_id_binary) {
+  RAY_LOG(DEBUG) << "Unsubscribe " << key_id_binary;
   // Batch the unsubscribe command.
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
@@ -222,7 +228,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                    << publisher_id;
 
     for (const auto &channel_it : channels_) {
-      channel_it.second->HandlePublisherFailure(publisher_address);
+      channel_it.second->HandlePublisherFailure(publisher_address, /*unsubscribe*/true);
     }
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
@@ -233,9 +239,10 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
       // If the published message is a failure message, the publisher indicates
-      // this key id is failed. Invoke the failure callback.
+      // this key id is failed. Invoke the failure callback. At this time, we should not
+      // unsubscribe the publisher because there are other entries that subscribe from the publisher.
       if (msg.has_failure_message()) {
-        Channel(channel_type)->HandlePublisherFailure(publisher_address);
+        Channel(channel_type)->HandlePublisherFailure(publisher_address, /*unsubscribe*/false);
         subscription_callbacks.emplace_back(nullptr);
         continue;
       }

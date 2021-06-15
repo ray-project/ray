@@ -210,6 +210,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
     // We can call the callback directly without worrying about invalidating caller
     // iterators since this is already running in the subscription callback stack.
     // See https://github.com/ray-project/ray/issues/2959.
+    RAY_LOG(ERROR) << "[SANG] callback called";
     callback_pair.second(object_id, it->second.current_object_locations,
                          it->second.spilled_url, it->second.spilled_node_id,
                          it->second.object_size);
@@ -230,7 +231,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       ObjectLocationSubscriptionCallback(pub_message, object_id);
     };
-    // Do nothing when it's failed. It will be handled by the upper layer.
+
     auto failure_callback = [this](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       mark_as_failed_(object_id);
@@ -274,6 +275,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
         [callback, locations, spilled_url, spilled_node_id, object_size, object_id]() {
+          RAY_LOG(ERROR) << "[Sang] callback from subscribe Object";
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
         },
         "ObjectDirectory.SubscribeObjectLocations");
@@ -287,10 +289,10 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   if (entry == listeners_.end()) {
     return Status::OK();
   }
-  entry->second.callbacks.erase(callback_id);
   object_location_subscriber_->Unsubscribe(
       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
       object_id.Binary());
+  entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     listeners_.erase(entry);
   }
@@ -345,17 +347,19 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     rpc_client->GetObjectLocationsOwner(
         request, [this, worker_id, object_id, callback](
                      Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id;
-            mark_as_failed_(object_id);
-          }
           std::unordered_set<NodeID> node_ids;
           std::string spilled_url;
           NodeID spilled_node_id;
           size_t object_size = 0;
-          UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
-                                &node_ids, &spilled_url, &spilled_node_id, &object_size);
+
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
+                           << object_id;
+            mark_as_failed_(object_id);
+          } else {
+            UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
+                                  &node_ids, &spilled_url, &spilled_node_id, &object_size);
+          }
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()
                          << " locations, spilled_url: " << spilled_url
