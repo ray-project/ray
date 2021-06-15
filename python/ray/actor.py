@@ -531,7 +531,9 @@ class ActorClass:
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
             placement_group: the placement group this actor belongs to,
-                or None if it doesn't belong to any group.
+                or None if it doesn't belong to any group. Setting to "default"
+                autodetects the placement group based on the current setting of
+                placement_group_capture_child_tasks.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
