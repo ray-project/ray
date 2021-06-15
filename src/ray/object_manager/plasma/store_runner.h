@@ -29,8 +29,6 @@ class PlasmaStoreRunner {
                        "PlasmaStoreRunner.GetAvailableMemory");
   }
 
-  void EvictObjectsIfPossible();
-
  private:
   void Shutdown();
   absl::Mutex store_runner_mutex_;
@@ -41,9 +39,6 @@ class PlasmaStoreRunner {
   std::string fallback_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaStore> store_;
-
-  // Used to deduplicate calls to EvictObjectsIfPossible().
-  std::atomic<bool> evicting_{false};
 };
 
 // We use a global variable for Plasma Store instance here because:

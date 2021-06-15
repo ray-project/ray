@@ -188,15 +188,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
             io_service_.post(
-                [this]() {
-                  auto &mgr = GetLocalObjectManager();
-                  mgr.SpillObjectUptoMaxThroughput();
-                  if (!mgr.IsSpillingInProgress() &&
-                      RayConfig::instance().evict_while_spilling()) {
-                    plasma::plasma_store_runner->EvictObjectsIfPossible();
-                  }
-                  TriggerGlobalGC();
-                },
+                [this]() { GetLocalObjectManager().SpillObjectUptoMaxThroughput(); },
                 "NodeManager.SpillObjects");
             return GetLocalObjectManager().IsSpillingInProgress();
           },

@@ -182,8 +182,9 @@ void PullManager::DeactivateUntilWithinQuota(
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   // Compensate for memory consumed by in-progress pulls by adding it to the available
   // total. This avoids deadlock due to already-local objects.
-  // TODO(ekl) this causes test_scheduling.py::test_load_balancing_under_constrained_memory
-  // to hang occasionally.
+  // TODO(ekl) this causes
+  // test_scheduling.py::test_load_balancing_under_constrained_memory to hang
+  // occasionally.
   if (RayConfig::instance().pull_manager_calculate_bytes_already_pulled()) {
     absl::MutexLock lock(&active_objects_mu_);
     size_t num_bytes_already_pulled = 0;

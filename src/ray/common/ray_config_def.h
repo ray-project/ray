@@ -103,9 +103,6 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// spilling).
 RAY_CONFIG(bool, plasma_unlimited, true)
 
-/// DEBUG-ONLY: When spilling, also trigger object eviction.
-RAY_CONFIG(bool, evict_while_spilling, false)
-
 /// DEBUG-ONLY: Whether to take into account bytes already being pulled.
 RAY_CONFIG(bool, pull_manager_calculate_bytes_already_pulled, true)
 
