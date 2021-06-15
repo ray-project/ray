@@ -1,11 +1,10 @@
 import argparse
 import csv
-import io
 import logging
 import os
 import random
 import subprocess
-from typing import Iterable, List, Union
+from typing import Iterable, List
 
 import numpy as np
 import ray
@@ -98,7 +97,7 @@ def _get_mount_points():
     return [os.path.join(mnt, d) for d in os.listdir(mnt)]
 
 
-args = get_args()
+args = None
 
 # ------------------------------------------------------------
 #     Generate Input
@@ -189,12 +188,12 @@ def _dummy_sort_and_partition(part: np.ndarray,
     return blocks
 
 
-@ray.remote(num_returns=args.num_reducers)
+@ray.remote
 def mapper(boundaries: List[int], mapper_id: PartId,
            path: Path) -> List[ray.ObjectRef]:
     logging_utils.init()
     task_id = f"M-{mapper_id} Mapper"
-    logging.info(f"{task_id} starting")
+    logging.info(f"{task_id} starting {args}")
     if args.skip_input:
         block_size = int(np.ceil(args.input_part_size / args.num_reducers))
         return [
@@ -222,17 +221,18 @@ def reducer(reducer_id: PartId, *blocks: List[ray.ObjectRef]) -> PartitionInfo:
     blocks = [np.copy(ray.get(block)) for block in blocks]
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(blocks, args.reducer_batch_num_records)
-    pinfo = _make_partition_info(reducer_id, "output")
     if args.skip_output:
-        total = 0
         for datachunk in merger:
-            total += len(datachunk)
+            del datachunk
+        logging.info(f"{task_id} done")
+        return None
     else:
+        pinfo = _make_partition_info(reducer_id, "output")
         with open(pinfo.path, "wb") as fout:
             for datachunk in merger:
                 fout.write(datachunk)
-    logging.info(f"{task_id} done")
-    return pinfo
+        logging.info(f"{task_id} done")
+        return pinfo
 
 
 @tracing_utils.timeit("sorting")
@@ -248,6 +248,7 @@ def sort_main():
             },
             "memory": args.input_part_size * 1.2,
         }
+        opt.update(num_returns=args.num_reducers)
         mapper_results[part_id, :] = mapper.options(**opt).remote(
             boundaries, part_id, path)
 
@@ -261,9 +262,10 @@ def sort_main():
         reducer_results.append(ret)
 
     reducer_results = ray.get(reducer_results)
-    with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
-        writer = csv.writer(fout)
-        writer.writerows(reducer_results)
+    if not args.skip_output:
+        with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
+            writer = csv.writer(fout)
+            writer.writerows(reducer_results)
 
 
 # ------------------------------------------------------------
@@ -326,4 +328,5 @@ def main():
 
 
 if __name__ == "__main__":
+    args = get_args()
     main()
