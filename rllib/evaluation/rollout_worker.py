@@ -394,7 +394,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     cls = env.__class__
                     env = record_env_wrapper(env, record_env, log_dir,
                                              policy_config)
-                    env.__class__ = type(cls.__name__, (type(env), cls), {})
+                    if type(env) is not cls:
+                        env.__class__ = \
+                            type(cls.__name__, (type(env), cls), {})
                     return env
 
             # We can't auto-wrap a BaseEnv.
