@@ -1,6 +1,6 @@
-import pytest
-import platform
 import os
+import platform
+import pytest
 import sys
 import time
 

@@ -10,16 +10,7 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import (generate_system_config_map, get_other_nodes,
-                            kill_actor_and_wait_for_failure,
-                            run_string_as_driver, wait_for_condition,
-                            get_error_message)
-from ray.exceptions import RaySystemError
-from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup, placement_group,
-                                      remove_placement_group,
-                                      get_current_placement_group)
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.test_utils import wait_for_condition
 
 
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
