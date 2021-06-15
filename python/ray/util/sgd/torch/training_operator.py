@@ -600,7 +600,7 @@ class TrainingOperator:
         with self.timers.record("apply"):
             optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: target.size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
