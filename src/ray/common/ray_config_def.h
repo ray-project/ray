@@ -409,4 +409,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 // being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
+/// Whether to enable GCS-based actor scheduling.
+RAY_CONFIG(bool, gcs_task_scheduling_enabled,
+           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
