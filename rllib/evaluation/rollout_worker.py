@@ -1302,7 +1302,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     else:
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
-                with tf1.variable_scope(name + "_wk" + str(self.worker_index)):
+                scope = name + (("_wk" + str(self.worker_index))
+                                if self.worker_index else "")
+                with tf1.variable_scope(scope):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             # non-tf.
             else:
