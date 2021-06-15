@@ -842,8 +842,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "run_options", []) + self.docker_config.get(
                     f"{'head' if as_head else 'worker'}_run_options", [])
             start_command = docker_start_cmds(
-                self.ssh_command_runner.ssh_user, specific_image,
-                cleaned_bind_mounts, self.container_name,
+                specific_image, cleaned_bind_mounts, self.container_name,
                 self._configure_runtime(
                     self._auto_configure_shm(user_docker_run_options)),
                 self.ssh_command_runner.cluster_name, home_directory,
