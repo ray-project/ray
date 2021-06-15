@@ -307,6 +307,10 @@ class WorkflowStorageReader:
                 step_dir / STEP_FUNC_BODY),
         )
 
+    def read_step_output(self, step_id: StepID):
+        return self._storage.read_object(
+            self._steps_dir / step_id / STEP_OUTPUT)
+
 
 class WorkflowStepReader:
     """

@@ -76,6 +76,8 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
     r = recovery.resume_workflow_job(workflow_id, workflow_root_dir)
     if isinstance(r, ray.ObjectRef):
         return r
+    # TODO(suquark): Currently this would override "steps/outputs.json".
+    # This is not an issue currently.
     return run(r, workflow_root_dir, workflow_id)
 
 

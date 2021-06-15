@@ -1,4 +1,3 @@
-import pathlib
 from typing import List, Any, Union, Dict, Callable
 
 import ray
@@ -19,16 +18,12 @@ class WorkflowStepNotRecoverableException(Exception):
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
-                           step_id: StepID, input_object_refs: List[str],
+def _recover_workflow_step(input_object_refs: List[str],
                            input_workflows: List[Any],
                            instant_workflow_inputs: Dict[int, StepID]):
     """A workflow step that recovers the output of an unfinished step.
 
     Args:
-        workflow_root_dir: Root directory of workflow storage.
-        workflow_id: The ID of the workflow job.
-        step_id: The ID of the step we want to recover.
         input_object_refs: The object refs in the argument of
             the (original) step.
         input_workflows: The workflows in the argument of the (original) step.
@@ -42,16 +37,14 @@ def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
     Returns:
         The output of the recovered step.
     """
-    # NOTE: this overrides the workflow context, this changes the way
-    # checkpointing behaves.
-    context = workflow_context.WorkflowStepContext(workflow_id,
-                                                   workflow_root_dir)
-    workflow_context.update_workflow_step_context(context, step_id)
-    reader = storage.WorkflowStepReader(workflow_root_dir, workflow_id)
-
+    context = workflow_context.get_workflow_step_context()
+    reader = storage.WorkflowStepReader(context.workflow_root_dir,
+                                        context.workflow_id)
     for index, _step_id in instant_workflow_inputs.items():
+        # override input workflows with instant workflows
         input_workflows[index] = reader.get_step_output(_step_id)
     input_object_refs = [reader.read_object_ref(r) for r in input_object_refs]
+    step_id = workflow_context.get_current_step_id()
     with serialization_context.workflow_args_resolving_context(
             input_workflows, input_object_refs):
         args, kwargs = reader.get_step_args(step_id)
@@ -94,8 +87,7 @@ def _construct_resume_workflow_from_step(
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     recovery_workflow = _recover_workflow_step.step(
-        reader.workflow_root_dir, reader.job_id, step_id, result.object_refs,
-        input_workflows, instant_workflow_outputs)
+        result.object_refs, input_workflows, instant_workflow_outputs)
     # skip saving the inputs of a recovery workflow step
     recovery_workflow.skip_saving_inputs = True
     recovery_workflow._step_id = step_id
@@ -117,8 +109,7 @@ def resume_workflow_job(
     """
     reader = storage.WorkflowStorageReader(job_id, workflow_root_dir)
     r = _construct_resume_workflow_from_step(reader, reader.entrypoint_step_id)
-    # TODO(suquark): maybe not need to override "steps/outputs.json"?
     if isinstance(r, Workflow):
         return r
     else:
-        return ray.put(reader.read_object(r))
+        return ray.put(reader.read_step_output(r))

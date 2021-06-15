@@ -53,9 +53,8 @@ def simple(x):
     return z
 
 
-def test_recovery():
+def test_recovery_simple():
     ray.init()
-
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
     with pytest.raises(ObjectLostError):
@@ -65,15 +64,27 @@ def test_recovery():
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"
+    utils.unset_global_mark()
+    # resume from workflow output checkpoint
+    output = workflow.resume(workflow_id)
+    assert ray.get(output) == "foo(x[append1])[append2]"
+    ray.shutdown()
 
+
+def test_recovery_complex():
+    ray.init()
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RayTaskError):
         # internally we get WorkerCrashedError
         output = workflow.run(complex.step("x"), workflow_id=workflow_id)
         ray.get(output)
-
     utils.set_global_mark()
+    output = workflow.resume(workflow_id)
+    r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
+    assert ray.get(output) == r
+    utils.unset_global_mark()
+    # resume from workflow output checkpoint
     output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
