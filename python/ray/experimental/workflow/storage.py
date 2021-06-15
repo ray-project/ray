@@ -246,46 +246,41 @@ class WorkflowStorageReader:
         if not step_dir.exists():
             return StepInspectResult()
 
-        # read inputs metadata
-        input_object_refs = None
-        input_workflows = None
+        # does this step contains output checkpoint file?
+        if self._storage.file_exists(step_dir / STEP_OUTPUT):
+            return StepInspectResult(output_object_valid=True)
+        # read outputs forward file (take a shortcut)
         try:
-            metadata = self._storage.read_json(step_dir / STEP_INPUTS_METADATA)
-            input_object_refs = metadata.get("object_refs")
-            if not isinstance(input_object_refs, list):
-                input_object_refs = None
-            input_workflows = metadata.get("workflows")
-            if not isinstance(input_workflows, list):
-                input_workflows = None
+            metadata = self._storage.read_json(step_dir / STEP_OUTPUTS_FORWARD)
+            return StepInspectResult(output_step_id=metadata["step_id"])
         except (FileNotFoundError, json.JSONDecodeError):
             pass
-
         # read outputs metadata
-        output_step_id = None
         try:
             metadata = self._storage.read_json(
                 step_dir / STEP_OUTPUTS_METADATA)
-            output_step_id = metadata.get("step_id")
-            if not isinstance(output_step_id, str):
-                output_step_id = None
+            return StepInspectResult(output_step_id=metadata["step_id"])
         except (FileNotFoundError, json.JSONDecodeError):
             pass
-
+        # read inputs metadata
+        try:
+            metadata = self._storage.read_json(step_dir / STEP_INPUTS_METADATA)
+            input_object_refs = metadata["object_refs"]
+            input_workflows = metadata["workflows"]
+        except (FileNotFoundError, json.JSONDecodeError):
+            input_object_refs = None
+            input_workflows = None
         return StepInspectResult(
             args_valid=self._storage.file_exists(step_dir / STEP_ARGS),
             object_refs=input_object_refs,
             workflows=input_workflows,
             func_body_valid=self._storage.file_exists(
                 step_dir / STEP_FUNC_BODY),
-            output_object_valid=self._storage.file_exists(
-                step_dir / STEP_OUTPUT),
-            output_step_id=output_step_id,
         )
 
     def read_object(self, object_id):
         object_file = self._objects_dir / object_id
-        with open(object_file, "rb") as f:
-            return ray.cloudpickle.load(f)
+        return self._storage.read_object(object_file)
 
 
 class WorkflowStepReader:

@@ -43,12 +43,12 @@ def _construct_resume_workflow_from_step(reader: storage.WorkflowStorageReader,
     if result.output_object_valid:
         # we already have the output
         return step_id
-    if not result.is_recoverable():
-        raise WorkflowStepNotRecoverableException(step_id)
     if isinstance(result.output_step_id, str):
         return _construct_resume_workflow_from_step(reader,
                                                     result.output_step_id)
-    # output does not exists or not valid. reconstruct it.
+    # output does not exists or not valid. try to reconstruct it.
+    if not result.is_recoverable():
+        raise WorkflowStepNotRecoverableException(step_id)
     input_workflows = []
     instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
