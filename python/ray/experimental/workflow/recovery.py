@@ -108,7 +108,8 @@ def resume_workflow_job(
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     reader = storage.WorkflowStorageReader(job_id, workflow_root_dir)
-    r = _construct_resume_workflow_from_step(reader, reader.entrypoint_step_id)
+    r = _construct_resume_workflow_from_step(reader,
+                                             reader.get_entrypoint_step_id())
     if isinstance(r, Workflow):
         return r
     else:

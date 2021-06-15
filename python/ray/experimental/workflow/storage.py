@@ -230,35 +230,40 @@ class WorkflowStorageReader:
         if not steps_dir.exists():
             raise ValueError(f"The workflow job record is invalid: {STEPS_DIR}"
                              " not found.")
-        if not (steps_dir / STEP_OUTPUTS_METADATA).exists():
-            raise ValueError(
-                f"The workflow job record is invalid: {STEPS_DIR}/"
-                f"{STEP_OUTPUTS_METADATA} not found.")
-        try:
-            with open(steps_dir / STEP_OUTPUTS_METADATA) as f:
-                output_metadata = json.load(f)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON {STEPS_DIR}/"
-                             f"{STEP_OUTPUTS_METADATA}.") from e
-        if not isinstance(output_metadata.get("step_id"), str):
-            raise ValueError("Cannot locate workflow entrypoint step.")
         # NOTE: "objects_dir" may not exist. We do not check it.
         self._job_dir = job_dir
         self._steps_dir = pathlib.Path(job_dir) / STEPS_DIR
         self._objects_dir = pathlib.Path(job_dir) / OBJECTS_DIR
-        self._entrypoint_step_id = output_metadata["step_id"]
 
-    @property
-    def entrypoint_step_id(self):
-        return self._entrypoint_step_id
+    def get_entrypoint_step_id(self):
+        step_id = self._locate_output_step(self._steps_dir)
+        if not isinstance(step_id, str):
+            raise ValueError("Cannot locate workflow entrypoint step.")
+        return step_id
 
-    @property
-    def workflow_root_dir(self):
-        return self._workflow_root_dir
+    def _locate_output_step(self, step_dir: pathlib.Path) -> Optional[StepID]:
+        """Locate where the output comes from with the given step dir.
 
-    @property
-    def job_id(self):
-        return self._job_dir
+        Args:
+            step_dir: The path to search answers.
+
+        Returns
+            If found, return the ID of the step that produce results.
+            Otherwise return None.
+        """
+        # read outputs forward file (take a shortcut)
+        try:
+            metadata = self._storage.read_json(step_dir / STEP_OUTPUTS_FORWARD)
+            return metadata["step_id"]
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        # read outputs metadata
+        try:
+            metadata = self._storage.read_json(
+                step_dir / STEP_OUTPUTS_METADATA)
+            return metadata["step_id"]
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
 
     def inspect_step(self, step_id: str) -> StepInspectResult:
         """
@@ -278,19 +283,12 @@ class WorkflowStorageReader:
         # does this step contains output checkpoint file?
         if self._storage.file_exists(step_dir / STEP_OUTPUT):
             return StepInspectResult(output_object_valid=True)
-        # read outputs forward file (take a shortcut)
-        try:
-            metadata = self._storage.read_json(step_dir / STEP_OUTPUTS_FORWARD)
-            return StepInspectResult(output_step_id=metadata["step_id"])
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass
-        # read outputs metadata
-        try:
-            metadata = self._storage.read_json(
-                step_dir / STEP_OUTPUTS_METADATA)
-            return StepInspectResult(output_step_id=metadata["step_id"])
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass
+
+        # do we know where the output comes from?
+        output_step_id = self._locate_output_step(step_dir)
+        if output_step_id is not None:
+            return StepInspectResult(output_step_id=output_step_id)
+
         # read inputs metadata
         try:
             metadata = self._storage.read_json(step_dir / STEP_INPUTS_METADATA)
