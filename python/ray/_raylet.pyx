@@ -1799,11 +1799,21 @@ cdef class CoreWorker:
         return self.job_config
 
     def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
-        """Merge the given new runtime env with the current runtime env.
+        """Merge new runtime env with parent's runtime env.
 
-        If running in a driver, the current runtime env comes from the
-        JobConfig.  Otherwise, we are running in a worker for an actor or
-        task, and the current runtime env comes from the current TaskSpec.
+        Here, "parent" could be a parent actor or task, or the runtime env
+        specified in the job config if the current actor or task was called
+        from the driver (i.e. it has no parent actor or task.)
+        
+        Returns: 
+            The JSON-serialized runtime env.
+        """
+
+        # Short-circuit in the common case.
+        if (runtime_env_dict == {}
+                and self.get_current_runtime_env_dict() == {}): # We need get_current_runtime_env_dict to return the jobconfig's runtime env in the case of driver.
+                # OR!  Just check if driver mode, set parent env to be get job config runtime env.  Else, use get current runtmie env dict.
+            return self.get_job_config().serialized_runtime_env
 
         Args:
             runtime_env_dict (dict): A runtime env for a child actor or task.
