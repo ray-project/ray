@@ -467,6 +467,7 @@ def test_many_args(ray_start_cluster):
         num_cpus=1,
         _system_config={
             "object_manager_default_chunk_size": object_size // 100,
+            "debug_dump_period_milliseconds": 1000,
             "asio_stats_print_interval_ms": 1000,
             "asio_event_loop_stats_collection_enabled": True,
         },
