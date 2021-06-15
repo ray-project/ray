@@ -431,7 +431,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -497,7 +497,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -631,9 +631,11 @@ class ActorClass:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
