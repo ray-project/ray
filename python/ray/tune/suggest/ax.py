@@ -73,7 +73,7 @@ class AxSearch(Searcher):
             `parameter_constraints`, `outcome_constraints`.
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
-        **kwargs: Passed to AxClient instance. Ignored if `AxClient` is not
+        **ax_kwargs: Passed to AxClient instance. Ignored if `AxClient` is not
             None.
 
     Tune automatically converts search spaces to Ax's format:
@@ -132,7 +132,7 @@ class AxSearch(Searcher):
                  ax_client: Optional[AxClient] = None,
                  use_early_stopped_trials: Optional[bool] = None,
                  max_concurrent: Optional[int] = None,
-                 **kwargs):
+                 **ax_kwargs):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
@@ -147,7 +147,7 @@ class AxSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._ax = ax_client
-        self._ax_kwargs = kwargs or {}
+        self._ax_kwargs = ax_kwargs or {}
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
