@@ -494,6 +494,7 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+  stats->set_object_store_bytes_primary_copy(pinned_objects_size_);
 }
 
 void LocalObjectManager::RecordObjectSpillingStats() const {

@@ -240,6 +240,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
+  /// Fill out the normal task resource report.
+  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
+
   /// Fill out the resource report. This can be called by either method to transport the
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);

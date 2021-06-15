@@ -583,6 +583,17 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
+std::string PullManager::BundleInfo(const Queue &bundles) const {
+  auto it = bundles.begin();
+  if (it == bundles.end()) {
+    return "N/A";
+  }
+  auto bundle = it->second;
+  std::stringstream result;
+  result << bundle.num_bytes_needed << " bytes, " << bundle.objects.size() << " objects";
+  return result.str();
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
   std::stringstream result;
@@ -592,6 +603,9 @@ std::string PullManager::DebugString() const {
   result << "\n- num get request bundles: " << get_request_bundles_.size();
   result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();
+  result << "\n- first get request bundle size: " << BundleInfo(get_request_bundles_);
+  result << "\n- first wait request bundle size: " << BundleInfo(wait_request_bundles_);
+  result << "\n- first task request bundle size: " << BundleInfo(task_argument_bundles_);
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
