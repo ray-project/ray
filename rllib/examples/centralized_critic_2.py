@@ -117,7 +117,7 @@ if __name__ == "__main__":
                 "pol2": (None, observer_space, action_space, {}),
             },
             "policy_mapping_fn": (
-                lambda agent_id, **k: "pol1" if agent_id == 0 else "pol2"),
+                lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
             "observation_fn": central_critic_observer,
         },
         "model": {

@@ -168,7 +168,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
 
-        def policy_mapping_fn(*, agent_id, episode, **kwargs):
+        def policy_mapping_fn(agent_id, episode, **kwargs):
             return "p{}".format(agent_id % 2)
 
         ev = RolloutWorker(
@@ -197,8 +197,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=(
-                lambda agent_id, **k: "p{}".format(agent_id % 2)),
+            # This signature will raise a soft-deprecation warning due
+            # to the new signature we are using (agent_id, episode, **kwargs),
+            # but should not break this test.
+            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,
@@ -217,8 +219,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=(
-                lambda agent_id, **k: "p{}".format(agent_id % 2)),
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True)
@@ -234,8 +235,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=(
-                lambda agent_id, **k: "p{}".format(agent_id % 2)),
+            policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
             episode_horizon=10,  # test with episode horizon set
             rollout_fragment_length=50)
         batch = ev.sample()
@@ -250,8 +250,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=(
-                lambda agent_id, **k: "p{}".format(agent_id % 2)),
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             batch_mode="complete_episodes",
             rollout_fragment_length=1)
         # This used to raise an Error due to the EarlyDoneMultiAgent
@@ -291,7 +290,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda *, agent_id, episode, **kwargs: "p0",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -391,7 +390,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda *, agent_id, episode, **kwargs: "p0",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
         # 5 environment steps (rollout_fragment_length).
@@ -444,7 +443,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                         "policy_1": gen_policy(),
                         "policy_2": gen_policy(),
                     },
-                    "policy_mapping_fn": lambda agent_id, **k: "policy_1",
+                    "policy_mapping_fn": lambda aid, **kwargs: "policy_1",
                 },
                 "framework": "tf",
             })

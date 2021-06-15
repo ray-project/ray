@@ -147,7 +147,7 @@ def learn_test_multi_agent_plus_rollout(algo):
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
 
-        def policy_fn(*, agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
         observation_space = Box(float("-inf"), float("inf"), (4, ))

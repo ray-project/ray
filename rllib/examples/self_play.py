@@ -73,7 +73,7 @@ class SelfPlayCallback(DefaultCallbacks):
             self.current_opponent += 1
             new_pol_id = f"main_{self.current_opponent}"
 
-            def policy_mapping_fn(*, agent_id, episode, **kwargs):
+            def policy_mapping_fn(agent_id, episode, **kwargs):
                 # agent_id = [0|1] -> policy depends on episode ID
                 # This way, we make sure that both policies sometimes play
                 # agent0 (start player) and sometimes agent1.
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     register_env("connect_four",
                  lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
-    def policy_mapping_fn(*, agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
         # This way, we make sure that both policies sometimes play agent0
         # (start player) and sometimes agent1.

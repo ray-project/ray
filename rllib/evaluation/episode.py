@@ -118,17 +118,17 @@ class MultiAgentEpisode:
 
         if agent_id not in self._agent_to_policy:
             # Try new API: pass in agent_id and episode as named args.
-            # New signature should be: (*, agent_id, episode, **kwargs)
+            # New signature should be: (agent_id, episode, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = \
-                    self._policy_mapping_fn(agent_id=agent_id, episode=self)
+                    self._policy_mapping_fn(agent_id, self)
             except TypeError as e:
                 if "positional argument" in e.args[0] or \
                         "unexpected keyword argument" in e.args[0]:
                     if log_once("policy_mapping_new_signature"):
                         deprecation_warning(
                             old="policy_mapping_fn(agent_id)",
-                            new="policy_mapping_fn(*, agent_id, episode, "
+                            new="policy_mapping_fn(agent_id, episode, "
                             "**kwargs)")
                     policy_id = self._agent_to_policy[agent_id] = \
                         self._policy_mapping_fn(agent_id)

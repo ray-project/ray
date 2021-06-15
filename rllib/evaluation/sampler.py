@@ -184,14 +184,17 @@ class SyncSampler(SamplerInput):
             render (bool): Whether to try to render the environment after each
                 step.
         """
-        if policies is not None:
-            deprecation_warning(old="policies")
-        if policy_mapping_fn is not None:
-            deprecation_warning(old="policy_mapping_fn")
-        if preprocessors is not None:
-            deprecation_warning(old="preprocessors")
-        if obs_filters is not None:
-            deprecation_warning(old="obs_filters")
+        # All of the following arguments are deprecated. They will instead be
+        # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
+        if log_once("deprecated_sync_sampler_args"):
+            if policies is not None:
+                deprecation_warning(old="policies")
+            if policy_mapping_fn is not None:
+                deprecation_warning(old="policy_mapping_fn")
+            if preprocessors is not None:
+                deprecation_warning(old="preprocessors")
+            if obs_filters is not None:
+                deprecation_warning(old="obs_filters")
 
         self.base_env = BaseEnv.to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
@@ -321,14 +324,17 @@ class AsyncSampler(threading.Thread, SamplerInput):
             render (bool): Whether to try to render the environment after each
                 step.
         """
-        if policies is not None:
-            deprecation_warning(old="policies")
-        if policy_mapping_fn is not None:
-            deprecation_warning(old="policy_mapping_fn")
-        if preprocessors is not None:
-            deprecation_warning(old="preprocessors")
-        if obs_filters is not None:
-            deprecation_warning(old="obs_filters")
+        # All of the following arguments are deprecated. They will instead be
+        # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
+        if log_once("deprecated_async_sampler_args"):
+            if policies is not None:
+                deprecation_warning(old="policies")
+            if policy_mapping_fn is not None:
+                deprecation_warning(old="policy_mapping_fn")
+            if preprocessors is not None:
+                deprecation_warning(old="preprocessors")
+            if obs_filters is not None:
+                deprecation_warning(old="obs_filters")
 
         self.worker = worker
 

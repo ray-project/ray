@@ -107,7 +107,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
-        ...   policy_mapping_fn=lambda *, agent_id, episode, **kwargs:
+        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(worker.sample())

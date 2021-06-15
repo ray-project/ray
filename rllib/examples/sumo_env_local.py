@@ -141,7 +141,7 @@ if __name__ == "__main__":
                            agent_policy_params)
     config["multiagent"]["policies"] = policies
     config["multiagent"][
-        "policy_mapping_fn"] = lambda *, agent_id, episode, **kwargs: agent_id
+        "policy_mapping_fn"] = lambda agent_id, episode, **kwargs: agent_id
     config["multiagent"]["policies_to_train"] = ["ppo_policy"]
 
     config["env"] = "sumo_test_env"
