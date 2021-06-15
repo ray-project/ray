@@ -164,7 +164,14 @@ def _commit_workflow(output: Union[Workflow, Any],
     if isinstance(output, Workflow):
         storage.save_workflow_dag(output, forward_output_to)
         if forward_output_to is None:
+            # The current workflow step returns a nested workflow, but there is
+            # no target to forward the nested workflow to. This means
+            # the current step is the target. The target also includes
+            # the workflow job driver, so our workflow entrypoint also
+            # get updated.
             forward_output_to = workflow_context.get_current_step_id()
+        # Passing down "forward_output_to" so deeper nested steps would
+        # forward their results to the same "outer most" step.
         output = output.execute(forward_output_to)
     else:
         storage.save_workflow_output(output, forward_output_to)
