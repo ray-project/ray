@@ -639,7 +639,8 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
-def try_create_redis_client(redis_address: Optional[str], redis_password: Optional[str]) -> Optional[Any]:
+def try_create_redis_client(redis_address: Optional[str],
+                            redis_password: Optional[str]) -> Optional[Any]:
     """
     Try to create a redis client based on the the command line args or by
     autodetecting a running Ray cluster.
@@ -648,12 +649,13 @@ def try_create_redis_client(redis_address: Optional[str], redis_password: Option
         possible = ray._private.services.find_redis_address()
         if len(possible) != 1:
             return None
-        address = possible.pop()
+        redis_address = possible.pop()
 
     if redis_password is None:
         redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
 
-    return ray._private.services.create_redis_client(redis_address, redis_password)
+    return ray._private.services.create_redis_client(redis_address,
+                                                     redis_password)
 
 
 def main():
@@ -705,7 +707,8 @@ def main():
 
             try:
                 if not redis_client:
-                    redis_client = try_create_redis_client(args.redis_address, args.redis_password)
+                    redis_client = try_create_redis_client(
+                        args.redis_address, args.redis_password)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
