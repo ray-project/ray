@@ -57,6 +57,9 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     return output
 
 
+# TODO(suquark): support recovery with ObjectRef inputs.
+
+
 def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
     """
     Resume a workflow asynchronously. This workflow maybe fail previously.
