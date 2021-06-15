@@ -633,8 +633,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
-        host_destination = os.path.join(
-            self._get_docker_host_mount_location(), target.lstrip("/"))
+        host_destination = os.path.join(self._get_docker_host_mount_location(),
+                                        target.lstrip("/"))
 
         host_mount_location = os.path.dirname(host_destination.rstrip("/"))
         self.ssh_command_runner.run(
@@ -658,8 +658,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
-        host_source = os.path.join(
-            self._get_docker_host_mount_location(), source.lstrip("/"))
+        host_source = os.path.join(self._get_docker_host_mount_location(),
+                                   source.lstrip("/"))
         host_mount_location = os.path.dirname(host_source.rstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {host_mount_location} && chown -R "
