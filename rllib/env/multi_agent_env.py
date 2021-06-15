@@ -9,7 +9,7 @@ ENV_STATE = "state"
 
 
 @PublicAPI
-class MultiAgentEnv:
+class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
