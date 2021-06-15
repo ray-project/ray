@@ -1,4 +1,3 @@
-from argparse import Namespace
 import logging
 from concurrent import futures
 import grpc
@@ -640,23 +639,21 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
-def try_create_redis_client(args: Namespace) -> Optional[Any]:
+def try_create_redis_client(redis_address: Optional[str], redis_password: Optional[str]) -> Optional[Any]:
     """
     Try to create a redis client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    if args.redis_addres is None:
+    if redis_address is None:
         possible = ray._private.services.find_redis_address()
         if len(possible) != 1:
             return None
         address = possible.pop()
-    else:
-        address = args.redis_address
-    if args.redis_password is None:
-        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    else:
-        password = args.redis_password
-    return ray._private.services.create_redis_client(address, password)
+
+    if redis_password is None:
+        redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+
+    return ray._private.services.create_redis_client(redis_address, redis_password)
 
 
 def main():
@@ -708,7 +705,7 @@ def main():
 
             try:
                 if not redis_client:
-                    redis_client = try_create_redis_client(args)
+                    redis_client = try_create_redis_client(args.redis_address, args.redis_password)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
