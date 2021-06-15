@@ -344,7 +344,7 @@ def test_multi_node_pgs(ray_start_cluster):
         print(".")
         more_pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(2)]
         ready, not_ready = ray.wait(
-            [pg.ready() for pg in more_pgs], timeout=1, num_returns=2)
+            [pg.ready() for pg in more_pgs], timeout=5, num_returns=2)
         assert len(ready) == 2
 
 
