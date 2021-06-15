@@ -157,10 +157,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
   store_info_.directory = directory;
   store_info_.fallback_directory = fallback_directory;
   store_info_.hugepages_enabled = hugepages_enabled;
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms > 0 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
     PrintDebugDump();
   }
 }
@@ -274,7 +273,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     pointer = reinterpret_cast<uint8_t *>(
         PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
     if (pointer == nullptr) {
-      RAY_LOG(FATAL) << "Plasma fallback allocator failed, likely out of disk space.";
+      RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
   }
 
@@ -999,7 +998,7 @@ void PlasmaStore::PrintDebugDump() const {
   RAY_LOG(INFO) << GetDebugDump();
 
   stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
-                               RayConfig::instance().asio_stats_print_interval_ms());
+                               RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {

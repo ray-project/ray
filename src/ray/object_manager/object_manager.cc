@@ -207,10 +207,9 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 }
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                             bool is_worker_request) {
+                             BundlePriority prio) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id =
-      pull_manager_->Pull(object_refs, is_worker_request, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
@@ -336,14 +335,15 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     return PushLocalObject(object_id, node_id);
   }
 
+  // Push from spilled object directly if the object is on local disk.
+  auto object_url = get_spilled_object_url_(object_id);
+  if (!object_url.empty() && RayConfig::instance().is_external_storage_type_fs()) {
+    return PushFromFilesystem(object_id, node_id, object_url);
+  }
+
   // Avoid setting duplicated timer for the same object and node pair.
   auto &nodes = unfulfilled_push_requests_[object_id];
-  // Issue a restore request if the object is on local disk. This is only relevant
-  // if the local filesystem storage type is being used.
-  auto object_url = get_spilled_object_url_(object_id);
-  if (!object_url.empty()) {
-    restore_spilled_object_(object_id, object_url, nullptr);
-  }
+
   if (nodes.count(node_id) == 0) {
     // If config_.push_timeout_ms < 0, we give an empty timer
     // and the task will be kept infinitely.
@@ -407,6 +407,59 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   PushObjectInternal(object_id, node_id, total_data_size, metadata_size, num_chunks,
                      std::move(owner_address), std::move(local_chunk_reader),
                      std::move(release_chunk_callback));
+}
+
+void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+                                       const std::string &spilled_url) {
+  // SpilledObject::CreateSpilledObject does synchronous IO; schedule it off
+  // main thread.
+  rpc_service_.post(
+      [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size]() {
+        auto optional_spilled_object =
+            SpilledObject::CreateSpilledObject(spilled_url, chunk_size);
+        if (!optional_spilled_object.has_value()) {
+          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
+                         << ". It may have been evicted.";
+          return;
+        }
+
+        auto spilled_object =
+            std::make_shared<SpilledObject>(std::move(optional_spilled_object.value()));
+
+        uint64_t total_data_size =
+            spilled_object->GetDataSize() + spilled_object->GetMetadataSize();
+        uint64_t metadata_size = spilled_object->GetMetadataSize();
+        uint64_t num_chunks = spilled_object->GetNumChunks();
+        rpc::Address owner_address = spilled_object->GetOwnerAddress();
+
+        auto spilled_object_chunk_reader = [object_id, spilled_object](
+                                               uint64_t chunk_index,
+                                               rpc::PushRequest &push_request) -> Status {
+          auto optional_chunk = spilled_object->GetChunk(chunk_index);
+          if (!optional_chunk.has_value()) {
+            RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
+                           << " failed. "
+                           << " It may have been evicted.";
+            return Status::IOError("Failed to read spilled object");
+          }
+          push_request.set_data(std::move(optional_chunk.value()));
+          return Status::OK();
+        };
+
+        // Schedule PushObjectInternal back to main_service as PushObjectInternal access
+        // thread unsafe datastructure.
+        main_service_->post(
+            [this, object_id, node_id, total_data_size, metadata_size, num_chunks,
+             owner_address = std::move(owner_address),
+             spilled_object_chunk_reader = std::move(spilled_object_chunk_reader)]() {
+              PushObjectInternal(object_id, node_id, total_data_size, metadata_size,
+                                 num_chunks, std::move(owner_address),
+                                 std::move(spilled_object_chunk_reader),
+                                 [](uint64_t) { /* do nothing to release chunk */ });
+            },
+            "ObjectManager.PushLocalSpilledObjectInternal");
+      },
+      "ObjectManager.CreateSpilledObject");
 }
 
 void ObjectManager::PushObjectInternal(
@@ -890,7 +943,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n  - num chunks received thrashed: " << num_chunks_received_thrashed_;
   result << "\n  - num chunks received, plasma error : "
          << num_chunks_received_failed_due_to_plasma_;
-  result << "\nEvent loop stats:" << rpc_service_.StatsString();
+  result << "\nEvent stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
