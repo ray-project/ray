@@ -157,10 +157,6 @@ class PullManager {
     // the objects may overlap with another request, so the actual amount of
     // memory needed to activate this request may be less than this amount.
     size_t num_bytes_needed = 0;
-    // Tracks bytes counted towards admission control when this bundle is
-    // activated. This may be less than num_bytes_needed due to already-local
-    // objects.
-    mutable size_t activated_bytes = 0;
 
     void RegisterObjectSize(size_t object_size) {
       RAY_CHECK(num_object_sizes_missing > 0);
