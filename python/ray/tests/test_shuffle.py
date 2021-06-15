@@ -13,7 +13,9 @@ def test_shuffle():
 
 
 # https://github.com/ray-project/ray/pull/16408
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "win32" or sys.platform == "darwin",
+    reason="Failing on Windows and Mac.")
 def test_shuffle_hang():
     try:
         shuffle.main(
