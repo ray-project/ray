@@ -943,7 +943,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n  - num chunks received thrashed: " << num_chunks_received_thrashed_;
   result << "\n  - num chunks received, plasma error : "
          << num_chunks_received_failed_due_to_plasma_;
-  result << "\nEvent loop stats:" << rpc_service_.StatsString();
+  result << "\nEvent stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
