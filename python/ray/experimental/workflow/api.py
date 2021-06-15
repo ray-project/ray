@@ -10,12 +10,6 @@ from ray.experimental.workflow import workflow_context
 
 logger = logging.getLogger(__name__)
 
-# TODO(suquark): This API is still not entirely consistent with our doc.
-# We need to fix 2 things:
-# 1. Resolve any workflow embedded in the argument of another workflow.
-# 2. Do not resolve ObjectRefs that does not come from a workflow.
-#    Only deref it once when it is a direct argument.
-
 
 def step(func) -> WorkflowStepFunction:
     """
@@ -44,7 +38,8 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     if workflow_id is None:
         # TODO(suquark): include the name of the workflow in the default ID,
         # this makes the ID more readable.
-        workflow_id = uuid.uuid4().hex + "." + str(time.time())
+        # Workflow ID format: {UUID}.{Unix time to nanoseconds}
+        workflow_id = f"{uuid.uuid4().hex}.{time.time():.9f}"
     logger.info(f"Workflow job {workflow_id} created.")
     try:
         workflow_context.init_workflow_step_context(workflow_id,

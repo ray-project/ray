@@ -23,8 +23,8 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
   return session_dir;
 }
 
-static void StartRayNode(int redis_port, std::string redis_password,
-                         int node_manager_port) {
+void ProcessHelper::StartRayNode(int redis_port, std::string redis_password,
+                                 int node_manager_port) {
   std::vector<std::string> cmdargs(
       {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
        redis_password, "--node-manager-port", std::to_string(node_manager_port),
@@ -35,7 +35,7 @@ static void StartRayNode(int redis_port, std::string redis_password,
   return;
 }
 
-static void StopRayNode() {
+void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
@@ -96,9 +96,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.enable_logging = true;
   options.log_dir = log_dir;
   options.install_failure_signal_handler = true;
-  options.node_ip_address = "127.0.0.1";
+  std::string node_ip = ConfigInternal::Instance().node_ip_address.empty()
+                            ? "127.0.0.1"
+                            : ConfigInternal::Instance().node_ip_address;
+  options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-  options.raylet_ip_address = "127.0.0.1";
+  options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.ref_counting_enabled = true;
   options.num_workers = 1;
