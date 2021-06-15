@@ -109,15 +109,15 @@ If it worked, you should see as the first line in ``raylet.err``:
 Backend event stats
 -------------------
 The ``raylet`` process also periodically dumps event stats to the ``debug_state.txt`` log
-file if the ``RAY_EVENT_STATS=1`` environment variable is set. To also enable regular
-printing of the stats to log files, you can additional set ``RAY_EVENT_STATS_INTERVAL_MS=1000``.
+file if the ``RAY_event_stats=1`` environment variable is set. To also enable regular
+printing of the stats to log files, you can additional set ``RAY_event_stats_print_interval_ms=1000``.
 
 Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample
 of what the event stats look like:
 
 .. code-block:: shell
 
-  Event loop stats:
+  Event stats:
   Global stats: 739128 total (27 active)
   Queueing time: mean = 47.402 ms, max = 1372.219 s, min = -0.000 s, total = 35035.892 s
   Execution time:  mean = 36.943 us, total = 27.306 s

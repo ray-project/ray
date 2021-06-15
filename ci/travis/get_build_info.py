@@ -14,10 +14,9 @@ import os
 import sys
 import json
 
-import requests
-
 
 def gha_get_self_url():
+    import requests
     # stringed together api call to get the current check's html url.
     sha = os.environ["GITHUB_SHA"]
     repo = os.environ["GITHUB_REPOSITORY"]
@@ -76,6 +75,7 @@ def get_build_config():
             }
         }
 
+    import requests
     url = "https://api.travis-ci.com/job/{job_id}?include=job.config"
     url = url.format(job_id=os.environ["TRAVIS_JOB_ID"])
     resp = requests.get(url, headers={"Travis-API-Version": "3"})

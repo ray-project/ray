@@ -494,7 +494,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*subscriber_address=*/rpc_address_.ip_address(),
       /*subscriber_port=*/rpc_address_.port(),
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      /*publisher_client_pool=*/*(core_worker_client_pool_.get()));
+      /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
+      /*callback_service*/ &io_service_);
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
@@ -702,15 +703,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
 
   /// If periodic asio stats print is enabled, it will print it.
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms != -1 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
-        asio_stats_print_interval_ms);
+        event_stats_print_interval_ms);
   }
 }
 
@@ -2468,21 +2468,10 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
 }
 
-void CoreWorker::HandleSubscribeForObjectEviction(
-    const rpc::SubscribeForObjectEvictionRequest &request,
-    rpc::SubscribeForObjectEvictionReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  // TODO(swang): Drop requests from raylets that executed an older version of
-  // the task.
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
-  }
-
-  const auto subscriber_node_id =
-      NodeID::FromBinary(request.subscriber_address().raylet_id());
+void CoreWorker::ProcessSubscribeForObjectEviction(
+    const rpc::WorkerObjectEvictionSubMessage &message) {
   // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
+  auto unpin_object = [this](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
 
     rpc::PubMessage pub_message;
@@ -2493,30 +2482,63 @@ void CoreWorker::HandleSubscribeForObjectEviction(
 
     object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                       pub_message, object_id.Binary());
-    object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
   };
 
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  // Always register the subscription before we register the delete callback to avoid race
-  // condition.
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, object_id.Binary());
+  const auto object_id = ObjectID::FromBinary(message.object_id());
+  const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
+  if (intended_worker_id != worker_context_.GetWorkerID()) {
+    RAY_LOG(INFO) << "The SubscribeForObjectEviction message is for "
+                  << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+    unpin_object(object_id);
+    return;
+  }
 
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+  if (!reference_counter_->SetDeleteCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
-    // subscription.
-    object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
-    std::ostringstream stream;
-    stream << "Reference for object " << object_id << " has already been freed.";
-    RAY_LOG(DEBUG) << stream.str();
-    send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
+    // subscription & publish the message so that the subscriber knows it.
+    unpin_object(object_id);
+    RAY_LOG(DEBUG) << "Reference for object " << object_id << " has already been freed.";
+  }
+}
+
+void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                                         rpc::ChannelType channel_type,
+                                         const std::string &key_id,
+                                         const NodeID &subscriber_id) {
+  object_status_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+
+  if (sub_message.has_worker_object_eviction_message()) {
+    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
+  } else if (sub_message.has_worker_ref_removed_message()) {
+    ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(FATAL)
+        << "Invalid command has received: "
+        << static_cast<int>(sub_message.sub_message_one_of_case())
+        << " has received. If you see this message, please report to Ray Github.";
+  }
+}
+
+void CoreWorker::ProcessPubsubCommands(const Commands &commands,
+                                       const NodeID &subscriber_id) {
+  for (const auto &command : commands) {
+    if (command.has_unsubscribe_message()) {
+      object_status_publisher_->UnregisterSubscription(command.channel_type(),
+                                                       subscriber_id, command.key_id());
+    } else if (command.has_subscribe_message()) {
+      ProcessSubscribeMessage(command.subscribe_message(), command.channel_type(),
+                              command.key_id(), subscriber_id);
+    } else {
+      RAY_LOG(FATAL) << "Invalid command has received, "
+                     << static_cast<int>(command.command_message_one_of_case())
+                     << ". If you see this message, please "
+                        "report to Ray "
+                        "Github.";
+    }
   }
 }
 
@@ -2524,9 +2546,17 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
+  RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
   object_status_publisher_->ConnectToSubscriber(subscriber_id, reply,
                                                 std::move(send_reply_callback));
+}
+
+void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+                                          rpc::PubsubCommandBatchReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  ProcessPubsubCommands(request.commands(), subscriber_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
@@ -2602,34 +2632,26 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
 }
 
-void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
-                                         rpc::WaitForRefRemovedReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
-  }
+void CoreWorker::ProcessSubscribeForRefRemoved(
+    const rpc::WorkerRefRemovedSubMessage &message) {
+  const ObjectID &object_id = ObjectID::FromBinary(message.reference().object_id());
 
-  const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
-  ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
-  const WorkerID subscriber_worker_id =
-      WorkerID::FromBinary(request.subscriber_worker_id());
-  const auto owner_address = request.reference().owner_address();
-
-  // We need to reply first to avoid race condition where publish
-  // happens before subscriber receives the reply.
-  // Note that this function should be called after accessing fields from the request.
-  // Otherwise, request could be GC'ed.
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-
-  object_status_publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
-      object_id.Binary());
   // Set a callback to publish the message when the requested object ID's ref count
   // goes to 0.
   auto ref_removed_callback =
-      boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id,
-                  subscriber_worker_id);
+      boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id);
+
+  const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
+  if (intended_worker_id != worker_context_.GetWorkerID()) {
+    RAY_LOG(INFO) << "The ProcessSubscribeForRefRemoved message is for "
+                  << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+    ref_removed_callback(object_id);
+    return;
+  }
+
+  const auto owner_address = message.reference().owner_address();
+  ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                             ref_removed_callback);
 }

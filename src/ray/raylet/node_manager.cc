@@ -247,7 +247,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*core_worker_subscriber_=*/
           std::make_shared<pubsub::Subscriber>(
               self_node_id_, config.node_manager_address, config.node_manager_port,
-              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_)),
+              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
+              &io_service_)),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -436,15 +437,14 @@ ray::Status NodeManager::RegisterGcs() {
       "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms != -1 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
-        asio_stats_print_interval_ms,
+        event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
@@ -1378,6 +1378,8 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
+  // non-direct call support.
   if (message->fetch_only()) {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     if (!worker) {
@@ -2029,8 +2031,8 @@ std::string NodeManager::DebugString() const {
     result << "\n" << entry.first;
   }
 
-  // Event loop stats.
-  result << "\nEvent loop stats:" << io_service_.StatsString();
+  // Event stats.
+  result << "\nEvent stats:" << io_service_.StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();

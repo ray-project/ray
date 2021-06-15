@@ -55,12 +55,19 @@ else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
+  if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
+    "${target}" --user
+    # Add bazel to the path.
+    # shellcheck disable=SC2016
+    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+    # shellcheck disable=SC1090
+    source ~/.zshrc
+  elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
-    which bazel > /dev/null
   else
     "${target}" --user > /dev/null
   fi
+  which bazel
   rm -f "${target}"
 fi
 
