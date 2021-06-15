@@ -634,8 +634,7 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
         host_destination = os.path.join(
-            self._get_docker_host_mount_location(
-                self.ssh_command_runner.cluster_name), target.lstrip("/"))
+            self._get_docker_host_mount_location(), target.lstrip("/"))
 
         host_mount_location = os.path.dirname(host_destination.rstrip("/"))
         self.ssh_command_runner.run(
@@ -660,8 +659,7 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
         host_source = os.path.join(
-            self._get_docker_host_mount_location(
-                self.ssh_command_runner.cluster_name), source.lstrip("/"))
+            self._get_docker_host_mount_location(), source.lstrip("/"))
         host_mount_location = os.path.dirname(host_source.rstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {host_mount_location} && chown -R "
@@ -862,8 +860,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "{cmd} cp {src} {container}:{dst}".format(
                         cmd=self.docker_cmd,
                         src=os.path.join(
-                            self._get_docker_host_mount_location(
-                                self.ssh_command_runner.cluster_name), mount),
+                            self._get_docker_host_mount_location(), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
                 try:
@@ -939,8 +936,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 f"Received error while trying to auto-compute SHM size {e}")
             return run_options
 
-    def _get_docker_host_mount_location(self, cluster_name: str) -> str:
+    def _get_docker_host_mount_location(self) -> str:
         """Return the docker host mount directory location."""
         # Imported here due to circular dependency in imports.
         from ray.autoscaler.sdk import get_docker_host_mount_location
-        return get_docker_host_mount_location(cluster_name)
+        return get_docker_host_mount_location(
+            self.ssh_command_runner.cluster_name)
