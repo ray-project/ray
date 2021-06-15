@@ -177,7 +177,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_placement_group.py",
-    "test_placement_group_2.py",
     "test_runtime_env.py"
   ],
   size = "large",
