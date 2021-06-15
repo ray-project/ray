@@ -214,6 +214,7 @@ class WorkerPoolTest : public ::testing::Test {
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
+      worker->SetShimProcess(proc);
     }
     return worker;
   }
