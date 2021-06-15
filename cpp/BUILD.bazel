@@ -6,7 +6,6 @@ load("//bazel:ray.bzl", "COPTS")
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
-    #linkopts = ["-shared"],
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
