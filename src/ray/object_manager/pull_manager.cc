@@ -185,6 +185,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // TODO(ekl) this causes test_scheduling.py::test_load_balancing_under_constrained_memory
   // to hang occasionally.
   if (RayConfig::instance().pull_manager_calculate_bytes_already_pulled()) {
+    absl::MutexLock lock(&active_objects_mu_);
     size_t num_bytes_already_pulled = 0;
     for (auto &pair : active_object_pull_requests_) {
       const auto &object_id = pair.first;
