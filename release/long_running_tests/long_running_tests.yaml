@@ -166,7 +166,7 @@
   run:
     timeout: 600
     prepare: python wait_cluster.py 3 600
-    script: python workloads/impala.py
+    script: python workloads/pbt.py
     long_running: True
 
 - name: serve
