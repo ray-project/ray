@@ -18,6 +18,19 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
+/// The duration between dumping debug info to logs, or 0 to disable.
+RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+
+/// Whether to enable Ray event stats collection.
+/// TODO(ekl) this seems to segfault Java unit tests when on by default?
+RAY_CONFIG(bool, event_stats, false)
+
+/// The interval of periodic event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires event_stats=1.
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t
@@ -46,14 +59,6 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
-
-/// The duration between dumping debug info to logs, or 0 to disable.
-RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
-
-/// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled,
-           env_bool("RAY_EVENT_STATS", false))
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
@@ -96,7 +101,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// performance instead of crashing. Note that memory admission control is still in play,
 /// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
 /// spilling).
-RAY_CONFIG(bool, plasma_unlimited, false)
+RAY_CONFIG(bool, plasma_unlimited, true)
 
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
@@ -142,6 +147,9 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
+/// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
+RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 
 // Whether to inline object status in serialized references.
 // See https://github.com/ray-project/ray/issues/16025 for more details.
@@ -256,7 +264,8 @@ RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
-/// The min amount of time between triggering global_gc in raylet
+/// The min amount of time between triggering global_gc in raylet. This only applies
+/// to global GCs triggered due to high_plasma_storage_usage.
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
@@ -359,7 +368,7 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
 /// Grace period until we throw the OOM error to the application in seconds.
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
-RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
@@ -384,13 +393,6 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 
-/// The interval of periodic asio event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
-/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
-RAY_CONFIG(int64_t, asio_stats_print_interval_ms,
-           env_int64_t("RAY_EVENT_STATS_INTERVAL_MS", -1))
-
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
@@ -405,7 +407,12 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 
 // This is the minimum time an actor will remain in the actor table before
-// being garbage collected when a job finishes.
+// being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
+
+/// Whether to enable GCS-based actor scheduling.
+RAY_CONFIG(bool, gcs_task_scheduling_enabled,
+           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
