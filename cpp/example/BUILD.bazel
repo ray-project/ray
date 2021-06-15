@@ -43,16 +43,3 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-genrule(
-    name = "cpp_example_pkg",
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        PARENT_DIR=$$(dirname $$WORK_DIR) &&
-        cp -f -r "$$PARENT_DIR/temp_dir/.bazelrc" "$$WORK_DIR/cpp/example/" &&
-        cp -f -r "$$PARENT_DIR/temp_dir/thirdparty" "$$WORK_DIR/cpp/example/" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-    visibility = ["//visibility:public"],
-)
