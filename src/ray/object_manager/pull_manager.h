@@ -262,6 +262,10 @@ class PullManager {
   /// local object store.
   size_t num_bytes_being_pulled_ = 0;
 
+  /// The total number of bytes already local. Should be lesser than the
+  /// number of bytes being pulled.
+  size_t num_bytes_already_pulled_ = 0;
+
   /// The total number of bytes that is available to store objects that we are
   /// pulling.
   size_t num_bytes_available_;

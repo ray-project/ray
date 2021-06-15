@@ -424,41 +424,6 @@ TEST_P(PullManagerTest, TestBasic) {
   AssertNoLeaks();
 }
 
-TEST_P(PullManagerTest, TestObjectAlreadyLocal) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
-  AssertNumActiveRequestsEquals(0);
-  std::vector<rpc::ObjectReference> objects_to_locate;
-
-  // Local objects are pulled, but we don't count them towards the bytes threshold.
-  object_is_local_ = true;
-  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
-  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-  std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
-  for (size_t i = 0; i < oids.size(); i++) {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
-  }
-  for (size_t i = 0; i < oids.size(); i++) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
-  }
-  // Local objects don't count towards the admission threshold.
-  ASSERT_EQ(NumBytesBeingPulled(), 0);
-  ASSERT_EQ(num_send_pull_request_calls_, 0);
-  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-  AssertNumActiveRequestsEquals(oids.size());
-
-  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
-  AssertNumActiveRequestsEquals(0);
-  ASSERT_EQ(NumBytesBeingPulled(), 0);
-  AssertNoLeaks();
-}
-
 TEST_P(PullManagerTest, TestDeduplicateBundles) {
   auto prio = BundlePriority::TASK_ARGS;
   if (GetParam()) {
