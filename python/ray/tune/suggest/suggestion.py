@@ -387,7 +387,6 @@ class ConcurrencyLimiter(Searcher):
                     self.live_trials.remove(trial_id)
                 self.cached_results = {}
                 self.num_unfinished_live_trials = 0
-                self.max_concurrent = self.max_concurrent
             else:
                 return
         else:
