@@ -1,6 +1,6 @@
 import functools
 import inspect
-from typing import List, Tuple, Union, Any, Dict, Callable
+from typing import List, Tuple, Union, Any, Dict, Callable, Optional
 
 import ray
 import ray.cloudpickle
@@ -88,7 +88,7 @@ def _resolve_step_inputs(step_inputs: Tuple[RRef, List[RRef], List[RRef]]
 
 class WorkflowStepFunction:
     def __init__(self, func: Callable):
-        def _func(context, task_id, step_inputs):
+        def _func(context, task_id, step_inputs, forward_output_to):
             # NOTE: must use 'set_current_store_dir' to ensure that we are
             # accessing the correct global variable.
             workflow_context.update_workflow_step_context(context, task_id)
@@ -98,7 +98,7 @@ class WorkflowStepFunction:
             del resolved_object_refs
 
             _output = func(*args, **kwargs)
-            output = _commit_workflow(_output)
+            output = _commit_workflow(_output, forward_output_to)
             return output
 
         self._func = func
@@ -135,10 +135,14 @@ class WorkflowStepFunction:
 
         self.step = _build_workflow
 
-    def _run_step(self, step_id: StepID,
-                  step_inputs: WorkflowInputTuple) -> WorkflowOutputType:
+    def _run_step(
+            self,
+            step_id: StepID,
+            step_inputs: WorkflowInputTuple,
+            forward_output_to: Optional[StepID] = None) -> WorkflowOutputType:
         ref = self._remote_function.remote(
-            workflow_context.get_workflow_step_context(), step_id, step_inputs)
+            workflow_context.get_workflow_step_context(), step_id, step_inputs,
+            forward_output_to)
         return ref
 
     def __call__(self, *args, **kwargs):
@@ -147,10 +151,13 @@ class WorkflowStepFunction:
                         f"try '{self.step.__name__}.step()'.")
 
 
-def _commit_workflow(output: Union[Workflow, Any]):
+def _commit_workflow(output: Union[Workflow, Any],
+                     forward_output_to: Optional[StepID] = None):
     if isinstance(output, Workflow):
-        storage.save_workflow_dag(output)
-        output = output.execute()
+        storage.save_workflow_dag(output, forward_output_to)
+        if forward_output_to is None:
+            forward_output_to = workflow_context.get_current_step_id()
+        output = output.execute(forward_output_to)
     else:
-        storage.save_workflow_output(output)
+        storage.save_workflow_output(output, forward_output_to)
     return output

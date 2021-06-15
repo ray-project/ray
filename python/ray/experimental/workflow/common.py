@@ -10,8 +10,8 @@ RRef = ray.ObjectRef  # Alias ObjectRef because it is too long in type hints.
 StepID = str
 WorkflowOutputType = RRef
 WorkflowInputTuple = Tuple[RRef, List["Workflow"], List[RRef]]
-StepExecutionFunction = Callable[[StepID, WorkflowInputTuple],
-                                 WorkflowOutputType]
+StepExecutionFunction = Callable[
+    [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
 
 
@@ -57,7 +57,7 @@ class Workflow:
     def id(self) -> StepID:
         return self._step_id
 
-    def execute(self) -> RRef:
+    def execute(self, forward_output_to: Optional[StepID] = None) -> RRef:
         """
         Trigger workflow execution recursively.
         """
@@ -72,7 +72,8 @@ class Workflow:
         # proper context. To prevent it, we put it inside a tuple.
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
-        output = self._step_execution_function(self._step_id, step_inputs)
+        output = self._step_execution_function(self._step_id, step_inputs,
+                                               forward_output_to)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
         self._output = output

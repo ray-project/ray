@@ -15,7 +15,7 @@ from ray.experimental.workflow import configs
 
 from ray.experimental.workflow.constants import (
     STEPS_DIR, OBJECTS_DIR, STEP_INPUTS_METADATA, STEP_OUTPUTS_METADATA,
-    STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT)
+    STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT, STEP_OUTPUTS_FORWARD)
 
 # TODO(suquark): in the future we may use general URLs to support
 # different storages, e.g. "s3://xxxx/xxx". Currently we just use
@@ -124,8 +124,20 @@ class WorkflowStepLogger:
         self._storage.write_json_atomic(metadata,
                                         self._step_dir / STEP_OUTPUTS_METADATA)
 
+    def update_output_forward(self, forward_output_to: str,
+                              output_step_id: str):
+        if forward_output_to == "":
+            # actually it equals to 'self._workflow_dir / STEPS_DIR / ""',
+            # but we won't use the trick here because it is not obvious.
+            target_dir = self._workflow_dir / STEPS_DIR
+        else:
+            target_dir = self._workflow_dir / STEPS_DIR / forward_output_to
+        self._storage.write_json_atomic({
+            "step_id": output_step_id
+        }, target_dir / STEP_OUTPUTS_FORWARD)
 
-def save_workflow_dag(workflow: Workflow):
+
+def save_workflow_dag(workflow: Workflow, forward_output_to: Optional[str]):
     assert not workflow.executed
     workflows: Set[Workflow] = set()
     workflow._visit_workflow_dag(workflows)
@@ -137,15 +149,20 @@ def save_workflow_dag(workflow: Workflow):
     step_logger.save_outputs_metadata({
         "step_id": workflow.id,
     })
+    if forward_output_to is not None:
+        step_logger.update_output_forward(forward_output_to, workflow.id)
 
 
-def save_workflow_output(output: Any):
+def save_workflow_output(output: Any, forward_output_to: Optional[str]):
     if isinstance(output, ray.ObjectRef):
         obj = ray.get(output)
     else:
         obj = output
     step_logger = WorkflowStepLogger()
     step_logger.save_output(obj)
+    if forward_output_to is not None:
+        step_logger.update_output_forward(
+            forward_output_to, workflow_context.get_current_step_id())
 
 
 @dataclass

@@ -61,6 +61,12 @@ def update_workflow_step_context(context: Optional[WorkflowStepContext],
     _context.workflow_scope.append(step_id)
 
 
+def get_current_step_id() -> str:
+    s = get_scope()
+    # empty string means it is workflow job driver
+    return s[-1] if s else ""
+
+
 def get_scope():
     return _context.workflow_scope
 
