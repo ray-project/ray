@@ -42,10 +42,11 @@ def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
 def _construct_resume_workflow_from_step(reader: storage.WorkflowStorageReader,
                                          step_id: str) -> Union[Workflow, str]:
     result: storage.StepInspectResult = reader.inspect_step(step_id)
+    if result.output_object_valid:
+        # we already have the output
+        return step_id
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableException(step_id)
-    if result.output_object_valid:
-        return step_id  # TODO: move this above
     if isinstance(result.output_step_id, str):
         return _construct_resume_workflow_from_step(reader,
                                                     result.output_step_id)

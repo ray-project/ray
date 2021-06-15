@@ -35,17 +35,6 @@ def join(x, y):
 
 
 @workflow.step
-def _complex(x1):
-    x2 = source1.step()
-    v = join.step(x1, x2)
-    y = append1.step(x1)
-    y = the_failed_step.step(y)
-    z = append2.step(x2)
-    u = join.step(y, z)
-    return join.step(u, v)
-
-
-@workflow.step
 def complex(x1):
     x2 = source1.step()
     v = join.step(x1, x2)
