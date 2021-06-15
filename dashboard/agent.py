@@ -339,9 +339,9 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
-        message = ("The agent on node {} failed with the following "
-                   "error:\n{}".format(platform.uname()[1], traceback_str))
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
-        logger.exception(message)
+        # message = ("The agent on node {} failed with the following "
+        #            "error:\n{}".format(platform.uname()[1], traceback_str))
+        # ray._private.utils.push_error_to_driver_through_redis(
+        #     redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
+        # logger.exception(message)
         raise e

@@ -229,8 +229,8 @@ if __name__ == "__main__":
         message = f"The dashboard on node {platform.uname()[1]} " \
                   f"failed with the following " \
                   f"error:\n{traceback_str}"
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
+        # ray._private.utils.push_error_to_driver_through_redis(
+        #     redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, FrontendNotFoundError):
             logger.warning(message)
         else:
