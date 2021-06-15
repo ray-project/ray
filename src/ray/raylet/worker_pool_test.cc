@@ -912,7 +912,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
                                                     rpc::WorkerType::WORKER, job_id);
     auto worker = CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), 0, [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), 0, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushWorker(worker);
@@ -1006,8 +1007,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     RAY_CHECK_OK(
         worker_pool_->RegisterWorker(worker, proc.GetId(), 0, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
-    ASSERT_EQ(
-        worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushSpillWorker(worker);
   }
   {
@@ -1015,7 +1015,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
     auto worker = CreateRestoreWorker(Process());
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), 0, [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), 0, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushRestoreWorker(worker);
@@ -1149,8 +1150,8 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   // Register worker with different worker PID
   pid_t shim_pid = last_process.GetId();
   worker = CreateWorker(Process());
-  RAY_CHECK_OK(
-      worker_pool_->RegisterWorker(worker, shim_pid+1000, shim_pid, [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, shim_pid+1000, shim_pid,
+                                               [](Status, int) {}));
   ASSERT_EQ(1, worker_pool_->NumWorkerProcessesStarting());
 
   // After worker finished starting, starting_worker_processes will erase this process.
