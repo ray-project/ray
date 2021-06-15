@@ -1,20 +1,22 @@
 import json
 import pathlib
 from typing import Dict, List, Optional, Any, Set
+import uuid
 
 from dataclasses import dataclass
 
 import ray
 import ray.cloudpickle
 
-from ray.experimental.workflow.common import Workflow
+from ray.experimental.workflow.common import Workflow, WorkflowInputs
 from ray.experimental.workflow import checkpoint_result
 from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import configs
 
 from ray.experimental.workflow.constants import (
     STEPS_DIR, OBJECTS_DIR, NON_BLOCKING_CHECKPOINTING, STEP_INPUTS_METADATA,
-    STEP_OUTPUTS_METADATA)
+    STEP_OUTPUTS_METADATA, STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT)
 
 
 def _get_current_store_dir():
@@ -22,13 +24,76 @@ def _get_current_store_dir():
     return context.workflow_root_dir / context.workflow_id
 
 
+# TODO(suquark): in the future we may use general URLs to support
+# different storages, e.g. "s3://xxxx/xxx". Currently we just use
+# 'pathlib.Path' for convenience.
+
+
+class WorkflowStorage:
+    def __init__(self, workflow_root_dir: pathlib.Path):
+        self._workflow_root_dir = workflow_root_dir
+
+    def _write_atomic(self, writer, mode, obj, path: pathlib.Path, overwrite):
+        # TODO(suquark): race conditions like two processes writing the
+        # same file is still not safe. This may not be an issue, because
+        # in our current implementation, we only need to guarantee the
+        # file is either fully written or not existing.
+        fullpath = self._workflow_root_dir / path
+        if fullpath.exists() and not overwrite:
+            raise FileExistsError(fullpath)
+        tmp_new_filename = fullpath.with_suffix(fullpath.suffix + "." +
+                                                uuid.uuid4().hex)
+        with open(tmp_new_filename, mode) as f:
+            writer(obj, f)
+        if fullpath.exists():
+            backup_path = fullpath.with_suffix(fullpath.suffix + ".backup")
+            if backup_path.exists():
+                backup_path.unlink()
+            fullpath.rename(backup_path)
+        tmp_new_filename.rename(fullpath)
+
+    def _read_object(self, reader, mode, path):
+        fullpath = self._workflow_root_dir / path
+        if fullpath.exists():
+            with open(fullpath, mode) as f:
+                return reader(f)
+        backup_path = fullpath.with_suffix(fullpath.suffix + ".backup")
+        if backup_path.exists():
+            with open(backup_path, mode) as f:
+                return reader(f)
+        raise FileNotFoundError(fullpath)
+
+    def file_exists(self, path):
+        fullpath = self._workflow_root_dir / path
+        backup_path = fullpath.with_suffix(fullpath.suffix + ".backup")
+        return fullpath.exists() or backup_path.exists()
+
+    def write_object_atomic(self, obj, path: pathlib.Path, overwrite=True):
+        self._write_atomic(ray.cloudpickle.dump, "wb", obj, path, overwrite)
+
+    def write_json_atomic(self, json_obj, path: pathlib.Path, overwrite=True):
+        self._write_atomic(json.dump, "w", json_obj, path, overwrite)
+
+    def read_object(self, path: pathlib.Path):
+        return self._read_object(ray.cloudpickle.load, "rb", path)
+
+    def read_json(self, path: pathlib.Path):
+        return self._read_object(json.load, "r", path)
+
+    def create_directory(self, path: pathlib.Path, parents=True,
+                         exist_ok=True):
+        dir_path = self._workflow_root_dir / path
+        dir_path.mkdir(parents=parents, exist_ok=exist_ok)
+
+
 class WorkflowStepLogger:
     def __init__(self, step_id: Optional[str] = None):
-        current_store_dir = _get_current_store_dir()
-        all_steps_dir: pathlib.Path = current_store_dir / STEPS_DIR
-        objects_dir = current_store_dir / OBJECTS_DIR
-        if not objects_dir.exists():
-            objects_dir.mkdir(parents=True, exist_ok=True)
+        context = workflow_context.get_workflow_step_context()
+        self._storage = WorkflowStorage(context.workflow_root_dir)
+        self._workflow_dir = pathlib.Path(context.workflow_id)
+        all_steps_dir: pathlib.Path = self._workflow_dir / STEPS_DIR
+        objects_dir: pathlib.Path = self._workflow_dir / OBJECTS_DIR
+
         if step_id is None:
             scope = workflow_context.get_scope()
             if scope:
@@ -37,37 +102,34 @@ class WorkflowStepLogger:
                 step_dir = all_steps_dir
         else:
             step_dir = all_steps_dir / step_id
-        if not step_dir.exists():
-            step_dir.mkdir(parents=True, exist_ok=False)
-        self.objects_dir = objects_dir
-        self.step_dir = step_dir
+        self._storage.create_directory(step_dir)
+        self._objects_dir = objects_dir
+        self._step_dir = step_dir
 
-    def save_inputs_metadata(self, metadata: Dict[str, Any]):
-        input_placeholder = metadata["input_placeholder"]
-        f = metadata["func_body"]
-        func_body = ray.put(f)
-        self.save_objects([input_placeholder, func_body])
-        metadata["input_placeholder"] = input_placeholder.hex()
-        metadata["func_body"] = func_body.hex()
-        metadata["name"] = f.__module__ + "." + f.__qualname__
-        with open(self.step_dir / STEP_INPUTS_METADATA, "w") as f:
-            json.dump(metadata, f, indent=4)
+    def save_inputs(self, inputs: WorkflowInputs):
+        args = inputs.args
+        f = inputs.func_body
+        metadata = {
+            "step_id": inputs.step_id,
+            "name": f.__module__ + "." + f.__qualname__,
+            "object_refs": inputs.object_refs,
+            "workflows": inputs.workflows,
+        }
+        with serialization_context.workflow_args_keeping_context():
+            # TODO(suquark): in the future we should write to storage directly
+            # with plasma store object in memory.
+            args_obj = ray.get(args)
+        self._storage.write_json_atomic(metadata,
+                                        self._step_dir / STEP_INPUTS_METADATA)
+        self._storage.write_object_atomic(f, self._step_dir / STEP_FUNC_BODY)
+        self._storage.write_object_atomic(args_obj, self._step_dir / STEP_ARGS)
+
+    def save_output(self, output: Any):
+        self._storage.write_object_atomic(output, self._step_dir / STEP_OUTPUT)
 
     def save_outputs_metadata(self, metadata: Dict[str, Any]):
-        with open(self.step_dir / STEP_OUTPUTS_METADATA, "w") as f:
-            json.dump(metadata, f, indent=4)
-
-    def save_objects(self, object_refs: List[ray.ObjectRef]):
-        checkpoint_result.checkpoint_refs(
-            object_refs,
-            self.objects_dir,
-            nonblocking=NON_BLOCKING_CHECKPOINTING)
-
-
-def _save_workflow_inputs(workflow: Workflow):
-    if not workflow.skip_saving_inputs:
-        step_logger = WorkflowStepLogger(workflow.id)
-        step_logger.save_inputs_metadata(workflow.get_metadata())
+        self._storage.write_json_atomic(metadata,
+                                        self._step_dir / STEP_OUTPUTS_METADATA)
 
 
 def save_workflow_dag(workflow: Workflow):
@@ -75,62 +137,36 @@ def save_workflow_dag(workflow: Workflow):
     workflows: Set[Workflow] = set()
     workflow._visit_workflow_dag(workflows)
     for w in workflows:
-        _save_workflow_inputs(w)
+        if not w.skip_saving_inputs:
+            step_logger = WorkflowStepLogger(w.id)
+            step_logger.save_inputs(w.get_inputs())
     step_logger = WorkflowStepLogger()
     step_logger.save_outputs_metadata({
-        "output_type": "workflow",
         "step_id": workflow.id,
     })
 
 
 def save_workflow_output(output: Any):
-    if not isinstance(output, ray.ObjectRef):
-        rref = ray.put(output)
+    if isinstance(output, ray.ObjectRef):
+        obj = ray.get(output)
     else:
-        rref = output
+        obj = output
     step_logger = WorkflowStepLogger()
-    step_logger.save_objects([rref])
-    step_logger.save_outputs_metadata({
-        "output_type": "object",
-        "object_id": rref.hex(),
-    })
-
-
-def _file_integrity_check(path: pathlib.Path) -> bool:
-    if not path.exists():
-        return False
-    digest_path = pathlib.Path(str(path) + ".digest")
-    if not digest_path.exists():
-        return False
-    with open(digest_path) as f:
-        digest = f.read()
-        if digest == "00" * 20:
-            # All "0"s means skip checking. In this case the digest file only
-            # shows the object has been fully written to the filesystem.
-            return True
-        else:
-            # TODO(suquark): check the digest of file.
-            raise NotImplementedError
-    return True
+    step_logger.save_output(obj)
 
 
 @dataclass
 class StepInspectResult:
-    input_placeholder: Optional[str] = None
-    input_placeholder_object_valid: bool = False
-    func_body: Optional[str] = False
+    args_valid: bool = False
     func_body_valid: bool = False
-    input_object_refs: Optional[List[str]] = None
-    input_workflows: Optional[List[str]] = None
-    output_type: Optional[str] = None
-    output_object_id: Optional[str] = None
+    object_refs: Optional[List[str]] = None
+    workflows: Optional[List[str]] = None
     output_object_valid: bool = False
     output_step_id: Optional[str] = None
 
     def is_recoverable(self) -> bool:
-        return (self.input_placeholder_object_valid
-                and self.input_object_refs is not None
-                and self.input_workflows is not None and self.func_body_valid)
+        return (self.args_valid and self.object_refs is not None
+                and self.workflows is not None and self.func_body_valid)
 
 
 class WorkflowStorageReader:
@@ -143,12 +179,12 @@ class WorkflowStorageReader:
             self._workflow_root_dir = pathlib.Path(workflow_root_dir)
         else:
             self._workflow_root_dir = configs.get_default_workflow_root_dir()
+        self._storage = WorkflowStorage(self._workflow_root_dir)
         self._job_id = job_id
         job_dir = self._workflow_root_dir / job_id
         if not job_dir.exists():
             raise ValueError(f"Cannot find the workflow job '{job_dir}'")
         steps_dir = job_dir / STEPS_DIR
-        objects_dir = job_dir / OBJECTS_DIR
         if not steps_dir.exists():
             raise ValueError(f"The workflow job record is invalid: {STEPS_DIR}"
                              " not found.")
@@ -162,16 +198,12 @@ class WorkflowStorageReader:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse JSON {STEPS_DIR}/"
                              f"{STEP_OUTPUTS_METADATA}.") from e
-        if (output_metadata.get("output_type") != "workflow"
-                or not isinstance(output_metadata.get("step_id"), str)):
+        if not isinstance(output_metadata.get("step_id"), str):
             raise ValueError("Cannot locate workflow entrypoint step.")
-        if not objects_dir.exists():
-            raise ValueError(
-                f"The workflow job record is invalid: {OBJECTS_DIR}"
-                " not found.")
+        # NOTE: "objects_dir" may not exist. We do not check it.
         self._job_dir = job_dir
-        self._steps_dir = steps_dir
-        self._objects_dir = objects_dir
+        self._steps_dir = pathlib.Path(job_dir) / STEPS_DIR
+        self._objects_dir = pathlib.Path(job_dir) / OBJECTS_DIR
         self._entrypoint_step_id = output_metadata["step_id"]
 
     @property
@@ -204,68 +236,39 @@ class WorkflowStorageReader:
         if not step_dir.exists():
             return StepInspectResult()
 
-        def _check_object_field(data_dict: Dict, field_name: str):
-            value = data_dict.get(field_name)
-            if isinstance(value, str):
-                object_valid = _file_integrity_check(self._objects_dir / value)
-                return value, object_valid
-            return None, False
-
         # read inputs metadata
-        input_placeholder = None
-        input_placeholder_object_valid = False
-        func_body = None
-        func_body_valid = False
         input_object_refs = None
         input_workflows = None
         try:
-            with open(step_dir / STEP_INPUTS_METADATA) as f:
-                metadata = json.load(f)
-                input_placeholder, input_placeholder_object_valid = (
-                    _check_object_field(metadata, "input_placeholder"))
-                func_body, func_body_valid = (_check_object_field(
-                    metadata, "func_body"))
-                input_object_refs = metadata.get("input_object_refs")
-                if not isinstance(input_object_refs, list):
-                    input_object_refs = None
-                input_workflows = metadata.get("input_workflows")
-                if not isinstance(input_workflows, list):
-                    input_workflows = None
+            metadata = self._storage.read_json(step_dir / STEP_INPUTS_METADATA)
+            input_object_refs = metadata.get("object_refs")
+            if not isinstance(input_object_refs, list):
+                input_object_refs = None
+            input_workflows = metadata.get("workflows")
+            if not isinstance(input_workflows, list):
+                input_workflows = None
         except (FileNotFoundError, json.JSONDecodeError):
             pass
 
         # read outputs metadata
-        output_type = None
-        output_object_id = None
-        output_object_valid = False
         output_step_id = None
         try:
-            with open(step_dir / STEP_OUTPUTS_METADATA) as f:
-                metadata = json.load(f)
-                output_type = metadata.get("output_type")
-                if not isinstance(output_type, str):
-                    output_type = None
-                else:
-                    if output_type == "object":
-                        output_object_id, output_object_valid = (
-                            _check_object_field(metadata, "object_id"))
-                    elif output_type == "workflow":
-                        output_step_id = metadata.get("step_id")
-                        if not isinstance(output_step_id, str):
-                            output_step_id = None
+            metadata = self._storage.read_json(
+                step_dir / STEP_OUTPUTS_METADATA)
+            output_step_id = metadata.get("step_id")
+            if not isinstance(output_step_id, str):
+                output_step_id = None
         except (FileNotFoundError, json.JSONDecodeError):
             pass
 
         return StepInspectResult(
-            input_placeholder=input_placeholder,
-            input_placeholder_object_valid=input_placeholder_object_valid,
-            input_object_refs=input_object_refs,
-            input_workflows=input_workflows,
-            func_body=func_body,
-            func_body_valid=func_body_valid,
-            output_type=output_type,
-            output_object_id=output_object_id,
-            output_object_valid=output_object_valid,
+            args_valid=self._storage.file_exists(step_dir / STEP_ARGS),
+            object_refs=input_object_refs,
+            workflows=input_workflows,
+            func_body_valid=self._storage.file_exists(
+                step_dir / STEP_FUNC_BODY),
+            output_object_valid=self._storage.file_exists(
+                step_dir / STEP_OUTPUT),
             output_step_id=output_step_id,
         )
 
@@ -273,3 +276,32 @@ class WorkflowStorageReader:
         object_file = self._objects_dir / object_id
         with open(object_file, "rb") as f:
             return ray.cloudpickle.load(f)
+
+
+class WorkflowStepReader:
+    """
+    Access workflow step from storage.
+    """
+
+    def __init__(self, workflow_root_dir: pathlib.Path, workflow_id: str):
+        self._storage = WorkflowStorage(workflow_root_dir)
+        self._workflow_dir = pathlib.Path(workflow_id)
+        self._steps_dir = self._workflow_dir / STEPS_DIR
+        self._objects_dir = self._workflow_dir / OBJECTS_DIR
+
+    def get_func_body(self, step_id: str):
+        return self._storage.read_object(
+            self._steps_dir / step_id / STEP_FUNC_BODY)
+
+    def get_step_output(self, step_id: str):
+        return self._storage.read_object(
+            self._steps_dir / step_id / STEP_OUTPUT)
+
+    def get_step_args(self, step_id: str):
+        return self._storage.read_object(self._steps_dir / step_id / STEP_ARGS)
+
+    def read_object_ref(self, object_id) -> ray.ObjectRef:
+        object_file = self._objects_dir / object_id
+        with open(object_file, "rb") as f:
+            obj = ray.cloudpickle.load(f)
+        return ray.put(obj)  # simulate an ObjectRef

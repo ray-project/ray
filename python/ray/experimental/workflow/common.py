@@ -1,6 +1,8 @@
 from typing import Tuple, List, Optional, Callable, Set
 import uuid
 
+from dataclasses import dataclass
+
 import ray
 
 # Alias types
@@ -11,6 +13,15 @@ WorkflowInputTuple = Tuple[RRef, List["Workflow"], List[RRef]]
 StepExecutionFunction = Callable[[StepID, WorkflowInputTuple],
                                  WorkflowOutputType]
 SerializedStepFunction = str
+
+
+@dataclass
+class WorkflowInputs:
+    step_id: str
+    func_body: Callable
+    args: RRef
+    object_refs: List[str]
+    workflows: List[str]
 
 
 class Workflow:
@@ -74,14 +85,14 @@ class Workflow:
             if w not in visited_workflows:
                 w._visit_workflow_dag(visited_workflows)
 
-    def get_metadata(self):
-        return {
-            "id": self.id,
-            "input_placeholder": self._input_placeholder,
-            "func_body": self._original_function,
-            "input_object_refs": [r.hex() for r in self._input_object_refs],
-            "input_workflows": [w.id for w in self._input_workflows],
-        }
+    def get_inputs(self):
+        return WorkflowInputs(
+            step_id=self._step_id,
+            func_body=self._original_function,
+            args=self._input_placeholder,
+            object_refs=[r.hex() for r in self._input_object_refs],
+            workflows=[w.id for w in self._input_workflows],
+        )
 
     def __reduce__(self):
         raise ValueError(
