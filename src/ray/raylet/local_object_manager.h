@@ -222,7 +222,7 @@ class LocalObjectManager {
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
   /// The list of owners of for each object
-  absl::flat_hash_map<ObjectID, absl::flat_hash_set<rpc::Address>> object_owners_;
+  absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> object_owners_;
 
   /// Objects that were spilled on this node but that are being restored.
   /// The field is used to dedup the same restore request while restoration is in

@@ -39,7 +39,7 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       pinned_objects_size_ += object->GetSize();
       pinned_objects_.emplace(object_id, std::move(object));
     }
-    object_owners_[object_id].insert(owner_address);
+    object_owners_[object_id].emplace_back(owner_address);
   }
 }
 
@@ -90,9 +90,12 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id,
             (objects_pending_spill_.count(object_id) > 0));
 
   auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-
-  RAY_CHECK(owners.erase(owner_address) == 1)
+  auto it = std::find(owners.begin(), owners.end(), owner_address);
+  RAY_CHECK(it != owners.end())
       << "Fail to remove owner " << owner_address << " for object " << object_id;
+  it = owners.erase(it);
+  RAY_CHECK(std::find(it, owners.end(), owner_addresss) == owners.end())
+      << "There are duplicate owners " << owner_address << " for object_id " << object_id;
 
   // In case we still have owners for the object, we don't delete
   if (!owners.empty()) {
@@ -165,7 +168,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end() &&
          counts < max_fused_object_count_) {
     if (is_plasma_object_spillable_(it->first)) {
-      bytes_to_spill += it->second.first->GetSize();
+      bytes_to_spill += it->second->GetSize();
       objects_to_spill.push_back(it->first);
     }
     it++;
@@ -233,7 +236,7 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
-      num_bytes_pending_spill_ += it->second.first->GetSize();
+      num_bytes_pending_spill_ += it->second->GetSize();
       objects_pending_spill_[id] = std::move(it->second);
       pinned_objects_.erase(it);
     }
@@ -272,7 +275,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 const auto &object_id = objects_to_spill[i];
                 auto it = objects_pending_spill_.find(object_id);
                 RAY_CHECK(it != objects_pending_spill_.end());
-                pinned_objects_size_ += it->second.first->GetSize();
+                pinned_objects_size_ += it->second->GetSize();
                 pinned_objects_.emplace(object_id, std::move(it->second));
                 objects_pending_spill_.erase(it);
               }
@@ -306,7 +309,7 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   // Unpin the object.
   auto it = objects_pending_spill_.find(object_id);
   RAY_CHECK(it != objects_pending_spill_.end());
-  num_bytes_pending_spill_ -= it->second.first->GetSize();
+  num_bytes_pending_spill_ -= it->second->GetSize();
   objects_pending_spill_.erase(it);
 
   (*num_remaining)--;
@@ -360,7 +363,7 @@ void LocalObjectManager::AddSpilledUrls(
     request.set_object_id(object_id.Binary());
     request.set_spilled_url(object_url);
     request.set_spilled_node_id(node_id_object_spilled.Binary());
-    request.set_size(it->second.first->GetSize());
+    request.set_size(it->second->GetSize());
 
     auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
     RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
