@@ -156,7 +156,7 @@ def _commit_workflow(output: Union[Workflow, Any],
     """Execute workflow and checkpoint outputs.
 
     Args:
-        output: The output of the workflow step.
+        output: The returned output of the workflow step.
         forward_output_to: The output should also forward to the step
             referred by 'forward_output_to'. When resume from that step,
             that step can directly read this output.
@@ -166,9 +166,9 @@ def _commit_workflow(output: Union[Workflow, Any],
         if forward_output_to is None:
             # The current workflow step returns a nested workflow, but there is
             # no target to forward the nested workflow to. This means
-            # the current step is the target. The target also includes
-            # the workflow job driver, so our workflow entrypoint also
-            # get updated.
+            # the current step is the target. The target also includes the
+            # workflow job driver (when the current step ID is ""),
+            # so our workflow entrypoint are also handled.
             forward_output_to = workflow_context.get_current_step_id()
         # Passing down "forward_output_to" so deeper nested steps would
         # forward their results to the same "outer most" step.
