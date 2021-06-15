@@ -94,6 +94,9 @@ def docker_start_cmds(image: str,
                     cluster_name: str, 
                     home_directory: str, 
                     docker_cmd: str) -> str:
+    """
+    Build command to start a docker container.
+    """
     # Imported here due to circular dependency.
     from ray.autoscaler.sdk import get_docker_host_mount_location
     docker_mount_prefix = get_docker_host_mount_location(cluster_name)
