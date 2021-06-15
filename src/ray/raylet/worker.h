@@ -138,6 +138,9 @@ class Worker : public WorkerInterface {
   /// Return the worker process.
   Process GetProcess() const;
   void SetProcess(Process proc);
+  /// Return this worker shim process.
+  Process GetShimProcess() const;
+  void SetShimProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
