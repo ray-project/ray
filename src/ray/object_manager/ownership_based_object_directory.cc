@@ -206,6 +206,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   // received.  This notifies the client even if the list of locations is
   // empty, since this may indicate that the objects have been evicted from
   // all nodes.
+  RAY_LOG(ERROR) << "[SANG] callback size: " << callbacks.size();
   for (const auto &callback_pair : callbacks) {
     // We can call the callback directly without worrying about invalidating caller
     // iterators since this is already running in the subscription callback stack.

@@ -657,12 +657,12 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                           const std::string &spilled_url, const NodeID &spilled_node_id,
                           size_t object_size) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            RAY_LOG(ERROR) << "[SANG] Hahahoho, object id ";
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we
               // may get a subscription notification after the wait call has
               // already completed. If so, then don't process the
               // notification.
-              RAY_LOG(ERROR) << "[SANG] mysterious";
               return;
             }
             auto &wait_state = object_id_wait_state->second;
