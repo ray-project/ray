@@ -9,20 +9,13 @@ import ray
 import ray.cloudpickle
 
 from ray.experimental.workflow.common import Workflow, WorkflowInputs
-from ray.experimental.workflow import checkpoint_result
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import configs
 
 from ray.experimental.workflow.constants import (
-    STEPS_DIR, OBJECTS_DIR, NON_BLOCKING_CHECKPOINTING, STEP_INPUTS_METADATA,
-    STEP_OUTPUTS_METADATA, STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT)
-
-
-def _get_current_store_dir():
-    context = workflow_context.get_workflow_step_context()
-    return context.workflow_root_dir / context.workflow_id
-
+    STEPS_DIR, OBJECTS_DIR, STEP_INPUTS_METADATA, STEP_OUTPUTS_METADATA,
+    STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT)
 
 # TODO(suquark): in the future we may use general URLs to support
 # different storages, e.g. "s3://xxxx/xxx". Currently we just use

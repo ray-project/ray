@@ -29,8 +29,8 @@ def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
     workflow_context.update_workflow_step_context(context, step_id)
     reader = storage.WorkflowStepReader(workflow_root_dir, workflow_id)
 
-    for index, step_id in instant_workflow_outputs.items():
-        workflow_results[index] = reader.get_step_output(step_id)
+    for index, _step_id in instant_workflow_outputs.items():
+        workflow_results[index] = reader.get_step_output(_step_id)
     input_object_refs = [reader.read_object_ref(r) for r in input_object_refs]
     with serialization_context.workflow_args_resolving_context(
             workflow_results, input_object_refs):
@@ -39,14 +39,13 @@ def _recover_workflow_step(workflow_root_dir: pathlib.Path, workflow_id: str,
     return func(*args, **kwargs)
 
 
-def _construct_resume_workflow_from_step(
-        reader: storage.WorkflowStorageReader,
-        step_id: str) -> Union[Workflow, str]:
+def _construct_resume_workflow_from_step(reader: storage.WorkflowStorageReader,
+                                         step_id: str) -> Union[Workflow, str]:
     result: storage.StepInspectResult = reader.inspect_step(step_id)
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableException(step_id)
     if result.output_object_valid:
-        return step_id
+        return step_id  # TODO: move this above
     if isinstance(result.output_step_id, str):
         return _construct_resume_workflow_from_step(reader,
                                                     result.output_step_id)
