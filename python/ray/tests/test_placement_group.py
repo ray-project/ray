@@ -14,7 +14,6 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
-import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
@@ -1749,10 +1748,12 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     expected_created_num = 1
 
     def is_actor_created_number_correct():
+        nonlocal expected_created_num
         ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
         return len(ready) == expected_created_num
 
     def is_pg_created_number_correct():
+        nonlocal expected_created_num
         created_pgs = [
             pg for _, pg in ray.util.placement_group_table().items()
             if pg["state"] == "CREATED"
