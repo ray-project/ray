@@ -1139,6 +1139,23 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_NE(popped_worker, nullptr);
 }
 
+TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
+  auto task_spec = ExampleTaskSpec();
+  auto worker = worker_pool_->PopWorker(task_spec);
+  RAY_CHECK(!worker);
+  auto last_process = worker_pool_->LastStartedWorkerProcess();
+
+  // Register worker with different worker PID
+  pid_t shim_pid = last_process.GetId();
+  RAY_CHECK_OK(
+      worker_pool_->RegisterWorker(worker, shim_pid+1000, shim_pid, [](Status, int) {}));
+  ASSERT_EQ(1, worker_pool_->NumWorkerProcessesStarting());
+
+  // After worker finished starting, starting_worker_processes will erase this process.
+  worker_pool_->OnWorkerStarted(worker);
+  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+}
+
 }  // namespace raylet
 
 }  // namespace ray
