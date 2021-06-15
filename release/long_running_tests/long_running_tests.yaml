@@ -9,7 +9,192 @@
 
   run:
     timeout: 600
-    # prepare: python wait_cluster.py 2 600
     prepare: ray stop
     script: python workloads/actor_deaths.py
+    long_running: True
+
+- name: apex
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_3.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py 3 600
+    script: python workloads/apex.py
+    long_running: True
+
+
+- name: impala
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/impala.py
+    long_running: True
+
+- name: many_actor_tasks
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/many_actor_tasks.py
+    long_running: True
+
+
+- name: many_drivers
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/many_drivers.py
+    long_running: True
+
+
+- name: many_ppo
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_3.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py 3 600
+    script: python workloads/many_ppo.py
+    long_running: True
+
+
+- name: many_tasks
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/many_tasks.py
+    long_running: True
+
+- name: many_tasks_serialized_ids
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/many_tasks_serialized_ids.py
+    long_running: True
+
+
+- name: node_failures
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/node_failures.py
+    long_running: True
+
+
+- name: object_spilling_shuffle
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/object_spilling_shuffle.py
+    long_running: True
+
+
+- name: pbt
+  owner:
+    mail: "sven@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_3.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py 3 600
+    script: python workloads/impala.py
+    long_running: True
+
+- name: serve
+  owner:
+    mail: "edoakes@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/serve.py
+    long_running: True
+
+- name: serve_failure
+  owner:
+    mail: "edokaes@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    prepare: ray stop
+    script: python workloads/serve_failure.py
     long_running: True
