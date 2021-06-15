@@ -110,7 +110,6 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
-    bool is_local = object_is_local_(obj_id);
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
     if (start_pull) {
