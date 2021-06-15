@@ -71,12 +71,13 @@ c) Make sure you provide a fully qualified classpath, e.g.:
 
 
 class VideoMonitor(wrappers.Monitor):
-    # Same as original method, but don't use the StatsRecorder as it will try
-    # to add up multi-agent rewards dicts, which throws errors.
+    # Same as original method, but doesn't use the StatsRecorder as it will
+    # try to add up multi-agent rewards dicts, which throws errors.
     def _after_step(self, observation, reward, done, info):
         if not self.enabled:
             return done
 
+        # Use done["__all__"] b/c this is a multi-agent dict.
         if done["__all__"] and self.env_semantics_autoreset:
             # For envs with BlockingReset wrapping VNCEnv, this observation
             # will be the first one of the new episode
