@@ -126,6 +126,7 @@ py_test_module_list(
     "test_component_failures.py",
     "test_coordinator_server.py",
     "test_debug_tools.py",
+    "test_distributed_sort.py",
     "test_job.py",
     "test_k8s_operator_unit_tests.py",
     "test_kv.py",

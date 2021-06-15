@@ -24,26 +24,32 @@ from ray.experimental.raysort.types import BlockInfo, ByteCount, RecordCount, Pa
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--ray_address",
+        default="auto",
+        type=str,
+        help="if set to None, will launch a local Ray cluster",
+    )
+    parser.add_argument(
         "--total_data_size",
-        default=ByteCount(2e12),
+        default=1_000_000_000,
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=400,
+        default=4,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=1600,
+        default=4,
         type=int,
         help="number of reduce tasks",
     )
     parser.add_argument(
         "--reducer_batch_num_records",
-        default=RecordCount(1e6),
+        default=1_000_000,
         type=RecordCount,
         help="number of bytes to buffer before writing the output to EBS",
     )
@@ -205,7 +211,7 @@ def mapper(boundaries: List[int], mapper_id: PartId,
 
 def _dummy_merge(blocks: List[np.ndarray], _n: int) -> Iterable[memoryview]:
     for block in blocks:
-        yield memoryview(block)
+        yield block
 
 
 @ray.remote
@@ -296,7 +302,10 @@ def validate_output():
 
 
 def init():
-    ray.init(address="auto")
+    if args.ray_address is None:
+        ray.init()
+    else:
+        ray.init(address=args.ray_address)
     logging_utils.init()
     logging.info(args)
     logging.info(ray.available_resources())
