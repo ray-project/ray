@@ -49,6 +49,9 @@ class WorkerInterface {
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
   virtual void SetProcess(Process proc) = 0;
+  /// Return the worker shim process.
+  virtual Process GetShimProcess() const = 0;
+  virtual void SetShimProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
@@ -213,6 +216,8 @@ class Worker : public WorkerInterface {
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
+  /// The worker's shim process.
+  Process shim_proc_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.

@@ -465,8 +465,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of starting worker processes to the extra information
-    /// of the process.
+    /// A map from the pids of this shim processes to the extra information of
+    /// the process. The shim process PID is the same with worker process PID, except
+    /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.

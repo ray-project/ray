@@ -67,6 +67,13 @@ void Worker::SetProcess(Process proc) {
   proc_ = std::move(proc);
 }
 
+Process Worker::GetShimProcess() const { return shim_proc_; }
+
+void Worker::SetShimProcess(Process proc) {
+  RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
+  shim_proc_ = std::move(proc);
+}
+
 Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }

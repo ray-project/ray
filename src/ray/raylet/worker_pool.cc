@@ -465,6 +465,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   auto process = Process::FromPid(pid);
+  worker->SetShimProcess(shim_process);
   worker->SetProcess(process);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
@@ -489,10 +490,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  const auto &process = worker->GetProcess();
-  RAY_CHECK(process.IsValid());
+  const auto &shim_process = worker->GetShimProcess();
+  RAY_CHECK(shim_process.IsValid());
 
-  auto it = state.starting_worker_processes.find(process);
+  auto it = state.starting_worker_processes.find(shim_process);
   if (it != state.starting_worker_processes.end()) {
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
@@ -732,16 +733,16 @@ void WorkerPool::TryKillingIdleWorkers() {
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto process = idle_worker->GetProcess();
-
+    auto shim_process = idle_worker->GetShimProcess();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
-    if (worker_state.starting_worker_processes.count(process) > 0) {
+    if (worker_state.starting_worker_processes.count(shim_process) > 0) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;
     }
 
+    auto process = idle_worker->GetProcess();
     // Make sure all workers in this worker process are idle.
     // This block of code is needed by Java workers.
     auto workers_in_the_same_process = GetWorkersByProcess(process);
