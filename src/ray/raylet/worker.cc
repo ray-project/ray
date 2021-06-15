@@ -70,7 +70,7 @@ void Worker::SetProcess(Process proc) {
 Process Worker::GetShimProcess() const { return shim_proc_; }
 
 void Worker::SetShimProcess(Process proc) {
-  RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
+  RAY_CHECK(shim_proc_.IsNull());  // this procedure should not be called multiple times
   shim_proc_ = std::move(proc);
 }
 
