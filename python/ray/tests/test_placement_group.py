@@ -1,5 +1,4 @@
 import pytest
-import platform
 import os
 import sys
 import time
