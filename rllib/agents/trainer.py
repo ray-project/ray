@@ -907,7 +907,7 @@ class Trainer(Trainable):
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to evaluation workers.")
+        logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
@@ -1097,9 +1097,9 @@ class Trainer(Trainable):
     @PublicAPI
     def add_policy(
             self,
-            *,
             policy_id: PolicyID,
             policy_cls: Type[Policy],
+            *,
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
@@ -1137,7 +1137,7 @@ class Trainer(Trainable):
         def fn(worker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
-            return worker.add_policy(
+            worker.add_policy(
                 policy_id=policy_id,
                 policy_cls=policy_cls,
                 observation_space=observation_space,
@@ -1158,8 +1158,8 @@ class Trainer(Trainable):
     @PublicAPI
     def remove_policy(
             self,
-            *,
             policy_id: PolicyID = DEFAULT_POLICY_ID,
+            *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
     ) -> None:
@@ -1179,7 +1179,7 @@ class Trainer(Trainable):
         """
 
         def fn(worker):
-            return worker.remove_policy(
+            worker.remove_policy(
                 policy_id=policy_id,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,

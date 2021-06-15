@@ -6,12 +6,16 @@ to make new matches, and edits the policies_to_train list.
 """
 
 import argparse
+import numpy as np
 import os
 import pyspiel
+from open_spiel.python.rl_environment import Environment
+import sys
 
 import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.tune import register_env
@@ -41,7 +45,35 @@ parser.add_argument(
     default=0.85,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against it from here on.")
+parser.add_argument(
+    "--num-episodes-human-play",
+    type=int,
+    default=2,
+    help="How many episodes to play against the user on the command "
+    "line after training has finished.")
 args = parser.parse_args()
+
+
+def ask_user_for_action(time_step):
+    """Asks the user for a valid action on the command line and returns it.
+
+    Re-queries the user until she picks a valid one.
+
+    Args:
+        time_step: The open spiel Environment time-step object.
+    """
+    pid = time_step.observations["current_player"]
+    legal_moves = time_step.observations["legal_actions"][pid]
+    choice = -1
+    while choice not in legal_moves:
+        print("Choose an action from {}:".format(legal_moves))
+        sys.stdout.flush()
+        choice_str = input()
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            continue
+    return choice
 
 
 class SelfPlayCallback(DefaultCallbacks):
@@ -65,13 +97,14 @@ class SelfPlayCallback(DefaultCallbacks):
             if r_main > r_opponent:
                 won += 1
         win_rate = won / len(result["hist_stats"]["policy_main_reward"])
-        print(f"Win rate={win_rate} -> ", end="")
+        print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
         # policy.
         if win_rate > args.win_rate_threshold:
             self.current_opponent += 1
             new_pol_id = f"main_{self.current_opponent}"
+            print(f"playing against better opponent ({new_pol_id}) next.")
 
             def policy_mapping_fn(agent_id, episode, **kwargs):
                 # agent_id = [0|1] -> policy depends on episode ID
@@ -88,17 +121,21 @@ class SelfPlayCallback(DefaultCallbacks):
                 config={},
                 policy_mapping_fn=policy_mapping_fn,
             )
+
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
             # remain fixed.
-            new_policy.set_state(trainer.get_policy("main").get_state())
-            print("Play against better opponent next.")
+            main_state = trainer.get_policy("main").get_state()
+            new_policy.set_state(main_state)
+            # We need to sync the just copied local weights (from main policy)
+            # to all the remote workers as well.
+            trainer.workers.sync_weights()
         else:
-            print("Not good enough, keep learning.")
+            print("not good enough; will keep learning")
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)#TODO
 
     dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
     OBS_SPACE = dummy_env.observation_space
@@ -116,7 +153,6 @@ if __name__ == "__main__":
     config = {
         "env": "connect_four",
         "callbacks": SelfPlayCallback,
-        "num_workers": 2,
         "multiagent": {
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
@@ -146,6 +182,53 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run("PPO", stop=stop, config=config, verbose=1)
+    # Train the "main" policy to play really well using self-play.
+    results = tune.run(
+        "PPO", stop=stop, config=config, checkpoint_at_end=True, verbose=1)
+
+    # Restore trained trainer (set to non-explore behavior) and play against
+    # human on command line.
+    if args.num_episodes_human_play > 0:
+        num_episodes = 0
+        trainer = PPOTrainer(config=dict(config, **{"explore": False}))
+        trainer.restore(results.get_last_checkpoint())
+
+        # Play from the command line against the trained agent
+        # in an actual (non-RLlib-wrapped) open-spiel env.
+        human_player = 1
+        env = Environment("connect_four")
+
+        while num_episodes < args.num_episodes_human_play:
+            print("You play as {}".format("o" if human_player else "x"))
+            time_step = env.reset()
+            while not time_step.last():
+                player_id = time_step.observations["current_player"]
+                if player_id == human_player:
+                    action = ask_user_for_action(time_step)
+                else:
+                    obs = np.array(
+                        time_step.observations["info_state"][player_id])
+                    action = trainer.compute_action(obs, policy_id="main")
+                    # In case computer chooses an invalid action, pick a
+                    # random one.
+                    legal = time_step.observations["legal_actions"][player_id]
+                    if action not in legal:
+                        action = np.random.choice(legal)
+                time_step = env.step([action])
+                print(f"\n{env.get_state}")
+
+            print(f"\n{env.get_state}")
+
+            print("End of game!")
+            if time_step.rewards[human_player] > 0:
+                print("You win")
+            elif time_step.rewards[human_player] < 0:
+                print("You lose")
+            else:
+                print("Draw")
+            # Switch order of players
+            human_player = 1 - human_player
+
+            num_episodes += 1
 
     ray.shutdown()
