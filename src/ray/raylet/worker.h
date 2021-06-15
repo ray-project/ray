@@ -219,7 +219,8 @@ class Worker : public WorkerInterface {
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
-  /// The worker's shim process.
+  /// The worker's shim process. The shim process PID is the same with worker process PID,
+  /// except starting worker process in container.
   Process shim_proc_;
   /// The language type of this worker.
   Language language_;
