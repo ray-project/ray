@@ -209,20 +209,29 @@ def build_cluster(num_nodes, num_cpus, object_store_memory):
     return cluster
 
 
-def main():
+def main(ray_address=None,
+         object_store_memory=1e9,
+         num_partitions=5,
+         partition_size=200e6,
+         num_nodes=None,
+         num_cpus=8,
+         no_streaming=False,
+         use_wait=False):
     import argparse
     import numpy as np
     import time
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address", type=str, default=None)
-    parser.add_argument("--object-store-memory", type=float, default=1e9)
-    parser.add_argument("--num-partitions", type=int, default=5)
-    parser.add_argument("--partition-size", type=float, default=200e6)
-    parser.add_argument("--num-nodes", type=int, default=None)
-    parser.add_argument("--num-cpus", type=int, default=8)
-    parser.add_argument("--no-streaming", action="store_true", default=False)
-    parser.add_argument("--use-wait", action="store_true", default=False)
+    parser.add_argument("--ray-address", type=str, default=ray_address)
+    parser.add_argument(
+        "--object-store-memory", type=float, default=object_store_memory)
+    parser.add_argument("--num-partitions", type=int, default=num_partitions)
+    parser.add_argument("--partition-size", type=float, default=partition_size)
+    parser.add_argument("--num-nodes", type=int, default=num_nodes)
+    parser.add_argument("--num-cpus", type=int, default=num_cpus)
+    parser.add_argument(
+        "--no-streaming", action="store_true", default=no_streaming)
+    parser.add_argument("--use-wait", action="store_true", default=use_wait)
     args = parser.parse_args()
 
     is_multi_node = args.num_nodes
