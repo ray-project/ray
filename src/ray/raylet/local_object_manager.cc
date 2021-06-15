@@ -34,8 +34,12 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       continue;
     }
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    pinned_objects_size_ += object->GetSize();
-    pinned_objects_.emplace(object_id, std::make_pair(std::move(object), owner_address));
+    auto it = pinned_objects_.find(object_id);
+    if (it == pinned_objects_.end()) {
+      pinned_objects_size_ += object->GetSize();
+      pinned_objects_.emplace(object_id, std::move(object));
+    }
+    object_owners_[object_id].insert(owner_address);
   }
 }
 
@@ -58,13 +62,15 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
       RAY_CHECK(msg.has_worker_object_eviction_message());
       const auto object_eviction_msg = msg.worker_object_eviction_message();
       const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(object_id);
+      ReleaseFreedObject(object_id, owner_address);
       core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                            owner_address, object_id.Binary());
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, object_id]() { ReleaseFreedObject(object_id); };
+    auto owner_dead_callback = [this, object, owner_address_id]() {
+      ReleaseFreedObject(object_id, owner_address);
+    };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
@@ -75,12 +81,26 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
+void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id,
+                                            const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these stats. pinned, spilling, or spilled.
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
+
+  auto &owners = util::get_ref_or_fail(object_owners_, object_id);
+
+  RAY_CHECK(owners.erase(owner_address) == 1)
+      << "Fail to remove owner " << owner_address << " for object " << object_id;
+
+  // In case we still have owners for the object, we don't delete
+  if (!owners.empty()) {
+    return;
+  }
+
+  object_owners_.erase(object_id);
+
   spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();

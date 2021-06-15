@@ -23,6 +23,8 @@
 #include <thread>
 #include <unordered_map>
 
+#include "ray/util/logging.h"
+
 // Portable code for unreachable
 #if defined(_MSC_VER)
 #define UNREACHABLE __assume(0)
@@ -209,3 +211,16 @@ inline void SetThreadName(const std::string &thread_name) {
   pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
 }
+
+namespace ray {
+namespace util {
+
+template <class Map, typename Key = typename Map::key_type>
+typename Map::mapped_type &get_ref_or_fail(Map &map, const Key &key) {
+  auto it = map.find(key);
+  RAY_FATAL(it != map.end()) << " Key doesn't exist";
+  return it->second;
+}
+
+}  // namespace util
+}  // namespace ray

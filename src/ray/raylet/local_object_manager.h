@@ -165,8 +165,8 @@ class LocalObjectManager {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
+  /// Remove the owner of an object that has been freed by its owner.
+  void ReleaseoFreedObject(const ObjectID &object_id, const rpc::Address &owner_address);
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.
@@ -211,8 +211,7 @@ class LocalObjectManager {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
-      pinned_objects_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // Total size of objects pinned on this node.
   size_t pinned_objects_size_ = 0;
@@ -220,8 +219,10 @@ class LocalObjectManager {
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
-  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
-      objects_pending_spill_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
+
+  /// The list of owners of for each object
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<rpc::Address>> object_owners_;
 
   /// Objects that were spilled on this node but that are being restored.
   /// The field is used to dedup the same restore request while restoration is in
