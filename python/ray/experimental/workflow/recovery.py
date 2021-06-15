@@ -8,8 +8,6 @@ from ray.experimental.workflow import storage
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
 
-import ray.cloudpickle
-
 
 class WorkflowStepNotRecoverableException(Exception):
     def __init__(self, step_id: str):
