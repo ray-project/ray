@@ -215,6 +215,7 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "pg_time": pg_time,
         "num_pgs": MAX_PLACEMENT_GROUPS,
         "launch_time": launch_time,
-        "num_nodes": MAX_NUM_NODES
+        "num_nodes": MAX_NUM_NODES,
+        "success": "1"
     }
     json.dump(results, out_file)

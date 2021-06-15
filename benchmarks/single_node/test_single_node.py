@@ -203,6 +203,7 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "queued_time": queued_time,
         "num_queued": MAX_QUEUED_TASKS,
         "large_object_time": large_object_time,
-        "large_object_size": MAX_RAY_GET_SIZE
+        "large_object_size": MAX_RAY_GET_SIZE,
+        "success": "1"
     }
     json.dump(results, out_file)
