@@ -1,8 +1,5 @@
 import pytest
-import platform
-import os
 import sys
-import time
 
 try:
     import pytest_timeout
