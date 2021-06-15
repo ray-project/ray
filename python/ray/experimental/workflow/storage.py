@@ -23,6 +23,12 @@ from ray.experimental.workflow.constants import (
 
 
 class WorkflowStorage:
+    """Base class for accessing workflow storage.
+
+    TODO(suquark): Support S3 etc. in the future. Currently only support
+    local/shared filesystems.
+    """
+
     def __init__(self, workflow_root_dir: pathlib.Path):
         self._workflow_root_dir = workflow_root_dir
 
@@ -56,25 +62,27 @@ class WorkflowStorage:
                 return reader(f)
         raise FileNotFoundError(fullpath)
 
-    def file_exists(self, path):
+    def file_exists(self, path: pathlib.Path) -> bool:
         fullpath = self._workflow_root_dir / path
         backup_path = fullpath.with_suffix(fullpath.suffix + ".backup")
         return fullpath.exists() or backup_path.exists()
 
-    def write_object_atomic(self, obj, path: pathlib.Path, overwrite=True):
+    def write_object_atomic(self, obj, path: pathlib.Path,
+                            overwrite=True) -> None:
         self._write_atomic(ray.cloudpickle.dump, "wb", obj, path, overwrite)
 
-    def write_json_atomic(self, json_obj, path: pathlib.Path, overwrite=True):
+    def write_json_atomic(self, json_obj, path: pathlib.Path,
+                          overwrite=True) -> None:
         self._write_atomic(json.dump, "w", json_obj, path, overwrite)
 
-    def read_object(self, path: pathlib.Path):
+    def read_object(self, path: pathlib.Path) -> Any:
         return self._read_object(ray.cloudpickle.load, "rb", path)
 
-    def read_json(self, path: pathlib.Path):
+    def read_json(self, path: pathlib.Path) -> Any:
         return self._read_object(json.load, "r", path)
 
     def create_directory(self, path: pathlib.Path, parents=True,
-                         exist_ok=True):
+                         exist_ok=True) -> None:
         dir_path = self._workflow_root_dir / path
         dir_path.mkdir(parents=parents, exist_ok=exist_ok)
 
@@ -305,7 +313,8 @@ class WorkflowStorageReader:
                 step_dir / STEP_FUNC_BODY),
         )
 
-    def read_step_output(self, step_id: StepID):
+    def read_step_output(self, step_id: StepID) -> Any:
+        """Read the step output checkpoint."""
         return self._storage.read_object(
             self._steps_dir / step_id / STEP_OUTPUT)
 
