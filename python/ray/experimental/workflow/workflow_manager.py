@@ -153,6 +153,14 @@ class WorkflowStepFunction:
 
 def _commit_workflow(output: Union[Workflow, Any],
                      forward_output_to: Optional[StepID] = None):
+    """Execute workflow and checkpoint outputs.
+
+    Args:
+        output: The output of the workflow step.
+        forward_output_to: The output should also forward to the step
+            referred by 'forward_output_to'. When resume from that step,
+            that step can directly read this output.
+    """
     if isinstance(output, Workflow):
         storage.save_workflow_dag(output, forward_output_to)
         if forward_output_to is None:

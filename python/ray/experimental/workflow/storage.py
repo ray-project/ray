@@ -1,6 +1,6 @@
 import json
 import pathlib
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Callable, Tuple
 import uuid
 
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import ray
 import ray.cloudpickle
 
-from ray.experimental.workflow.common import Workflow, WorkflowInputs
+from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import configs
@@ -80,26 +80,29 @@ class WorkflowStorage:
 
 
 class WorkflowStepLogger:
-    def __init__(self, step_id: Optional[str] = None):
+    """The logger to save workflow step status to storage.
+
+    Args:
+        step_id: The ID of the workflow step.
+    """
+
+    def __init__(self, step_id: StepID):
         context = workflow_context.get_workflow_step_context()
         self._storage = WorkflowStorage(context.workflow_root_dir)
         self._workflow_dir = pathlib.Path(context.workflow_id)
         all_steps_dir: pathlib.Path = self._workflow_dir / STEPS_DIR
         objects_dir: pathlib.Path = self._workflow_dir / OBJECTS_DIR
 
-        if step_id is None:
-            scope = workflow_context.get_scope()
-            if scope:
-                step_dir = all_steps_dir / scope[-1]
-            else:
-                step_dir = all_steps_dir
-        else:
+        if step_id:
             step_dir = all_steps_dir / step_id
+        else:  # empty string means we are in the workflow job driver.
+            step_dir = all_steps_dir
         self._storage.create_directory(step_dir)
         self._objects_dir = objects_dir
         self._step_dir = step_dir
 
-    def save_inputs(self, inputs: WorkflowInputs):
+    def save_inputs(self, inputs: WorkflowInputs) -> None:
+        """Save workflow inputs."""
         args = inputs.args
         f = inputs.func_body
         metadata = {
@@ -117,15 +120,30 @@ class WorkflowStepLogger:
         self._storage.write_object_atomic(f, self._step_dir / STEP_FUNC_BODY)
         self._storage.write_object_atomic(args_obj, self._step_dir / STEP_ARGS)
 
-    def save_output(self, output: Any):
+    def save_output(self, output: Any) -> None:
+        """Save the output of a workflow step.
+
+        Args:
+            output: The output object.
+        """
         self._storage.write_object_atomic(output, self._step_dir / STEP_OUTPUT)
 
-    def save_outputs_metadata(self, metadata: Dict[str, Any]):
+    def save_outputs_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Save the output metadata json."""
         self._storage.write_json_atomic(metadata,
                                         self._step_dir / STEP_OUTPUTS_METADATA)
 
-    def update_output_forward(self, forward_output_to: str,
-                              output_step_id: str):
+    def update_output_forward(self, forward_output_to: StepID,
+                              output_step_id: StepID) -> None:
+        """Update output forward. The output of 'output_step_id' should
+        forward to the step 'forward_output_to'. When resume from
+        'forward_output_to' step, that step can directly read
+        the output of 'output_step_id'.
+
+        Args:
+            forward_output_to: step 'forward_output_to'.
+            output_step_id: step 'output_step_id'.
+        """
         if forward_output_to == "":
             # actually it equals to 'self._workflow_dir / STEPS_DIR / ""',
             # but we won't use the trick here because it is not obvious.
@@ -137,7 +155,16 @@ class WorkflowStepLogger:
         }, target_dir / STEP_OUTPUTS_FORWARD)
 
 
-def save_workflow_dag(workflow: Workflow, forward_output_to: Optional[str]):
+def save_workflow_dag(workflow: Workflow,
+                      forward_output_to: Optional[StepID]) -> None:
+    """Save the DAG of a workflow.
+
+    Args:
+        workflow: The output workflow to be saved.
+        forward_output_to: The output workflow should also forward to the step
+            referred by 'forward_output_to'. When resume from that step,
+            that step can directly read this output workflow.
+    """
     assert not workflow.executed
     workflows: Set[Workflow] = set()
     workflow._visit_workflow_dag(workflows)
@@ -145,20 +172,27 @@ def save_workflow_dag(workflow: Workflow, forward_output_to: Optional[str]):
         if not w.skip_saving_inputs:
             step_logger = WorkflowStepLogger(w.id)
             step_logger.save_inputs(w.get_inputs())
-    step_logger = WorkflowStepLogger()
-    step_logger.save_outputs_metadata({
-        "step_id": workflow.id,
-    })
+    step_logger = WorkflowStepLogger(workflow_context.get_current_step_id())
+    step_logger.save_outputs_metadata({"step_id": workflow.id})
     if forward_output_to is not None:
         step_logger.update_output_forward(forward_output_to, workflow.id)
 
 
-def save_workflow_output(output: Any, forward_output_to: Optional[str]):
+def save_workflow_output(output: Any,
+                         forward_output_to: Optional[StepID]) -> None:
+    """Save the output of a workflow.
+
+    Args:
+        output: The output object.
+        forward_output_to: The output should also forward to the step
+            referred by 'forward_output_to'. When resume from that step,
+            that step can directly read this output.
+    """
     if isinstance(output, ray.ObjectRef):
         obj = ray.get(output)
     else:
         obj = output
-    step_logger = WorkflowStepLogger()
+    step_logger = WorkflowStepLogger(workflow_context.get_current_step_id())
     step_logger.save_output(obj)
     if forward_output_to is not None:
         step_logger.update_output_forward(
@@ -172,7 +206,7 @@ class StepInspectResult:
     object_refs: Optional[List[str]] = None
     workflows: Optional[List[str]] = None
     output_object_valid: bool = False
-    output_step_id: Optional[str] = None
+    output_step_id: Optional[StepID] = None
 
     def is_recoverable(self) -> bool:
         return (self.args_valid and self.object_refs is not None
@@ -180,9 +214,7 @@ class StepInspectResult:
 
 
 class WorkflowStorageReader:
-    """
-    Access workflow from storage.
-    """
+    """Access workflow from storage. """
 
     def __init__(self, job_id: str, workflow_root_dir: Optional[str] = None):
         if workflow_root_dir is not None:
@@ -227,9 +259,6 @@ class WorkflowStorageReader:
     @property
     def job_id(self):
         return self._job_dir
-
-    def get_object_path(self, object_id):
-        return self._objects_dir / object_id
 
     def inspect_step(self, step_id: str) -> StepInspectResult:
         """
@@ -278,10 +307,6 @@ class WorkflowStorageReader:
                 step_dir / STEP_FUNC_BODY),
         )
 
-    def read_object(self, object_id):
-        object_file = self._objects_dir / object_id
-        return self._storage.read_object(object_file)
-
 
 class WorkflowStepReader:
     """
@@ -294,18 +319,49 @@ class WorkflowStepReader:
         self._steps_dir = self._workflow_dir / STEPS_DIR
         self._objects_dir = self._workflow_dir / OBJECTS_DIR
 
-    def get_func_body(self, step_id: str):
+    def get_func_body(self, step_id: StepID) -> Callable:
+        """Get the function body of the workflow step.
+
+        Args:
+            step_id: ID of the workflow step.
+
+        Returns:
+            A callable function.
+        """
         return self._storage.read_object(
             self._steps_dir / step_id / STEP_FUNC_BODY)
 
-    def get_step_output(self, step_id: str):
+    def get_step_output(self, step_id: StepID) -> Any:
+        """Get the output of the workflow step.
+
+        Args:
+            step_id: ID of the workflow step.
+
+        Returns:
+            Output of the workflow step.
+        """
         return self._storage.read_object(
             self._steps_dir / step_id / STEP_OUTPUT)
 
-    def get_step_args(self, step_id: str):
+    def get_step_args(self, step_id: StepID) -> Tuple[List, Dict[str, Any]]:
+        """Get the input arguments of the workflow step. This must be
+        done under a serialization context, otherwise the arguments would
+        not be reconstructed successfully.
+
+        Args:
+            step_id: ID of the workflow step.
+
+        Returns:
+            Args and kwargs.
+        """
         return self._storage.read_object(self._steps_dir / step_id / STEP_ARGS)
 
     def read_object_ref(self, object_id) -> ray.ObjectRef:
+        """Get the input object ref.
+
+        Returns:
+            The object ref.
+        """
         object_file = self._objects_dir / object_id
         with open(object_file, "rb") as f:
             obj = ray.cloudpickle.load(f)

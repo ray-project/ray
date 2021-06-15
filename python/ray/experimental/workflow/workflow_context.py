@@ -62,8 +62,9 @@ def update_workflow_step_context(context: Optional[WorkflowStepContext],
 
 
 def get_current_step_id() -> str:
+    """Get the current workflow step ID. Empty means we are in
+    the workflow job driver."""
     s = get_scope()
-    # empty string means it is workflow job driver
     return s[-1] if s else ""
 
 

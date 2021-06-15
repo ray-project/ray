@@ -81,12 +81,14 @@ class Workflow:
         return output
 
     def _visit_workflow_dag(self, visited_workflows: Set["Workflow"]):
+        """Collect all workflows in the DAG linked to the workflow."""
         visited_workflows.add(self)
         for w in self._input_workflows:
             if w not in visited_workflows:
                 w._visit_workflow_dag(visited_workflows)
 
-    def get_inputs(self):
+    def get_inputs(self) -> WorkflowInputs:
+        """Get the inputs of the workflow."""
         return WorkflowInputs(
             step_id=self._step_id,
             func_body=self._original_function,
