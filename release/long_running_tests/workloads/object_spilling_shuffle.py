@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import ray
@@ -6,6 +7,15 @@ from typing import List
 
 from ray import ObjectRef
 from ray.cluster_utils import Cluster
+
+
+def update_progress(result):
+    result["last_update"] = time.time()
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/release_test_output.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
 
 num_nodes = 4
 object_store_size = 100 * 1024 * 1024  # 100 MB.

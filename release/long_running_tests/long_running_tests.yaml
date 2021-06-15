@@ -1,0 +1,15 @@
+- name: actor_deaths
+  owner:
+    mail: "kai@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_1.yaml
+
+  run:
+    timeout: 600
+    # prepare: python wait_cluster.py 2 600
+    prepare: ray stop
+    script: python workloads/actor_deaths.py
+    long_running: True
