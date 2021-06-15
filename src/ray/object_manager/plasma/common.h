@@ -43,8 +43,6 @@ enum class ObjectState : int {
   PLASMA_CREATED = 1,
   /// Object is sealed and stored in the local Plasma Store.
   PLASMA_SEALED = 2,
-  /// Object is evicted to external store.
-  PLASMA_EVICTED = 3,
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
