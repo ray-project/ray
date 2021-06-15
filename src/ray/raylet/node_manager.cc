@@ -2210,6 +2210,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_object_store_bytes_primary_copy(
+        store_stats.object_store_bytes_primary_copy() +
+        cur_store.object_store_bytes_primary_copy());
     store_stats.set_object_store_bytes_fallback(
         store_stats.object_store_bytes_fallback() +
         cur_store.object_store_bytes_fallback());
