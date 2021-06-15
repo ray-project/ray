@@ -189,7 +189,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
       if (object_is_local_(object_id)) {
         auto it = object_pull_requests_.find(object_id);
         RAY_CHECK(it != object_pull_requests_.end());
-        num_bytes_already_pulled_ += it->second.object_size;
+        num_bytes_already_pulled += it->second.object_size;
       }
     }
     num_bytes_already_pulled_ = num_bytes_already_pulled;
