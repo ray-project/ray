@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import unittest
+import warnings
 
 
 @pytest.fixture(autouse=True)
@@ -38,17 +39,12 @@ class LoggerSuite(unittest.TestCase):
             def f():
                 return 42
 
-            no_warning_raised = False
-            try:
-                with self.assertWarns(UserWarning) as cm:
-                    for _ in range(TASK_WARNING_THRESHOLD):
-                        f.remote()
-            except AssertionError:
-                # assertion above failed, meaning no warning was raised
-                no_warning_raised = True
-            if not no_warning_raised:
-                raise AssertionError("The following warning was raised:\n "
-                                     f"{cm.warning}\n Expected no warnings.")
+            with warnings.catch_warnings(record=True) as warn_list:
+                for _ in range(TASK_WARNING_THRESHOLD):
+                    f.remote()
+            assert not any(f"More than {TASK_WARNING_THRESHOLD} remote tasks "
+                           "have been scheduled." in str(w.args[0])
+                           for w in warn_list)
 
     def testOutboundMessageSizeWarning(self):
         with ray_start_client_server() as ray:
