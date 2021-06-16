@@ -584,7 +584,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         if temp_dir is None:
             # Default temp directory.
             temp_dir = ray._private.utils.get_user_temp_dir()
-        # Using the user-supplied temp dir here unblocks on-prem
+        # Using the user-supplied temp dir unblocks on-prem
         # users who can't write to the default temp.
         current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
         # TODO: Consider using the custom temp_dir for this file across the
