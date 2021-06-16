@@ -47,6 +47,16 @@ def main(bucket):
         os.environ["AWS_SECRET_ACCESS_KEY"] = current_credentials.secret_key
         os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
 
+    if all(
+            os.getenv(k, "") in os.environ for k in [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN",
+            ]):
+        print("AWS secrets found in env.")
+    else:
+        print("Warning: No AWS secrets found in env!")
+
     ray.init(address="auto")
 
     num_samples = 16
