@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
-import java.nio.ByteBuffer;
 import java.util.List;
 
 /** `GlobalStateAccessor` is used for accessing information from GCS. */
@@ -55,7 +54,7 @@ public class GlobalStateAccessor {
   }
 
   /** Returns next job id. */
-  public ByteBuffer getNextJobID() {
+  public byte[] getNextJobID() {
     // Get next job id from GCS.
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
@@ -143,7 +142,7 @@ public class GlobalStateAccessor {
 
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
-  private native ByteBuffer nativeGetNextJobID(long nativePtr);
+  private native byte[] nativeGetNextJobID(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 

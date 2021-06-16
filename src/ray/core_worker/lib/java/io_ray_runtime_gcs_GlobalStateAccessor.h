@@ -61,9 +61,9 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllJobInfo(JNIEnv *, jobjec
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetNextJobID
- * Signature: (J)Ljava/nio/ByteBuffer;
+ * Signature: (J)[B
  */
-JNIEXPORT jobject JNICALL
+JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *, jobject, jlong);
 
 /*
