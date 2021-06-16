@@ -1,6 +1,6 @@
 .. _cluster-index:
 
-Ray Cluster Overview
+Ray Deployment Overview
 ====================
 
 What is a Ray cluster?
