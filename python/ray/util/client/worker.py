@@ -342,17 +342,17 @@ class Worker:
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
                 "communication overhead. If you're running many fine-grained "
-                "tasks consider batching them (details in the Ray Design "
-                "Pattern document).")
+                "tasks, consider combining them into a single remote "
+                "function.")
         if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
                 and log_once("client_communication_overhead_warning"):
             logger.warning(
                 "More than 10MB of messages have been created to schedule "
                 "tasks on the server. If you're running many fine-grained "
-                "tasks consider batching them (details in the Ray Design "
-                "Pattern document). If you have large arguments that are "
-                "frequently reused, consider storing them remotely with "
-                "ray.put or wrapping them in an actor object.")
+                "tasks consider, consider combining them into a single remote "
+                "function. If you have large arguments that are frequently "
+                "reused, consider storing them remotely with ray.put or "
+                "wrapping them in an actor object.")
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
