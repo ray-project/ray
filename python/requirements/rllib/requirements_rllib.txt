@@ -27,8 +27,8 @@ pettingzoo==1.8.2
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
-# DeemMind open-spiel
-open_spiel
+# DeepMind open-spiel
+open_spiel==0.3.1
 
 # Other.
 # ------
