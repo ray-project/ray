@@ -26,8 +26,12 @@
   run:
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
-    time_key: last_update
-    max_update_delay: 120
+    long_running: True
+
+  smoke_test:
+    run:
+      timeout: 3600
+
 
 - name: network_overhead
   cluster:

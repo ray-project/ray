@@ -19,7 +19,7 @@ from ray import tune
 from ray.tune.utils.release_test_util import timed_tune_run
 
 
-def main(smoke_test=False):
+def main(smoke_test: bool = False):
     ray.init(address="auto")
 
     num_samples = 100 if not smoke_test else 20
