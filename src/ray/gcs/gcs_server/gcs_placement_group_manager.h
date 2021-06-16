@@ -207,9 +207,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// an placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
-  /// \param is_insfeasble whether the scheduler can be retry or not currently.
+  /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      bool is_insfeasble = true);
+                                      bool is_feasible = true);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.

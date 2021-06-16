@@ -221,11 +221,11 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
-    std::shared_ptr<GcsPlacementGroup> placement_group, bool is_infeasible) {
+    std::shared_ptr<GcsPlacementGroup> placement_group, bool is_feasible) {
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
 
-  if (!is_infeasible) {
+  if (!is_feasible) {
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
