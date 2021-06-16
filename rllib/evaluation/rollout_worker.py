@@ -363,8 +363,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
-        self.policy_mapping_fn = lambda **kwargs: DEFAULT_POLICY_ID
+
+        # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
+        # independent on the agent ID and the episode passed in.
+        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
         self.set_policy_mapping_fn(policy_mapping_fn)
+
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
