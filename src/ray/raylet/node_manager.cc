@@ -247,7 +247,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*core_worker_subscriber_=*/
           std::make_shared<pubsub::Subscriber>(
               self_node_id_, config.node_manager_address, config.node_manager_port,
-              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_)),
+              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
+              &io_service_)),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -436,15 +437,14 @@ ray::Status NodeManager::RegisterGcs() {
       "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms != -1 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
-        asio_stats_print_interval_ms,
+        event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
@@ -516,6 +516,20 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
+void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
+  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
+  ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
+  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
+          normal_task_resources)) {
+    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
+    resources_data.set_resources_normal_task_changed(true);
+    auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
+    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                       normal_task_resources.GetResourceMap().end()};
+    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
+  }
+}
+
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
@@ -525,6 +539,9 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+    FillNormalTaskResourceUsage(resources_data);
+  }
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -2014,8 +2031,8 @@ std::string NodeManager::DebugString() const {
     result << "\n" << entry.first;
   }
 
-  // Event loop stats.
-  result << "\nEvent loop stats:" << io_service_.StatsString();
+  // Event stats.
+  result << "\nEvent stats:" << io_service_.StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
@@ -2210,6 +2227,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_object_store_bytes_primary_copy(
+        store_stats.object_store_bytes_primary_copy() +
+        cur_store.object_store_bytes_primary_copy());
     store_stats.set_object_store_bytes_fallback(
         store_stats.object_store_bytes_fallback() +
         cur_store.object_store_bytes_fallback());
