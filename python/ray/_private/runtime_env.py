@@ -166,13 +166,6 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        if self._dict.get("working_dir"):
-            if self._dict["env_vars"] is None:
-                self._dict["env_vars"] = {}
-            # TODO(ekl): env vars is probably not the right long term impl.
-            self._dict["env_vars"].update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
-
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
 
@@ -577,6 +570,7 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     for pkg_uri in pkg_uris:
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
+        logger.error("PKG_URI", pkg_uri)
         pkg_file = Path(_get_local_path(pkg_uri))
         with FileLock(str(pkg_file) + ".lock"):
             pkg_dir = fetch_package(pkg_uri)
