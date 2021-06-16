@@ -74,7 +74,7 @@ constexpr int GRANULARITY_MULTIPLIER = 2;
 static bool allocated_once = false;
 
 // Give each mmap record a unique id, so we can disambiguate fd reuse.
-static int64_t next_mmap_unique_id = 1;
+static int64_t next_mmap_unique_id = INVALID_UNIQUE_FD_ID + 1;
 
 // Populated on the first allocation so we can track which allocations fall within
 // the initial region vs outside.

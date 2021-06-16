@@ -180,7 +180,7 @@ table PlasmaCreateReply {
   // being sent to the client right after this message.
   store_fd: int;
   // The unique id of the store file descriptor in case of fd reuse.
-  unique_fd_id: int;
+  unique_fd_id: long;
   // The size in bytes of the segment for the store file descriptor (needed to
   // call mmap).
   mmap_size: long;

@@ -282,7 +282,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
   if (pointer != nullptr) {
     GetMallocMapinfo(pointer, fd, map_size, offset);
     RAY_CHECK(fd->first != INVALID_FD);
-    RAY_CHECK(fd->second != 0);
+    RAY_CHECK(fd->second != INVALID_UNIQUE_FD_ID);
     *error = PlasmaError::OK;
   }
 

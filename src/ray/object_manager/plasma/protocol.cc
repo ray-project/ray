@@ -600,7 +600,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
                                        object.metadata_size, object.device_num));
   }
   std::vector<int> store_fds_as_int;
-  std::vector<long> unique_fd_ids;
+  std::vector<int64_t> unique_fd_ids;
   for (MEMFD_TYPE store_fd : store_fds) {
     store_fds_as_int.push_back(FD2INT(store_fd.first));
     unique_fd_ids.push_back(store_fd.second);

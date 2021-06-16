@@ -56,3 +56,4 @@ mach_port_t pthread_mach_thread_np(pthread_t);
 // Pair of (fd, unique_id). We need to separately track a unique id here
 // since fd values can get re-used by the operating system.
 #define MEMFD_TYPE std::pair<MEMFD_TYPE_NON_UNIQUE, int64_t>
+#define INVALID_UNIQUE_FD_ID 0
