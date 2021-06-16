@@ -247,10 +247,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Deploying Ray
+   :caption: Multi-node Ray
 
    cluster/index.rst
    cluster/quickstart.rst
+   cluster/guide.rst
    cluster/reference.rst
    cluster/cloud.rst
    cluster/deploy.rst
