@@ -284,10 +284,15 @@ class HEBOSearch(Searcher):
                             error: bool = False,
                             pruned: bool = False,
                             intermediate_values: Optional[List[float]] = None):
+        if intermediate_values:
+            logger.warning("HEBO doesn't use intermediate_values. Ignoring.")
         if not error and not pruned:
             self._opt.observe(
                 pd.DataFrame([parameters]),
                 np.array([value]) * self._metric_op)
+        else:
+            logger.warning("Only non errored and non pruned points"
+                           " can be added to HEBO.")
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
