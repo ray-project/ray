@@ -35,8 +35,6 @@ cc_library(
     hdrs = glob([
         "thirdparty/include/**/*.h",
         "thirdparty/include/**/*.hpp",
-        "thirdparty/include/**/**/*.h",
-        "thirdparty/include/**/**/*.hpp",
     ]),
     linkopts = ["-Wl,-rpath, ./"],
     strip_include_prefix = "thirdparty/include",
