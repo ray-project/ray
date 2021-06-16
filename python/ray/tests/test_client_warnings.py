@@ -1,10 +1,19 @@
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import TASK_WARNING_THRESHOLD
+from ray.util.debug import _logged
 
 import numpy as np
+import pytest
 
 import logging
 import unittest
+
+
+@pytest.fixture(autouse=True)
+def reset_debug_logs():
+    """Resets internal state of ray.util.debug so that warning can be tested
+    for more than once in the same process"""
+    _logged.clear()
 
 
 class LoggerSuite(unittest.TestCase):

@@ -37,6 +37,7 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -159,7 +160,6 @@ class Worker:
         # scheduled
         self.total_num_tasks_scheduled = 0
         self.total_outbound_message_size_bytes = 0
-        self.communication_overhead_warning_raised = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
@@ -336,19 +336,16 @@ class Worker:
                 raise
         self.total_num_tasks_scheduled += 1
         self.total_outbound_message_size_bytes += task.ByteSize()
-        if not self.communication_overhead_warning_raised and \
-                self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD:
+        if self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD and \
+                log_once("client_communication_overhead_warning"):
             logger.warning(
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
                 "communication overhead. If you're running many fine-grained "
                 "tasks consider batching them (details in the Ray Design "
                 "Pattern document).")
-            self.communication_overhead_warning_raised = True
-        over_message_size_threshold = \
-            self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD
-        if not self.communication_overhead_warning_raised and \
-                over_message_size_threshold:
+        if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
+                and log_once("client_communication_overhead_warning"):
             logger.warning(
                 "More than 10MB of messages have been created to schedule "
                 "tasks on the server. If you're running many fine-grained "
@@ -356,7 +353,6 @@ class Worker:
                 "Pattern document). If you have large arguments that are "
                 "frequently reused, consider storing them remotely with "
                 "ray.put or wrapping them in an actor object.")
-            self.communication_overhead_warning_raised = True
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
