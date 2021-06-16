@@ -14,70 +14,12 @@ from horovod.torch.elastic.sampler import ElasticSampler
 from horovod.ray import ray_logger
 from horovod.ray.elastic import TestDiscovery, ElasticRayExecutor
 
-# Training settings
-parser = argparse.ArgumentParser(
-    description='PyTorch MNIST Example',
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    '--log-dir', default='./logs', help='tensorboard log directory')
-parser.add_argument(
-    '--checkpoint-format',
-    default='./checkpoint-{epoch}.pth.tar',
-    help='checkpoint file format')
-parser.add_argument(
-    '--data-dir', default='./new_data', help='MNIST dataset directory')
-
-parser.add_argument(
-    '--epochs', type=int, default=90, help='number of epochs to train')
-parser.add_argument(
-    '--lr', type=float, default=0.01, help='learning rate for a single GPU')
-
-parser.add_argument(
-    '--no-cuda',
-    action='store_true',
-    default=False,
-    help='disables CUDA training')
-parser.add_argument('--seed', type=int, default=42, help='random seed')
-parser.add_argument(
-    '--forceful',
-    action="store_true",
-    help="Removes the node upon deallocation (non-gracefully).")
-parser.add_argument(
-    '--change-frequency-s', type=int, default=20, help='random seed')
-
-# Elastic Horovod settings
-parser.add_argument(
-    '--batches-per-commit',
-    type=int,
-    default=50,
-    help='number of batches processed before calling `state.commit()`; '
-    'commits prevent losing progress if an error occurs, but slow '
-    'down training.')
-parser.add_argument(
-    '--batches-per-host-check',
-    type=int,
-    default=10,
-    help=(
-        'number of batches processed before calling '
-        '`state.check_host_updates()`; '
-        'this check is very fast compared to state.commit() (which calls this '
-        'as part of the commit process) but because it '
-        'still incurs some cost due to broadcast, '
-        'we may not want to perform it every batch.'))
-parser.add_argument(
-    '--data-dir',
-    help='location of the training dataset in the local filesystem (will be downloaded if needed)'
-)
-
-args = parser.parse_args()
-
-
-def load_data_mnist():
+def load_data_mnist(data_dir=None, cuda=False):
     # Horovod: limit # of CPU threads to be used per worker.
     torch.set_num_threads(4)
 
-    kwargs = {'num_workers': 0, 'pin_memory': True} if args.cuda else {}
-    data_dir = args.data_dir or './data'
+    kwargs = {'num_workers': 0, 'pin_memory': True} if cuda else {}
+    data_dir = data_dir or './data'
     from filelock import FileLock
     with FileLock(os.path.expanduser("~/.horovod_lock")):
         train_dataset = \
@@ -320,7 +262,9 @@ def run(large=False):
 
     full_train(state, train_loader)
 
-def main():
+def main(log_dir, chekpoint_format="./checkpoint-{epoch}.pth.tar",
+         data_dir="./new_data", epochs=90, lr=0.01, no_cuda=False, seed=42,
+         forceful=False, change_frequency_s=20):
     settings = ElasticRayExecutor.create_settings(verbose=2)
     settings.discovery = TestDiscovery(
         min_hosts=2,
@@ -339,7 +283,85 @@ def main():
                    TensorboardCallback(args.log_dir)])
 
 if __name__ == '__main__':
+    # Training settings
+    parser = argparse.ArgumentParser(
+        description='PyTorch MNIST Example',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '--log-dir', default='./logs', help='tensorboard log directory')
+    parser.add_argument(
+        '--checkpoint-format',
+        default='./checkpoint-{epoch}.pth.tar',
+        help='checkpoint file format')
+    parser.add_argument(
+        '--data-dir', default='./new_data', help='MNIST dataset directory')
+
+    parser.add_argument(
+        '--epochs', type=int, default=90, help='number of epochs to train')
+    parser.add_argument(
+        '--lr', type=float, default=0.01,
+        help='learning rate for a single GPU')
+
+    parser.add_argument(
+        '--no-cuda',
+        action='store_true',
+        default=False,
+        help='disables CUDA training')
+    parser.add_argument('--seed', type=int, default=42, help='random seed')
+    parser.add_argument(
+        '--forceful',
+        action="store_true",
+        help="Removes the node upon deallocation (non-gracefully).")
+    parser.add_argument(
+        '--change-frequency-s', type=int, default=20, help='random seed')
+
+    # Elastic Horovod settings
+    parser.add_argument(
+        '--batches-per-commit',
+        type=int,
+        default=50,
+        help='number of batches processed before calling `state.commit()`; '
+             'commits prevent losing progress if an error occurs, but slow '
+             'down training.')
+    parser.add_argument(
+        '--batches-per-host-check',
+        type=int,
+        default=10,
+        help=(
+            'number of batches processed before calling '
+            '`state.check_host_updates()`; '
+            'this check is very fast compared to state.commit() (which calls this '
+            'as part of the commit process) but because it '
+            'still incurs some cost due to broadcast, '
+            'we may not want to perform it every batch.'))
+    parser.add_argument(
+        '--data-dir',
+        help='location of the training dataset in the local filesystem (will be downloaded if needed)'
+    )
+    parser.add_argument(
+        "--address",
+        require=False,
+        types=str,
+        default=None,
+        help="Address of Ray cluster."
+    )
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
+
+    args = parser.parse_args()
+
     import ray
-    ray.init(address="auto")
+
+    if args.address:
+        ray.init(args.address)
+    elif args.server_address:
+        ray.util.connect(args.server_address)
+    else:
+        ray.init()
     main()
 
