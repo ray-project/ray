@@ -587,9 +587,8 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
 
 TEST_F(ServiceBasedGcsClientTest, TestGetNextJobID) {
   JobID job_id1 = GetNextJobID();
-  ASSERT_TRUE(job_id1.ToInt() == 1);
   JobID job_id2 = GetNextJobID();
-  ASSERT_TRUE(job_id2.ToInt() == 2);
+  ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
