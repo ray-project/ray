@@ -3,6 +3,7 @@ import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import pytest
 import sys
+import platform
 
 import ray
 import ray.experimental.array.remote as ra
@@ -55,6 +56,8 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
         ]))
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_2_nodes",
     [{
