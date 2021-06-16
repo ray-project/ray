@@ -12,7 +12,7 @@ import ray._private.utils
 # 'pathlib.Path' for convenience.
 
 
-class WorkflowStorage:
+class Storage:
     """Base class for accessing workflow storage.
 
     TODO(suquark): Support S3 etc. in the future. Currently only support
@@ -81,7 +81,7 @@ class WorkflowStorage:
         dir_path.mkdir(parents=parents, exist_ok=exist_ok)
 
 
-_global_storage = WorkflowStorage(
+_global_storage = Storage(
     pathlib.Path(ray._private.utils.get_ray_temp_dir()) / "workflows")
 
 
@@ -91,4 +91,4 @@ def get_global_storage():
 
 def set_global_storage(workflow_root_dir):
     global _global_storage
-    _global_storage = WorkflowStorage(workflow_root_dir)
+    _global_storage = Storage(workflow_root_dir)

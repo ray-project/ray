@@ -20,29 +20,31 @@ from ray.experimental.workflow.constants import (
     STEP_FUNC_BODY, STEP_ARGS, STEP_OUTPUT, STEP_OUTPUTS_FORWARD)
 
 
-class WorkflowStepLogger:
-    """The logger to save workflow step status to storage.
+@dataclass
+class StepInspectResult:
+    args_valid: bool = False
+    func_body_valid: bool = False
+    object_refs: Optional[List[str]] = None
+    workflows: Optional[List[str]] = None
+    output_object_valid: bool = False
+    output_step_id: Optional[StepID] = None
 
-    Args:
-        step_id: The ID of the workflow step.
-    """
+    def is_recoverable(self) -> bool:
+        return (self.args_valid and self.object_refs is not None
+                and self.workflows is not None and self.func_body_valid)
 
-    def __init__(self, step_id: StepID, store: storage.WorkflowStorage):
+
+class WorkflowStorage:
+    """Access workflow in storage. This is a high-level function,
+    which does not care about the underlining storage implementation."""
+
+    def __init__(self, workflow_id: str, store: storage.Storage):
         self._storage = store
-        context = workflow_context.get_workflow_step_context()
-        self._workflow_dir = pathlib.Path(context.workflow_id)
-        all_steps_dir: pathlib.Path = self._workflow_dir / STEPS_DIR
-        objects_dir: pathlib.Path = self._workflow_dir / OBJECTS_DIR
+        self._workflow_dir = pathlib.Path(workflow_id)
+        self._steps_dir = self._workflow_dir / STEPS_DIR
+        self._objects_dir = self._workflow_dir / OBJECTS_DIR
 
-        if step_id:
-            step_dir = all_steps_dir / step_id
-        else:  # empty string means we are in the workflow job driver.
-            step_dir = all_steps_dir
-        self._storage.create_directory(step_dir)
-        self._objects_dir = objects_dir
-        self._step_dir = step_dir
-
-    def save_inputs(self, inputs: WorkflowInputs) -> None:
+    def write_step_inputs(self, step_id: StepID, inputs: WorkflowInputs):
         """Save workflow inputs."""
         args = inputs.args
         f = inputs.func_body
@@ -56,23 +58,20 @@ class WorkflowStepLogger:
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
             args_obj = ray.get(args)
+        step_dir = self._steps_dir / step_id
+        if not self._storage.directory_exists(step_dir):
+            self._storage.create_directory(step_dir)
         self._storage.write_json_atomic(metadata,
-                                        self._step_dir / STEP_INPUTS_METADATA)
-        self._storage.write_object_atomic(f, self._step_dir / STEP_FUNC_BODY)
-        self._storage.write_object_atomic(args_obj, self._step_dir / STEP_ARGS)
+                                        step_dir / STEP_INPUTS_METADATA)
+        self._storage.write_object_atomic(f, step_dir / STEP_FUNC_BODY)
+        self._storage.write_object_atomic(args_obj, step_dir / STEP_ARGS)
 
-    def save_output(self, output: Any) -> None:
-        """Save the output of a workflow step.
-
-        Args:
-            output: The output object.
-        """
-        self._storage.write_object_atomic(output, self._step_dir / STEP_OUTPUT)
-
-    def save_outputs_metadata(self, metadata: Dict[str, Any]) -> None:
+    def write_step_output_metadata(self, step_id: StepID,
+                                   metadata: Dict[str, Any]) -> None:
         """Save the output metadata json."""
+        step_dir = self._steps_dir / step_id
         self._storage.write_json_atomic(metadata,
-                                        self._step_dir / STEP_OUTPUTS_METADATA)
+                                        step_dir / STEP_OUTPUTS_METADATA)
 
     def update_output_forward(self, forward_output_to: StepID,
                               output_step_id: StepID) -> None:
@@ -95,87 +94,62 @@ class WorkflowStepLogger:
             "step_id": output_step_id
         }, target_dir / STEP_OUTPUTS_FORWARD)
 
+    def write_step_output(self, step_id: StepID, output: Any) -> None:
+        """Save the output of a workflow step.
 
-def save_workflow_dag(workflow: Workflow,
-                      forward_output_to: Optional[StepID]) -> None:
-    """Save the DAG of a workflow.
+        Args:
+            output: The output object.
+        """
+        step_dir = self._steps_dir / step_id
+        self._storage.write_object_atomic(output, step_dir / STEP_OUTPUT)
 
-    Args:
-        workflow: The output workflow to be saved.
-        forward_output_to: The output workflow should also forward to the step
-            referred by 'forward_output_to'. When resume from that step,
-            that step can directly read this output workflow.
-    """
-    assert not workflow.executed
-    workflows: Set[Workflow] = set()
-    workflow._visit_workflow_dag(workflows)
-    store = storage.get_global_storage()
-    for w in workflows:
-        if not w.skip_saving_inputs:
-            step_logger = WorkflowStepLogger(w.id, store)
-            step_logger.save_inputs(w.get_inputs())
-    step_logger = WorkflowStepLogger(workflow_context.get_current_step_id(),
-                                     store)
-    step_logger.save_outputs_metadata({"step_id": workflow.id})
-    if forward_output_to is not None:
-        step_logger.update_output_forward(forward_output_to, workflow.id)
+    def read_step_output(self, step_id: StepID) -> Any:
+        """Get the output of the workflow step from checkpoint.
 
+        Args:
+            step_id: ID of the workflow step.
 
-def save_workflow_output(output: Any,
-                         forward_output_to: Optional[StepID]) -> None:
-    """Save the output of a workflow.
+        Returns:
+            Output of the workflow step.
+        """
+        return self._storage.read_object(
+            self._steps_dir / step_id / STEP_OUTPUT)
 
-    Args:
-        output: The output object.
-        forward_output_to: The output should also forward to the step
-            referred by 'forward_output_to'. When resume from that step,
-            that step can directly read this output.
-    """
-    if isinstance(output, ray.ObjectRef):
-        obj = ray.get(output)
-    else:
-        obj = output
-    store = storage.get_global_storage()
-    step_logger = WorkflowStepLogger(workflow_context.get_current_step_id(),
-                                     store)
-    step_logger.save_output(obj)
-    if forward_output_to is not None:
-        step_logger.update_output_forward(
-            forward_output_to, workflow_context.get_current_step_id())
+    def read_step_func_body(self, step_id: StepID) -> Callable:
+        """Get the function body of the workflow step.
 
+        Args:
+            step_id: ID of the workflow step.
 
-@dataclass
-class StepInspectResult:
-    args_valid: bool = False
-    func_body_valid: bool = False
-    object_refs: Optional[List[str]] = None
-    workflows: Optional[List[str]] = None
-    output_object_valid: bool = False
-    output_step_id: Optional[StepID] = None
+        Returns:
+            A callable function.
+        """
+        return self._storage.read_object(
+            self._steps_dir / step_id / STEP_FUNC_BODY)
 
-    def is_recoverable(self) -> bool:
-        return (self.args_valid and self.object_refs is not None
-                and self.workflows is not None and self.func_body_valid)
+    def read_step_args(self, step_id: StepID) -> Tuple[List, Dict[str, Any]]:
+        """Get the input arguments of the workflow step. This must be
+        done under a serialization context, otherwise the arguments would
+        not be reconstructed successfully.
 
+        Args:
+            step_id: ID of the workflow step.
 
-class WorkflowStorageReader:
-    """Access workflow from storage. """
+        Returns:
+            Args and kwargs.
+        """
+        return self._storage.read_object(self._steps_dir / step_id / STEP_ARGS)
 
-    def __init__(self, workflow_id: str, store: storage.WorkflowStorage):
-        self._storage = store
-        self._workflow_id = workflow_id
-        self._workflow_dir = pathlib.Path(workflow_id)
-        if not self._storage.directory_exists(self._workflow_dir):
-            raise ValueError("Cannot find the workflow job "
-                             f"'{self._workflow_dir}'")
-        self._steps_dir = self._workflow_dir / STEPS_DIR
-        if not self._storage.directory_exists(self._steps_dir):
-            raise ValueError(f"The workflow job record is invalid: {STEPS_DIR}"
-                             " not found.")
-        # NOTE: "objects_dir" may not exist. We do not check it.
-        self._objects_dir = self._workflow_dir / OBJECTS_DIR
+    def read_object_ref(self, object_id) -> ray.ObjectRef:
+        """Get the input object ref.
 
-    def get_entrypoint_step_id(self):
+        Returns:
+            The object ref.
+        """
+        obj = self._storage.read_object(self._objects_dir / object_id)
+        return ray.put(obj)  # simulate an ObjectRef
+
+    def get_entrypoint_step_id(self) -> StepID:
         step_id = self._locate_output_step(self._steps_dir)
         if not isinstance(step_id, str):
             raise ValueError("Cannot locate workflow entrypoint step.")
@@ -205,7 +179,7 @@ class WorkflowStorageReader:
         except (FileNotFoundError, json.JSONDecodeError):
             return None
 
-    def inspect_step(self, step_id: str) -> StepInspectResult:
+    def inspect_step(self, step_id: StepID) -> StepInspectResult:
         """
         Get the status of a workflow step. The status indicates whether
         the workflow step can be recovered etc.
@@ -245,65 +219,57 @@ class WorkflowStorageReader:
                 step_dir / STEP_FUNC_BODY),
         )
 
-    def read_step_output(self, step_id: StepID) -> Any:
-        """Read the step output checkpoint."""
-        return self._storage.read_object(
-            self._steps_dir / step_id / STEP_OUTPUT)
+    def validate_workflow(self) -> None:
+        """Check if the workflow structured correctly."""
+        if not self._storage.directory_exists(self._workflow_dir):
+            raise ValueError("Cannot find the workflow job "
+                             f"'{self._workflow_dir}'")
+        if not self._storage.directory_exists(self._steps_dir):
+            raise ValueError(f"The workflow job record is invalid: {STEPS_DIR}"
+                             " not found.")
 
 
-class WorkflowStepReader:
+def save_workflow_dag(workflow: Workflow,
+                      forward_output_to: Optional[StepID]) -> None:
+    """Save the DAG of a workflow.
+
+    Args:
+        workflow: The output workflow to be saved.
+        forward_output_to: The output workflow should also forward to the step
+            referred by 'forward_output_to'. When resume from that step,
+            that step can directly read this output workflow.
     """
-    Access workflow step from storage.
+    assert not workflow.executed
+    workflows: Set[Workflow] = set()
+    workflow._visit_workflow_dag(workflows)
+    context = workflow_context.get_workflow_step_context()
+    store = WorkflowStorage(context.workflow_id, storage.get_global_storage())
+    for w in workflows:
+        if not w.skip_saving_inputs:
+            store.write_step_inputs(w.id, w.get_inputs())
+    store.write_step_output_metadata(workflow_context.get_current_step_id(),
+                                     {"step_id": workflow.id})
+    if forward_output_to is not None:
+        store.update_output_forward(forward_output_to, workflow.id)
+
+
+def save_workflow_output(output: Any,
+                         forward_output_to: Optional[StepID]) -> None:
+    """Save the output of a workflow.
+
+    Args:
+        output: The output object.
+        forward_output_to: The output should also forward to the step
+            referred by 'forward_output_to'. When resume from that step,
+            that step can directly read this output.
     """
-
-    def __init__(self, workflow_id: str, store: storage.WorkflowStorage):
-        self._storage = store
-        self._workflow_dir = pathlib.Path(workflow_id)
-        self._steps_dir = self._workflow_dir / STEPS_DIR
-        self._objects_dir = self._workflow_dir / OBJECTS_DIR
-
-    def get_func_body(self, step_id: StepID) -> Callable:
-        """Get the function body of the workflow step.
-
-        Args:
-            step_id: ID of the workflow step.
-
-        Returns:
-            A callable function.
-        """
-        return self._storage.read_object(
-            self._steps_dir / step_id / STEP_FUNC_BODY)
-
-    def get_step_output(self, step_id: StepID) -> Any:
-        """Get the output of the workflow step.
-
-        Args:
-            step_id: ID of the workflow step.
-
-        Returns:
-            Output of the workflow step.
-        """
-        return self._storage.read_object(
-            self._steps_dir / step_id / STEP_OUTPUT)
-
-    def get_step_args(self, step_id: StepID) -> Tuple[List, Dict[str, Any]]:
-        """Get the input arguments of the workflow step. This must be
-        done under a serialization context, otherwise the arguments would
-        not be reconstructed successfully.
-
-        Args:
-            step_id: ID of the workflow step.
-
-        Returns:
-            Args and kwargs.
-        """
-        return self._storage.read_object(self._steps_dir / step_id / STEP_ARGS)
-
-    def read_object_ref(self, object_id) -> ray.ObjectRef:
-        """Get the input object ref.
-
-        Returns:
-            The object ref.
-        """
-        obj = self._storage.read_object(self._objects_dir / object_id)
-        return ray.put(obj)  # simulate an ObjectRef
+    if isinstance(output, ray.ObjectRef):
+        obj = ray.get(output)
+    else:
+        obj = output
+    context = workflow_context.get_workflow_step_context()
+    store = WorkflowStorage(context.workflow_id, storage.get_global_storage())
+    store.write_step_output(workflow_context.get_current_step_id(), obj)
+    if forward_output_to is not None:
+        store.update_output_forward(forward_output_to,
+                                    workflow_context.get_current_step_id())
