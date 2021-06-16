@@ -53,5 +53,6 @@ mach_port_t pthread_mach_thread_np(pthread_t);
 #define INT2FD(x) (x)
 #endif  // #ifndef _WIN32
 
-// Pair of (fd, unique_id).
+// Pair of (fd, unique_id). We need to separately track a unique id here
+// since fd values can get re-used by the operating system.
 #define MEMFD_TYPE std::pair<MEMFD_TYPE_NON_UNIQUE, int64_t>
