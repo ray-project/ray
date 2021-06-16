@@ -220,7 +220,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const rpc::Address &owner_address, const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    // Create a object eviction subscription message.
+    // Create an object eviction subscription message.
     auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
     request->set_intended_worker_id(owner_address.worker_id());
     request->set_object_id(object_id.Binary());

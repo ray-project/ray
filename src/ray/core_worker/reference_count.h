@@ -63,15 +63,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
-                   pubsub::PublisherInterface *object_status_publisher,
-                   pubsub::SubscriberInterface *object_status_subscriber,
+                   pubsub::PublisherInterface *object_info_publisher,
+                   pubsub::SubscriberInterface *object_info_subscriber,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         borrower_pool_(client_factory),
-        object_status_publisher_(object_status_publisher),
-        object_status_subscriber_(object_status_subscriber) {}
+        object_info_publisher_(object_info_publisher),
+        object_info_subscriber_(object_info_subscriber) {}
 
   ~ReferenceCounter() {}
 
@@ -816,11 +816,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status publisher. It is used to publish the ref removed message for the
   /// reference counting protocol. It is not guarded by a lock because the class itself is
   /// thread-safe.
-  pubsub::PublisherInterface *object_status_publisher_;
+  pubsub::PublisherInterface *object_info_publisher_;
 
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
-  pubsub::SubscriberInterface *object_status_subscriber_;
+  pubsub::SubscriberInterface *object_info_subscriber_;
 };
 
 }  // namespace ray

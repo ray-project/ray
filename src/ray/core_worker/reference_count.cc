@@ -793,9 +793,9 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
-    RAY_CHECK(object_status_subscriber_->Unsubscribe(
-        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-        object_id.Binary()));
+    RAY_CHECK(
+        object_info_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                             addr.ToProto(), object_id.Binary()));
   };
 
   // If the borrower is failed, this callback will be called.
@@ -807,7 +807,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
-  object_status_subscriber_->Subscribe(
+  object_info_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
       addr.ToProto(), object_id.Binary(), message_published_callback,
       publisher_failed_callback);
@@ -896,8 +896,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
                  << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    pub_message, object_id.Binary());
+  object_info_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                  pub_message, object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1170,8 +1170,8 @@ void ReferenceCounter::PublishObjectLocations(
   object_locations_msg->set_spilled_node_id(spilled_node_id.Binary());
   object_locations_msg->set_current_version(current_version);
   object_locations_msg->set_primary_node_id(primary_node_id.Binary());
-  object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                    pub_message, object_id.Binary());
+  object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                  pub_message, object_id.Binary());
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

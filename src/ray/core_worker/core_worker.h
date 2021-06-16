@@ -1285,10 +1285,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
+  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

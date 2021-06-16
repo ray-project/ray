@@ -486,12 +486,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
-  object_status_publisher_ = std::make_unique<pubsub::Publisher>(
+  object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
-  object_status_subscriber_ = std::make_unique<pubsub::Subscriber>(
+  object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
       /*subscriber_address=*/rpc_address_.ip_address(),
       /*subscriber_port=*/rpc_address_.port(),
@@ -501,8 +501,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
-      /*object_status_publisher=*/object_status_publisher_.get(),
-      /*object_status_subscriber=*/object_status_subscriber_.get(),
+      /*object_info_publisher=*/object_info_publisher_.get(),
+      /*object_info_subscriber=*/object_info_subscriber_.get(),
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -2483,8 +2483,8 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      pub_message, object_id.Binary());
+    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION, pub_message,
+                                    object_id.Binary());
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());
@@ -2512,7 +2512,7 @@ void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
                                          rpc::ChannelType channel_type,
                                          const std::string &key_id,
                                          const NodeID &subscriber_id) {
-  object_status_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+  object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
 
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
@@ -2532,8 +2532,8 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
                                        const NodeID &subscriber_id) {
   for (const auto &command : commands) {
     if (command.has_unsubscribe_message()) {
-      object_status_publisher_->UnregisterSubscription(command.channel_type(),
-                                                       subscriber_id, command.key_id());
+      object_info_publisher_->UnregisterSubscription(command.channel_type(),
+                                                     subscriber_id, command.key_id());
     } else if (command.has_subscribe_message()) {
       ProcessSubscribeMessage(command.subscribe_message(), command.channel_type(),
                               command.key_id(), subscriber_id);
@@ -2552,8 +2552,8 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
-  object_status_publisher_->ConnectToSubscriber(subscriber_id, reply,
-                                                std::move(send_reply_callback));
+  object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
+                                              std::move(send_reply_callback));
 }
 
 void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
@@ -2608,7 +2608,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     RAY_LOG(ERROR) << "The ProcessSubscribeObjectLocations message is for "
                    << intended_worker_id << ", but the current worker id is "
                    << worker_context_.GetWorkerID() << ". This will be no-op.";
-    object_status_publisher_->PublishFailure(
+    object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
   }
@@ -2616,7 +2616,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   auto status =
       reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
   if (!status.ok()) {
-    object_status_publisher_->PublishFailure(
+    object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
   }
 }
