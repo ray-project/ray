@@ -22,9 +22,9 @@ namespace ray {
 
 namespace raylet {
 
-void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
-                                    const rpc::Address &owner_address,
-                                    absl::optional<std::vector<std::unique_ptr<RayObject>>> objects) {
+void LocalObjectManager::PinObjects(
+    const std::vector<ObjectID> &object_ids, const rpc::Address &owner_address,
+    absl::optional<std::vector<std::unique_ptr<RayObject>>> objects) {
   RAY_CHECK(!objects || object_ids.size() == objects->size())
       << "Invalid input with object_ids.size()==" << object_ids.size()
       << " and objects.size()==" << (objects ? objects->size() : 0UL);
@@ -36,7 +36,7 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       auto &owners = util::get_ref_or_fail(object_owners_, object_id);
       owners.push_back(owner_address);
     } else {
-      auto& object = objects->at(i);
+      auto &object = objects->at(i);
       if (object == nullptr) {
         RAY_LOG(ERROR) << "Plasma object " << object_id
                        << " was evicted before the raylet could pin it.";
@@ -76,7 +76,8 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary) {
+    auto owner_dead_callback = [this,
+                                owner_address](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       UnpinObject(object_id, owner_address);
     };
@@ -91,7 +92,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::UnpinObject(const ObjectID &object_id,
-                                            const rpc::Address &owner_address) {
+                                     const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these stats. pinned, spilling, or spilled.
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
