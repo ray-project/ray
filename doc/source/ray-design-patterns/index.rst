@@ -28,3 +28,11 @@ which are less common but may be invaluable for certain use cases.
    tree-of-tasks.rst
    map-reduce.rst
    limit-tasks.rst
+
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Basic design antipatterns
+
+   global-variables.rst
