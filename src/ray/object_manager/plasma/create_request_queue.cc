@@ -66,7 +66,8 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   // Immediately fulfill it using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited()) {
     PlasmaError error = create_callback(&result, /*fallback_allocator=*/true);
-    RAY_CHECK(error == PlasmaError::OK || error == PlasmaError::ObjectExists);  // DO NOT MERGE
+    RAY_CHECK(error == PlasmaError::OK ||
+              error == PlasmaError::ObjectExists);  // DO NOT MERGE
     return {result, error};
   }
 

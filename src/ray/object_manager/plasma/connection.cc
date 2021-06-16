@@ -112,7 +112,7 @@ Status Client::SendFd(MEMFD_TYPE fd) {
     }
     CloseHandle(target_process);
 #else
-    auto ec = send_fd(GetNativeHandle(), fd);
+    auto ec = send_fd(GetNativeHandle(), fd.first);
     if (ec <= 0) {
       if (ec == 0) {
         return Status::IOError("Encountered unexpected EOF");
@@ -129,7 +129,7 @@ Status Client::SendFd(MEMFD_TYPE fd) {
 StoreConn::StoreConn(ray::local_stream_socket &&socket)
     : ray::ServerConnection(std::move(socket)) {}
 
-Status StoreConn::RecvFd(MEMFD_TYPE *fd) {
+Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 #ifdef _WIN32
   DWORD pid = GetCurrentProcessId();
   Status s = WriteBuffer({boost::asio::buffer(&pid, sizeof(pid))});

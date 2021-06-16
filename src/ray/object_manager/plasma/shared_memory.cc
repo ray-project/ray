@@ -24,15 +24,15 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
   if (pointer_ == NULL) {
     RAY_LOG(FATAL) << "mmap failed";
   }
-  CloseHandle(fd);  // Closing this fd has an effect on performance.
+  CloseHandle(fd.first);  // Closing this fd has an effect on performance.
 #else
   pointer_ = reinterpret_cast<uint8_t *>(
-      mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+      mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd.first, 0));
   // TODO(pcm): Don't fail here, instead return a Status.
   if (pointer_ == MAP_FAILED) {
     RAY_LOG(FATAL) << "mmap failed";
   }
-  close(fd);  // Closing this fd has an effect on performance.
+  close(fd.first);  // Closing this fd has an effect on performance.
 #endif
 }
 
