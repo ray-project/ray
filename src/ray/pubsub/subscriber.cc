@@ -111,15 +111,15 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   }
   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
-  std::vector<KeyIdType> key_ids_to_unsubscribe;
+  std::vector<std::string> key_ids_to_unsubscribe;
   for (const auto &key_id_it : subscription_callback_map) {
     const auto &key_id = key_id_it.first;
-    key_ids_to_unsubscribe.push_back(key_id);
+    key_ids_to_unsubscribe.push_back(key_id.Binary());
 
     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
     if (maybe_failure_callback.has_value()) {
       const auto &failure_callback = maybe_failure_callback.value();
-      failure_callback();
+      failure_callback(key_ids_to_unsubscribe.back());
     }
   }
 
@@ -127,7 +127,7 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
     // If the publisher is failed, we automatically unsubscribe objects from this
     // publishers. If the failure callback called UnsubscribeObject, this will raise
     // check failures.
-    RAY_CHECK(Unsubscribe(publisher_address, key_id.Binary()))
+    RAY_CHECK(Unsubscribe(publisher_address, key_id))
         << "Calling UnsubscribeObject inside a failure callback is not allowed.";
   }
 }
@@ -213,8 +213,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
-  auto publishers_connected_it = publishers_connected_.find(publisher_id);
-  RAY_CHECK(publishers_connected_it != publishers_connected_.end());
+  RAY_CHECK(publishers_connected_.count(publisher_id));
+
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
     RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
@@ -232,6 +232,16 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
+      // If the published message is a failure message, the publisher indicates
+      // this key id is failed. Invoke the failure callback. At this time, we should not
+      // unsubscribe the publisher because there are other entries that subscribe from the
+      // publisher.
+      if (msg.has_failure_message()) {
+        Channel(channel_type)->HandlePublisherFailure(publisher_address);
+        subscription_callbacks.emplace_back(nullptr);
+        continue;
+      }
+      // Otherwise, register the subscription callback.
       subscription_callbacks.emplace_back(
           Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }

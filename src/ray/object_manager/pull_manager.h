@@ -217,6 +217,9 @@ class PullManager {
   /// request.
   void TriggerOutOfMemoryHandlingIfNeeded();
 
+  /// Return debug info about this bundle queue.
+  std::string BundleInfo(const Queue &bundles) const;
+
   /// See the constructor's arguments.
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
