@@ -8,6 +8,7 @@ from ray.experimental.workflow.workflow_manager import (
     WorkflowStepFunction, Workflow, resolve_object_ref, _commit_workflow)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
+from ray.experimental.workflow import storage
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,9 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    r = recovery.resume_workflow_job(workflow_id, workflow_root_dir)
+    if workflow_root_dir is not None:
+        storage.set_global_storage(workflow_root_dir)
+    r = recovery.resume_workflow_job(workflow_id, storage.get_global_storage())
     if isinstance(r, ray.ObjectRef):
         return r
     # TODO(suquark): Currently this would override "steps/outputs.json".

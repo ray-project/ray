@@ -9,7 +9,7 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (
     RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
-from ray.experimental.workflow import storage
+from ray.experimental.workflow import workflow_storage
 
 
 def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
@@ -169,7 +169,7 @@ def _commit_workflow(output: Union[Workflow, Any],
             that step can directly read this output.
     """
     if isinstance(output, Workflow):
-        storage.save_workflow_dag(output, forward_output_to)
+        workflow_storage.save_workflow_dag(output, forward_output_to)
         if forward_output_to is None:
             # The current workflow step returns a nested workflow, but there is
             # no target to forward the nested workflow to. This means
@@ -181,5 +181,5 @@ def _commit_workflow(output: Union[Workflow, Any],
         # forward their results to the same "outer most" step.
         output = output.execute(forward_output_to)
     else:
-        storage.save_workflow_output(output, forward_output_to)
+        workflow_storage.save_workflow_output(output, forward_output_to)
     return output

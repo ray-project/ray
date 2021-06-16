@@ -1,6 +1,5 @@
-import pathlib
 from typing import Optional
-from ray.experimental.workflow import configs
+from ray.experimental.workflow import storage
 
 
 class WorkflowStepContext:
@@ -38,9 +37,7 @@ _context: Optional[WorkflowStepContext] = None
 def init_workflow_step_context(workflow_id, workflow_root_dir) -> None:
     global _context
     if workflow_root_dir is not None:
-        workflow_root_dir = pathlib.Path(workflow_root_dir)
-    else:
-        workflow_root_dir = configs.get_default_workflow_root_dir()
+        storage.set_global_storage(workflow_root_dir)
     assert workflow_id is not None
     _context = WorkflowStepContext(workflow_id, workflow_root_dir)
 

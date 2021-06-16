@@ -4,6 +4,7 @@ import ray
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
+from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
 
@@ -38,8 +39,8 @@ def _recover_workflow_step(input_object_refs: List[str],
         The output of the recovered step.
     """
     context = workflow_context.get_workflow_step_context()
-    reader = storage.WorkflowStepReader(context.workflow_root_dir,
-                                        context.workflow_id)
+    reader = workflow_storage.WorkflowStepReader(context.workflow_id,
+                                                 storage.get_global_storage())
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.get_step_output(_step_id)
@@ -53,7 +54,7 @@ def _recover_workflow_step(input_object_refs: List[str],
 
 
 def _construct_resume_workflow_from_step(
-        reader: storage.WorkflowStorageReader,
+        reader: workflow_storage.WorkflowStorageReader,
         step_id: StepID) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
@@ -67,7 +68,7 @@ def _construct_resume_workflow_from_step(
         A workflow that recovers the step, or a ID of a step
         that contains the output checkpoint file.
     """
-    result: storage.StepInspectResult = reader.inspect_step(step_id)
+    result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
     if result.output_object_valid:
         # we already have the output
         return step_id
@@ -94,20 +95,19 @@ def _construct_resume_workflow_from_step(
     return recovery_workflow
 
 
-def resume_workflow_job(
-        job_id: str, workflow_root_dir=None) -> Union[ray.ObjectRef, Workflow]:
+def resume_workflow_job(job_id: str, store: storage.WorkflowStorage
+                        ) -> Union[ray.ObjectRef, Workflow]:
     """Resume a workflow job.
 
     Args:
         job_id: The ID of the workflow job. The ID is used to identify
             the workflow.
-        workflow_root_dir: The path of an external storage used for
-            checkpointing.
+        store: The storage to access the workflow.
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    reader = storage.WorkflowStorageReader(job_id, workflow_root_dir)
+    reader = workflow_storage.WorkflowStorageReader(job_id, store)
     r = _construct_resume_workflow_from_step(reader,
                                              reader.get_entrypoint_step_id())
     if isinstance(r, Workflow):
