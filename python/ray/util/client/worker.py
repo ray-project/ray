@@ -343,17 +343,24 @@ class Worker:
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
                 "communication overhead. If you're running many fine-grained "
-                "tasks, consider combining them into a single remote "
-                "function.", UserWarning)
+                "tasks, consider running them in a single remote function."
+                "See the Ray Design Patterns document for more details: "
+                "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.eg7m6lz2y48u",  # noqa: E501
+                UserWarning)
         if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
                 and log_once("client_communication_overhead_warning"):
             warnings.warn(
                 "More than 10MB of messages have been created to schedule "
                 "tasks on the server. If you're running many fine-grained "
-                "tasks consider, consider combining them into a single remote "
-                "function. If you have large arguments that are frequently "
-                "reused, consider storing them remotely with ray.put or "
-                "wrapping them in an actor object.", UserWarning)
+                "tasks consider, consider running them inside a single remote "
+                "function. See the section on \"Too fine-grained tasks\" in "
+                "the Ray Design Patterns document for more details: "
+                "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.eg7m6lz2y48u"  # noqa: E501
+                "\nIf your functions frequently use large objects, consider "
+                "storing the objects remotely with ray.put. For an example "
+                "of this, see: "
+                "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu",  # noqa: E501
+                UserWarning)
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
