@@ -253,14 +253,15 @@ class WorkflowStorage:
                 that step can directly read this output.
         """
         if isinstance(ret, Workflow):
-            # The case for nested workflow.
+            # This workflow step returns a nested workflow.
             assert not ret.executed
-            for w in ret.iter_workflows_in_dag():
-                if not w.skip_saving_inputs:
+            if not ret.skip_saving_workflow_dag:
+                for w in ret.iter_workflows_in_dag():
                     self.write_step_inputs(w.id, w.get_inputs())
-            self.write_step_output_metadata(step_id, {"step_id": ret.id})
+                self.write_step_output_metadata(step_id, {"step_id": ret.id})
             forward_src = ret.id
         else:
+            # This workflow step returns a object.
             self.write_step_output(step_id, ret)
             forward_src = step_id
         if forward_output_to is not None:

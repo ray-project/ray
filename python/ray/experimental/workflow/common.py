@@ -41,8 +41,9 @@ class Workflow:
         self._executed: bool = False
         self._output: Optional[WorkflowOutputType] = None
         self._step_id: StepID = uuid.uuid4().hex
-        # this is a public accessible tag
-        self.skip_saving_inputs: bool = False
+        # When we resuming the workflow, we do not want to override the DAG
+        # of the original workflow. This tag helps skip it.
+        self.skip_saving_workflow_dag: bool = False
 
     @property
     def executed(self) -> bool:

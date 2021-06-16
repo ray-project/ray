@@ -85,10 +85,8 @@ def _construct_resume_workflow_from_step(
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
-    recovery_workflow = _recover_workflow_step.step(
+    recovery_workflow: Workflow = _recover_workflow_step.step(
         result.object_refs, input_workflows, instant_workflow_outputs)
-    # skip saving the inputs of a recovery workflow step
-    recovery_workflow.skip_saving_inputs = True
     recovery_workflow._step_id = step_id
     return recovery_workflow
 
@@ -110,5 +108,4 @@ def resume_workflow_job(workflow_id: str, store: storage.Storage
                                              reader.get_entrypoint_step_id())
     if isinstance(r, Workflow):
         return r
-    else:
-        return ray.put(reader.read_step_output(r))
+    return ray.put(reader.read_step_output(r))
