@@ -125,6 +125,10 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
+  UniqueID GetActorWorkerAssignmentID();
+
+  void SetActorWorkerAssignmentID(const UniqueID &actor_worker_assignment_id);
+
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).

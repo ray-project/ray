@@ -47,9 +47,10 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  const auto &node = SelectNode(actor);
+  const auto &node_id = SelectNode(actor);
 
-  if (node == nullptr) {
+  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
     schedule_failure_handler_(std::move(actor));
@@ -66,7 +67,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
                 .second);
 
   // Lease worker directly from the node.
-  LeaseWorkerFromNode(actor, node);
+  LeaseWorkerFromNode(actor, node.value());
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
@@ -394,8 +395,7 @@ std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient
   return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
-    std::shared_ptr<GcsActor> actor) {
+NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
@@ -409,7 +409,7 @@ std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
     node = SelectNodeRandomly();
   }
 
-  return node;
+  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly() const {
@@ -479,6 +479,45 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
   }
 }
+
+NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
+  RAY_CHECK(actor->GetWorkerProcessID().IsNil());
+  bool need_sole_worker_process =
+      ray::NeedSoleWorkerProcess(actor->GetCreationTaskSpecification());
+  if (auto selected_worker_process =
+          SelectOrAllocateWorkerProcess(actor, need_sole_worker_process)) {
+    // If succeed in selecting an available worker process then just assign the actor, it
+    // will cosume a slot inside the worker process.
+    RAY_CHECK(selected_worker_process->AssignActor(actor->GetActorID()))
+        << ", actor id = " << actor->GetActorID()
+        << ", worker_process = " << selected_worker_process->ToString();
+    // Bind the worker process id to the physical worker process.
+    actor->SetWorkerProcessID(selected_worker_process->GetWorkerProcessID());
+
+    std::ostringstream ss;
+    ss << "Finished selecting node " << selected_worker_process->GetNodeID()
+       << " to schedule actor " << actor->GetActorID()
+       << " with worker_process_id = " << selected_worker_process->GetWorkerProcessID();
+    RAY_EVENT(INFO, EVENT_LABEL_ACTOR_NODE_SCHEDULED)
+            .WithField("job_id", actor->GetActorID().JobId().Hex())
+            .WithField("actor_id", actor->GetActorID().Hex())
+        << ss.str();
+    RAY_LOG(INFO) << ss.str();
+    return selected_worker_process->GetNodeID();
+  }
+
+  // If failed to select an available worker process then reset the worker process id of
+  // the actor and just return a nil node id.
+  std::ostringstream ss;
+  ss << "There are no available resources to schedule the actor " << actor->GetActorID()
+     << ", need sole worker process = " << need_sole_worker_process;
+  RAY_EVENT(ERROR, EVENT_LABEL_ACTOR_NODE_SCHEDULED)
+          .WithField("job_id", actor->GetActorID().JobId().Hex())
+          .WithField("actor_id", actor->GetActorID().Hex())
+      << ss.str();
+  RAY_LOG(WARNING) << ss.str();
+  return NodeID::Nil();
+};
 
 }  // namespace gcs
 }  // namespace ray

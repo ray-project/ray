@@ -95,6 +95,14 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
+UniqueID GcsActor::GetActorWorkerAssignmentID() {
+  return UniqueID::FromBinary(actor_table_data_.actor_worker_assignment_id());
+}
+
+void GcsActor::SetActorWorkerAssignmentID(const UniqueID &actor_worker_assignment_id) {
+  actor_table_data_.set_actor_worker_assignment_id(actor_worker_assignment_id.Binary());
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
