@@ -580,9 +580,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
-        with open(
-                os.path.join(ray._private.utils.get_user_temp_dir(),
-                             "ray_current_cluster"), "w") as f:
+        if temp_dir is None:
+            temp_dir = ray._private.utils.get_user_temp_dir()
+        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
+        with open(os.path.join(current_cluster_path, "w")) as f:
             print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
