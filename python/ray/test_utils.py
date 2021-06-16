@@ -655,7 +655,8 @@ class _BatchQueueActor(_QueueActor):
                         first_timeout=None):
         start = timeit.default_timer()
         try:
-            batch = [await asyncio.wait_for(self.queue.get(), first_timeout)]
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
             if total_timeout:
                 end = timeit.default_timer()
                 total_timeout = max(total_timeout - (end - start), 0)
