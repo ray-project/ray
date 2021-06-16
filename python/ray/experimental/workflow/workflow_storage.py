@@ -5,7 +5,7 @@ workflows.
 
 import json
 import pathlib
-from typing import Dict, List, Optional, Any, Set, Callable, Tuple, Union
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 
 from dataclasses import dataclass
 
@@ -255,9 +255,7 @@ class WorkflowStorage:
         if isinstance(ret, Workflow):
             # The case for nested workflow.
             assert not ret.executed
-            workflows: Set[Workflow] = set()
-            ret._visit_workflow_dag(workflows)
-            for w in workflows:
+            for w in ret.iter_workflows_in_dag():
                 if not w.skip_saving_inputs:
                     self.write_step_inputs(w.id, w.get_inputs())
             self.write_step_output_metadata(step_id, {"step_id": ret.id})

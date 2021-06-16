@@ -1,4 +1,5 @@
-from typing import Tuple, List, Optional, Callable, Set
+from collections import deque
+from typing import Tuple, List, Optional, Callable, Set, Iterator
 import uuid
 
 from dataclasses import dataclass
@@ -80,12 +81,20 @@ class Workflow:
         self._executed = True
         return output
 
-    def _visit_workflow_dag(self, visited_workflows: Set["Workflow"]):
-        """Collect all workflows in the DAG linked to the workflow."""
-        visited_workflows.add(self)
-        for w in self._input_workflows:
-            if w not in visited_workflows:
-                w._visit_workflow_dag(visited_workflows)
+    def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
+        """Collect all workflows in the DAG linked to the workflow
+        using BFS."""
+        # deque is used instead of queue.Queue because queue.Queue is aimed
+        # at multi-threading. We just need a pure data structure here.
+        visited_workflows: Set[Workflow] = {self}
+        q = deque([self])
+        while q:  # deque's pythonic way to check emptyness
+            w: Workflow = q.popleft()
+            for p in w._input_workflows:
+                if p not in visited_workflows:
+                    visited_workflows.add(p)
+                    q.append(p)
+            yield w
 
     def get_inputs(self) -> WorkflowInputs:
         """Get the inputs of the workflow."""
