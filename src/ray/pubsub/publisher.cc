@@ -243,6 +243,7 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
   auto maybe_subscribers =
       subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
+    RAY_LOG(INFO) << "Publish a message that has no subscriber.";
     return;
   }
 
@@ -252,6 +253,15 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     auto &subscriber = it->second;
     subscriber->QueueMessage(pub_message);
   }
+}
+
+void Publisher::PublishFailure(const rpc::ChannelType channel_type,
+                               const std::string &key_id_binary) {
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(key_id_binary);
+  pub_message.set_channel_type(channel_type);
+  pub_message.mutable_failure_message();
+  Publish(channel_type, pub_message, key_id_binary);
 }
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,

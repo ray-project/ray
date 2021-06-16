@@ -15,7 +15,7 @@ Theoretical minimum time: 300 seconds
 import ray
 from ray import tune
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run
 
 
 def main():

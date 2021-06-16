@@ -498,6 +498,8 @@ message WaitPlacementGroupUntilReadyReply {
 message GetNamedPlacementGroupRequest {
   // Name of the placement group.
   string name = 1;
+  // Namespace to search.
+  string ray_namespace = 2;
 }
 
 message GetNamedPlacementGroupReply {

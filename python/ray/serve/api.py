@@ -646,10 +646,10 @@ def start(
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init()
+        ray.init(namespace="serve")
 
+    current_namespace = ray.get_runtime_context().namespace
     if detached:
-        current_namespace = ray.get_runtime_context().namespace
         if _UUID_RE.fullmatch(current_namespace) is not None:
             raise RuntimeError(
                 "serve.start(detached=True) should not be called in anonymous "
@@ -662,7 +662,8 @@ def start(
 
     try:
         _get_global_client()
-        logger.info("Connecting to existing Serve instance.")
+        logger.info("Connecting to existing Serve instance in namespace "
+                    f"'{current_namespace}'.")
         return
     except RayServeException:
         pass
@@ -709,6 +710,8 @@ def start(
 
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
+    logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
+                f"namespace '{current_namespace}'.")
     return client
 
 
@@ -727,7 +730,7 @@ def connect() -> Client:
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init()
+        ray.init(namespace="serve")
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.

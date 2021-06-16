@@ -3,6 +3,17 @@
 
 load("//bazel:ray.bzl", "COPTS")
 
+cc_binary(
+    name = "libray_api.so",
+    copts = COPTS,
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
 cc_library(
     name = "ray_api",
     srcs = glob([
@@ -38,8 +49,10 @@ cc_library(
         "//:ray_util",
         "@boost//:callable_traits",
         "@boost//:dll",
+        "@com_github_gflags_gflags//:gflags",
         "@msgpack",
     ],
+    alwayslink = True,
 )
 
 cc_binary(
@@ -59,6 +72,7 @@ genrule(
     srcs = [
         "default_worker",
         "ray_api",
+        "libray_api.so",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
@@ -66,6 +80,15 @@ genrule(
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        TEMP_DIR="$$WORK_DIR/cpp/example" &&
+        rm -rf $$TEMP_DIR/thirdparty &&
+        mkdir -p "$$TEMP_DIR/thirdparty/include/" &&
+        mkdir -p "$$TEMP_DIR/thirdparty/lib/" &&
+        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$TEMP_DIR/thirdparty/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/" "$$TEMP_DIR/thirdparty/include" &&
+        cp -f $(locations libray_api.so) "$$TEMP_DIR/thirdparty/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$TEMP_DIR/thirdparty/include" &&        
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
@@ -94,7 +117,7 @@ cc_test(
         "src/ray/test/cluster/*.cc",
     ]),
     args = [
-        "$(location cluster_mode_test.so)",
+        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
     ],
     copts = COPTS,
     data = [

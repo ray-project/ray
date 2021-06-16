@@ -33,7 +33,7 @@ head_node_type: head_node
 worker_default_node_type: worker_node
 
 setup_commands:
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.3.0/cb3661e547662f309a0cc55c5495b3adb779a309/ray-1.3.0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.4.0/6ac5e0e5ad45070e27c77aca7267bcee30cc4b4a/ray-1.4.0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip install tqdm numpy
 
 idle_timeout_minutes: 5

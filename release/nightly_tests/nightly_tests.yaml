@@ -1,3 +1,7 @@
+#
+# Single node shuffle
+#
+
 # Test basic single node 10GB shuffle with a small number of partitions.
 # This doesn't require object spilling.
 - name: shuffle_10gb
@@ -53,6 +57,82 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
+# Test non streaming shuffle in a single node with a small number of partition.
+- name: non_streaming_shuffle_50gb
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9 --no-streaming
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test non streaming shuffle in a single node with a large number of partition.
+- name: non_streaming_shuffle_50gb_large_partition
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6 --no-streaming
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test non streaming shuffle in a single node with a large number of partition.
+- name: dask_on_ray_10gb_sort
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: dask_on_ray/dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test non streaming shuffle in a single node with a large number of partition.
+- name: dask_on_ray_100gb_sort
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: dask_on_ray/dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions 200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+#
+# Multi node shuffle
+#
+
 # Test multi nodes 100GB shuffle with a small number of partitions.
 - name: shuffle_100gb
   owner:
@@ -72,22 +152,78 @@
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
 
+# Test non streaming multi nodes 100GB shuffle with a small number of partitions.
+- name: non_streaming_shuffle_100gb
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_multi.yaml
+
+  run:
+    timeout: 3000
+    prepare: python wait_cluster.py 4 600
+    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --no-streaming
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
 # Test multi nodes 100GB shuffle with a large number of partitions.
-# TODO(sang): Not working due to a bug https://github.com/ray-project/ray/issues/16025.
-# - name: shuffle_100gb_large_partition
-#   owner:
-#     mail: "sangcho@anyscale.com"
-#     slack: "@proj-data-processing"
+- name: shuffle_1tb_large_partition
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
 
-#   cluster:
-#     app_config: shuffle/shuffle_app_config.yaml
-#     compute_template: shuffle/shuffle_compute_multi.yaml
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_large_scale.yaml
 
-#   run:
-#     timeout: 3000
-#     prepare: python wait_cluster.py 4 600
-#     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=100e6
+  run:
+    timeout: 3000
+    prepare: python wait_cluster.py 20 600
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
 
-#   smoke_test:
-#     cluster:
-#       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test large scale dask on ray test without spilling.
+- name: dask_on_ray_large_scale_test_no_spilling
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 5 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Test large scale dask on ray test without spilling.
+- name: dask_on_ray_large_scale_test_spilling
+  owner:
+    mail: "sangcho@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 5 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet

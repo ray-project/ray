@@ -91,8 +91,6 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
-  RAY_LOG(DEBUG) << "Trying to pull inflight_pulls " << inflight_pulls_ << "/"
-                 << max_concurrent_pulls_ << ", queue size: " << to_pull_queue_.size();
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
     auto to_pull = to_pull_queue_.front();
     if (cur_time < to_pull->next_pull_time) {

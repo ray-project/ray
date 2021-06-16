@@ -18,6 +18,18 @@
 // Plasma protocol specification
 namespace plasma.flatbuf;
 
+enum ObjectSource:int {
+  // Object was created by a worker (either task returns or `ray.put`).
+  CreatedByWorker = 0,
+  // Object was spilled and restored from external storage.
+  RestoredFromStorage,
+  // Object was received from a remote raylet.
+  ReceivedFromRemoteRaylet,
+  // The object could not be created and the raylet stored an
+  // error as the value.
+  ErrorStoredByRaylet,
+}
+
 enum MessageType:long {
   // Message that gets send when a client hangs up.
   PlasmaDisconnectClient = 0,
@@ -131,6 +143,9 @@ table PlasmaCreateRequest {
   data_size: ulong;
   // The size of the object's metadata in bytes.
   metadata_size: ulong;
+  // The source of the object (worker, raylet, etc.). Used for
+  // debug purposes.
+  source: ObjectSource;
   // Device to create buffer on.
   device_num: int;
   // Try the creation request immediately. If this is not possible (due to

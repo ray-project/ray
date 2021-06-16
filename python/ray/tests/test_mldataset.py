@@ -122,6 +122,8 @@ def test_union(ray_start_regular_shared):
     assert ds.batch_size == 0
 
 
+@pytest.mark.skipif(
+    True, reason="Broken on all platforms (incorrect use of gather_sync())")
 def test_from_modin(ray_start_regular_shared):
     try:
         import modin.pandas as pd

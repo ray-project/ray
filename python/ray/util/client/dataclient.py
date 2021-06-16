@@ -97,9 +97,8 @@ class DataClient:
                 # here.
                 logger.info("Server disconnected from data channel")
             else:
-                logger.error(
-                    f"Got Error from data channel -- shutting down: {e}")
-                raise e
+                logger.exception(
+                    "Got Error from data channel -- shutting down:")
 
     def close(self) -> None:
         if self.request_queue is not None:
@@ -118,8 +117,9 @@ class DataClient:
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
                 raise ConnectionError(
-                    "Cannot send request due to data channel "
-                    f"shutting down. Request: {req}")
+                    "Sending request failed because the data channel "
+                    "terminated. This is usually due to an error "
+                    f"in handling the most recent request: {req}")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data

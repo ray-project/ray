@@ -161,7 +161,7 @@ class GlobalStateAccessor {
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
-      const std::string &placement_group_name);
+      const std::string &placement_group_name, const std::string &ray_namespace);
 
  private:
   /// MultiItem transformation helper in template style.

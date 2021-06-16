@@ -1,53 +1,30 @@
 
 #pragma once
-#include <ray/api/common_types.h>
-#include <ray/api/logging.h>
 #include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
+#include "boost/optional.hpp"
 
 namespace ray {
 namespace api {
 
-enum class RunMode { SINGLE_PROCESS, CLUSTER };
-
-/// TODO(Guyang Song): Make configuration complete and use to initialize.
 class RayConfig {
  public:
-  WorkerType worker_type = WorkerType::DRIVER;
+  // The address of the Ray cluster to connect to.
+  std::string address = "";
 
-  RunMode run_mode = RunMode::SINGLE_PROCESS;
+  // Whether or not to run this application in a local mode. This is used for debugging.
+  bool local_mode = false;
 
-  std::string redis_ip;
+  // The dynamic library path which contains remote fuctions of users.
+  // This parameter is not used when the application runs in local mode.
+  // TODO(guyang.sgy): Put this param into job config instead.
+  std::string dynamic_library_path = "";
 
-  int redis_port = 6379;
+  /* The following are unstable parameters and their use is discouraged. */
 
-  std::string redis_password = "5241590000000000";
-
-  int node_manager_port = 62665;
-
-  std::string lib_name = "";
-
-  std::string store_socket = "";
-
-  std::string raylet_socket = "";
-
-  std::string session_dir = "";
-
-  static std::shared_ptr<RayConfig> GetInstance();
-
-  void SetRedisAddress(const std::string address) {
-    auto pos = address.find(':');
-    if (pos == std::string::npos) {
-      throw RayException("The address has no char ':'");
-    }
-
-    redis_ip = address.substr(0, pos);
-    redis_port = std::stoi(address.substr(pos + 1, address.length()));
-  }
-
- private:
-  static std::shared_ptr<RayConfig> config_;
+  // Prevents external clients without the password from connecting to Redis if provided.
+  boost::optional<std::string> redis_password_;
 };
 
 }  // namespace api
