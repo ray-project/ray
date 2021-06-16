@@ -354,6 +354,8 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> unevictable_objects_;
 };
 
+MATCHER_P(AddressEq, p, "") { return p.worker_id() == arg.worker_id(); }
+
 TEST_F(LocalObjectManagerTest, TestPin) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -371,14 +373,58 @@ TEST_F(LocalObjectManagerTest, TestPin) {
         std::make_unique<RayObject>(nullptr, meta_buffer, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
+  std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
+  ASSERT_EQ(freed, expected);
+}
+
+TEST_F(LocalObjectManagerTest, TestMultiplePin) {
+  std::vector<rpc::Address> owner_address(free_objects_batch_size);
+  for (auto &owner : owner_address) {
+    owner.set_worker_id(WorkerID::FromRandom().Binary());
+  }
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    auto object =
+        std::make_unique<RayObject>(nullptr, meta_buffer, std::vector<ObjectID>());
+    objects.push_back(std::move(object));
+  }
+
+  for (size_t i = 0; i < free_objects_batch_size; ++i) {
+    if (i == 0) {
+      manager.PinObjects(object_ids, owner_address[i], std::move(objects));
+    } else {
+      manager.PinObjects(object_ids, owner_address[i]);
+    }
+    manager.WaitForObjectFree(owner_address[i], object_ids);
+  }
+
+  for (auto &owner : owner_address) {
+    for (size_t i = 0; i < free_objects_batch_size; i++) {
+      ASSERT_TRUE(freed.empty());
+      EXPECT_CALL(*subscriber_, Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                            AddressEq(owner), object_ids[i].Binary()));
+      ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    }
+  }
+
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 }
@@ -398,7 +444,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
@@ -453,7 +499,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {
@@ -498,7 +544,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   int num_times_fired = 0;
@@ -552,7 +598,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -619,7 +665,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -665,7 +711,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
       std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
   objects.push_back(std::move(object));
 
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -694,7 +740,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
 
   // This will spill until 2 workers are occupied.
   manager.SpillObjectUptoMaxThroughput();
@@ -761,7 +807,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
 
   std::vector<std::unique_ptr<RayObject>> objects;
   objects.push_back(std::move(object));
-  manager.PinObjects({object_id}, std::move(objects), owner_address);
+  manager.PinObjects({object_id}, owner_address, std::move(objects));
 
   int num_times_fired = 0;
   manager.SpillObjects({object_id}, [&](const Status &status) mutable {
@@ -806,7 +852,7 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
 
@@ -842,12 +888,14 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
                                               std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -871,7 +919,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // 2 Objects are spilled out of 3.
@@ -893,7 +941,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -920,7 +970,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Every object is spilled.
@@ -946,7 +996,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -955,8 +1007,10 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // The last reference is deleted.
-  EXPECT_CALL(*subscriber_,
-              Unsubscribe(_, _, object_ids[free_objects_batch_size - 1].Binary()));
+  EXPECT_CALL(
+      *subscriber_,
+      Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION, AddressEq(owner_address),
+                  object_ids[free_objects_batch_size - 1].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -980,7 +1034,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Objects are spilled.
@@ -1003,7 +1057,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   }
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // // Now, deletion queue would process only the first object. Everything else won't be
@@ -1044,7 +1100,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   std::vector<ObjectID> object_ids_to_spill;
@@ -1067,7 +1123,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1096,7 +1154,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
         std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjects(object_ids, owner_address, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Every object is spilled.
@@ -1118,7 +1176,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
 
   // Imagine a scenario only the first location is updated to the owner.
   ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[0].Binary()));
+  EXPECT_CALL(*subscriber_,
+              Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                          AddressEq(owner_address), object_ids[0].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   // Delete operation is called. In this case, the file with the url should not be
   // deleted.
@@ -1129,7 +1189,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    EXPECT_CALL(*subscriber_,
+                Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            AddressEq(owner_address), object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
