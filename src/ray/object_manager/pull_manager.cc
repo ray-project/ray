@@ -105,6 +105,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
 
   RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
                  << " num bytes being pulled: " << num_bytes_being_pulled_
+                 << " num bytes already pulled: " << num_bytes_already_pulled_
                  << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
   for (const auto &ref : next_request_it->second.objects) {
@@ -128,6 +129,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   // Update the pointer to the last pull request that we are actively pulling.
   RAY_CHECK(next_request_it->first > *highest_req_id_being_pulled);
   *highest_req_id_being_pulled = next_request_it->first;
+
+  RecalculateBytesBeingPulled();
   return true;
 }
 
@@ -163,12 +166,14 @@ void PullManager::DeactivatePullBundleRequest(
       *highest_req_id_being_pulled = std::prev(request_it)->first;
     }
   }
+
+  RecalculateBytesBeingPulled();
 }
 
 void PullManager::DeactivateUntilWithinQuota(
     const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
     std::unordered_set<ObjectID> *object_ids_to_cancel) {
-  while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
+  while (!WithinQuota() && *highest_id_for_bundle != 0) {
     RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
@@ -179,12 +184,11 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+// TODO(ekl) we may want to maintain this value incrementally if it turns out to
+// be high overhead to re-calculate.
+void PullManager::RecalculateBytesBeingPulled() {
   // Compensate for memory consumed by in-progress pulls by adding it to the available
   // total. This avoids deadlock due to already-local objects.
-  // TODO(ekl) this causes
-  // test_scheduling.py::test_load_balancing_under_constrained_memory to hang
-  // occasionally.
   if (RayConfig::instance().pull_manager_calculate_bytes_already_pulled()) {
     absl::MutexLock lock(&active_objects_mu_);
     size_t num_bytes_already_pulled = 0;
@@ -196,10 +200,19 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
         num_bytes_already_pulled += it->second.object_size;
       }
     }
-    num_bytes_already_pulled_ = num_bytes_already_pulled;
-    num_bytes_available += num_bytes_already_pulled;
+    if (num_bytes_being_pulled != num_bytes_being_pulled_) {
+      RAY_LOG(DEBUG) << "Updating num bytes being pulled: " << num_bytes_being_pulled;
+      num_bytes_already_pulled_ = num_bytes_already_pulled;
+    }
   }
+}
 
+bool PullManager::WithinQuota() {
+  return num_bytes_being_pulled_ < num_bytes_available_ + num_bytes_being_pulled_;
+}
+
+void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+  RecalculateBytesBeingPulled();
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -220,8 +233,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
     // Activate the next get request if we have space, or are in unlimited allocation
     // mode.
-    if (num_bytes_being_pulled_ < num_bytes_available_ ||
-        RayConfig::instance().plasma_unlimited()) {
+    if (WithinQuota() || RayConfig::instance().plasma_unlimited()) {
       get_requests_remaining = ActivateNextPullBundleRequest(
           get_request_bundles_, &highest_get_req_id_being_pulled_, &objects_to_pull);
     } else {
@@ -236,7 +248,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                                &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
-    if (num_bytes_being_pulled_ < num_bytes_available_) {
+    if (WithinQuota()) {
       wait_requests_remaining = ActivateNextPullBundleRequest(
           wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
     } else {
@@ -246,7 +258,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
-  while (num_bytes_being_pulled_ < num_bytes_available_) {
+  while (WithinQuota()) {
     if (!ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
                                        &objects_to_pull)) {
@@ -264,7 +276,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   if (!RayConfig::instance().plasma_unlimited()) {
     DeactivateUntilWithinQuota("get request", get_request_bundles_,
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
-    RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+    RAY_CHECK(num_bytes_being_pulled_ <=
+              num_bytes_available_ + num_bytes_already_pulled_);
   }
 
   // Call the cancellation callbacks outside of the lock.
@@ -320,7 +333,8 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
         << "There is not enough memory to pull objects needed by a queued task or "
            "a worker blocked in ray.get or ray.wait. "
         << "Need " << head->second.num_bytes_needed << " bytes, but only "
-        << num_bytes_available_ << " bytes are available on this node. "
+        << num_bytes_available_ + num_bytes_already_pulled_
+        << " bytes are available on this node. "
         << "This job may hang if no memory can be freed through garbage collection or "
            "object spilling. See "
            "https://docs.ray.io/en/master/memory-management.html for more information. "

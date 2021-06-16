@@ -175,6 +175,13 @@ class PullManager {
   void TryToMakeObjectLocal(const ObjectID &object_id)
       EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
+  /// If enabled, recalculate what fraction of the active object pull requests are
+  /// already local.
+  void RecalculateBytesBeingPulled();
+
+  /// Returns whether there is space available for pulls.
+  bool WithinQuota();
+
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
   /// will try each of the other clients in succession.
