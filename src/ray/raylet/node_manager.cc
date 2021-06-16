@@ -1478,7 +1478,6 @@ void NodeManager::ProcessWaitRequestMessage(
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  RAY_LOG(ERROR) << "[SANG] Waiting for direct call args.";
   // Read the data.
   auto message =
       flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
@@ -1507,7 +1506,6 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
         if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
-          RAY_LOG(ERROR) << "[SANG] Waiting for direct call args done.";
           worker->DirectActorCallArgWaitComplete(tag);
         }
       });

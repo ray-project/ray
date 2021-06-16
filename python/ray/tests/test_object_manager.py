@@ -148,12 +148,10 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     @ray.remote
     class Actor:
         def ready(self):
-            print("created")
-            print(ray.get_runtime_context().node_id)
             pass
 
         def set_weights(self, x):
-            print("abc")
+            print
             pass
 
     actors = [
@@ -161,7 +159,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             args=[],
             kwargs={},
             num_cpus=0.01,
-            resources={str(i % num_nodes): 1}) for i in range(1)
+            resources={str(i % num_nodes): 1}) for i in range(30)
     ]
 
     # Wait for the actors to start up.
@@ -170,58 +168,54 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     object_refs = []
 
     # Broadcast a large object to all actors.
-    for _ in range(1):
+    for _ in range(num_nodes):
         x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-        print(x_id)
         object_refs.append(x_id)
-        print("driver node id: ", ray.get_runtime_context().node_id)
         # Pass the object into a method for every actor.
-        print("get actor method. actor length ", len(actors))
         ray.get([a.set_weights.remote(x_id) for a in actors])
-    print("actor method done")
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    # transfer_events = ray.state.object_transfer_timeline()
+    transfer_events = ray.state.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
-    # for x_id in object_refs:
-    #     relevant_events = [
-    #         event for event in transfer_events if
-    #         event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
-    #     ]
+    for x_id in object_refs:
+        relevant_events = [
+            event for event in transfer_events if
+            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
+        ]
 
-    #     # NOTE: Each event currently appears twice because we duplicate the
-    #     # send and receive boxes to underline them with a box (black if it is a
-    #     # send and gray if it is a receive). So we need to remove these extra
-    #     # boxes here.
-    #     deduplicated_relevant_events = [
-    #         event for event in relevant_events if event["cname"] != "black"
-    #     ]
-    #     assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
-    #     relevant_events = deduplicated_relevant_events
+        # NOTE: Each event currently appears twice because we duplicate the
+        # send and receive boxes to underline them with a box (black if it is a
+        # send and gray if it is a receive). So we need to remove these extra
+        # boxes here.
+        deduplicated_relevant_events = [
+            event for event in relevant_events if event["cname"] != "black"
+        ]
+        assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
+        relevant_events = deduplicated_relevant_events
 
-    #     # Each object must have been broadcast to each remote machine.
-    #     assert len(relevant_events) >= num_nodes - 1
-    #     # If more object transfers than necessary have been done, print a
-    #     # warning.
-    #     if len(relevant_events) > num_nodes - 1:
-    #         warnings.warn("This object was transferred {} times, when only {} "
-    #                       "transfers were required.".format(
-    #                           len(relevant_events), num_nodes - 1))
-    #     # Each object should not have been broadcast more than once from every
-    #     # machine to every other machine. Also, a pair of machines should not
-    #     # both have sent the object to each other.
-    #     assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
+        # Each object must have been broadcast to each remote machine.
+        assert len(relevant_events) >= num_nodes - 1
+        # If more object transfers than necessary have been done, print a
+        # warning.
+        if len(relevant_events) > num_nodes - 1:
+            warnings.warn("This object was transferred {} times, when only {} "
+                          "transfers were required.".format(
+                              len(relevant_events), num_nodes - 1))
+        # Each object should not have been broadcast more than once from every
+        # machine to every other machine. Also, a pair of machines should not
+        # both have sent the object to each other.
+        assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
 
-    #     # Make sure that no object was sent multiple times between the same
-    #     # pair of object managers.
-    #     send_counts = defaultdict(int)
-    #     for event in relevant_events:
-    #         # The pid identifies the sender and the tid identifies the
-    #         # receiver.
-    #         send_counts[(event["pid"], event["tid"])] += 1
-    #     assert all(value == 1 for value in send_counts.values())
+        # Make sure that no object was sent multiple times between the same
+        # pair of object managers.
+        send_counts = defaultdict(int)
+        for event in relevant_events:
+            # The pid identifies the sender and the tid identifies the
+            # receiver.
+            send_counts[(event["pid"], event["tid"])] += 1
+        assert all(value == 1 for value in send_counts.values())
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the

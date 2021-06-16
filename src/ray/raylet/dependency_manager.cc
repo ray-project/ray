@@ -240,7 +240,6 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second) << "Local object was already local " << object_id;
-  RAY_LOG(ERROR) << "[SANG] Handle object local " << object_id;
 
   // Find all tasks and workers that depend on the newly available object.
   std::vector<TaskID> ready_task_ids;

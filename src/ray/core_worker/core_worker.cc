@@ -2572,6 +2572,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   auto object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(ERROR) << "Add a location for " << object_id;
   auto reference_exists = reference_counter_->AddObjectLocation(
       object_id, NodeID::FromBinary(request.node_id()));
   Status status =
@@ -2613,37 +2614,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     return;
   }
 
-  const auto callback = [this, object_id](
-                            const absl::flat_hash_set<NodeID> &locations,
-                            int64_t object_size, const std::string &spilled_url,
-                            const NodeID &spilled_node_id, int64_t current_version,
-                            const absl::optional<NodeID> &optional_primary_node_id) {
-    auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-    RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
-                   << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, spilled url: " << spilled_url
-                   << ", spilled node ID: " << spilled_node_id
-                   << ", and object size: " << object_size
-                   << ", and primary node ID: " << primary_node_id;
-    rpc::PubMessage pub_message;
-    pub_message.set_key_id(object_id.Binary());
-    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-    auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-
-    for (const auto &node_id : locations) {
-      object_locations_msg->add_node_ids(node_id.Binary());
-    }
-    object_locations_msg->set_object_size(object_size);
-    object_locations_msg->set_spilled_url(spilled_url);
-    object_locations_msg->set_spilled_node_id(spilled_node_id.Binary());
-    object_locations_msg->set_current_version(current_version);
-    object_locations_msg->set_primary_node_id(primary_node_id.Binary());
-    object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                      pub_message, object_id.Binary());
-  };
-
-  auto status = reference_counter_->SubscribeObjectLocations(
-      object_id, message.last_version(), std::move(callback));
+  auto status = reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
   if (!status.ok()) {
     object_status_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());

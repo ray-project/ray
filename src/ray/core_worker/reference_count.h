@@ -51,12 +51,6 @@ class ReferenceCounterInterface {
   virtual ~ReferenceCounterInterface() {}
 };
 
-// Callback for location subscriptions.
-using LocationSubscriptionCallback = std::function<void(
-    const absl::flat_hash_set<NodeID> & /* node_ids */, int64_t /* object_size */,
-    const std::string & /* spilled_url */, const NodeID & /* spilled_node_id */,
-    int64_t /* current_version */, const absl::optional<NodeID> & /* primary_node_id */)>;
-
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -412,11 +406,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object whose locations we want.
   /// \param[in] last_location_version The version of the last location update the
   /// caller received. Only more recent location updates will be returned.
-  /// \param[in] callback The callback to invoke with the location update.
   /// \return The status of the location get.
   Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version,
-                                  const LocationSubscriptionCallback &callback)
+                                  int64_t last_location_version)
       LOCKS_EXCLUDED(mutex_);
 
   /// Fill up the object information to the given reply.
@@ -631,9 +623,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
-    /// Location subscription callbacks registered by async location get requests.
-    /// These will be invoked whenever locations or object_size are changed.
-    std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -778,6 +767,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
+
+  /// Publish object locations to all subscribers.
+  void PublishObjectLocations(
+    const ObjectID &object_id,
+    const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
+    const std::string &spilled_url, const NodeID &spilled_node_id,
+    int64_t current_version, const absl::optional<NodeID> &optional_primary_node_id);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the

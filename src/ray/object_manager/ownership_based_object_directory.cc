@@ -123,7 +123,6 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_node_id(node_id.Binary());
 
   metrics_num_object_locations_added_++;
-
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id, node_id](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
@@ -206,12 +205,10 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   // received.  This notifies the client even if the list of locations is
   // empty, since this may indicate that the objects have been evicted from
   // all nodes.
-  RAY_LOG(ERROR) << "[SANG] callback size: " << callbacks.size();
   for (const auto &callback_pair : callbacks) {
     // We can call the callback directly without worrying about invalidating caller
     // iterators since this is already running in the subscription callback stack.
     // See https://github.com/ray-project/ray/issues/2959.
-    RAY_LOG(ERROR) << "[SANG] callback called";
     callback_pair.second(object_id, it->second.current_object_locations,
                          it->second.spilled_url, it->second.spilled_node_id,
                          it->second.object_size);
@@ -276,7 +273,6 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
         [callback, locations, spilled_url, spilled_node_id, object_size, object_id]() {
-          RAY_LOG(ERROR) << "[Sang] callback from subscribe Object";
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
         },
         "ObjectDirectory.SubscribeObjectLocations");
@@ -290,12 +286,12 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   if (entry == listeners_.end()) {
     return Status::OK();
   }
-  object_location_subscriber_->Unsubscribe(
-      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
-      object_id.Binary());
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     listeners_.erase(entry);
+    object_location_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
+        object_id.Binary());
   }
   return Status::OK();
 }

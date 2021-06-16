@@ -93,8 +93,7 @@ class SubscribeChannelInterface {
   ///
   /// \param publisher_address The address of the publisher.
   /// \param pub_message The message to handle from the publisher.
-  /// \param unsubscribe If true, it automatically unsubscribe the subscriber.
-  virtual void HandlePublisherFailure(const rpc::Address &publisher_address, bool unsubscribe) = 0;
+  virtual void HandlePublisherFailure(const rpc::Address &publisher_address) = 0;
 
   /// Return true if the subscription exists for a given publisher id.
   virtual bool SubscriptionExists(const PublisherID &publisher_id) = 0;
@@ -125,7 +124,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
       const rpc::Address &publisher_address,
       const rpc::PubMessage &pub_message) const override;
 
-  void HandlePublisherFailure(const rpc::Address &publisher_address, bool unsubscribe) override;
+  void HandlePublisherFailure(const rpc::Address &publisher_address) override;
 
   bool SubscriptionExists(const PublisherID &publisher_id) override {
     return subscription_map_.count(publisher_id);

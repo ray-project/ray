@@ -214,7 +214,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
                                 const std::unordered_set<NodeID> &client_ids,
                                 const std::string &spilled_url,
                                 const NodeID &spilled_node_id, size_t object_size) {
-    RAY_LOG(ERROR) << "[SANG] Pulling is done.";
     pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, spilled_node_id,
                                     object_size);
   };
@@ -225,7 +224,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // be received if the list of locations is empty. The set of node IDs has
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
-    RAY_LOG(ERROR) << "[SANG] subscribing to object locations for pulling " << object_id;
     RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
         object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
   }
@@ -657,7 +655,6 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                           const std::string &spilled_url, const NodeID &spilled_node_id,
                           size_t object_size) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
-            RAY_LOG(ERROR) << "[SANG] Hahahoho, object id ";
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we
               // may get a subscription notification after the wait call has
@@ -669,7 +666,6 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
             if (local_objects_.count(subscribe_object_id) > 0) {
-              RAY_LOG(ERROR) << "[SANG] location subscription returned " << subscribe_object_id;
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
@@ -710,7 +706,6 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  RAY_LOG(ERROR) << "[SANG] Wait request completed";
   auto iter = active_wait_requests_.find(wait_id);
   RAY_CHECK(iter != active_wait_requests_.end());
   auto &wait_state = iter->second;
