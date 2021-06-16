@@ -166,7 +166,7 @@ class LocalObjectManager {
                             std::function<void(const ray::Status &)> callback);
 
   /// Remove the owner of an object that has been freed by its owner.
-  void ReleaseoFreedObject(const ObjectID &object_id, const rpc::Address &owner_address);
+  void ReleaseFreedObject(const ObjectID &object_id, const rpc::Address &owner_address);
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.

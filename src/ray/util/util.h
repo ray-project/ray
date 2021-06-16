@@ -218,7 +218,7 @@ namespace util {
 template <class Map, typename Key = typename Map::key_type>
 typename Map::mapped_type &get_ref_or_fail(Map &map, const Key &key) {
   auto it = map.find(key);
-  RAY_FATAL(it != map.end()) << " Key doesn't exist";
+  RAY_CHECK(it != map.end()) << " Key doesn't exist";
   return it->second;
 }
 

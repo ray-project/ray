@@ -274,9 +274,3 @@ def ray_deps_setup():
         urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
         sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )
-
-    http_archive(
-        name = "com_grail_bazel_compdb",
-        strip_prefix = "bazel-compilation-database-master",
-        urls = ["https://github.com/grailbio/bazel-compilation-database/archive/master.tar.gz"],
-    )

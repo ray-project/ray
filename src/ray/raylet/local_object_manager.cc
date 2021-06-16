@@ -68,7 +68,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, object, owner_address_id]() {
+    auto owner_dead_callback = [this, object_id, owner_address]() {
       ReleaseFreedObject(object_id, owner_address);
     };
 
@@ -90,12 +90,17 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id,
             (objects_pending_spill_.count(object_id) > 0));
 
   auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-  auto it = std::find(owners.begin(), owners.end(), owner_address);
+  auto owner_check = [worker_id = owner_address.worker_id()](const auto &v) {
+    return worker_id == v.worker_id();
+  };
+  auto it = std::find_if(owners.begin(), owners.end(), owner_check);
   RAY_CHECK(it != owners.end())
-      << "Fail to remove owner " << owner_address << " for object " << object_id;
+      << "Fail to remove owner " << WorkerID::FromBinary(owner_address.worker_id())
+      << " for object " << object_id;
   it = owners.erase(it);
-  RAY_CHECK(std::find(it, owners.end(), owner_addresss) == owners.end())
-      << "There are duplicate owners " << owner_address << " for object_id " << object_id;
+  RAY_CHECK(std::find_if(it, owners.end(), owner_check) == owners.end())
+      << "There are duplicate owners " << WorkerID::FromBinary(owner_address.worker_id())
+      << " for object_id " << object_id;
 
   // In case we still have owners for the object, we don't delete
   if (!owners.empty()) {
@@ -106,7 +111,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id,
 
   spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
-    pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
+    pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
     pinned_objects_.erase(object_id);
   }
 
@@ -256,7 +261,9 @@ void LocalObjectManager::SpillObjectsInternal(
           request.add_object_ids_to_spill(object_id.Binary());
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
-          request.add_owner_addresses()->MergeFrom(it->second.second);
+          // TODO (yic): To support ownership transfer
+          auto &owner = util::get_ref_or_fail(object_owners_, object_id)[0];
+          request.add_owner_addresses()->MergeFrom(owner);
         }
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
@@ -364,15 +371,18 @@ void LocalObjectManager::AddSpilledUrls(
     request.set_spilled_url(object_url);
     request.set_spilled_node_id(node_id_object_spilled.Binary());
     request.set_size(it->second->GetSize());
-
-    auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
-    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
-                   << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
-    // Send spilled URL, spilled node ID, and object size to owner.
-    owner_client->AddSpilledUrl(
-        request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
-          unpin_callback(status);
-        });
+    const auto &owners = util::get_ref_or_fail(object_owners_, object_id);
+    for (auto &owner : owners) {
+      auto owner_client = owner_client_pool_.GetOrConnect(owner);
+      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
+                     << object_id << " to owner "
+                     << WorkerID::FromBinary(owner.worker_id());
+      // Send spilled URL, spilled node ID, and object size to owner.
+      owner_client->AddSpilledUrl(
+          request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+            unpin_callback(status);
+          });
+    }
   }
 }
 
