@@ -69,12 +69,38 @@ you can use the ready-to-use Pytorch Lightning callbacks that Ray Tune provides.
 To report metrics back to Tune after each validation epoch, we can use the ``TuneReportCallback``:
 
 .. code-block:: python
-
     from ray.tune.integration.pytorch_lightning import TuneReportCallback
-    callback = TuneReportCallback({
-        "loss": "avg_val_loss",
-        "mean_accuracy": "avg_val_accuracy"
-    }, on="validation_end")
+
+    def train_mnist(config):
+
+        # Create your PTL model.
+        model = MNISTClassifier(config)
+
+        # Create the Tune Reporting Callback
+        metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
+        callbacks = [TuneReportCallback(metrics, on="validation_end")]
+
+        trainer = pl.Trainer(max_epochs=4, callbacks=callbacks)
+        trainer.fit(model)
+
+    config = {
+        "layer_1": tune.choice([32, 64, 128]),
+        "layer_2": tune.choice([64, 128, 256]),
+        "lr": tune.loguniform(1e-4, 1e-1),
+        "batch_size": tune.choice([32, 64, 128]),
+    }
+
+    # Make sure to specify how many actors each training run will create via the "extra_cpu" field.
+    analysis = tune.run(
+            train_mnist,
+            metric="loss",
+            mode="min",
+            config=config,
+            num_samples=num_samples,
+            name="tune_mnist")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
+
 
 And if you want to add periodic checkpointing as well, you can use the ``TuneReportCheckpointCallback`` instead.
 
@@ -99,11 +125,12 @@ With this integration, you can run multiple PyTorch Lightning training runs in p
 each with a different hyperparameter configuration, and each training run also parallelized.
 All you have to do is move your training code to a function, pass the function to ``tune.run``, and make sure to add the appropriate callback (Either ``TuneReportCallback`` or ``TuneReportCheckpointCallback``) to your PyTorch Lightning Trainer.
 
-.. warning:: Make sure to use the callbacks from the Ray Lightning library and not the one from the Tune library. Use ``ray_lightning.tune.TuneReportCallback`` and not ``ray.tune.integrations.TuneReportCallback``.
+.. warning:: Make sure to use the callbacks from the Ray Lightning library and not the one from the Tune library, i.e. use ``ray_lightning.tune.TuneReportCallback`` and not ``ray.tune.integrations.pytorch_lightning.TuneReportCallback``.
 
 Example using Ray Lightning with Tune:
 
 .. code-block:: python
+
     from ray_lightning import RayPlugin
     from ray_lightning.tune import TuneReportCallback
 
