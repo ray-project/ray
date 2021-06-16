@@ -311,7 +311,7 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     cluster.wait_for_nodes(3)
     up, down = ray.wait(
         [actor.ping.remote() for actor in actor_handles],
-        timeout=1,
+        timeout=5,
         num_returns=len(actor_handles))
     assert len(up) == len(actor_handles)
     assert len(down) == 0
