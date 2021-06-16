@@ -41,6 +41,7 @@ namespace raylet_scheduling_policy {
 int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float hybrid_threshold, bool force_spillback,
-                     bool require_available);
+                     bool require_available, bool ignore_local_node_at_capacity,
+                     std::function<bool(const ObjectID &obj_id)> is_object_being_pulled);
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

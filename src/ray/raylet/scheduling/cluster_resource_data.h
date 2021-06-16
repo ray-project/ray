@@ -153,7 +153,7 @@ class NodeResources {
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const TaskRequest &task_req) const;
+  bool IsAvailable(const TaskRequest &task_req, bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const TaskRequest &task_req) const;

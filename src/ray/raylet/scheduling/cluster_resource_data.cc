@@ -180,6 +180,9 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
     }
 
     float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
+    if (i == OBJECT_STORE_MEM) {
+      RAY_LOG(DEBUG) << "XXX Object store memory at utilization " << utilization;
+    }
     if (utilization > highest) {
       highest = utilization;
     }
@@ -187,15 +190,17 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
-  if (object_pulls_queued) {
-    return false;
-  }
+bool NodeResources::IsAvailable(const TaskRequest &task_req, std::function<bool(const ObjectID &obj_id)> is_object_being_pulled) const {
+  //if (!ignore_at_capacity && object_pulls_queued) {
+  //  RAY_LOG(DEBUG) << "XXX At pull manager capacity";
+  //  return false;
+  //}
   
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (task_req.predefined_resources[i] != 0) {
+        RAY_LOG(DEBUG) << "XXX At resource capacity";
         return false;
       }
       continue;
@@ -205,6 +210,7 @@ bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
     const auto &demand = task_req.predefined_resources[i];
 
     if (resource < demand) {
+      RAY_LOG(DEBUG) << "XXX At resource capacity";
       return false;
     }
   }

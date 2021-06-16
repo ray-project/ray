@@ -286,7 +286,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool actor_creation,
                                                          bool force_spillback,
                                                          int64_t *total_violations,
-                                                         bool *is_infeasible) {
+                                                         bool *is_infeasible, bool ignore_local_node_at_capacity) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && task_req.IsEmpty()) {
@@ -313,7 +313,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
       task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
-      force_spillback);
+      force_spillback, ignore_local_node_at_capacity);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
@@ -328,11 +328,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
-    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
+    const std::unordered_map<std::string, double> &task_resources, const std::unordered_set<std::ObjectID> &task_deps, bool actor_creation,
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible, bool ignore_local_node_at_capacity) {
+  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources, deps);
   int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, force_spillback,
-                                           total_violations, is_infeasible);
+                                           total_violations, is_infeasible, ignore_local_node_at_capacity);
 
   std::string id_string;
   if (node_id == -1) {
@@ -373,6 +373,9 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
           std::max(FixedPoint(0), it->second.available - task_req_custom_resource.second);
     }
   }
+
+  resources->object_pulls_queued = true;
+
   return true;
 }
 
