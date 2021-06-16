@@ -369,6 +369,7 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
   for (auto &arg : args) {
     task_arg_bytes += arg->GetSize();
   }
+  RAY_LOG(DEBUG) << "Task " << spec.TaskId() << " has args of size " << task_arg_bytes;
   PinTaskArgs(spec, std::move(args));
   RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
   if (max_pinned_task_arguments_bytes_ == 0) {
@@ -1094,6 +1095,41 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
+  std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
+  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
+  for (auto &entry : leased_workers_) {
+    std::shared_ptr<WorkerInterface> worker = entry.second;
+    auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
+    if (!task_spec.PlacementGroupBundleId().first.IsNil()) {
+      continue;
+    }
+
+    auto task_id = worker->GetAssignedTaskId();
+    auto actor_id = task_id.ActorId();
+    if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
+      // This task ID corresponds to an actor creation task.
+      continue;
+    }
+
+    if (auto allocated_instances = worker->GetAllocatedInstances()) {
+      auto task_request = allocated_instances->ToTaskRequest();
+      for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
+        if (task_request.predefined_resources[i] > 0) {
+          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
+              task_request.predefined_resources[i];
+        }
+      }
+      for (auto &entry : task_request.custom_resources) {
+        if (entry.second > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
+        }
+      }
+    }
+  }
+  return total_normal_task_resources;
 }
 
 }  // namespace raylet

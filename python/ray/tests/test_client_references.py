@@ -1,18 +1,15 @@
-import sys
-
 import pytest
 from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, object_memory_usage
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray._raylet import ActorID, ObjectRef
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_object_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
@@ -37,7 +34,6 @@ def test_client_object_ref_basics(ray_start_regular):
         assert not ClientObjectRef(id).is_nil()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_client_actor_ref_basics(ray_start_regular):
     with ray_start_client_server_pair() as pair:
         ray, server = pair
@@ -102,17 +98,10 @@ def server_actor_ref_count(server, n):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
-    [{
+    "ray_start_cluster", [{
         "num_nodes": 1,
         "do_init": False,
-        # This test uses ray.state.objects(), which only works with the
-        # GCS-based object directory
-        "_system_config": {
-            "ownership_based_object_directory_enabled": False
-        },
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_delete_refs_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:
@@ -127,7 +116,6 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # One put, one function -- the function result thing1 is
         # in a different category, according to the raylet.
-        assert len(real_ray.state.objects()) == 2
         # But we're maintaining the reference
         assert server_object_ref_count(server, 3)()
         # And can get the data
@@ -143,7 +131,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
         real_ray.init(address=cluster.address, namespace="")
 
         def test_cond():
-            return len(real_ray.state.objects()) == 0
+            return object_memory_usage() == 0
 
         wait_for_condition(test_cond, timeout=5)
 

@@ -76,6 +76,9 @@ struct PlasmaStoreInfo {
   bool hugepages_enabled;
   /// A (platform-dependent) directory where to create the memory-backed file.
   std::string directory;
+  /// A (platform-dependent) directory where to create fallback files. This
+  /// should NOT be in /dev/shm.
+  std::string fallback_directory;
 };
 
 /// Get an entry from the object table and return NULL if the object_id

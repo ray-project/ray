@@ -98,13 +98,11 @@ def _get_wheel_name(minor_version_number):
 
 
 def _check_if_docker_files_modified():
-    proc = subprocess.run(
-        [
-            sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
-            "--output=json"
-        ],
-        capture_output=True)
-    affected_env_var_list = json.loads(proc.stdout)
+    stdout = subprocess.check_output([
+        sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
+        "--output=json"
+    ])
+    affected_env_var_list = json.loads(stdout)
     affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
                 "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
@@ -122,7 +120,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+                    "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
@@ -408,13 +406,20 @@ if __name__ == "__main__":
     print("Building base images: ", args.base)
 
     build_type = args.build_type
+    is_buildkite = build_type == BUILDKITE
+    if build_type == BUILDKITE:
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
+            build_type = MERGE
+        else:
+            build_type = PR
     if build_type == HUMAN:
         _configure_human_version()
-    if build_type in {HUMAN, MERGE, BUILDKITE
-                      } or _check_if_docker_files_modified():
+    if (build_type in {HUMAN, MERGE} or is_buildkite
+            or _check_if_docker_files_modified()):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
-        if is_merge:
+        # Buildkite is authenticated in the background.
+        if is_merge and not is_buildkite:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()
@@ -424,7 +429,7 @@ if __name__ == "__main__":
         build_ray()
         build_ray_ml()
 
-        if build_type in {MERGE, PR}:  # Skipping push on buildkite
+        if build_type in {MERGE, PR}:
             valid_branch = _valid_branch()
             if (not valid_branch) and is_merge:
                 print(f"Invalid Branch found: {_get_branch()}")

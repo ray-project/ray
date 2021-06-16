@@ -951,6 +951,48 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter.on_trial_complete("test_2", {"result": 3})
         assert limiter.suggest("test_3") is not None
 
+    def testBatchLimiterInfiniteLoop(self):
+        """Check whether an infinite loop when less than max_concurrent trials
+        are suggested with batch mode is avoided.
+        """
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index, max_suggestions=10):
+                self.index = index
+                self.max_suggestions = max_suggestions
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                if self.index > self.max_suggestions:
+                    return None
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+                self.index = 0
+
+        searcher = TestSuggestion(0, 2)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=5, batch=True)
+        limiter.suggest("test_1")
+        limiter.suggest("test_2")
+        limiter.suggest("test_3")  # TestSuggestion return None
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert limiter.searcher.returned_result
+
+        searcher = TestSuggestion(0, 10)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=5, batch=True)
+        limiter.suggest("test_1")
+        limiter.suggest("test_2")
+        limiter.suggest("test_3")
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert not limiter.searcher.returned_result
+
 
 class ResourcesTest(unittest.TestCase):
     def testSubtraction(self):

@@ -37,12 +37,13 @@ we determine the batch_size based on script parameters.
 
 """
 
-MINUTES_IN_A_MONTH = 43800
+# MINUTES_IN_A_MONTH = 43800
+MINUTES_IN_A_MONTH = 10950
 NUM_MINS_PER_OUTPUT_FILE = 30
-SAMPLING_RATE = 2000000
-SECONDS_IN_A_MIN = 60
+SAMPLING_RATE = 200000
+SECONDS_IN_A_MIN = 20
 INPUT_SHAPE = (3, SAMPLING_RATE * SECONDS_IN_A_MIN)
-PEAK_MEMORY_CONSUMPTION_IN_GB = 60
+PEAK_MEMORY_CONSUMPTION_IN_GB = 20
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",

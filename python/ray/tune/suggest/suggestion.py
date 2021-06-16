@@ -341,6 +341,7 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         self.batch = batch
         self.live_trials = set()
+        self.num_unfinished_live_trials = 0
         self.cached_results = {}
 
         if not isinstance(searcher, Searcher):
@@ -365,6 +366,7 @@ class ConcurrencyLimiter(Searcher):
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
             self.live_trials.add(trial_id)
+            self.num_unfinished_live_trials += 1
         return suggestion
 
     def on_trial_complete(self,
@@ -375,7 +377,8 @@ class ConcurrencyLimiter(Searcher):
             return
         elif self.batch:
             self.cached_results[trial_id] = (result, error)
-            if len(self.cached_results) == self.max_concurrent:
+            self.num_unfinished_live_trials -= 1
+            if self.num_unfinished_live_trials <= 0:
                 # Update the underlying searcher once the
                 # full batch is completed.
                 for trial_id, (result, error) in self.cached_results.items():
@@ -383,12 +386,14 @@ class ConcurrencyLimiter(Searcher):
                         trial_id, result=result, error=error)
                     self.live_trials.remove(trial_id)
                 self.cached_results = {}
+                self.num_unfinished_live_trials = 0
             else:
                 return
         else:
             self.searcher.on_trial_complete(
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
+            self.num_unfinished_live_trials -= 1
 
     def get_state(self) -> Dict:
         state = self.__dict__.copy()

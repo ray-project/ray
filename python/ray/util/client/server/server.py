@@ -76,7 +76,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             else:
                 self.ray_connect_handler(job_config)
         if job_config is None:
-            return ray_client_pb2.InitResponse()
+            return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -560,7 +560,7 @@ def decode_options(
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
 
-    if opts.get("placement_group", None):
+    if isinstance(opts.get("placement_group", None), dict):
         # Placement groups in Ray client options are serialized as dicts.
         # Convert the dict to a PlacementGroup.
         opts["placement_group"] = PlacementGroup.from_dict(

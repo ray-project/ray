@@ -29,13 +29,23 @@ class StoreToReplayBuffer:
         SampleBatch(...)
     """
 
-    def __init__(self,
-                 *,
-                 local_buffer: LocalReplayBuffer = None,
-                 actors: List[ActorHandle] = None):
+    def __init__(
+            self,
+            *,
+            local_buffer: Optional[LocalReplayBuffer] = None,
+            actors: Optional[List[ActorHandle]] = None,
+    ):
+        """
+        Args:
+            local_buffer (LocalReplayBuffer): The local replay buffer to store
+                the data into.
+            actors (Optional[List[ActorHandle]]): An optional list of replay
+                actors to use instead of `local_buffer`.
+        """
         if bool(local_buffer) == bool(actors):
             raise ValueError(
-                "Exactly one of local_buffer and replay_actors must be given.")
+                "Either `local_buffer` or `replay_actors` must be given, "
+                "not both!")
 
         if local_buffer:
             self.local_actor = local_buffer
