@@ -151,7 +151,6 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             pass
 
         def set_weights(self, x):
-            print
             pass
 
     actors = [
@@ -168,7 +167,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     object_refs = []
 
     # Broadcast a large object to all actors.
-    for _ in range(num_nodes):
+    for _ in range(5):
         x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
         object_refs.append(x_id)
         # Pass the object into a method for every actor.
