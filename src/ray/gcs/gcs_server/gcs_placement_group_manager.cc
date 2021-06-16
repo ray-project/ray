@@ -653,7 +653,8 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  // NOTE: Infeasible placement groups also belong to the pending queue when report metrics.
+  // NOTE: Infeasible placement groups also belong to the pending queue when report
+  // metrics.
   for (const auto &pending_pg_spec : infeasible_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
