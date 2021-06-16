@@ -1214,7 +1214,11 @@ class RolloutWorker(ParallelIteratorWorker):
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                continue#TODO
+                logger.warning(
+                    f"pid={pid} not found in policy_map! It was probably added"
+                    " on-the-fly and is not part of the static `config."
+                    "multiagent.policies` dict. Ignoring it for now.")
+                continue
             self.policy_map[pid].set_state(state)
 
     @DeveloperAPI

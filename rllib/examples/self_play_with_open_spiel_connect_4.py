@@ -1,13 +1,13 @@
 """Example showing how one can implement a simple self-play training workflow.
 
 Uses the open spiel adapter of RLlib with the "connect_four" game and
-a multi-agent setup with a "main" policy and n "main_x" policies, which
-are all at-some-point-frozen copies of "main". At the very beginning,
-"main" plays against RandomPolicy.
+a multi-agent setup with a "main" policy and n "main_v[x]" policies
+(x=version number), which are all at-some-point-frozen copies of
+"main". At the very beginning, "main" plays against RandomPolicy.
 
 Checks for the training progress after each training update via a custom
 callback. We simply measure the win rate of "main" vs the opponent
-("main_x" or RandomPolicy at the beginning) by looking through the
+("main_v[x]" or RandomPolicy at the beginning) by looking through the
 achieved rewards in the episodes in the train batch. If this win rate
 reaches some configurable threshold, we add a new policy to
 the policy map (a frozen copy of the current "main" one) and change the
@@ -60,9 +60,10 @@ parser.add_argument(
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
-    default=0.85,
+    default=0.95,
     help="Win-rate at which we setup another opponent by freezing the "
-    "current main policy and playing against it from here on.")
+    "current main policy and playing against a uniform distribution "
+    "of previously frozen 'main's from here on.")
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
@@ -106,30 +107,33 @@ class SelfPlayCallback(DefaultCallbacks):
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
-        opponent_rew = result["hist_stats"]["policy_{}_reward".format(
-            "main_" + str(self.current_opponent)
-            if self.current_opponent > 0 else "random")]
+        main_rew = result["hist_stats"].pop("policy_main_reward")
+        opponent_rew = list(result["hist_stats"].values())[0]
+        assert len(main_rew) == len(opponent_rew)
         won = 0
-        for r_main, r_opponent in zip(
-                result["hist_stats"]["policy_main_reward"], opponent_rew):
+        for r_main, r_opponent in zip(main_rew, opponent_rew):
             if r_main > r_opponent:
                 won += 1
-        win_rate = won / len(result["hist_stats"]["policy_main_reward"])
+        win_rate = won / len(main_rew)
         print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
         # policy.
         if win_rate > args.win_rate_threshold:
             self.current_opponent += 1
-            new_pol_id = f"main_{self.current_opponent}"
-            print(f"playing against better opponent ({new_pol_id}) next.")
+            new_pol_id = f"main_v{self.current_opponent}"
+            print(f"adding new opponent to the mix ({new_pol_id}).")
 
+            # Re-define the mapping function, such that "main" is forced
+            # to play against any of the previously played policies
+            # (excluding "random").
             def policy_mapping_fn(agent_id, episode, **kwargs):
                 # agent_id = [0|1] -> policy depends on episode ID
                 # This way, we make sure that both policies sometimes play
-                # agent0 (start player) and sometimes agent1.
+                # (start player) and sometimes agent1 (player to move 2nd).
                 return "main" if episode.episode_id % 2 == agent_id \
-                    else new_pol_id
+                    else "main_v{}".format(np.random.choice(
+                        list(range(1, self.current_opponent + 1))))
 
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
@@ -153,7 +157,7 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
     OBS_SPACE = dummy_env.observation_space
@@ -165,12 +169,17 @@ if __name__ == "__main__":
     def policy_mapping_fn(agent_id, episode, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
         # This way, we make sure that both policies sometimes play agent0
-        # (start player) and sometimes agent1.
+        # (start player) and sometimes agent1 (player to move 2nd).
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = {
         "env": "connect_four",
         "callbacks": SelfPlayCallback,
+        "model": {
+            "fcnet_hiddens": [512, 512],
+        },
+        "num_sgd_iter": 20,
+        "num_envs_per_worker": 5,
         "multiagent": {
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
@@ -185,7 +194,7 @@ if __name__ == "__main__":
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)
             # that "main" always plays against "random" (and not against
-            # another "main).
+            # another "main").
             "policy_mapping_fn": policy_mapping_fn,
             # Always just train the "main" policy.
             "policies_to_train": ["main"],
@@ -204,8 +213,12 @@ if __name__ == "__main__":
     results = None
     if not args.from_checkpoint:
         results = tune.run(
-            "PPO", config=config, stop=stop,
-            checkpoint_at_end=True, checkpoint_freq=10, verbose=1)
+            "PPO",
+            config=config,
+            stop=stop,
+            checkpoint_at_end=True,
+            checkpoint_freq=10,
+            verbose=1)
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
