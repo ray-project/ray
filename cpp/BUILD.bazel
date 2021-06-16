@@ -82,10 +82,8 @@ genrule(
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         TEMP_DIR="$$WORK_DIR/cpp/example" &&
-        rm -rf $$TEMP_DIR/thirdparty $$TEMP_DIR/.bazelrc &&
         mkdir -p "$$TEMP_DIR/thirdparty/include/" &&
         mkdir -p "$$TEMP_DIR/thirdparty/lib/" &&
-        cp -f "$$WORK_DIR/.bazelrc" "$$TEMP_DIR" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$TEMP_DIR/thirdparty/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/" "$$TEMP_DIR/thirdparty/include" &&
         cp -f $(locations libray_api.so) "$$TEMP_DIR/thirdparty/lib/" &&
