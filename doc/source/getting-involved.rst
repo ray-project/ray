@@ -187,10 +187,10 @@ Understanding CI test jobs
 --------------------------
 
 The Ray project automatically runs continuous integration (CI) tests once a PR
-is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with
+is opened using `Buildkite <https://buildkite.com/ray-project/>`_ with
 multiple CI test jobs.
 
-The `Travis CI`_ test folder contains all integration test scripts and they
+The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
@@ -204,11 +204,11 @@ scripts. Some of the examples include:
     * ``pytest python/ray/serve/tests``
     * ``python python/ray/serve/examples/echo_full.py``
 
-If a Travis-CI build exception doesn't appear to be related to your change,
-please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to
+If a CI build exception doesn't appear to be related to your change,
+please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis
+.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
 
 
 Becoming a Reviewer
