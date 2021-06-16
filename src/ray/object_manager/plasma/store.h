@@ -52,8 +52,9 @@ class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              bool hugepages_enabled, const std::string &socket_name,
-              uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
+              std::string fallback_directory, bool hugepages_enabled,
+              const std::string &socket_name, uint32_t delay_on_oom_ms,
+              ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
               ray::DeleteObjectCallback delete_object_callback);

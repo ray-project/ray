@@ -36,7 +36,7 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
     timers_.push_back(timer);
     io_service_.post(
         [this, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
-          if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+          if (RayConfig::instance().event_stats()) {
             DoRunFnPeriodicallyInstrumented(
                 fn, boost::posix_time::milliseconds(period_ms), *timer, name);
           } else {

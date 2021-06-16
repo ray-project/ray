@@ -190,3 +190,7 @@ project-id
 # gitpod cache related
 .pip-cache/
 .bazel-cache/
+
+# release test related
+.anyscale.yaml
+test_state.json

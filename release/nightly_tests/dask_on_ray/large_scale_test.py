@@ -15,6 +15,7 @@ import dask.array
 import xarray
 from ray.util.dask import ray_dask_get
 import math
+import json
 """
 We simulate a real-life usecase where we process a time-series
 data of 1 month, using Dask/Xarray on a Ray cluster.
@@ -27,22 +28,22 @@ Perform decimation to reduce data size.
 Perform decimation to reduce data size.
 
 (3) Segment the Xarray from (2) into 30-minute Xarrays;
-at this point, we have 43800 / 30 = 1460 Xarrays.
+at this point, we have 4380 / 30 = 146 Xarrays.
 
 (4) Trigger save to disk for each of the 30-minute Xarrays.
-This triggers Dask computations; there will be 1460 graphs.
+This triggers Dask computations; there will be 146 graphs.
 Since 1460 graphs is too much to process at once,
 we determine the batch_size based on script parameters.
 (e.g. if batch_size is 100, we'll have 15 batches).
 
 """
 
-MINUTES_IN_A_MONTH = 43800
+MINUTES_IN_A_MONTH = 500
 NUM_MINS_PER_OUTPUT_FILE = 30
-SAMPLING_RATE = 2000000
+SAMPLING_RATE = 1000000
 SECONDS_IN_A_MIN = 60
 INPUT_SHAPE = (3, SAMPLING_RATE * SECONDS_IN_A_MIN)
-PEAK_MEMORY_CONSUMPTION_IN_GB = 60
+PEAK_MEMORY_CONSUMPTION_IN_GB = 6
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -141,7 +142,7 @@ class LoadRoutines:
     def load_array_one_minute(test_spec: TestSpec) -> np.ndarray:
         """
         Load an array representing 1 minute of data. Each load consumes
-        ~1.44GB of memory (3 * 2000000 * 60 * 4 (bytes in a float)) = ~1.44
+        ~0.144GB of memory (3 * 200000 * 60 * 4 (bytes in a float)) = ~0.14GB
 
         In real life, this is loaded from cloud storage or disk.
         """
@@ -420,36 +421,44 @@ def parse_script_args():
 def main():
     args, unknown = parse_script_args()
     logging.info("Received arguments: {}".format(args))
+    success = 1
+    try:
+        # Create test spec
+        test_spec = TestSpec(
+            num_workers=args.num_workers,
+            worker_obj_store_size_in_gb=args.worker_obj_store_size_in_gb,
+            error_rate=args.error_rate,
+            trigger_object_spill=args.trigger_object_spill,
+        )
+        logging.info("Created test spec: {}".format(test_spec))
 
-    # Create test spec
-    test_spec = TestSpec(
-        num_workers=args.num_workers,
-        worker_obj_store_size_in_gb=args.worker_obj_store_size_in_gb,
-        error_rate=args.error_rate,
-        trigger_object_spill=args.trigger_object_spill,
-    )
-    logging.info("Created test spec: {}".format(test_spec))
+        # Create the data save path if it doesn't exist.
+        data_save_path = args.data_save_path
+        if not os.path.exists(data_save_path):
+            os.makedirs(data_save_path, mode=0o777, exist_ok=True)
+        os.chmod(data_save_path, mode=0o777)
 
-    # Create the data save path if it doesn't exist.
-    data_save_path = args.data_save_path
-    if not os.path.exists(data_save_path):
-        os.makedirs(data_save_path, mode=0o777, exist_ok=True)
-    os.chmod(data_save_path, mode=0o777)
+        # Lazily construct Xarrays
+        xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)
 
-    # Lazily construct Xarrays
-    xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)
+        # Connect to the Ray cluster
+        ray.init(address="auto")
 
-    # Connect to the Ray cluster
-    ray.init(address="auto")
-
-    # Save all the Xarrays to disk; this will trigger Dask computations on Ray.
-    logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
-    SaveRoutines.save_all_xarrays(
-        xarray_filename_pairs=xarray_filename_pairs,
-        dirpath=data_save_path,
-        batch_size=test_spec.batch_size,
-        ray_scheduler=ray_dask_get,
-    )
+        # Save all the Xarrays to disk; this will trigger
+        # Dask computations on Ray.
+        logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
+        SaveRoutines.save_all_xarrays(
+            xarray_filename_pairs=xarray_filename_pairs,
+            dirpath=data_save_path,
+            batch_size=test_spec.batch_size,
+            ray_scheduler=ray_dask_get,
+        )
+        print(ray.internal.internal_api.memory_summary(stats_only=True))
+    except Exception as e:
+        logging.exception(e)
+        success = 0
+    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+        f.write(json.dumps({"success": success}))
 
 
 if __name__ == "__main__":

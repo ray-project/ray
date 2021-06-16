@@ -20,6 +20,15 @@
 
 namespace ray {
 
+enum BundlePriority {
+  /// Bundle requested by ray.get().
+  GET_REQUEST,
+  /// Bundle requested by ray.wait().
+  WAIT_REQUEST,
+  /// Bundle requested for fetching task arguments.
+  TASK_ARGS,
+};
+
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests
@@ -50,14 +59,15 @@ class PullManager {
   /// preceding this one, is within the capacity of the local object store.
   ///
   /// \param object_refs The bundle of objects that must be made local.
-  /// \param is_worker_req Whether this is a request from a worker executing a
+  /// \param prio The priority class of the bundle.
   /// task, versus the arguments of a queued task. Worker requests are
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
   /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                bool is_worker_req, std::vector<rpc::ObjectReference> *objects_to_locate);
+                BundlePriority prio,
+                std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
@@ -196,10 +206,19 @@ class PullManager {
                                    uint64_t *highest_req_id_being_pulled,
                                    std::unordered_set<ObjectID> *objects_to_cancel);
 
+  /// Helper method that deactivates requests from the given queue until the pull
+  /// memory usage is within quota.
+  void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
+                                  uint64_t *highest_id_for_bundle,
+                                  std::unordered_set<ObjectID> *objects_to_cancel);
+
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
   /// request.
   void TriggerOutOfMemoryHandlingIfNeeded();
+
+  /// Return debug info about this bundle queue.
+  std::string BundleInfo(const Queue &bundles) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -224,8 +243,12 @@ class PullManager {
   /// require those resources. If we try to pull arguments for a new task
   /// before handling a worker's request, we could deadlock.
   ///
-  /// Queue of `ray.get` and `ray.wait` requests made by workers.
-  Queue worker_request_bundles_;
+  /// We only enable plasma fallback allocations for ray.get() requests, which
+  /// also take precedence over ray.wait() requests.
+  ///
+  /// Queues of `ray.get` and `ray.wait` requests made by workers.
+  Queue get_request_bundles_;
+  Queue wait_request_bundles_;
   /// Queue of arguments of queued tasks.
   Queue task_argument_bundles_;
 
@@ -253,8 +276,9 @@ class PullManager {
   /// or their objects are also being pulled.
   ///
   /// We keep one pointer for each request queue, since we prioritize worker
-  /// requests over task argument requests.
-  uint64_t highest_worker_req_id_being_pulled_ = 0;
+  /// requests over task argument requests, and gets over waits.
+  uint64_t highest_get_req_id_being_pulled_ = 0;
+  uint64_t highest_wait_req_id_being_pulled_ = 0;
   uint64_t highest_task_req_id_being_pulled_ = 0;
 
   /// The objects that this object manager has been asked to fetch from remote

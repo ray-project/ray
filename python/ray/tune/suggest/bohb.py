@@ -279,7 +279,8 @@ class TuneBOHB(Searcher):
                     return ConfigSpace.UniformFloatHyperparameter(
                         par, lower=lower, upper=upper, q=quantize, log=False)
                 elif isinstance(sampler, Normal):
-                    return ConfigSpace.NormalFloatHyperparameter(
+                    return ConfigSpace.hyperparameters.\
+                       NormalFloatHyperparameter(
                         par,
                         mu=sampler.mean,
                         sigma=sampler.sd,
@@ -293,6 +294,9 @@ class TuneBOHB(Searcher):
                     if quantize:
                         lower = math.ceil(domain.lower / quantize) * quantize
                         upper = math.floor(domain.upper / quantize) * quantize
+                    else:
+                        # Tune search space integers are exclusive
+                        upper -= 1
                     return ConfigSpace.UniformIntegerHyperparameter(
                         par, lower=lower, upper=upper, q=quantize, log=True)
                 elif isinstance(sampler, Uniform):
@@ -301,6 +305,9 @@ class TuneBOHB(Searcher):
                     if quantize:
                         lower = math.ceil(domain.lower / quantize) * quantize
                         upper = math.floor(domain.upper / quantize) * quantize
+                    else:
+                        # Tune search space integers are exclusive
+                        upper -= 1
                     return ConfigSpace.UniformIntegerHyperparameter(
                         par, lower=lower, upper=upper, q=quantize, log=False)
 

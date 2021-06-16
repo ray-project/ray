@@ -42,22 +42,30 @@ class TestCQL(unittest.TestCase):
 
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
-        config["clip_actions"] = False
+        config["clip_actions"] = True
         config["normalize_actions"] = True
         config["learning_starts"] = 0
         config["rollout_fragment_length"] = 1
-        config["train_batch_size"] = 10
 
         # Switch on off-policy evaluation.
         config["input_evaluation"] = ["is"]
 
-        num_iterations = 2
+        config["evaluation_interval"] = 2
+        config["evaluation_num_episodes"] = 10
+        config["evaluation_config"]["input"] = "sampler"
+        config["evaluation_parallel_to_training"] = True
+        config["evaluation_num_workers"] = 2
+
+        num_iterations = 3
 
         # Test for tf/torch frameworks.
         for fw in framework_iterator(config):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
-                print(trainer.train())
+                results = trainer.train().get("evaluation")
+                if results:
+                    print(f"iter={trainer.iteration} "
+                          f"R={results['episode_reward_mean']}")
 
             check_compute_single_action(trainer)
 
