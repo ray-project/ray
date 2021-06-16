@@ -92,7 +92,7 @@ Status Client::SendFd(MEMFD_TYPE fd) {
       return Status::Invalid("Cannot open PID = " + std::to_string(target_pid));
     }
     HANDLE target_handle = NULL;
-    bool success = DuplicateHandle(GetCurrentProcess(), fd, target_process,
+    bool success = DuplicateHandle(GetCurrentProcess(), fd.first, target_process,
                                    &target_handle, 0, TRUE, DUPLICATE_SAME_ACCESS);
     if (!success) {
       // TODO(suquark): Define better error type.
@@ -103,8 +103,8 @@ Status Client::SendFd(MEMFD_TYPE fd) {
     if (!s.ok()) {
       /* we failed to send the handle, and it needs cleaning up! */
       HANDLE duplicated_back = NULL;
-      if (DuplicateHandle(target_process, fd, GetCurrentProcess(), &duplicated_back, 0,
-                          FALSE, DUPLICATE_CLOSE_SOURCE)) {
+      if (DuplicateHandle(target_process, fd.first, GetCurrentProcess(), &duplicated_back,
+                          0, FALSE, DUPLICATE_CLOSE_SOURCE)) {
         CloseHandle(duplicated_back);
       }
       CloseHandle(target_process);

@@ -18,8 +18,8 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
   // in fake_mmap in malloc.h, to make map_size page-aligned again.
   length_ = map_size - kMmapRegionsGap;
 #ifdef _WIN32
-  pointer_ =
-      reinterpret_cast<uint8_t *>(MapViewOfFile(fd.first, FILE_MAP_ALL_ACCESS, 0, 0, length_));
+  pointer_ = reinterpret_cast<uint8_t *>(
+      MapViewOfFile(fd.first, FILE_MAP_ALL_ACCESS, 0, 0, length_));
   // TODO(pcm): Don't fail here, instead return a Status.
   if (pointer_ == NULL) {
     RAY_LOG(FATAL) << "mmap failed";
