@@ -463,14 +463,18 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
     object_refs = []
     for _ in range(num_nodes):
         object_refs.append(ray.put(np.zeros(1024 * 1024, dtype=np.uint8)))
-    ray.get([task.options(resources={str(i): 1}).remote(object_refs[i]) for i in range(num_nodes)])
+    ray.get([
+        task.options(resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
     del object_refs
 
     @ray.remote
     class ObjectHolder:
         def __init__(self):
             self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-        
+
         def get_obj(self):
             return self.x
 
@@ -478,13 +482,22 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
             return True
 
     # Test if tasks can find object location properly when there are multiple owners
-    object_holders = [ObjectHolder.options(num_cpus=0.01, resources={str(i): 1}).remote() for i in range(num_nodes)]
+    object_holders = [
+        ObjectHolder.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote() for i in range(num_nodes)
+    ]
     ray.get([o.ready.remote() for o in object_holders])
 
     object_refs = []
     for i in range(num_nodes):
-        object_refs.append(object_holders[(i+1) % num_nodes].get_obj.remote())
-    ray.get([task.options(num_cpus=0.01, resources={str(i): 1}).remote(object_refs[i]) for i in range(num_nodes)])
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
+    ray.get([
+        task.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
 
     # Test a stressful scenario.
     object_refs = []
@@ -495,16 +508,23 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
     tasks = []
     for i in range(num_nodes):
         for r in range(repeat):
-            tasks.append(task.options(num_cpus=0.01, resources={str(i): 0.1}).remote(object_refs[i * r]))
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[i * r]))
     ray.get(tasks)
 
     object_refs = []
     for i in range(num_nodes):
-        object_refs.append(object_holders[(i+1) % num_nodes].get_obj.remote())
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
     tasks = []
     for i in range(num_nodes):
         for _ in range(10):
-            tasks.append(task.options(num_cpus=0.01, resources={str(i): 0.1}).remote(object_refs[(i + 1) % num_nodes]))
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[(i + 1) % num_nodes]))
 
 
 def test_object_directory_failure(ray_start_cluster):
@@ -525,20 +545,24 @@ def test_object_directory_failure(ray_start_cluster):
 
     # Add a node to be removed
     index_killing_node = num_nodes
-    node_to_kill = cluster.add_node(resources={str(index_killing_node): 100}, object_store_memory=10**9)
+    node_to_kill = cluster.add_node(
+        resources={str(index_killing_node): 100}, object_store_memory=10**9)
 
     @ray.remote
     class ObjectHolder:
         def __init__(self):
             self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-        
+
         def get_obj(self):
             return [self.x]
 
         def ready(self):
             return True
 
-    oh = ObjectHolder.options(num_cpus=0.01, resources={str(index_killing_node): 1}).remote()
+    oh = ObjectHolder.options(
+        num_cpus=0.01, resources={
+            str(index_killing_node): 1
+        }).remote()
     obj = ray.get(oh.get_obj.remote())[0]
 
     @ray.remote
@@ -551,7 +575,7 @@ def test_object_directory_failure(ray_start_cluster):
         for _ in range(repeat):
             tasks.append(task.options(resources={str(i): 1}).remote(obj))
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    
+
     for t in tasks:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(t, timeout=10)
