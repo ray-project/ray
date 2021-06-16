@@ -484,7 +484,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                          cf.bold("--resources"))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold("--resources='\"CustomResource3\": 1, "
+            cf.bold("--resources='{\"CustomResource3\": 1, "
                     "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "

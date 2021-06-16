@@ -7,7 +7,7 @@ namespace ray {
 namespace api {
 
 template <typename F>
-using GetActorType = absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
+using GetActorType = std::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
 
 template <typename F>
 class ActorCreator {
