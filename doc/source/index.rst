@@ -247,7 +247,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Clusters/Autoscaler
+   :caption: Deploying Ray
 
    cluster/index.rst
    cluster/quickstart.rst

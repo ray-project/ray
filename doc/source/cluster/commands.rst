@@ -136,7 +136,7 @@ To download or upload files to the cluster head node, use ``ray rsync_down`` or 
 
 .. _monitor-cluster:
 
-Monitoring cluster status (``ray dashboard/monitor``)
+Monitoring cluster status (``ray dashboard/status``)
 -----------------------------------------------------
 
 The ray also comes with an online dashboard. The dashboard is accessible via HTTP on the head node (by default it listens on ``localhost:8265``). You can also use the built-in ``ray dashboard`` to do this automatically.
@@ -145,12 +145,17 @@ The ray also comes with an online dashboard. The dashboard is accessible via HTT
 
     $ ray dashboard cluster.yaml
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling
-logs in ``/tmp/ray/session_*/logs/monitor*``.
+You can monitor cluster usage and auto-scaling status by running 
 
 .. code-block:: shell
 
-    $ ray monitor cluster.yaml
+    $ ray status
+
+To see live updates to the status
+
+.. code-block:: shell
+
+    $ watch -n 1 ray status
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go to the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
