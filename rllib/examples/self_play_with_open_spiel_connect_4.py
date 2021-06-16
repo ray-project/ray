@@ -1,8 +1,20 @@
 """Example showing how one can implement a simple self-play training workflow.
 
-Checks for training progress each training iteration, adds a new policy to
-the policy map (frozen copy of the current one), changes the policy_mapping_fn
-to make new matches, and edits the policies_to_train list.
+Uses the open spiel adapter of RLlib with the "connect_four" game and
+a multi-agent setup with a "main" policy and n "main_x" policies, which
+are all at-some-point-frozen copies of "main". At the very beginning,
+"main" plays against RandomPolicy.
+
+Checks for the training progress after each training update via a custom
+callback. We simply measure the win rate of "main" vs the opponent
+("main_x" or RandomPolicy at the beginning) by looking through the
+achieved rewards in the episodes in the train batch. If this win rate
+reaches some configurable threshold, we add a new policy to
+the policy map (a frozen copy of the current "main" one) and change the
+policy_mapping_fn to make new matches of "main" vs the just added one.
+
+After training for n iterations, a configurable number of episodes can
+be played by the user against the "main" agent on the command line.
 """
 
 import argparse
@@ -30,9 +42,15 @@ parser.add_argument(
     help="The DL framework specifier.")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
+    "--from-checkpoint",
+    type=str,
+    default=None,
+    help="Full path to a checkpoint file for restoring a previously saved "
+    "Trainer state.")
+parser.add_argument(
     "--stop-iters",
     type=int,
-    default=20000,
+    default=200,
     help="Number of iterations to train.")
 parser.add_argument(
     "--stop-timesteps",
@@ -183,15 +201,21 @@ if __name__ == "__main__":
     }
 
     # Train the "main" policy to play really well using self-play.
-    results = tune.run(
-        "PPO", stop=stop, config=config, checkpoint_at_end=True, verbose=1)
+    results = None
+    if not args.from_checkpoint:
+        results = tune.run(
+            "PPO", config=config, stop=stop,
+            checkpoint_at_end=True, checkpoint_freq=10, verbose=1)
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0
         trainer = PPOTrainer(config=dict(config, **{"explore": False}))
-        trainer.restore(results.get_last_checkpoint())
+        if args.from_checkpoint:
+            trainer.restore(args.from_checkpoint)
+        else:
+            trainer.restore(results.get_last_checkpoint())
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.

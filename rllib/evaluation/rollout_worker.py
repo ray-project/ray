@@ -1209,6 +1209,8 @@ class RolloutWorker(ParallelIteratorWorker):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
+            if pid not in self.policy_map:
+                continue#TODO
             self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
