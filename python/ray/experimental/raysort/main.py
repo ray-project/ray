@@ -203,7 +203,7 @@ def mapper(boundaries: List[int], mapper_id: PartId,
 
     part = _load_partition(path)
     sort_fn = _dummy_sort_and_partition \
-              if args.skip_sorting else sortlib.sort_and_partition
+        if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
     logging.info(f"{task_id} saving to object store")
     return [ray.put(part[offset:offset + size]) for offset, size in blocks]
