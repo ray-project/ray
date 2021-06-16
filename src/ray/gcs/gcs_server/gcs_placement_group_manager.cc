@@ -389,6 +389,17 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     pending_placement_groups_.erase(pending_it);
   }
 
+  // Remove a placement group from infeasible queue if exists.
+  pending_it = std::find_if(
+      infeasible_placement_groups_.begin(), infeasible_placement_groups_.end(),
+      [placement_group_id](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+        return placement_group->GetPlacementGroupID() == placement_group_id;
+      });
+  if (pending_it != infeasible_placement_groups_.end()) {
+    // The placement group is infeasible now, remove it from the queue.
+    infeasible_placement_groups_.erase(pending_it);
+  }
+
   // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
@@ -634,6 +645,16 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
   for (const auto &pending_pg_spec : pending_placement_groups_) {
+    auto placement_group_data = placement_group_load->add_placement_group_data();
+    auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
+    placement_group_data->Swap(&placement_group_table_data);
+    total_cnt += 1;
+    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+      break;
+    }
+  }
+  // NOTE: Infeasible placement groups also belong to the pending queue when report metrics.
+  for (const auto &pending_pg_spec : infeasible_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
     placement_group_data->Swap(&placement_group_table_data);
