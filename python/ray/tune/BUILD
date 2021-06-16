@@ -204,6 +204,14 @@ py_test(
 )
 
 py_test(
+    name = "test_soft_imports",
+    size = "small",
+    srcs = ["tests/test_soft_imports.py"],
+    deps = [":tune_lib"],
+    tags = ["soft_imports"],
+)
+
+py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
