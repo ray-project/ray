@@ -5,7 +5,6 @@ from ray.util.debug import _logged
 import numpy as np
 import pytest
 
-import logging
 import unittest
 
 
@@ -26,12 +25,11 @@ class LoggerSuite(unittest.TestCase):
             def f():
                 return 42
 
-            with self.assertLogs(
-                    "ray.util.client.worker", level="WARNING") as cm:
+            with self.assertWarns(UserWarning) as cm:
                 for _ in range(TASK_WARNING_THRESHOLD + 1):
                     f.remote()
-            assert any(f"More than {TASK_WARNING_THRESHOLD} remote tasks have "
-                       "been scheduled." in warning for warning in cm.output)
+            assert f"More than {TASK_WARNING_THRESHOLD} remote tasks have " \
+                "been scheduled." in cm.warning.args[0]
 
     def testNoWarning(self):
         with ray_start_client_server() as ray:
@@ -40,17 +38,17 @@ class LoggerSuite(unittest.TestCase):
             def f():
                 return 42
 
-            with self.assertLogs(
-                    "ray.util.client.worker", level="WARNING") as cm:
-                # assertLogs requires that at least one log at the specified
-                # level is generated, so one dummy warning is raised
-                logging.getLogger("ray.util.client.worker").warning(
-                    "Dummy Log")
-                for _ in range(TASK_WARNING_THRESHOLD):
-                    f.remote()
-            assert not any(
-                f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
-                "scheduled." in warning for warning in cm.output)
+            no_warning_raised = False
+            try:
+                with self.assertWarns(UserWarning) as cm:
+                    for _ in range(TASK_WARNING_THRESHOLD):
+                        f.remote()
+            except AssertionError:
+                # assertion above failed, meaning no warning was raised
+                no_warning_raised = True
+            if not no_warning_raised:
+                raise AssertionError("The following warning was raised:\n "
+                                     f"{cm.warning}\n Expected no warnings.")
 
     def testOutboundMessageSizeWarning(self):
         with ray_start_client_server() as ray:
@@ -60,10 +58,8 @@ class LoggerSuite(unittest.TestCase):
             def f(some_arg):
                 return some_arg[0][0][0]
 
-            with self.assertLogs(
-                    "ray.util.client.worker", level="WARNING") as cm:
+            with self.assertWarns(UserWarning) as cm:
                 for _ in range(50):
                     f.remote(large_argument)
-            assert any(
-                "More than 10MB of messages have been created to schedule "
-                "tasks on the server." in warning for warning in cm.output)
+            assert "More than 10MB of messages have been created to " \
+                "schedule tasks on the server." in cm.warning.args[0]
