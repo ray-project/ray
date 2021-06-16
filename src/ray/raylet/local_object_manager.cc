@@ -24,19 +24,19 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     const rpc::Address &owner_address,
-                                    std::vector<std::unique_ptr<RayObject>> objects) {
-  RAY_CHECK(objects.empty() || object_ids.size() == objects.size())
+                                    absl::optional<std::vector<std::unique_ptr<RayObject>>> objects) {
+  RAY_CHECK(!objects || object_ids.size() == objects->size())
       << "Invalid input with object_ids.size()==" << object_ids.size()
-      << " and objects.size()==" << objects.size();
+      << " and objects.size()==" << (objects ? objects->size() : 0UL);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
-    if (objects.empty()) {
+    if (!objects) {
       // This request is to share the ownership with existing objects
       // append the owner to the list
       auto &owners = util::get_ref_or_fail(object_owners_, object_id);
       owners.push_back(owner_address);
     } else {
-      auto object = std::move(objects[i]);
+      auto& object = objects->at(i);
       if (object == nullptr) {
         RAY_LOG(ERROR) << "Plasma object " << object_id
                        << " was evicted before the raylet could pin it.";
@@ -44,7 +44,8 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       }
       RAY_LOG(DEBUG) << "Pinning object " << object_id;
       pinned_objects_size_ += object->GetSize();
-      pinned_objects_.emplace(object_id, std::move(object));
+      RAY_CHECK(pinned_objects_.emplace(object_id, std::move(object)).second)
+          << "object_id " << object_id << " has been added.";
       object_owners_[object_id].push_back(owner_address);
     }
   }
@@ -69,14 +70,14 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
       RAY_CHECK(msg.has_worker_object_eviction_message());
       const auto object_eviction_msg = msg.worker_object_eviction_message();
       const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(object_id, owner_address);
+      UnpinObject(object_id, owner_address);
       core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                            owner_address, object_id.Binary());
     };
 
     // Callback that is invoked when the owner of the object id is dead.
     auto owner_dead_callback = [this, object_id, owner_address]() {
-      ReleaseFreedObject(object_id, owner_address);
+      UnpinObject(object_id, owner_address);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
@@ -88,7 +89,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id,
+void LocalObjectManager::UnpinObject(const ObjectID &object_id,
                                             const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these stats. pinned, spilling, or spilled.
@@ -269,6 +270,9 @@ void LocalObjectManager::SpillObjectsInternal(
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
           // TODO (yic): To support ownership transfer
+          //    1. Remove the owner from spilling storage since now it's
+          //       a dynamic info
+          //    2. Pass the owner info through a different path as right now.
           auto &owner = util::get_ref_or_fail(object_owners_, object_id)[0];
           request.add_owner_addresses()->MergeFrom(owner);
         }

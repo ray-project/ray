@@ -215,6 +215,12 @@ inline void SetThreadName(const std::string &thread_name) {
 namespace ray {
 namespace util {
 
+/// Get an element from a map like container. If the key doesn't exist
+/// crash the process.
+///
+/// \param map The map like container
+/// \param key The key we'd like to access
+/// \return return the value as a reference
 template <class Map, typename Key = typename Map::key_type>
 typename Map::mapped_type &get_ref_or_fail(Map &map, const Key &key) {
   auto it = map.find(key);

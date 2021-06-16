@@ -18,6 +18,8 @@
 
 #include <functional>
 
+#include "absl/types/optional.h"
+
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/gcs/accessor.h"
@@ -70,11 +72,11 @@ class LocalObjectManager {
   /// \param object_ids The objects to be pinned.
   /// \param owner_address The owner of the objects to be pinned.
   /// \param objects Pointers to the objects to be pinned. The pointer should
-  /// be kept in scope until the object can be released. If it's empty, it must
-  /// have already been pinned.
+  ///   be kept in scope until the object can be released. If it's empty,
+  ///   it adds an owner address to the existing pinned object
   void PinObjects(const std::vector<ObjectID> &object_ids,
                   const rpc::Address &owner_address,
-                  std::vector<std::unique_ptr<RayObject>> objects = {});
+                  absl::optional<std::vector<std::unique_ptr<RayObject>>> objects = absl::nullopt);
 
   /// Wait for the objects' owner to free the object.  The objects will be
   /// released when the owner at the given address fails or replies that the
@@ -166,8 +168,8 @@ class LocalObjectManager {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  /// Remove the owner of an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id, const rpc::Address &owner_address);
+  /// Unpin an object with the owner.
+  void UnpinObject(const ObjectID &object_id, const rpc::Address &owner_address);
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.
