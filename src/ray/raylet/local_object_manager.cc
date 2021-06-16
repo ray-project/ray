@@ -222,7 +222,7 @@ void LocalObjectManager::SpillObjectsInternal(
       num_bytes_pending_spill_ += object_size;
       objects_pending_spill_[id] = std::move(it->second);
 
-      pinned_objects_size_ -= it->second.first->GetSize();
+      pinned_objects_size_ -= object_size;
       pinned_objects_.erase(it);
     }
   }
