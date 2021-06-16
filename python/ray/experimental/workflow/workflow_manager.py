@@ -89,15 +89,22 @@ def _resolve_step_inputs(step_inputs: Tuple[RRef, List[RRef], List[RRef]]
 class WorkflowStepFunction:
     def __init__(self, func: Callable):
         def _func(context, task_id, step_inputs, forward_output_to):
-            # NOTE: must use 'set_current_store_dir' to ensure that we are
-            # accessing the correct global variable.
+            # Before running the actual function, we
+            # 1. Setup the workflow context, so we have proper access to
+            #    workflow storage.
+            # 2. Decode step inputs to arguments and keyword-arguments.
             workflow_context.update_workflow_step_context(context, task_id)
             args, kwargs, resolved_object_refs = _resolve_step_inputs(
                 step_inputs)
             # free references to potentially save memory
             del resolved_object_refs
 
+            # Running the actual step function
             _output = func(*args, **kwargs)
+            # After running the actual step function, we checkpoint the
+            # output. If "forward_output_to" is not None, we forward the
+            # output to the target step, so when resuming the workflow
+            # we can access the output faster.
             output = _commit_workflow(_output, forward_output_to)
             return output
 
