@@ -589,7 +589,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
         # TODO: Consider using the custom temp_dir for this file across the
         # code base. (https://github.com/ray-project/ray/issues/16458)
-        with open(os.path.join(current_cluster_path, "w")) as f:
+        with open(current_cluster_path, "w") as f:
             print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
