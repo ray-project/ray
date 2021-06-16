@@ -105,7 +105,37 @@ def parse_request_item(request_item):
             ), ), {}
 
     return request_item.args, request_item.kwargs
+class LoggingContext:
+    r"""
+    Context manager to manage logging behaviors within a particular block, such as:
+    1) Overriding logging level
+    2) Pass in a logging handler 
+        - Configure if handler should be closed afterwards 
 
+    Source (python3 official documentation)
+    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging
+    """
+    def __init__(self, logger, level=None, handler=None, close=True):
+        self.logger = logger
+        self.level = level
+        self.handler = handler
+        self.close = close
+
+    def __enter__(self):
+        if self.level is not None:
+            self.old_level = self.logger.level
+            self.logger.setLevel(self.level)
+        if self.handler:
+            self.logger.addHandler(self.handler)
+
+    def __exit__(self, et, ev, tb):
+        if self.level is not None:
+            self.logger.setLevel(self.old_level)
+        if self.handler:
+            self.logger.removeHandler(self.handler)
+        if self.handler and self.close:
+            self.handler.close()
+        # implicit return of None => don't swallow exceptions
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
