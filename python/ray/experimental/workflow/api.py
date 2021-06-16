@@ -5,7 +5,8 @@ import uuid
 
 import ray
 from ray.experimental.workflow.workflow_manager import (
-    WorkflowStepFunction, Workflow, resolve_object_ref, _commit_workflow)
+    WorkflowStepFunction, Workflow, resolve_object_ref,
+    postprocess_workflow_step)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
@@ -46,7 +47,7 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     try:
         workflow_context.init_workflow_step_context(workflow_id,
                                                     workflow_root_dir)
-        rref = _commit_workflow(entry_workflow)
+        rref = postprocess_workflow_step(entry_workflow)
         logger.info(f"Workflow job {workflow_id} started.")
         # TODO(suquark): although we do not return the resolved object to user,
         # the object was resolved temporarily to the driver script.
@@ -75,8 +76,10 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     if workflow_root_dir is not None:
-        storage.set_global_storage(workflow_root_dir)
-    r = recovery.resume_workflow_job(workflow_id, storage.get_global_storage())
+        store = storage.Storage(workflow_root_dir)
+    else:
+        store = storage.get_global_storage()
+    r = recovery.resume_workflow_job(workflow_id, store)
     if isinstance(r, ray.ObjectRef):
         return r
     # TODO(suquark): Currently this would override "steps/outputs.json".

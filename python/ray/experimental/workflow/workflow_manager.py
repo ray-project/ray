@@ -100,13 +100,12 @@ class WorkflowStepFunction:
             del resolved_object_refs
 
             # Running the actual step function
-            _output = func(*args, **kwargs)
+            ret = func(*args, **kwargs)
             # After running the actual step function, we checkpoint the
             # output. If "forward_output_to" is not None, we forward the
             # output to the target step, so when resuming the workflow
             # we can access the output faster.
-            output = _commit_workflow(_output, forward_output_to)
-            return output
+            return postprocess_workflow_step(ret, forward_output_to)
 
         self._func = func
         self._remote_function = ray.remote(_func)
@@ -158,28 +157,28 @@ class WorkflowStepFunction:
                         f"try '{self.step.__name__}.step()'.")
 
 
-def _commit_workflow(output: Union[Workflow, Any],
-                     forward_output_to: Optional[StepID] = None):
+def postprocess_workflow_step(ret: Union[Workflow, Any],
+                              forward_output_to: Optional[StepID] = None):
     """Execute workflow and checkpoint outputs.
 
     Args:
-        output: The returned output of the workflow step.
+        ret: The returned object of the workflow step.
         forward_output_to: The output should also forward to the step
             referred by 'forward_output_to'. When resume from that step,
             that step can directly read this output.
     """
-    if isinstance(output, Workflow):
-        workflow_storage.save_workflow_dag(output, forward_output_to)
+    store = workflow_storage.WorkflowStorage()
+    step_id = workflow_context.get_current_step_id()
+    store.commit_step(step_id, ret, forward_output_to)
+    if isinstance(ret, Workflow):
         if forward_output_to is None:
             # The current workflow step returns a nested workflow, but there is
             # no target to forward the nested workflow to. This means
             # the current step is the target. The target also includes the
             # workflow job driver (when the current step ID is ""),
             # so our workflow entrypoint are also handled.
-            forward_output_to = workflow_context.get_current_step_id()
+            forward_output_to = step_id
         # Passing down "forward_output_to" so deeper nested steps would
         # forward their results to the same "outer most" step.
-        output = output.execute(forward_output_to)
-    else:
-        workflow_storage.save_workflow_output(output, forward_output_to)
-    return output
+        return ret.execute(forward_output_to)
+    return ret

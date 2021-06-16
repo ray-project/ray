@@ -5,7 +5,7 @@ workflows.
 
 import json
 import pathlib
-from typing import Dict, List, Optional, Any, Set, Callable, Tuple
+from typing import Dict, List, Optional, Any, Set, Callable, Tuple, Union
 
 from dataclasses import dataclass
 
@@ -38,7 +38,14 @@ class WorkflowStorage:
     """Access workflow in storage. This is a high-level function,
     which does not care about the underlining storage implementation."""
 
-    def __init__(self, workflow_id: str, store: storage.Storage):
+    def __init__(self,
+                 workflow_id: Optional[str] = None,
+                 store: Optional[storage.Storage] = None):
+        if workflow_id is None:
+            context = workflow_context.get_workflow_step_context()
+            workflow_id = context.workflow_id
+        if store is None:
+            store = storage.get_global_storage()
         self._storage = store
         self._workflow_dir = pathlib.Path(workflow_id)
         self._steps_dir = self._workflow_dir / STEPS_DIR
@@ -100,8 +107,10 @@ class WorkflowStorage:
         Args:
             output: The output object.
         """
+        # convert
+        obj = ray.get(output) if isinstance(output, ray.ObjectRef) else output
         step_dir = self._steps_dir / step_id
-        self._storage.write_object_atomic(output, step_dir / STEP_OUTPUT)
+        self._storage.write_object_atomic(obj, step_dir / STEP_OUTPUT)
 
     def read_step_output(self, step_id: StepID) -> Any:
         """Get the output of the workflow step from checkpoint.
@@ -228,48 +237,33 @@ class WorkflowStorage:
             raise ValueError(f"The workflow job record is invalid: {STEPS_DIR}"
                              " not found.")
 
+    def commit_step(self, step_id: StepID, ret: Union[Workflow, Any],
+                    forward_output_to: Optional[StepID]) -> None:
+        """When a workflow step returns,
+        1. If the returned object is a workflow, this means we are a nested
+           workflow. We save the DAG of the nested workflow.
+        2. Otherwise, checkpoint the
 
-def save_workflow_dag(workflow: Workflow,
-                      forward_output_to: Optional[StepID]) -> None:
-    """Save the DAG of a workflow.
-
-    Args:
-        workflow: The output workflow to be saved.
-        forward_output_to: The output workflow should also forward to the step
-            referred by 'forward_output_to'. When resume from that step,
-            that step can directly read this output workflow.
-    """
-    assert not workflow.executed
-    workflows: Set[Workflow] = set()
-    workflow._visit_workflow_dag(workflows)
-    context = workflow_context.get_workflow_step_context()
-    store = WorkflowStorage(context.workflow_id, storage.get_global_storage())
-    for w in workflows:
-        if not w.skip_saving_inputs:
-            store.write_step_inputs(w.id, w.get_inputs())
-    store.write_step_output_metadata(workflow_context.get_current_step_id(),
-                                     {"step_id": workflow.id})
-    if forward_output_to is not None:
-        store.update_output_forward(forward_output_to, workflow.id)
-
-
-def save_workflow_output(output: Any,
-                         forward_output_to: Optional[StepID]) -> None:
-    """Save the output of a workflow.
-
-    Args:
-        output: The output object.
-        forward_output_to: The output should also forward to the step
-            referred by 'forward_output_to'. When resume from that step,
-            that step can directly read this output.
-    """
-    if isinstance(output, ray.ObjectRef):
-        obj = ray.get(output)
-    else:
-        obj = output
-    context = workflow_context.get_workflow_step_context()
-    store = WorkflowStorage(context.workflow_id, storage.get_global_storage())
-    store.write_step_output(workflow_context.get_current_step_id(), obj)
-    if forward_output_to is not None:
-        store.update_output_forward(forward_output_to,
-                                    workflow_context.get_current_step_id())
+        Args:
+            step_id: The ID of the workflow step. If it is an empty string,
+                it means we are in the workflow job driver process.
+            ret: The returned object from a workflow step.
+            forward_output_to: The output should also forward to the step
+                referred by 'forward_output_to'. When resume from that step,
+                that step can directly read this output.
+        """
+        if isinstance(ret, Workflow):
+            # The case for nested workflow.
+            assert not ret.executed
+            workflows: Set[Workflow] = set()
+            ret._visit_workflow_dag(workflows)
+            for w in workflows:
+                if not w.skip_saving_inputs:
+                    self.write_step_inputs(w.id, w.get_inputs())
+            self.write_step_output_metadata(step_id, {"step_id": ret.id})
+            forward_src = ret.id
+        else:
+            self.write_step_output(step_id, ret)
+            forward_src = step_id
+        if forward_output_to is not None:
+            self.update_output_forward(forward_output_to, forward_src)
