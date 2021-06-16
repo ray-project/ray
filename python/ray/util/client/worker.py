@@ -157,9 +157,9 @@ class Worker:
 
         # Track these values to raise a warning if many tasks are being
         # scheduled
-        self.num_tasks_scheduled = 0
-        self.total_outbound_message_size = 0
-        self.warning_raised = False
+        self.total_num_tasks_scheduled = 0
+        self.total_outbound_message_size_bytes = 0
+        self.communication_overhead_warning_raised = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
@@ -334,19 +334,21 @@ class Worker:
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise
-        self.num_tasks_scheduled += 1
-        self.total_outbound_message_size += task.ByteSize()
-        if not self.warning_raised and \
-                self.num_tasks_scheduled > TASK_WARNING_THRESHOLD:
+        self.total_num_tasks_scheduled += 1
+        self.total_outbound_message_size_bytes += task.ByteSize()
+        if not self.communication_overhead_warning_raised and \
+                self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD:
             logger.warning(
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
                 "communication overhead. If you're running many fine-grained "
                 "tasks consider batching them (details in the Ray Design "
                 "Pattern document).")
-            self.warning_raised = True
-        if not self.warning_raised and \
-                self.total_outbound_message_size > MESSAGE_SIZE_THRESHOLD:
+            self.communication_overhead_warning_raised = True
+        over_message_size_threshold = \
+            self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD
+        if not self.communication_overhead_warning_raised and \
+                over_message_size_threshold:
             logger.warning(
                 "More than 10MB of messages have been created to schedule "
                 "tasks on the server. If you're running many fine-grained "
@@ -354,7 +356,7 @@ class Worker:
                 "Pattern document). If you have large arguments that are "
                 "frequently reused, consider storing them remotely with "
                 "ray.put or wrapping them in an actor object.")
-            self.warning_raised = True
+            self.communication_overhead_warning_raised = True
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
