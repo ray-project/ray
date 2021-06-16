@@ -288,10 +288,10 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    listeners_.erase(entry);
     object_location_subscriber_->Unsubscribe(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
         object_id.Binary());
+    listeners_.erase(entry);
   }
   return Status::OK();
 }
