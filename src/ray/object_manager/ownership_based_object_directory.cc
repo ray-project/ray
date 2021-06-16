@@ -355,7 +355,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
             mark_as_failed_(object_id);
           } else {
             UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
-                                  &node_ids, &spilled_url, &spilled_node_id, &object_size);
+                                  &node_ids, &spilled_url, &spilled_node_id,
+                                  &object_size);
           }
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()

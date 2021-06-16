@@ -236,7 +236,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto channel_type = msg.channel_type();
       // If the published message is a failure message, the publisher indicates
       // this key id is failed. Invoke the failure callback. At this time, we should not
-      // unsubscribe the publisher because there are other entries that subscribe from the publisher.
+      // unsubscribe the publisher because there are other entries that subscribe from the
+      // publisher.
       if (msg.has_failure_message()) {
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
         subscription_callbacks.emplace_back(nullptr);

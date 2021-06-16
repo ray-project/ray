@@ -481,7 +481,8 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
         def ready(self):
             return True
 
-    # Test if tasks can find object location properly when there are multiple owners
+    # Test if tasks can find object location properly
+    # when there are multiple owners
     object_holders = [
         ObjectHolder.options(num_cpus=0.01, resources={
             str(i): 1

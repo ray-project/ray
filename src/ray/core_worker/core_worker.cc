@@ -2614,7 +2614,8 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     return;
   }
 
-  auto status = reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
+  auto status =
+      reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
   if (!status.ok()) {
     object_status_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());

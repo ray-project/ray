@@ -1098,9 +1098,9 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   it->second.location_version++;
   const auto &object_id = it->first;
-  PublishObjectLocations(object_id, it->second.locations, it->second.object_size, it->second.spilled_url,
-            it->second.spilled_node_id, it->second.location_version,
-            it->second.pinned_at_raylet_id);
+  PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
+                         it->second.spilled_url, it->second.spilled_node_id,
+                         it->second.location_version, it->second.pinned_at_raylet_id);
 }
 
 Status ReferenceCounter::FillObjectInformation(
@@ -1123,8 +1123,8 @@ Status ReferenceCounter::FillObjectInformation(
   return Status::OK();
 }
 
-Status ReferenceCounter::SubscribeObjectLocations(
-    const ObjectID &object_id, int64_t last_location_version) {
+Status ReferenceCounter::SubscribeObjectLocations(const ObjectID &object_id,
+                                                  int64_t last_location_version) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1138,25 +1138,24 @@ Status ReferenceCounter::SubscribeObjectLocations(
     // If the last location version is less than the current location version, we
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
-    PublishObjectLocations(object_id, it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version,
-             it->second.pinned_at_raylet_id);
+    PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
+                           it->second.spilled_url, it->second.spilled_node_id,
+                           it->second.location_version, it->second.pinned_at_raylet_id);
   }
   return Status::OK();
 }
 
 void ReferenceCounter::PublishObjectLocations(
-    const ObjectID &object_id,
-    const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
-    const std::string &spilled_url, const NodeID &spilled_node_id,
+    const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
+    int64_t object_size, const std::string &spilled_url, const NodeID &spilled_node_id,
     int64_t current_version, const absl::optional<NodeID> &optional_primary_node_id) {
   auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
   RAY_LOG(DEBUG) << "Publish a message for " << object_id
-                  << " with location update version " << current_version << ", "
-                  << locations.size() << " locations, spilled url: " << spilled_url
-                  << ", spilled node ID: " << spilled_node_id
-                  << ", and object size: " << object_size
-                  << ", and primary node ID: " << primary_node_id;
+                 << " with location update version " << current_version << ", "
+                 << locations.size() << " locations, spilled url: " << spilled_url
+                 << ", spilled node ID: " << spilled_node_id
+                 << ", and object size: " << object_size
+                 << ", and primary node ID: " << primary_node_id;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);

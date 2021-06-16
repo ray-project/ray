@@ -408,8 +408,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// caller received. Only more recent location updates will be returned.
   /// \return The status of the location get.
   Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version)
-      LOCKS_EXCLUDED(mutex_);
+                                  int64_t last_location_version) LOCKS_EXCLUDED(mutex_);
 
   /// Fill up the object information to the given reply.
   ///
@@ -769,11 +768,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     const rpc::WorkerAddress &borrower_addr);
 
   /// Publish object locations to all subscribers.
-  void PublishObjectLocations(
-    const ObjectID &object_id,
-    const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
-    const std::string &spilled_url, const NodeID &spilled_node_id,
-    int64_t current_version, const absl::optional<NodeID> &optional_primary_node_id);
+  void PublishObjectLocations(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations,
+                              int64_t object_size, const std::string &spilled_url,
+                              const NodeID &spilled_node_id, int64_t current_version,
+                              const absl::optional<NodeID> &optional_primary_node_id);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
