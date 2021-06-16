@@ -1105,7 +1105,6 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
 
 Status ReferenceCounter::FillObjectInformation(
     const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
-  RAY_CHECK(object_info != nullptr);
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

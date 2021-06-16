@@ -114,7 +114,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
                 raise e.as_instanceof_cause()
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+@pytest.mark.parametrize("reconstruction_enabled", [True])
 def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     config = {
         "num_heartbeats_timeout": 10,

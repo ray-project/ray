@@ -119,7 +119,7 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
     if (maybe_failure_callback.has_value()) {
       const auto &failure_callback = maybe_failure_callback.value();
-      failure_callback(key_ids_to_unsubscribe.back());
+      failure_callback(key_id.Binary());
     }
   }
 
@@ -143,6 +143,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
   // Batch a subscribe command.
+  RAY_LOG(DEBUG) << "Subscribe " << key_id_binary;
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
   command->set_key_id(key_id_binary);
@@ -162,6 +163,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
 bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
                              const std::string &key_id_binary) {
+  RAY_LOG(DEBUG) << "Unsubscribe " << key_id_binary;
   // Batch the unsubscribe command.
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);

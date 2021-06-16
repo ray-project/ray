@@ -189,13 +189,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
           &io_service_)),
-      object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
-          io_service_, gcs_client_, core_worker_subscriber_.get(),
-          [this](const ObjectID &obj_id) {
-            rpc::ObjectReference ref;
-            ref.set_object_id(obj_id.Binary());
-            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
-          })),
+      object_directory_(std::dynamic_pointer_cast<ObjectDirectoryInterface>(
+          std::make_shared<OwnershipBasedObjectDirectory>(
+              io_service_, gcs_client_, core_worker_subscriber_.get(),
+              [this](const ObjectID &obj_id) {
+                rpc::ObjectReference ref;
+                ref.set_object_id(obj_id.Binary());
+                MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
+                                    JobID::Nil());
+              }))),
       object_manager_(
           io_service, self_node_id, object_manager_config, object_directory_.get(),
           [this](const ObjectID &object_id, const std::string &object_url,
