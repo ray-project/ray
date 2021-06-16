@@ -64,7 +64,10 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, object_id]() { ReleaseFreedObject(object_id); };
+    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      ReleaseFreedObject(object_id);
+    };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
