@@ -341,7 +341,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::ObjectExists;
   }
 
-  MEMFD_TYPE fd{INVALID_FD, 0};
+  MEMFD_TYPE fd{INVALID_FD, INVALID_UNIQUE_FD_ID};
   int64_t map_size = 0;
   ptrdiff_t offset = 0;
   uint8_t *pointer = nullptr;

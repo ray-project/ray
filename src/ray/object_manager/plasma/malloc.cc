@@ -44,7 +44,7 @@ void GetMallocMapinfo(void *addr, MEMFD_TYPE *fd, int64_t *map_size, ptrdiff_t *
     }
   }
   fd->first = INVALID_FD;
-  fd->second = 0;
+  fd->second = INVALID_UNIQUE_FD_ID;
   *map_size = 0;
   *offset = 0;
 }
