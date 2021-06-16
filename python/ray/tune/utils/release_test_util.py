@@ -157,7 +157,7 @@ def timed_tune_run(name: str,
                     os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
 
                 if all(
-                        os.getenv(k, "") in os.environ for k in [
+                        os.getenv(k, "") for k in [
                             "AWS_ACCESS_KEY_ID",
                             "AWS_SECRET_ACCESS_KEY",
                             "AWS_SESSION_TOKEN",

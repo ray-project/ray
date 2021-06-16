@@ -48,7 +48,7 @@ def main(bucket):
         os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
 
     if all(
-            os.getenv(k, "") in os.environ for k in [
+            os.getenv(k, "") for k in [
                 "AWS_ACCESS_KEY_ID",
                 "AWS_SECRET_ACCESS_KEY",
                 "AWS_SESSION_TOKEN",
