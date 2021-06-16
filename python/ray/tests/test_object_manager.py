@@ -447,6 +447,140 @@ def test_ray_get_task_args_deadlock(shutdown_only):
         print(f"round {i} finished in {time.time() - start}")
 
 
+def test_object_directory_basic(ray_start_cluster_with_resource):
+    cluster, num_nodes = ray_start_cluster_with_resource
+
+    @ray.remote
+    def task(x):
+        pass
+
+    # Test a single task.
+    x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+    ray.get(task.options(resources={str(3): 1}).remote(x_id), timeout=10)
+
+    # Test multiple tasks on all nodes can find locations properly.
+    object_refs = []
+    for _ in range(num_nodes):
+        object_refs.append(ray.put(np.zeros(1024 * 1024, dtype=np.uint8)))
+    ray.get([
+        task.options(resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
+    del object_refs
+
+    @ray.remote
+    class ObjectHolder:
+        def __init__(self):
+            self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+
+        def get_obj(self):
+            return self.x
+
+        def ready(self):
+            return True
+
+    # Test if tasks can find object location properly
+    # when there are multiple owners
+    object_holders = [
+        ObjectHolder.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote() for i in range(num_nodes)
+    ]
+    ray.get([o.ready.remote() for o in object_holders])
+
+    object_refs = []
+    for i in range(num_nodes):
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
+    ray.get([
+        task.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
+
+    # Test a stressful scenario.
+    object_refs = []
+    repeat = 10
+    for _ in range(num_nodes):
+        for _ in range(repeat):
+            object_refs.append(ray.put(np.zeros(1024 * 1024, dtype=np.uint8)))
+    tasks = []
+    for i in range(num_nodes):
+        for r in range(repeat):
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[i * r]))
+    ray.get(tasks)
+
+    object_refs = []
+    for i in range(num_nodes):
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
+    tasks = []
+    for i in range(num_nodes):
+        for _ in range(10):
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[(i + 1) % num_nodes]))
+
+
+def test_object_directory_failure(ray_start_cluster):
+    cluster = ray_start_cluster
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 500,
+        "object_timeout_milliseconds": 200,
+    }
+    # Add a head node.
+    cluster.add_node(_system_config=config)
+    ray.init(address=cluster.address)
+
+    # Add worker nodes.
+    num_nodes = 5
+    for i in range(num_nodes):
+        cluster.add_node(resources={str(i): 100})
+
+    # Add a node to be removed
+    index_killing_node = num_nodes
+    node_to_kill = cluster.add_node(
+        resources={str(index_killing_node): 100}, object_store_memory=10**9)
+
+    @ray.remote
+    class ObjectHolder:
+        def __init__(self):
+            self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+
+        def get_obj(self):
+            return [self.x]
+
+        def ready(self):
+            return True
+
+    oh = ObjectHolder.options(
+        num_cpus=0.01, resources={
+            str(index_killing_node): 1
+        }).remote()
+    obj = ray.get(oh.get_obj.remote())[0]
+
+    @ray.remote
+    def task(x):
+        pass
+
+    tasks = []
+    repeat = 3
+    for i in range(num_nodes):
+        for _ in range(repeat):
+            tasks.append(task.options(resources={str(i): 1}).remote(obj))
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+
+    for t in tasks:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(t, timeout=10)
+
+
 if __name__ == "__main__":
     import pytest
     import sys

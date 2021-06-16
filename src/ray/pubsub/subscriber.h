@@ -34,7 +34,7 @@ namespace pubsub {
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
 using SubscriptionCallback = std::function<void(const rpc::PubMessage &)>;
-using SubscriptionFailureCallback = std::function<void()>;
+using SubscriptionFailureCallback = std::function<void(const std::string &)>;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// SubscriberChannel Abstraction
@@ -191,6 +191,14 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
   ~WaitForRefRemovedChannel() = default;
 };
 
+class ObjectLocationsChannel : public SubscriberChannel<ObjectID> {
+ public:
+  ObjectLocationsChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
+  }
+  ~ObjectLocationsChannel() = default;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Subscriber Abstraction
 ///////////////////////////////////////////////////////////////////////////////
@@ -260,15 +268,15 @@ class Subscriber : public SubscriberInterface {
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
-        publisher_client_pool_(publisher_client_pool),
-        wait_for_object_eviction_channel_(
-            std::make_shared<WaitForObjectEvictionChannel>()),
-        wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
-        /// This is used to define new channel_type -> Channel abstraction.
-        channels_({{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                    wait_for_object_eviction_channel_},
-                   {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                    wait_for_ref_removed_channel_}}) {}
+        publisher_client_pool_(publisher_client_pool) {
+    /// This is used to define new channel_type -> Channel abstraction.
+    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                      std::make_unique<WaitForObjectEvictionChannel>());
+    channels_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                      std::make_unique<WaitForRefRemovedChannel>());
+    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                      std::make_unique<ObjectLocationsChannel>());
+  }
 
   ~Subscriber() = default;
 
@@ -283,8 +291,8 @@ class Subscriber : public SubscriberInterface {
                    const std::string &key_id_binary) override;
 
   /// Return the Channel of the given channel type.
-  std::shared_ptr<SubscribeChannelInterface> Channel(
-      const rpc::ChannelType channel_type) const EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  std::unique_ptr<SubscribeChannelInterface> &Channel(const rpc::ChannelType channel_type)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     const auto it = channels_.find(channel_type);
     RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
     return it->second;
@@ -386,16 +394,8 @@ class Subscriber : public SubscriberInterface {
   /// A set to keep track of in-flight command batch requests
   absl::flat_hash_set<PublisherID> command_batch_sent_ GUARDED_BY(mutex_);
 
-  /// WaitForObjectEviction channel.
-  std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_
-      GUARDED_BY(mutex_);
-
-  /// WaitForRefRemoved channel.
-  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_
-      GUARDED_BY(mutex_);
-
   /// Mapping of channel type to channels.
-  absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
+  absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscribeChannelInterface>>
       channels_ GUARDED_BY(mutex_);
 };
 
