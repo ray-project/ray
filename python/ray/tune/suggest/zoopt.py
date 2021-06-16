@@ -11,12 +11,13 @@ from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
-from zoopt import Solution, ValueType
 
 try:
     import zoopt
+    from zoopt import Solution, ValueType
 except ImportError:
     zoopt = None
+    Solution = ValueType = None
 
 from ray.tune.suggest import Searcher
 
@@ -315,8 +316,8 @@ class ZOOptSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, Uniform):
-                    return (ValueType.DISCRETE, [domain.lower, domain.upper],
-                            True)
+                    return (ValueType.DISCRETE,
+                            [domain.lower, domain.upper - 1], True)
 
             elif isinstance(domain, Categorical):
                 # Categorical variables would use ValueType.DISCRETE with

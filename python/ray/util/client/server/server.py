@@ -560,7 +560,7 @@ def decode_options(
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
 
-    if opts.get("placement_group", None):
+    if isinstance(opts.get("placement_group", None), dict):
         # Placement groups in Ray client options are serialized as dicts.
         # Convert the dict to a PlacementGroup.
         opts["placement_group"] = PlacementGroup.from_dict(

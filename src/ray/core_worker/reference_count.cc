@@ -758,6 +758,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
     const rpc::WorkerAddress &borrower_addr) {
+  absl::MutexLock lock(&mutex_);
   // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
@@ -772,65 +773,42 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
   const ObjectID &object_id = ref_it->first;
-  rpc::WaitForRefRemovedRequest request;
+  auto sub_message = std::make_unique<rpc::SubMessage>();
+  auto *request = sub_message->mutable_worker_ref_removed_message();
   // Only the owner should send requests to borrowers.
   RAY_CHECK(ref_it->second.owned_by_us);
-  request.mutable_reference()->set_object_id(object_id.Binary());
-  request.mutable_reference()->mutable_owner_address()->CopyFrom(
+  request->mutable_reference()->set_object_id(object_id.Binary());
+  request->mutable_reference()->mutable_owner_address()->CopyFrom(
       *ref_it->second.owner_address);
-  request.set_contained_in_id(contained_in_id.Binary());
-  request.set_intended_worker_id(addr.worker_id.Binary());
-  request.set_subscriber_worker_id(rpc_address_.ToProto().worker_id());
+  request->set_contained_in_id(contained_in_id.Binary());
+  request->set_intended_worker_id(addr.worker_id.Binary());
+  request->set_subscriber_worker_id(rpc_address_.ToProto().worker_id());
 
-  auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
+  // If the message is published, this callback will be invoked.
+  const auto message_published_callback = [this, addr,
+                                           object_id](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.has_worker_ref_removed_message());
+    const ReferenceTable new_borrower_refs =
+        ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
-                 << addr.port << " for object " << object_id;
-  // Send the borrower a message about this object. The borrower responds once
-  // it is no longer using the object ID.
-  conn->WaitForRefRemoved(
-      request, [this, object_id, addr](const Status &status,
-                                       const rpc::WaitForRefRemovedReply &reply) {
-        RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
-                       << addr.port << " of object " << object_id;
-        // If the message is published, this callback will be invoked.
-        const auto message_published_callback = [this, addr,
-                                                 object_id](const rpc::PubMessage &msg) {
-          RAY_CHECK(msg.has_worker_ref_removed_message());
-          const ReferenceTable new_borrower_refs =
-              ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
+    CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
+    // Unsubscribe the object once the message is published.
+    RAY_CHECK(object_status_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
+        object_id.Binary()));
+  };
 
-          absl::MutexLock lock(&mutex_);
-          CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
-          // Unsubscribe the object once the message is published.
-          RAY_CHECK(object_status_subscriber_->Unsubscribe(
-              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-              object_id.Binary()));
-        };
+  // If the borrower is failed, this callback will be called.
+  const auto publisher_failed_callback = [this, addr, object_id]() {
+    // When the request is failed, there's no new borrowers ref published from this
+    // borrower.
+    CleanupBorrowersOnRefRemoved({}, object_id, addr);
+  };
 
-        // If the borrower is failed, this callback will be called.
-        const auto publisher_failed_callback = [this, addr, object_id]() {
-          // When the request is failed, there's no new borrowers ref published from this
-          // borrower.
-          absl::MutexLock lock(&mutex_);
-          CleanupBorrowersOnRefRemoved({}, object_id, addr);
-        };
-
-        // If the request was failed, we just invoke the failure callback right away.
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Ref removed subscription to " << addr.ip_address << ":"
-                        << addr.port << " for an object " << object_id << " has failed.";
-          publisher_failed_callback();
-          return;
-        }
-
-        absl::MutexLock lock(&mutex_);
-        auto sub_message = std::make_unique<rpc::SubMessage>();
-        object_status_subscriber_->Subscribe(
-            std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-            addr.ToProto(), object_id.Binary(), message_published_callback,
-            publisher_failed_callback);
-      });
+  object_status_subscriber_->Subscribe(
+      std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+      addr.ToProto(), object_id.Binary(), message_published_callback,
+      publisher_failed_callback);
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
@@ -889,8 +867,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
   }
 }
 
-void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
-                                        const WorkerID &subscriber_worker_id) {
+void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   ReferenceTable borrowed_refs;
   RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
@@ -919,9 +896,6 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
                  << " borrowed references.";
   object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     pub_message, object_id.Binary());
-  object_status_publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
-      object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(

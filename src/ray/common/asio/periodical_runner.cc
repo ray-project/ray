@@ -34,7 +34,7 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     timers_.push_back(timer);
-    if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    if (RayConfig::instance().event_stats()) {
       DoRunFnPeriodicallyInstrumented(fn, boost::posix_time::milliseconds(period_ms),
                                       *timer, name);
     } else {
