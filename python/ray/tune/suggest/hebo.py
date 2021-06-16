@@ -278,6 +278,17 @@ class HEBOSearch(Searcher):
             self._opt.observe(
                 trial_info, np.array([self._metric_op * result[self._metric]]))
 
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        if not error and not pruned:
+            self._opt.observe(
+                pd.DataFrame([parameters]),
+                np.array([value]) * self._metric_op)
+
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
         if self._random_state_seed is not None:
