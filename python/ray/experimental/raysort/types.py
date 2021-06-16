@@ -7,6 +7,6 @@ Path = str
 RecordCount = int
 
 BlockInfo = Tuple[int, int]
-PartitionInfo = NamedTuple("PartitionInfo", [("part_id", PartId),
-                                             ("node", NodeAddress),
-                                             ("path", Path)])
+PartitionInfo = NamedTuple("PartitionInfo",
+                           [("part_id", PartId), ("node", NodeAddress),
+                            ("path", Path)])

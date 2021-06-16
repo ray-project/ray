@@ -75,9 +75,8 @@ def get_args():
         "tasks to run", "if no task is specified, will run all tasks")
     tasks = ["generate_input", "sort", "validate_output"]
     for task in tasks:
-        tasks_group.add_argument(f"--{task}",
-                                 action="store_true",
-                                 help=f"run task {task}")
+        tasks_group.add_argument(
+            f"--{task}", action="store_true", help=f"run task {task}")
 
     args = parser.parse_args()
     # Derive additional arguments.
@@ -197,7 +196,8 @@ def mapper(boundaries: List[int], mapper_id: PartId,
     if args.skip_input:
         block_size = int(np.ceil(args.input_part_size / args.num_reducers))
         return [
-            ray.put(np.frombuffer(np.random.bytes(block_size), dtype=np.uint8))
+            ray.put(
+                np.frombuffer(np.random.bytes(block_size), dtype=np.uint8))
             for _ in range(args.num_reducers)
         ]
 
@@ -240,8 +240,8 @@ def reducer(reducer_id: PartId, *blocks: List[ray.ObjectRef]) -> PartitionInfo:
 def sort_main():
     partitions = _load_manifest(constants.INPUT_MANIFEST_FILE)
     boundaries = sortlib.get_boundaries(args.num_reducers)
-    mapper_results = np.empty((args.num_mappers, args.num_reducers),
-                              dtype=object)
+    mapper_results = np.empty(
+        (args.num_mappers, args.num_reducers), dtype=object)
     for part_id, node, path in partitions:
         opt = {} if args.skip_input else {
             "resources": {
