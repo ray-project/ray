@@ -197,7 +197,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id_binary) {
-    RAY_CHECK(false) << "No need to implement it for testing.";
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
   }
 
   void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,

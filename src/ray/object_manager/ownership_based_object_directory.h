@@ -87,10 +87,6 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// Get or create the rpc client in the worker_rpc_clients.
   std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);
 
-  /// Internal callback function used by SubscribeObjectLocations.
-  void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
-                            const rpc::GetObjectLocationsOwnerReply &reply);
-
   /// Internal callback function used by object location subscription.
   void ObjectLocationSubscriptionCallback(const rpc::PubMessage &pub_message,
                                           const ObjectID &object_id);

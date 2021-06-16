@@ -636,7 +636,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in

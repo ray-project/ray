@@ -80,7 +80,7 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
 ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
   std::vector<NodeID> node_ids;
-  const auto object_info = reply.object_location_info();
+  const auto &object_info = reply.object_location_info();
   node_ids.reserve(object_info.node_ids_size());
   for (auto i = 0; i < object_info.node_ids_size(); i++) {
     node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
@@ -2572,7 +2572,6 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   auto object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(ERROR) << "Add a location for " << object_id;
   auto reference_exists = reference_counter_->AddObjectLocation(
       object_id, NodeID::FromBinary(request.node_id()));
   Status status =
