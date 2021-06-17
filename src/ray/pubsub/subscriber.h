@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
 #include <boost/any.hpp>
 #include <queue>
@@ -103,6 +104,9 @@ class SubscribeChannelInterface {
 
   /// Return true if there's no metadata leak.
   virtual bool CheckNoLeaks() const = 0;
+
+  /// Return the statistics of the specific channel.
+  virtual const std::string DebugString() const = 0;
 };
 
 template <typename KeyIdType>
@@ -131,6 +135,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   }
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
+
+  const std::string DebugString() const override;
 
  protected:
   rpc::ChannelType channel_type_;
@@ -171,6 +177,12 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   /// Mapping of the publisher ID -> subscription info.
   absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
+
+  ///
+  /// Statistics attributes.
+  ///
+  uint64_t cum_subscribe_requests_;
+  uint64_t cum_unsubscribe_requests_;
 };
 
 /// The below defines the list of channel implementation.
@@ -289,6 +301,8 @@ class Subscriber : public SubscriberInterface {
     RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
     return it->second;
   }
+
+  const std::string DebugString() const;
 
  private:
   ///
