@@ -144,6 +144,7 @@ ray.shutdown()
     prev_running = jobs[2]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
+    assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
     assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
 
