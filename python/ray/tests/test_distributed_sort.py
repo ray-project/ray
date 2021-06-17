@@ -1,4 +1,3 @@
-import platform
 import pytest
 import sys
 
