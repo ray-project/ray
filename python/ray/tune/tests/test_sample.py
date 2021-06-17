@@ -1539,7 +1539,7 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertNotEqual(sub_configs[0]["rand"], sub_configs[1]["rand"])
             self.assertNotEqual(sub_configs[0]["rand"], sub_configs[2]["rand"])
 
-        # First, keep random variables constant
+        # Second, keep random variables constant
         searcher = BasicVariantGenerator(constant_grid_search=True)
         exp = Experiment(
             run=_mock_objective,
