@@ -347,7 +347,7 @@ class Worker:
             warnings.warn(
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
-                "communication overhead. If you're running many fine-grained "
+                "communication overhead over the network. If you're running many fine-grained "
                 "tasks, consider running them in a single remote function."
                 "See the section on \"Too fine-grained tasks\" in the Ray "
                 "Design Patterns document for more details: "
