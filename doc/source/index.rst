@@ -242,6 +242,7 @@ Papers
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
+   Design patterns and anti-patterns <ray-design-patterns/index.rst>
    package-ref.rst
 
 .. toctree::
