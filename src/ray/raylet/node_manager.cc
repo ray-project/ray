@@ -1126,7 +1126,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
+          gcs::CreateJobTableData(job_id, /*is_dead*/ false, current_sys_time_ms(),
                                   worker_ip_address, pid, job_config);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
