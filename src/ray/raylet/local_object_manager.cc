@@ -341,7 +341,7 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
 void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto num_remaining = std::make_shared<size_t>(0);
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
@@ -377,24 +377,27 @@ void LocalObjectManager::AddSpilledUrls(
       url_ref_count_[base_url_it->second] += 1;
     }
 
-    // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
-    // spill RPC.
-    rpc::AddSpilledUrlRequest request;
-    request.set_object_id(object_id.Binary());
-    request.set_spilled_url(object_url);
-    request.set_spilled_node_id(node_id_object_spilled.Binary());
-    request.set_size(it->second->GetSize());
-    const auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-    for (auto &owner : owners) {
-      auto owner_client = owner_client_pool_.GetOrConnect(owner);
-      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
-                     << object_id << " to owner "
-                     << WorkerID::FromBinary(owner.worker_id());
-      // Send spilled URL, spilled node ID, and object size to owner.
-      owner_client->AddSpilledUrl(
-          request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
-            unpin_callback(status);
-          });
+    auto owners = util::get_ptr(object_owners_, object_id);
+    if(owners) {
+      *num_remaining += owners->size();
+      // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+      // spill RPC.
+      rpc::AddSpilledUrlRequest request;
+      request.set_object_id(object_id.Binary());
+      request.set_spilled_url(object_url);
+      request.set_spilled_node_id(node_id_object_spilled.Binary());
+      request.set_size(it->second->GetSize());
+      for (auto &owner : *owners) {
+        auto owner_client = owner_client_pool_.GetOrConnect(owner);
+        RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
+                       << object_id << " to owner "
+                       << WorkerID::FromBinary(owner.worker_id());
+        // Send spilled URL, spilled node ID, and object size to owner.
+        owner_client->AddSpilledUrl(
+            request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+              unpin_callback(status);
+            });
+      }
     }
   }
 }

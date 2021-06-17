@@ -228,5 +228,17 @@ typename Map::mapped_type &get_ref_or_fail(Map &map, const Key &key) {
   return it->second;
 }
 
+/// Get an element from a map like container. If the key doesn't exist
+/// return nullptr
+///
+/// \param map The map like container
+/// \param key The key we'd like to access
+/// \return return the value as a pointer
+template <class Map, typename Key = typename Map::key_type>
+typename Map::mapped_type* get_ptr(Map &map, const Key &key) {
+  auto it = map.find(key);
+  return it == map.end() ? nullptr : &it->second;
+}
+
 }  // namespace util
 }  // namespace ray
