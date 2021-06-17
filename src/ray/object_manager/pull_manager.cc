@@ -130,7 +130,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   RAY_CHECK(next_request_it->first > *highest_req_id_being_pulled);
   *highest_req_id_being_pulled = next_request_it->first;
 
-  RecalculateBytesBeingPulled();
+  RecalculateBytesAlreadyPulled();
   num_active_bundles_ += 1;
   return true;
 }
@@ -168,7 +168,7 @@ void PullManager::DeactivatePullBundleRequest(
     }
   }
 
-  RecalculateBytesBeingPulled();
+  RecalculateBytesAlreadyPulled();
   num_active_bundles_ -= 1;
 }
 
@@ -191,7 +191,7 @@ void PullManager::DeactivateUntilWithinQuota(
 
 // TODO(ekl) we may want to maintain this value incrementally if it turns out to
 // be high overhead to re-calculate.
-void PullManager::RecalculateBytesBeingPulled() {
+void PullManager::RecalculateBytesAlreadyPulled() {
   // Compensate for memory consumed by in-progress pulls by adding it to the available
   // total. This avoids deadlock due to already-local objects.
   if (RayConfig::instance().pull_manager_calculate_bytes_already_pulled()) {
@@ -217,7 +217,7 @@ bool PullManager::OverQuota() {
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
-  RecalculateBytesBeingPulled();
+  RecalculateBytesAlreadyPulled();
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -296,8 +296,13 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     cancel_pull_request_(obj_id);
   }
 
-  // Only has an effect if pull_manager_min_active_pulls == 0.
-  TriggerOutOfMemoryHandlingIfNeeded();
+  if (RayConfig::instance().plasma_unlimited()) {
+    if (OverQuota()) {
+      object_store_full_callback_();
+    }
+  } else {
+    TriggerOutOfMemoryHandlingIfNeeded();
+  }
 
   {
     absl::MutexLock lock(&active_objects_mu_);
@@ -310,8 +315,11 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 }
 
 void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (!OverQuota()) {
-    // We have enough space for all requests, no spilling is needed.
+  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
+      highest_task_req_id_being_pulled_ > 0) {
+    // At least one request is being actively pulled, so there is
+    // currently enough space. Note that if pull_manager_min_active_pulls > 0, then
+    // we will always return here.
     return;
   }
 
@@ -331,25 +339,6 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
   if (head->second.num_object_sizes_missing > 0) {
     // Wait for the size information before triggering OOM.
     return;
-  }
-
-  // The first request in the queue is not being pulled due to lack of space.
-  // Trigger out-of-memory handling to try to make room.
-  // TODO(swang): This can hang if no room can be made. We should return an
-  // error for requests whose total size is larger than the capacity of the
-  // memory store.
-  if (get_time_() - last_oom_reported_ms_ > 30000) {
-    RAY_LOG(WARNING)
-        << "There is not enough memory to pull objects needed by a queued task or "
-           "a worker blocked in ray.get or ray.wait. "
-        << "Need " << head->second.num_bytes_needed << " bytes, but only "
-        << num_bytes_available_ + num_bytes_already_pulled_
-        << " bytes are available on this node. "
-        << "This job may hang if no memory can be freed through garbage collection or "
-           "object spilling. See "
-           "https://docs.ray.io/en/master/memory-management.html for more information. "
-           "Please file a GitHub issue if you see this message repeatedly.";
-    last_oom_reported_ms_ = get_time_();
   }
   object_store_full_callback_();
 }

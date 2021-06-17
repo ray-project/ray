@@ -43,8 +43,6 @@ class PullManagerTestWithCapacity {
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
-    // Most tests should not throw OOM.
-    ASSERT_EQ(num_object_store_full_calls_, 0);
   }
 
   NodeID self_node_id_;
@@ -581,45 +579,31 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
-    ASSERT_EQ(num_object_store_full_calls_, 0);
+    ASSERT_EQ(num_object_store_full_calls_, 1); // Spill on fallback.
     return;
   }
 
-  AssertNumActiveRequestsEquals(0);
-  ASSERT_EQ(num_object_store_full_calls_, 1);
-  for (auto &oid : oids) {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 1);
-  }
-  ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  // No new pull requests after the next tick.
-  fake_time_ += 10;
-  auto prev_pull_requests = num_send_pull_request_calls_;
-  for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
-    ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-  }
-
-  // Increase the available memory again.
-  pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size);
-  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  AssertNumActiveRequestsEquals(oids.size());
-  ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
-  ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests + oids.size());
-
-  // OOM was not triggered a second time.
-  ASSERT_EQ(num_object_store_full_calls_, 1);
-  num_object_store_full_calls_ = 0;
-  for (auto &oid : oids) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 1);
+  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
+    AssertNumActiveRequestsEquals(0);
+    ASSERT_EQ(num_object_store_full_calls_, 1);
+    for (auto &oid : oids) {
+      ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
+      ASSERT_EQ(num_abort_calls_[oid], 1);
+    }
+    ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  } else {
+    AssertNumActiveRequestsEquals(3);
+    ASSERT_EQ(num_object_store_full_calls_, 1);
+    for (auto &oid : oids) {
+      ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
+      ASSERT_EQ(num_abort_calls_[oid], 0);
+    }
+    ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   }
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
     ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 2);
   }
   AssertNoLeaks();
 }
@@ -656,9 +640,13 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
+  num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
+    int num_requests_quota = std::min(num_requests, capacity / (object_size * num_oids_per_request));
     int num_requests_expected =
-        std::min(num_requests, capacity / (object_size * num_oids_per_request));
+        std::max(
+            RayConfig::instance().pull_manager_min_active_pulls(),
+            num_requests_quota);
     if (RayConfig::instance().plasma_unlimited() && GetParam()) {
       num_requests_expected = num_requests;
     }
@@ -677,10 +665,10 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (num_requests_expected == 0) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    } else {
+    if (num_requests_quota == num_requests_expected) {
       ASSERT_EQ(num_object_store_full_calls_, 0);
+    } else {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
     }
     for (size_t i = 0; i < req_ids.size(); i++) {
       if ((int)i < num_requests_expected) {

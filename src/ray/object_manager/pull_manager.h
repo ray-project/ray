@@ -177,7 +177,7 @@ class PullManager {
 
   /// If enabled, recalculate what fraction of the active object pull requests are
   /// already local.
-  void RecalculateBytesBeingPulled();
+  void RecalculateBytesAlreadyPulled();
 
   /// Returns whether the set of active pull requests exceeds the memory allowance
   /// for pulls. At least one active pull request is allowed at all times.
