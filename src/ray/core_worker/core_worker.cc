@@ -906,7 +906,7 @@ void CoreWorker::CheckForRayletFailure() {
   if (const char *env_pid = std::getenv("RAYLET_PID")) {
     pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
     if (!IsProcessAlive(pid)) {
-      RAY_LOG(ERROR) << "Raylet failed. Shutting down.Raylet Pid: " << pid;
+      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
       Shutdown();
     }
   } else if (!IsParentProcessAlive()) {

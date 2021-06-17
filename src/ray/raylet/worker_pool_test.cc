@@ -1150,8 +1150,8 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   // Register worker with different worker PID
   pid_t shim_pid = last_process.GetId();
   worker = CreateWorker(Process());
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, shim_pid+1000, shim_pid,
-                                               [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, shim_pid + 1000, shim_pid,
+                                            [](Status, int) {}));
   ASSERT_EQ(1, worker_pool_->NumWorkerProcessesStarting());
 
   // After worker finished starting, starting_worker_processes will erase this process.
