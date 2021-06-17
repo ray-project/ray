@@ -183,20 +183,13 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 .. code-block:: shell
 
     cd doc
-    conda create -n ray-docs pip python=3.7  # optional, but very useful.
     pip install -r requirements-doc.txt
+    pip install -U -r requirements-rtd.txt # important for reproducing the deployment environment
     make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac
 OSX, you can open the docs (assuming you are still in the ``doc``
 directory) using ``open _build/html/index.html``.
-
-All pull requests will also build a copy of the documentation as part of the CI.
-A successful build will have the following check on the build matrix:
-
-.. code-block:: shell
-
-  docs/readthedocs.org:ray — Read the Docs build succeeded!
 
 
 Using a local repository for dependencies
