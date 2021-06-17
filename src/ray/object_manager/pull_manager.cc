@@ -186,6 +186,9 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
+// TODO(ekl) this doesn't take into account bytes used by already-local objects. This
+// means that in some cases we don't activate as many bundles as we could. However,
+// liveness is ensured as long as pull_manager_min_active_pulls > 0.
 bool PullManager::OverQuota() { return num_bytes_being_pulled_ > num_bytes_available_; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
