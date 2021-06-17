@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -1764,6 +1765,25 @@ def install_nightly(verbose, dryrun):
         subprocess.check_call(cmd)
 
 
+@cli.command()
+@click.option(
+    "--output", "-o", required=False, type=str, help="Output directory.")
+def get_cpp_example(output):
+    """Copy cpp example project to output directory."""
+    raydir = os.path.abspath(os.path.dirname(ray.__file__))
+    if not output:
+        output = "."
+    if not os.path.isdir(output):
+        raise Exception(
+            "Please give an existing output directory by '--output' or '-o'.")
+    input = os.path.join(raydir, "core/src/ray/cpp/example")
+    output_pro = os.path.join(output, os.path.basename(input))
+    shutil.copytree(input, output_pro)
+    print(
+        f"C++ example project has been copied to {os.path.abspath(output_pro)}"
+    )
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -1796,6 +1816,7 @@ cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
+cli.add_command(get_cpp_example)
 
 try:
     from ray.serve.scripts import serve_cli

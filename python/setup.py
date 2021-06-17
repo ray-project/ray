@@ -26,6 +26,7 @@ SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CPP = os.getenv("RAY_INSTALL_CPP") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -60,6 +61,15 @@ ray_files = [
 if BUILD_JAVA or os.path.exists(
         os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
+
+if BUILD_CPP or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/core/src/ray/cpp/default_worker")):
+    ray_files.append("ray/core/src/ray/cpp/default_worker")
+    # C++ worker example files.
+    ray_files += [
+        os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+        os.walk("ray/core/src/ray/cpp/example") for filename in filenames
+    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -220,7 +230,7 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
-def build(build_python, build_java):
+def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
                "Only Python {} are supported.").format(
@@ -291,6 +301,7 @@ def build(build_python, build_java):
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     return bazel_invoke(
         subprocess.check_call,
         ["build", "--verbose_failures", "--"] + bazel_targets,
@@ -336,7 +347,7 @@ def find_version(*filepath):
 
 
 def pip_run(build_ext):
-    build(True, BUILD_JAVA)
+    build(True, BUILD_JAVA, BUILD_CPP)
 
     files_to_include = list(ray_files)
 

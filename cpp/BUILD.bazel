@@ -88,7 +88,8 @@ genrule(
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$TEMP_DIR/thirdparty/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/" "$$TEMP_DIR/thirdparty/include" &&
         cp -f $(locations libray_api.so) "$$TEMP_DIR/thirdparty/lib/" &&
-        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$TEMP_DIR/thirdparty/include" &&        
+        cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$TEMP_DIR/thirdparty/include" &&
+        ln -s -f "$$TEMP_DIR" "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
