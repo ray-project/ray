@@ -29,6 +29,7 @@ from ray.includes.common cimport (
     CActorCreationOptions,
     CBuffer,
     CPlacementGroupCreationOptions,
+    CObjectLocation,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -209,6 +210,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        CRayStatus GetLocationFromOwner(
+                const c_vector[CObjectID] &object_ids,
+                int64_t timeout_ms,
+                c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 

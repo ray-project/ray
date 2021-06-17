@@ -6,7 +6,7 @@ namespace raylet_scheduling_policy {
 
 int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
-                     float hybrid_threshold, bool force_spillback,
+                     float spread_threshold, bool force_spillback,
                      bool require_available) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
@@ -56,7 +56,7 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
     RAY_LOG(DEBUG) << "Node " << node_id << " is " << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
-    if (critical_resource_utilization < hybrid_threshold) {
+    if (critical_resource_utilization < spread_threshold) {
       critical_resource_utilization = 0;
     }
 

@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import collections
 import inspect
+import logging
 import os
 import re
 import sys
@@ -29,7 +30,7 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger)
+                             logger, LoggingContext)
 
 import ray
 
@@ -1061,7 +1062,11 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 self.lifespan = LifespanOn(Config(self.app, lifespan="on"))
                 # Replace uvicorn logger with our own.
                 self.lifespan.logger = logger
-                await self.lifespan.startup()
+                # LifespanOn's logger logs in INFO level thus becomes spammy
+                # Within this block we temporarily uplevel for cleaner logging
+                with LoggingContext(
+                        self.lifespan.logger, level=logging.WARNING):
+                    await self.lifespan.startup()
 
                 # TODO(edoakes): should the startup_hook run before or after
                 # the constructor?
@@ -1077,8 +1082,12 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 return sender.build_starlette_response()
 
             def __del__(self):
-                asyncio.get_event_loop().run_until_complete(
-                    self.lifespan.shutdown())
+                # LifespanOn's logger logs in INFO level thus becomes spammy
+                # Within this block we temporarily uplevel for cleaner logging
+                with LoggingContext(
+                        self.lifespan.logger, level=logging.WARNING):
+                    asyncio.get_event_loop().run_until_complete(
+                        self.lifespan.shutdown())
 
         FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper
