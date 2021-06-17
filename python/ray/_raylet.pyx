@@ -1829,8 +1829,10 @@ cdef class CoreWorker:
             int64_t num_leases_requested
 
         with nogil:
-            num_tasks_submitted = CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted()
-            num_leases_requested = CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested()
+            num_tasks_submitted = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
+            num_leases_requested = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
 

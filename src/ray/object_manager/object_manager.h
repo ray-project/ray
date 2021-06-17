@@ -299,9 +299,7 @@ class ObjectManager : public ObjectManagerInterface,
     return static_cast<double>(used_memory_) / config_.object_store_memory;
   }
 
-  bool PullManagerAtCapacity() const {
-    return pull_manager_->AtCapacity();
-  }
+  bool PullManagerAtCapacity() const { return pull_manager_->AtCapacity(); }
 
  private:
   friend class TestObjectManager;

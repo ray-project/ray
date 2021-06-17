@@ -270,9 +270,8 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources,
-      /*requires_object_store_memory=*/false,
-      spec.IsActorCreationTask(), /*force_spillback=*/false,
-      &_unused, &is_infeasible);
+      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
+      /*force_spillback=*/false, &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -316,8 +315,7 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   }
 
   for (const auto &task_id : ready_ids) {
-      RAY_LOG(DEBUG) << "ARGS READY, task can be dispatched "
-                     << task_id;
+    RAY_LOG(DEBUG) << "ARGS READY, task can be dispatched " << task_id;
     auto it = waiting_tasks_index_.find(task_id);
     if (it != waiting_tasks_index_.end()) {
       auto work = *it->second;
@@ -1047,7 +1045,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: " << waiting_task_queue_.size();
+  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
+                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their

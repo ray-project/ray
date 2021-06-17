@@ -95,13 +95,9 @@ class CoreWorkerDirectTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
-  int64_t GetNumTasksSubmitted() const {
-    return num_tasks_submitted_;
-  }
+  int64_t GetNumTasksSubmitted() const { return num_tasks_submitted_; }
 
-  int64_t GetNumLeasesRequested() const {
-    return num_leases_requested_;
-  }
+  int64_t GetNumLeasesRequested() const { return num_leases_requested_; }
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if

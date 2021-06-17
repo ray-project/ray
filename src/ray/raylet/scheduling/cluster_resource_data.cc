@@ -189,13 +189,14 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const TaskRequest &task_req, bool ignore_pull_manager_at_capacity) const {
-  if (!ignore_pull_manager_at_capacity && task_req.requires_object_store_memory
-      && object_pulls_queued) {
+bool NodeResources::IsAvailable(const TaskRequest &task_req,
+                                bool ignore_pull_manager_at_capacity) const {
+  if (!ignore_pull_manager_at_capacity && task_req.requires_object_store_memory &&
+      object_pulls_queued) {
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
-  
+
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {

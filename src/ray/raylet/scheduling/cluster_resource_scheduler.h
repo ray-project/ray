@@ -174,8 +174,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request,
-      bool requires_object_store_memory, bool actor_creation,
-      bool force_spillback, int64_t *violations, bool *is_infeasible); 
+      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+      int64_t *violations, bool *is_infeasible);
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
