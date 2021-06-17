@@ -452,7 +452,11 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   RAY_CHECK(worker);
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(worker_shim_pid > 0);
+  // When the "shim process" setup worker is not needed, the worker_shim_pid will be 0.
+  if (worker_shim_pid == 0) {
+    worker_shim_pid = pid;
+  }
+  worker->SetShimProcess(Process::FromPid(worker_shim_pid));
   auto shim_process = Process::FromPid(worker_shim_pid);
   if (state.starting_worker_processes.count(shim_process) == 0) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
