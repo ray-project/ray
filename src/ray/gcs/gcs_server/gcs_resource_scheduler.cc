@@ -54,7 +54,7 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-SchedulingResult GcsResourceScheduler::Schedule(
+std::vector<NodeID> GcsResourceScheduler::Schedule(
     const std::vector<ResourceSet> &required_resources_list,
     const SchedulingType &scheduling_type,
     const std::function<bool(const NodeID &)> &node_filter_func) {
@@ -65,7 +65,7 @@ SchedulingResult GcsResourceScheduler::Schedule(
       FilterCandidateNodes(cluster_resources, node_filter_func);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
+    return {};
   }
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
@@ -73,7 +73,7 @@ SchedulingResult GcsResourceScheduler::Schedule(
   const auto &to_schedule_resources = SortRequiredResources(required_resources_list);
 
   // Score and rank nodes.
-  SchedulingResult result;
+  std::vector<NodeID> result;
   switch (scheduling_type) {
   case SPREAD:
     result = SpreadSchedule(to_schedule_resources, candidate_nodes);
@@ -115,18 +115,18 @@ const std::vector<ResourceSet> &GcsResourceScheduler::SortRequiredResources(
   return required_resources;
 }
 
-SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
+std::vector<NodeID> GcsResourceScheduler::StrictSpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
+  std::vector<NodeID> result;
   if (required_resources_list.size() > candidate_nodes.size()) {
     RAY_LOG(DEBUG) << "The number of required resources "
                    << required_resources_list.size()
                    << " is greater than the number of candidate nodes "
                    << candidate_nodes.size() << ", scheduling fails.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
+    return result;
   }
 
-  std::vector<NodeID> result_nodes;
   absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
   for (const auto &iter : required_resources_list) {
     // Score and sort nodes.
@@ -135,7 +135,7 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
     // There are nodes to meet the scheduling requirements.
     if (!node_scores.empty() && node_scores.front().second >= 0) {
       const auto &highest_score_node_id = node_scores.front().first;
-      result_nodes.push_back(highest_score_node_id);
+      result.push_back(highest_score_node_id);
       candidate_nodes_copy.erase(highest_score_node_id);
     } else {
       // There is no node to meet the scheduling requirements.
@@ -143,17 +143,17 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
     }
   }
 
-  if (result_nodes.size() != required_resources_list.size()) {
-    // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+  if (result.size() != required_resources_list.size()) {
+    // Unable to meet the resources required for scheduling, scheduling failed.
+    result.clear();
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
+  return result;
 }
 
-SchedulingResult GcsResourceScheduler::SpreadSchedule(
+std::vector<NodeID> GcsResourceScheduler::SpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
-  std::vector<NodeID> result_nodes;
+  std::vector<NodeID> result;
   absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
   absl::flat_hash_set<NodeID> selected_nodes;
   for (const auto &iter : required_resources_list) {
@@ -163,7 +163,7 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
     // There are nodes to meet the scheduling requirements.
     if (!node_scores.empty() && node_scores.front().second >= 0) {
       const auto &highest_score_node_id = node_scores.front().first;
-      result_nodes.push_back(highest_score_node_id);
+      result.push_back(highest_score_node_id);
       RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
       candidate_nodes_copy.erase(highest_score_node_id);
       selected_nodes.insert(highest_score_node_id);
@@ -172,7 +172,7 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
       const auto &node_scores = ScoreNodes(iter, selected_nodes);
       if (!node_scores.empty() && node_scores.front().second >= 0) {
         const auto &highest_score_node_id = node_scores.front().first;
-        result_nodes.push_back(highest_score_node_id);
+        result.push_back(highest_score_node_id);
         RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
       } else {
         break;
@@ -181,39 +181,26 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
   }
 
   // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
-  ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
+  ReleaseTemporarilyDeductedResources(required_resources_list, result);
 
-  if (result_nodes.size() != required_resources_list.size()) {
-    // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+  if (result.size() != required_resources_list.size()) {
+    // Unable to meet the resources required for scheduling, scheduling failed.
+    result.clear();
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
+  return result;
 }
 
-SchedulingResult GcsResourceScheduler::StrictPackSchedule(
+std::vector<NodeID> GcsResourceScheduler::StrictPackSchedule(
     const std::vector<ResourceSet> &required_resources_list,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
+  std::vector<NodeID> result;
+
   // Aggregate required resources.
   ResourceSet required_resources;
   for (const auto &iter : required_resources_list) {
     required_resources.AddResources(iter);
   }
 
-  const auto &cluster_resource = gcs_resource_manager_.GetClusterResources();
-
-  const auto &right_node_it = std::find_if(
-      cluster_resource.begin(), cluster_resource.end(),
-      [required_resources](const auto &node_resource) {
-        return required_resources.IsSubset(node_resource.second.GetTotalResources());
-      });
-
-  if (right_node_it == cluster_resource.end()) {
-    RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
-                      "whole cluster, schedule failed.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
-  }
-
-  std::vector<NodeID> result_nodes;
   // Score and sort nodes.
   const auto &node_scores = ScoreNodes(required_resources, candidate_nodes);
 
@@ -222,22 +209,17 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   // only schedules to a node and triggers rescheduling when node dead.
   if (!node_scores.empty() && node_scores.front().second >= 0) {
     for (int index = 0; index < (int)required_resources_list.size(); ++index) {
-      result_nodes.push_back(node_scores.front().first);
+      result.push_back(node_scores.front().first);
     }
   }
-  if (result_nodes.empty()) {
-    // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
-  }
-
-  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
+  return result;
 }
 
-SchedulingResult GcsResourceScheduler::PackSchedule(
+std::vector<NodeID> GcsResourceScheduler::PackSchedule(
     const std::vector<ResourceSet> &required_resources_list,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
-  std::vector<NodeID> result_nodes;
-  result_nodes.resize(required_resources_list.size());
+  std::vector<NodeID> result;
+  result.resize(required_resources_list.size());
   absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
   std::list<std::pair<int, ResourceSet>> required_resources_list_copy;
   int index = 0;
@@ -258,14 +240,14 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
     const auto &highest_score_node_id = node_scores.front().first;
     RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id,
                                                      required_resources));
-    result_nodes[required_resources_index] = highest_score_node_id;
+    result[required_resources_index] = highest_score_node_id;
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
       if (gcs_resource_manager_.AcquireResources(highest_score_node_id, iter->second)) {
-        result_nodes[iter->first] = highest_score_node_id;
+        result[iter->first] = highest_score_node_id;
         required_resources_list_copy.erase(iter++);
       } else {
         ++iter;
@@ -275,13 +257,13 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
   }
 
   // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
-  ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
+  ReleaseTemporarilyDeductedResources(required_resources_list, result);
 
   if (!required_resources_list_copy.empty()) {
-    // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+    // Unable to meet the resources required for scheduling, scheduling failed.
+    result.clear();
   }
-  return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
+  return result;
 }
 
 std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
