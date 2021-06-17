@@ -7,7 +7,7 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Iterable, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -207,7 +207,7 @@ class RayTrialExecutor(TrialExecutor):
     def set_max_pending_trials(self, max_pending: int):
         self._pg_manager.set_max_staging(max_pending)
 
-    def stage_and_update_status(self, trials: List[Trial]):
+    def stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
 
         Stages placement groups of all trials.
