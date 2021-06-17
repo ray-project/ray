@@ -79,6 +79,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return bundle_it->first;
 }
 
+// TODO(ekl) we should pin objects as they arrive and unpin on CancelPull, to avoid
+// race conditions where the object is evicted or spilled during active pulling.
 bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
                                                 uint64_t *highest_req_id_being_pulled,
                                                 std::vector<ObjectID> *objects_to_pull) {
@@ -186,9 +188,6 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-// TODO(ekl) this doesn't take into account bytes used by already-local objects. This
-// means that in some cases we don't activate as many bundles as we could. However,
-// liveness is ensured as long as pull_manager_min_active_pulls > 0.
 bool PullManager::OverQuota() { return num_bytes_being_pulled_ > num_bytes_available_; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
