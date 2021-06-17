@@ -17,12 +17,12 @@ py_test(
     tags = ["exclusive"]
 )
 
-#py_test(
-#    name = "plot_pong_example",
-#    size = "large",
-#    srcs = ["examples/plot_pong_example.py"],
-#    tags = ["exclusive"]
-#)
+py_test(
+    name = "plot_pong_example",
+    size = "large",
+    srcs = ["examples/plot_pong_example.py"],
+    tags = ["exclusive"]
+)
 
 py_test(
     name = "progress_bar",
@@ -55,6 +55,14 @@ py_test(
     main = "examples/doc_code/metrics_example.py",
     srcs = ["examples/doc_code/metrics_example.py"],
     tags = ["exclusive"]
+)
+
+py_test(
+    name = "doc_code_runtime_env_example",
+    size = "small",
+    main = "examples/doc_code/runtime_env_example.py",
+    srcs = ["examples/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build"]
 )
 
 # --------------------------------------------------------------------

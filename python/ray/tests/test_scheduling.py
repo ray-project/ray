@@ -15,7 +15,7 @@ import ray.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore)
+                            Semaphore, object_memory_usage)
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +118,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
     cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "scheduler_loadbalance_spillback": True,
-            "scheduler_hybrid_scheduling": False
+        num_cpus=0, _system_config={
+            "scheduler_spread_threshold": 0,
         })
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
@@ -356,7 +354,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "ownership_based_object_directory_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
@@ -427,15 +424,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            # This test uses ray.state.objects(), which only works with the
-            # GCS-based object directory
-            "ownership_based_object_directory_enabled": False,
-            "object_timeout_milliseconds": 200
-        })
-    assert len(ray.state.objects()) == 0
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
     @ray.remote
     def f(x):
@@ -454,7 +443,7 @@ def test_lease_request_leak(shutdown_only):
 
     time.sleep(
         1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.state.objects()) == 0, ray.state.objects()
+    assert object_memory_usage() == 0
 
 
 if __name__ == "__main__":

@@ -46,7 +46,8 @@ class GcsPlacementGroup {
   /// Create a GcsPlacementGroup by CreatePlacementGroupRequest.
   ///
   /// \param request Contains the placement group creation task specification.
-  explicit GcsPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request) {
+  explicit GcsPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
+                             std::string ray_namespace) {
     const auto &placement_group_spec = request.placement_group_spec();
     placement_group_table_data_.set_placement_group_id(
         placement_group_spec.placement_group_id());
@@ -63,6 +64,7 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
+    placement_group_table_data_.set_ray_namespace(ray_namespace);
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -82,6 +84,9 @@ class GcsPlacementGroup {
 
   /// Get the name of this placement_group.
   std::string GetName() const;
+
+  /// Get the name of this placement_group.
+  std::string GetRayNamespace() const;
 
   /// Get the bundles of this placement_group (including unplaced).
   std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
@@ -140,7 +145,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsResourceManager &gcs_resource_manager);
+      GcsResourceManager &gcs_resource_manager,
+      std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -194,13 +200,16 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param name The name of the  placement_group to look up.
   /// \returns PlacementGroupID The ID of the placement_group. Nil if the
   /// placement_group was not found.
-  PlacementGroupID GetPlacementGroupIDByName(const std::string &name);
+  PlacementGroupID GetPlacementGroupIDByName(const std::string &name,
+                                             const std::string &ray_namespace);
 
   /// Handle placement_group creation task failure. This should be called when scheduling
   /// an placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
-  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group);
+  /// \param is_feasible whether the scheduler can be retry or not currently.
+  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
+                                      bool is_feasible = true);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -218,6 +227,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  /// Handle a node register. This will try to reschedule all the infeasible
+  /// placement groups.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeAdd(const NodeID &node_id);
 
   /// Clean placement group that belongs to the job id if necessary.
   ///
@@ -314,6 +329,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `std::priority_queue`.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
 
+  /// The infeasible placement_groups that can't be scheduled currently.
+  std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
+
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
       gcs_placement_group_scheduler_;
@@ -329,8 +347,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
-  /// Maps placement group names to their placement group ID for lookups by name.
-  absl::flat_hash_map<std::string, PlacementGroupID> named_placement_groups_;
+  /// Get ray namespace.
+  std::function<std::string(const JobID &)> get_ray_namespace_;
+
+  /// Maps placement group names to their placement group ID for lookups by
+  /// name, first keyed by namespace.
+  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, PlacementGroupID>>
+      named_placement_groups_;
 
   // Debug info.
   enum CountType {

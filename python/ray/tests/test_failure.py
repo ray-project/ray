@@ -113,55 +113,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal2.send.remote())
 
 
-def test_fail_importing_remote_function(ray_start_2_cpus, error_pubsub):
-    p = error_pubsub
-    # Create the contents of a temporary Python file.
-    temporary_python_file = """
-def temporary_helper_function():
-    return 1
-"""
-
-    f = tempfile.NamedTemporaryFile(suffix=".py")
-    f.write(temporary_python_file.encode("ascii"))
-    f.flush()
-    directory = os.path.dirname(f.name)
-    # Get the module name and strip ".py" from the end.
-    module_name = os.path.basename(f.name)[:-3]
-    sys.path.append(directory)
-    module = __import__(module_name)
-
-    # Define a function that closes over this temporary module. This should
-    # fail when it is unpickled.
-    @ray.remote
-    def g(x, y=3):
-        try:
-            module.temporary_python_file()
-        except Exception:
-            # This test is not concerned with the error from running this
-            # function. Only from unpickling the remote function.
-            pass
-
-    # Invoke the function so that the definition is exported.
-    g.remote(1, y=2)
-
-    errors = get_error_message(
-        p, 2, ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
-    assert errors[0].type == ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR
-    assert "No module named" in errors[0].error_message
-    assert "No module named" in errors[1].error_message
-
-    # Check that if we try to call the function it throws an exception and
-    # does not hang.
-    for _ in range(10):
-        with pytest.raises(
-                Exception, match="This function was not imported properly."):
-            ray.get(g.remote(1, y=2))
-
-    f.close()
-    # Clean up the junk we added to sys.path.
-    sys.path.pop(-1)
-
-
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 

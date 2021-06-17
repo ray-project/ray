@@ -180,8 +180,6 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.q_func_vars = model.variables()
-
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
@@ -200,8 +198,6 @@ def build_q_model_and_distribution(
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
-
-    policy.target_q_func_vars = policy.target_q_model.variables()
 
     return model, TorchCategorical
 
@@ -237,6 +233,7 @@ def build_q_losses(policy: Policy, model, _,
     Returns:
         TensorType: A single loss tensor.
     """
+
     config = policy.config
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t, _ = compute_q_values(
@@ -302,6 +299,13 @@ def build_q_losses(policy: Policy, model, _,
 
 def adam_optimizer(policy: Policy,
                    config: TrainerConfigDict) -> "torch.optim.Optimizer":
+
+    # By this time, the models have been moved to the GPU - if any - and we
+    # can define our optimizers using the correct CUDA variables.
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+        policy.target_q_func_vars = policy.target_q_model.variables()
+
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
 

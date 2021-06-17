@@ -391,6 +391,23 @@ message PubSubMessage {
   bytes data = 2;
 }
 
+// A notification that the resource table has changed.
+message ResourceUpdate {
+  oneof resource_change_or_data {
+    // The total resources on a node have changed.
+    NodeResourceChange change = 1;
+    // The available resources on a node have changed.
+    ResourcesData data = 2;
+  }
+}
+
+message ResourceUsageBroadcastData {
+  // An incrementing sequence number, used for correcting network errors.
+  int64 seq_no = 1;
+  // The changes to the state of the cluster.
+  repeated ResourceUpdate batch = 2;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
@@ -443,6 +460,11 @@ message ResourcesData {
   bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 10;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 11;
 }
 
 message ResourceUsageBatchData {
@@ -494,5 +516,7 @@ message PlacementGroupTableData {
   bool creator_actor_dead = 9;
   // Whether the placement group is persistent.
   bool is_detached = 10;
+  // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 11;
 }
 ///////////////////////////////////////////////////////////////////////////////

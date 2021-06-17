@@ -27,16 +27,15 @@ redis >= 3.5.0
 requests
 
 ## setup.py extras
-atari_py
 dm_tree
 flask
-gym[atari]
+gym
 lz4
 opencv-python-headless==4.3.0.36
 pandas==1.0.5
 scipy==1.4.1
 tabulate
-tensorboardX
+tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
 starlette
@@ -47,7 +46,7 @@ azure-common
 azure-mgmt-resource
 msrestazure
 boto3
-cython==0.29.0
+cython >= 0.29.15
 dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
@@ -56,7 +55,6 @@ gym
 gym-minigrid
 kubernetes
 lxml
-modin
 moto
 mypy
 networkx

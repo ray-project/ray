@@ -10,7 +10,7 @@ namespace api {
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
       invocation.lib_name, invocation.remote_function_holder.function_name);
-  return RayFunction(Language::CPP, function_descriptor);
+  return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
 ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation) {

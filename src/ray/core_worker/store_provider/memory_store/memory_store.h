@@ -74,6 +74,12 @@ class CoreWorkerMemoryStore {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
+  /// Get an object if it exists.
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \return Pointer to the object if it exists, otherwise nullptr.
+  std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
+
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
   ///

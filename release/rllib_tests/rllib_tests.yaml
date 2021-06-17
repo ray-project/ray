@@ -1,0 +1,26 @@
+- name: learning_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 8gpus_64cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python learning_tests/run_learning_tests.py
+
+- name: example_scripts_on_gpu_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 8gpus_64cpus.yaml
+
+  run:
+    timeout: 3600
+    script: bash unit_gpu_tests/run.sh
+
+- name: stress_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 4gpus_544_cpus.yaml
+
+  run:
+    timeout: 3600
+    script: stress_tests/run.sh
