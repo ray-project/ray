@@ -31,8 +31,15 @@
 namespace ray {
 namespace gcs {
 
+class GcsPlacementGroup;
+
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
+
+using PGSchedulingFailureCallback =
+    std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
+using PGSchedulingSuccessfulCallback =
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 
 struct pair_hash {
   template <class T1, class T2>
@@ -41,11 +48,10 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
+using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
 using BundleLocations =
     absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<BundleSpecification>>,
                         pair_hash>;
-
-class GcsPlacementGroup;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -56,8 +62,8 @@ class GcsPlacementGroupSchedulerInterface {
   /// \param success_callback This function is called if the schedule is successful.
   virtual void ScheduleUnplacedBundles(
       std::shared_ptr<GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) = 0;
+      PGSchedulingFailureCallback failure_callback,
+      PGSchedulingSuccessfulCallback success_callback) = 0;
 
   /// Get bundles belong to the specified node.
   ///
@@ -105,8 +111,8 @@ class ScheduleContext {
 class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
-  virtual ScheduleMap Schedule(
-      std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+  virtual ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) = 0;
 
@@ -118,14 +124,15 @@ class GcsScheduleStrategy {
   std::vector<ResourceSet> GetRequiredResourcesFromBundles(
       const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles);
 
-  /// Generate `ScheduleMap` from bundles and nodes .
+  /// Generate `ScheduleResult` from bundles and nodes .
   ///
   /// \param bundles Bundles to be scheduled.
   /// \param selected_nodes selected_nodes to be scheduled.
-  /// \return Required resources.
-  ScheduleMap GenerateScheduleMap(
+  /// \param status Status of the scheduling result.
+  /// \return The scheduling result from the required resource.
+  ScheduleResult GenerateScheduleResult(
       const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-      const std::vector<NodeID> &selected_nodes);
+      const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status);
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -133,26 +140,29 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
@@ -160,9 +170,10 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleResult Schedule(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 enum class LeasingState {
@@ -407,10 +418,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group to be scheduled.
   /// \param failure_callback This function is called if the schedule is failed.
   /// \param success_callback This function is called if the schedule is successful.
-  void ScheduleUnplacedBundles(
-      std::shared_ptr<GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
+  void ScheduleUnplacedBundles(std::shared_ptr<GcsPlacementGroup> placement_group,
+                               PGSchedulingFailureCallback failure_handler,
+                               PGSchedulingSuccessfulCallback success_handler) override;
 
   /// Destroy the actual bundle resources or locked resources (for 2PC)
   /// on all nodes associated with this placement group.
@@ -485,25 +495,19 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Called when all prepare requests are returned from nodes.
   void OnAllBundlePrepareRequestReturned(
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
-      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-          &schedule_failure_handler,
-      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-          &schedule_success_handler);
+      const PGSchedulingFailureCallback &schedule_failure_handler,
+      const PGSchedulingSuccessfulCallback &schedule_success_handler);
 
   /// Called when all commit requests are returned from nodes.
   void OnAllBundleCommitRequestReturned(
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
-      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-          &schedule_failure_handler,
-      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-          &schedule_success_handler);
+      const PGSchedulingFailureCallback &schedule_failure_handler,
+      const PGSchedulingSuccessfulCallback &schedule_success_handler);
 
   /// Commit all bundles recorded in lease status tracker.
   void CommitAllBundles(const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
-                        const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-                            &schedule_failure_handler,
-                        const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-                            &schedule_success_handler);
+                        const PGSchedulingFailureCallback &schedule_failure_handler,
+                        const PGSchedulingSuccessfulCallback &schedule_success_handler);
 
   /// Destroy the prepared bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,

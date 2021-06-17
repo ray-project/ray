@@ -115,10 +115,6 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
       auto grace_period_ns = oom_grace_period_ns_;
-      if (plasma_unlimited_) {
-        // Use a faster timeout in unlimited allocation mode to avoid excess latency.
-        grace_period_ns = std::min(grace_period_ns, (int64_t)2e9);
-      }
       if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
@@ -130,11 +126,9 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         if (plasma_unlimited_) {
           // Trigger the fallback allocator.
-          RAY_CHECK_OK(ProcessRequest(*request_it, /*fallback_allocator=*/true));
-          // Note that we don't reset oom_start_time_ns_ until we complete a
-          // "normal" allocation.
-          FinishRequest(request_it);
-        } else {
+          status = ProcessRequest(*request_it, /*fallback_allocator=*/true);
+        }
+        if (!status.ok()) {
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
             dump = dump_debug_info_callback_();
@@ -144,10 +138,8 @@ Status CreateRequestQueue::ProcessRequests() {
                         << (*request_it)->object_id << " of size "
                         << (*request_it)->object_size / 1024 / 1024 << "MB\n"
                         << dump;
-          // Raise OOM. In this case, the request will be marked as OOM.
-          // We don't return so that we can process the next entry right away.
-          FinishRequest(request_it);
         }
+        FinishRequest(request_it);
       }
     }
   }

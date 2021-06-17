@@ -222,6 +222,40 @@ cdef increase_recursion_limit():
                          new_limit, current_depth))
 
 
+cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
+    """A helper function that converts a CObjectLocation to a Python dict.
+
+    Returns:
+        A Dict with following attributes:
+        - node_ids:
+            The hex IDs of the nodes that have a copy of this object.
+        - object_size:
+            The size of data + metadata in bytes.
+    """
+    object_size = c_object_location.GetObjectSize()
+
+    node_ids = set()
+    c_node_ids = c_object_location.GetNodeIDs()
+    for i in range(c_node_ids.size()):
+        node_id = c_node_ids[i].Hex().decode("ascii")
+        node_ids.add(node_id)
+
+    # add primary_node_id into node_ids
+    if not c_object_location.GetPrimaryNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
+
+    # add spilled_node_id into node_ids
+    if not c_object_location.GetSpilledNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
+
+    return {
+        "node_ids": list(node_ids),
+        "object_size": object_size,
+    }
+
+
 @cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
@@ -1163,6 +1197,27 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_object_locations(self, object_refs, int64_t timeout_ms):
+        cdef:
+            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                    lookup_ids, timeout_ms, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].get():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(results[i].get())
+        return object_locations
+
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
@@ -1437,6 +1492,9 @@ cdef class CoreWorker:
 
         return resources_dict
 
+    def plasma_unlimited(self):
+        return RayConfig.instance().plasma_unlimited()
+
     def profile_event(self, c_string event_type, object extra_data=None):
         if RayConfig.instance().enable_timeline():
             return ProfileEvent.make(
@@ -1676,11 +1734,15 @@ cdef class CoreWorker:
     def get_current_runtime_env_dict(self):
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
-            self.current_runtime_env_dict = json.loads(
-                CCoreWorkerProcess.GetCoreWorker()
-                .GetWorkerContext()
-                .GetCurrentSerializedRuntimeEnv()
-            )
+            if self.is_driver:
+                self.current_runtime_env_dict = \
+                    json.loads(self.get_job_config().serialized_runtime_env)
+            else:
+                self.current_runtime_env_dict = json.loads(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .GetWorkerContext()
+                    .GetCurrentSerializedRuntimeEnv()
+                )
         return self.current_runtime_env_dict
 
     def is_exiting(self):
@@ -1740,30 +1802,28 @@ cdef class CoreWorker:
         return self.job_config
 
     def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
-        """Update parent's runtime env with new env via a simple dict update.
+        """Merge the given new runtime env with the current runtime env.
 
-        If the resulting runtime env is empty, fall back to the runtime env
-        set in the JobConfig.  Returns the JSON-serialized runtime env.
+        If running in a driver, the current runtime env comes from the
+        JobConfig.  Otherwise, we are running in a worker for an actor or
+        task, and the current runtime env comes from the current TaskSpec.
+
+        Args:
+            runtime_env_dict (dict): A runtime env for a child actor or task.
+        Returns:
+            The resulting merged JSON-serialized runtime env.
         """
-
-        # Short-circuit in the common case.
-        if (runtime_env_dict == {}
-                and self.get_current_runtime_env_dict() == {}):
-            return self.get_job_config().serialized_runtime_env
-
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
         result_dict.update(runtime_env_dict)
 
-        # TODO(architkulkarni): remove once workers are cached by runtime env.
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 
-        if result_dict == {}:
-            return self.get_job_config().serialized_runtime_env
-        else:
-            # TODO(architkulkarni): We should just use RuntimeEnvDict here
-            # so all the serialization and validation is done in one place
-            return json.dumps(result_dict, sort_keys=True)
+        # TODO(architkulkarni): We should just use RuntimeEnvDict here
+        # so all the serialization and validation is done in one place
+        return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

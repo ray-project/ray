@@ -76,13 +76,13 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 }
 
 template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
-    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) {
+SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
+    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
-    return;
+    return nullptr;
   }
 
   const auto channel_type = pub_message.channel_type();
@@ -93,9 +93,10 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
 
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   if (maybe_subscription_callback.has_value()) {
-    // If the object id is still subscribed, invoke a subscription callback.
-    const auto &subscription_callback = maybe_subscription_callback.value();
-    subscription_callback(pub_message);
+    // If the object id is still subscribed, return a subscribe callback.
+    return std::move(maybe_subscription_callback.value());
+  } else {
+    return nullptr;
   }
 }
 
@@ -117,7 +118,6 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
 
     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
     if (maybe_failure_callback.has_value()) {
-      // If the object id is still subscribed, invoke a failure callback.
       const auto &failure_callback = maybe_failure_callback.value();
       failure_callback();
     }
@@ -136,17 +136,49 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
 
-void Subscriber::Subscribe(const rpc::ChannelType channel_type,
+void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+                           const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
+  // Batch a subscribe command.
+  auto command = std::make_unique<rpc::Command>();
+  command->set_channel_type(channel_type);
+  command->set_key_id(key_id_binary);
+  command->mutable_subscribe_message()->Swap(sub_message.get());
+
+  absl::MutexLock lock(&mutex_);
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  commands_[publisher_id].emplace(std::move(command));
+  SendCommandBatchIfPossible(publisher_address);
+  MakeLongPollingConnectionIfNotConnected(publisher_address);
+
   Channel(channel_type)
       ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
+}
 
-  // Make a long polling connection if we never made the one with this publisher for
-  // pubsub operations.
+bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
+                             const rpc::Address &publisher_address,
+                             const std::string &key_id_binary) {
+  // Batch the unsubscribe command.
+  auto command = std::make_unique<rpc::Command>();
+  command->set_channel_type(channel_type);
+  command->set_key_id(key_id_binary);
+  rpc::UnsubscribeMessage unsub_message;
+  command->mutable_unsubscribe_message()->CopyFrom(unsub_message);
+
+  absl::MutexLock lock(&mutex_);
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  commands_[publisher_id].emplace(std::move(command));
+  SendCommandBatchIfPossible(publisher_address);
+
+  return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
+}
+
+void Subscriber::MakeLongPollingConnectionIfNotConnected(
+    const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto publishers_connected_it = publishers_connected_.find(publisher_id);
   if (publishers_connected_it == publishers_connected_.end()) {
@@ -157,12 +189,6 @@ void Subscriber::Subscribe(const rpc::ChannelType channel_type,
     subscriber_address.set_port(subscriber_port_);
     MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
   }
-}
-
-bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
-                             const rpc::Address &publisher_address,
-                             const std::string &key_id_binary) {
-  return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
 }
 
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
@@ -176,6 +202,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   publisher_client->PubsubLongPolling(
       long_polling_request, [this, publisher_address, subscriber_address](
                                 Status status, const rpc::PubsubLongPollingReply &reply) {
+        absl::MutexLock lock(&mutex_);
         HandleLongPollingResponse(publisher_address, subscriber_address, status, reply);
       });
 }
@@ -193,16 +220,39 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
                       "Publisher id: "
                    << publisher_id;
+
     for (const auto &channel_it : channels_) {
       channel_it.second->HandlePublisherFailure(publisher_address);
     }
+    // Empty the command queue because we cannot send commands anymore.
+    commands_.erase(publisher_id);
   } else {
     // Otherwise, iterate on the reply and pass published messages to channels.
+    std::deque<SubscriptionCallback> subscription_callbacks;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
-      Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
+      subscription_callbacks.emplace_back(
+          Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
     }
+
+    // Post to the provided io service so that the callback is
+    // always running on the io service thread.
+    callback_service_->post(
+        [subscription_callbacks = std::move(subscription_callbacks),
+         reply = std::move(reply)]() {
+          auto pubsub_message_size = reply.pub_messages_size();
+          RAY_CHECK(static_cast<size_t>(pubsub_message_size) ==
+                    subscription_callbacks.size());
+          for (int i = 0; i < pubsub_message_size; i++) {
+            const auto &msg = reply.pub_messages(i);
+            const auto &subscription_callback = subscription_callbacks.at(i);
+            if (subscription_callback) {
+              subscription_callback(msg);
+            }
+          }
+        },
+        "Subscriber.HandleLongPollingResponse");
   }
 
   if (SubscriptionExists(publisher_id)) {
@@ -212,14 +262,76 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   }
 }
 
+void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_address) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
+
+  // If there's no in flight command batch request to the publisher,
+  // send it. Otherwise, this function will be called when the in flight
+  // request is replied.
+  if (command_batch_sent_it == command_batch_sent_.end()) {
+    // Obtain the command queue.
+    auto command_queue_it = commands_.find(publisher_id);
+    if (command_queue_it == commands_.end()) {
+      return;
+    }
+    auto &command_queue = command_queue_it->second;
+
+    // Update the command in the FIFO order.
+    rpc::PubsubCommandBatchRequest command_batch_request;
+    command_batch_request.set_subscriber_id(subscriber_id_.Binary());
+    int64_t updated_commands = 0;
+    while (!command_queue.empty() && updated_commands < max_command_batch_size_) {
+      auto new_command = command_batch_request.add_commands();
+      new_command->Swap(command_queue.front().get());
+      command_queue.pop();
+      updated_commands += 1;
+    }
+
+    if (command_queue.size() == 0) {
+      commands_.erase(command_queue_it);
+    }
+
+    if (updated_commands == 0) {
+      return;
+    }
+
+    command_batch_sent_.emplace(publisher_id);
+    auto publisher_client = publisher_client_pool_.GetOrConnect(publisher_address);
+    publisher_client->PubsubCommandBatch(
+        command_batch_request,
+        [this, publisher_address, publisher_id](
+            Status status, const rpc::PubsubCommandBatchReply &reply) {
+          absl::MutexLock lock(&mutex_);
+          auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
+          RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
+          command_batch_sent_.erase(command_batch_sent_it);
+          if (!status.ok()) {
+            // This means the publisher has failed.
+            // The publisher dead detection & command clean up will be done
+            // from the long polling request.
+            RAY_LOG(DEBUG) << "The command batch request to " << publisher_id
+                           << " has failed";
+          } else {
+            SendCommandBatchIfPossible(publisher_address);
+          }
+        });
+  }
+}
+
 bool Subscriber::CheckNoLeaks() const {
+  absl::MutexLock lock(&mutex_);
   bool leaks = false;
   for (const auto &channel_it : channels_) {
     if (!channel_it.second->CheckNoLeaks()) {
       leaks = true;
     }
   }
-  return !leaks && publishers_connected_.size() == 0;
+  bool command_batch_leak = command_batch_sent_.size() != 0;
+  bool long_polling_leak = publishers_connected_.size() != 0;
+  bool command_queue_leak = commands_.size() != 0;
+  return !leaks && publishers_connected_.size() == 0 && !command_batch_leak &&
+         !long_polling_leak && !command_queue_leak;
 }
 
 /// Per each key id, we need to define templates for these functions/classes here so
