@@ -206,6 +206,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
                    << ", spilled node ID: " << it->second.spilled_node_id
                    << ", object size: " << it->second.object_size;
     metrics_num_object_location_updates_++;
+    cum_metrics_num_object_location_updates_++;
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -420,6 +421,8 @@ std::string OwnershipBasedObjectDirectory::DebugString() const {
   result << std::fixed << std::setprecision(3);
   result << "OwnershipBasedObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
+  result << "\n- cumulative location updates: "
+         << cum_metrics_num_object_location_updates_;
   result << "\n- num location updates per second: "
          << metrics_num_object_location_updates_per_second_;
   result << "\n- num location lookups per second: "

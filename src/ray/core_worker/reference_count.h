@@ -814,6 +814,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
+
+  uint64_t total_location_updates_;
 };
 
 }  // namespace ray

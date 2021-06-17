@@ -244,10 +244,8 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
   auto maybe_subscribers =
       subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
-    RAY_LOG(INFO) << "Publish a message that has no subscriber. Channel type: " << channel_type;
     return;
   }
-  RAY_LOG(INFO) << "Publish a message that has a subscriber. Channel type: " << channel_type;
 
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);

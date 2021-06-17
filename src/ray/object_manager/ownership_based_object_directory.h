@@ -109,6 +109,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// Number of object location updates.
   uint64_t metrics_num_object_location_updates_;
   double metrics_num_object_location_updates_per_second_;
+
+  uint64_t cum_metrics_num_object_location_updates_;
 };
 
 }  // namespace ray

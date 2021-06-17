@@ -181,8 +181,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   ///
   /// Statistics attributes.
   ///
-  uint64_t cum_subscribe_requests_;
-  uint64_t cum_unsubscribe_requests_;
+  uint64_t cum_subscribe_requests_ = 0;
+  uint64_t cum_unsubscribe_requests_ = 0;
 };
 
 /// The below defines the list of channel implementation.
@@ -247,6 +247,8 @@ class SubscriberInterface {
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary) = 0;
 
+  virtual const std::string DebugString() const = 0;
+
   virtual ~SubscriberInterface() {}
 };
 
@@ -310,7 +312,7 @@ class Subscriber : public SubscriberInterface {
     return it->second;
   }
 
-  const std::string DebugString() const;
+  const std::string DebugString() const override;
 
  private:
   ///

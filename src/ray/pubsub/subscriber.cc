@@ -249,7 +249,6 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   } else {
     // Otherwise, iterate on the reply and pass published messages to channels.
     std::deque<SubscriptionCallback> subscription_callbacks;
-    RAY_LOG(ERROR) << "pub message size : " << reply.pub_messages_size();
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
