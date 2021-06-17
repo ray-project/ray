@@ -107,7 +107,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     const auto &node_id = NodeID::FromBinary(node->node_id());
     std::unordered_map<std::string, double> resource_map;
     resource_map["CPU"] = cpu_num;
-    gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
+    ResourceSet resources(resource_map);
+    gcs_resource_manager_->SetAvailableResources(node_id, resources);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
@@ -118,8 +119,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // Schedule the placement_group with zero node.
     scheduler_->ScheduleUnplacedBundles(
         placement_group,
-        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-               bool is_insfeasble) {
+        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           absl::MutexLock lock(&placement_group_requests_mutex_);
           failure_placement_groups_.emplace_back(std::move(placement_group));
         },
@@ -148,8 +148,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // send to the node.
     scheduler_->ScheduleUnplacedBundles(
         placement_group,
-        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-               bool is_insfeasble) {
+        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           absl::MutexLock lock(&placement_group_requests_mutex_);
           failure_placement_groups_.emplace_back(std::move(placement_group));
         },
@@ -172,11 +171,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   void ReschedulingWhenNodeAddTest(rpc::PlacementStrategy strategy) {
     AddNode(Mocker::GenNodeInfo(0), 1);
-    auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                  bool is_insfeasble) {
-      absl::MutexLock lock(&placement_group_requests_mutex_);
-      failure_placement_groups_.emplace_back(std::move(placement_group));
-    };
+    auto failure_handler =
+        [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+          absl::MutexLock lock(&placement_group_requests_mutex_);
+          failure_placement_groups_.emplace_back(std::move(placement_group));
+        };
     auto success_handler =
         [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           absl::MutexLock lock(&placement_group_requests_mutex_);
@@ -265,8 +264,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReplyFailure) {
   // send to the node.
   scheduler_->ScheduleUnplacedBundles(
       placement_group,
-      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-             bool is_insfeasble) {
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&placement_group_requests_mutex_);
         failure_placement_groups_.emplace_back(std::move(placement_group));
       },
@@ -290,8 +288,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReplyFailure) {
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
   auto node = Mocker::GenNodeInfo(0);
   AddNode(node, 2);
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -325,8 +322,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   // send to the node.
   scheduler_->ScheduleUnplacedBundles(
       placement_group,
-      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-             bool is_insfeasble) {
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&placement_group_requests_mutex_);
         failure_placement_groups_.emplace_back(std::move(placement_group));
       },
@@ -351,8 +347,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
 TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling) {
   AddNode(Mocker::GenNodeInfo(0));
   AddNode(Mocker::GenNodeInfo(1));
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -399,8 +394,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyReschedulingWhenNod
 TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   auto node0 = Mocker::GenNodeInfo(0);
   AddNode(node0);
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -449,8 +443,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   // send to the node.
   scheduler_->ScheduleUnplacedBundles(
       placement_group,
-      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-             bool is_insfeasble) {
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&placement_group_requests_mutex_);
         failure_placement_groups_.emplace_back(std::move(placement_group));
       },
@@ -489,8 +482,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   // send to the node.
   scheduler_->ScheduleUnplacedBundles(
       placement_group,
-      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-             bool is_insfeasble) {
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&placement_group_requests_mutex_);
         failure_placement_groups_.emplace_back(std::move(placement_group));
       },
@@ -522,8 +514,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   // send to the node.
   scheduler_->ScheduleUnplacedBundles(
       placement_group,
-      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-             bool is_insfeasble) {
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&placement_group_requests_mutex_);
         failure_placement_groups_.emplace_back(std::move(placement_group));
       },
@@ -551,8 +542,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyReschedulingWhenNodeAdd) 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   AddNode(Mocker::GenNodeInfo(0));
   AddNode(Mocker::GenNodeInfo(1));
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -603,8 +593,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -670,8 +659,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
 TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   auto node0 = Mocker::GenNodeInfo(0);
   AddNode(node0);
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -795,8 +783,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     ASSERT_TRUE(placement_group->GetUnplacedBundles().size() == 2);
     failure_placement_groups_.emplace_back(std::move(placement_group));
@@ -832,8 +819,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     ASSERT_TRUE(placement_group->GetUnplacedBundles().size() == 1);
     failure_placement_groups_.emplace_back(std::move(placement_group));
@@ -873,8 +859,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     ASSERT_TRUE(placement_group->GetUnplacedBundles().size() == 2);
     failure_placement_groups_.emplace_back(std::move(placement_group));
@@ -908,8 +893,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -963,8 +947,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
@@ -1020,8 +1003,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
-  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
