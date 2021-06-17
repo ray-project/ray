@@ -1388,7 +1388,6 @@ Status CoreWorker::GetLocationFromOwner(
     auto object_location_request = request.mutable_object_location_request();
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
-    object_location_request->set_last_version(-1);
     client->GetObjectLocationsOwner(
         request,
         [object_id, mutex, num_remaining, ready_promise, location_by_id](
@@ -2613,8 +2612,8 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     return;
   }
 
-  auto status =
-      reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
+  // Publish the first object location snapshot when subscribed for the first time.
+  auto status = reference_counter_->PublishObjectLocationSnapshot(object_id);
   if (!status.ok()) {
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());

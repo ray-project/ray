@@ -42,11 +42,12 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 }
 
 /// Update object location data based on response from the owning core worker.
-void UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
+bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
                            const ObjectID &object_id,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
                            NodeID *spilled_node_id, size_t *object_size) {
+  bool is_updated = false;
   std::unordered_set<NodeID> new_node_ids;
   // The size can be 0 if the update was a deletion. This assumes that an
   // object's size is always greater than 0.
@@ -54,6 +55,7 @@ void UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
   // whether the size is set instead.
   if (location_info.object_size() > 0) {
     *object_size = location_info.object_size();
+    is_updated = true;
   }
   for (auto const &node_id : location_info.node_ids()) {
     new_node_ids.emplace(NodeID::FromBinary(node_id));
@@ -62,6 +64,7 @@ void UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
   FilterRemovedNodes(gcs_client, &new_node_ids);
   if (new_node_ids != *node_ids) {
     *node_ids = new_node_ids;
+    is_updated = true;
   }
   const std::string &new_spilled_url = location_info.spilled_url();
   if (new_spilled_url != *spilled_url) {
@@ -75,7 +78,10 @@ void UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
       *spilled_url = new_spilled_url;
       *spilled_node_id = new_spilled_node_id;
     }
+    is_updated = true;
   }
+
+  return is_updated;
 }
 
 rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
@@ -175,10 +181,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
 };
 
 void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
-    const rpc::PubMessage &pub_message, const ObjectID &object_id) {
-  RAY_CHECK(pub_message.has_worker_object_locations_message());
-  const auto &object_location_message = pub_message.worker_object_locations_message();
-
+    const rpc::WorkerObjectLocationsPubMessage &location_info, const ObjectID &object_id,
+    bool location_lookup_failed) {
   // Objects are added to this map in SubscribeObjectLocations.
   auto it = listeners_.find(object_id);
   // Do nothing for objects we are not listening for.
@@ -189,29 +193,34 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   it->second.subscribed = true;
 
   // Update entries for this object.
-  UpdateObjectLocations(object_location_message, object_id, gcs_client_,
-                        &it->second.current_object_locations, &it->second.spilled_url,
-                        &it->second.spilled_node_id, &it->second.object_size);
-  RAY_LOG(DEBUG) << "Pushing location updates to subscribers for object " << object_id
-                 << ": " << it->second.current_object_locations.size()
-                 << " locations, spilled_url: " << it->second.spilled_url
-                 << ", spilled node ID: " << it->second.spilled_node_id
-                 << ", object size: " << it->second.object_size;
-  metrics_num_object_location_updates_++;
-  // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-  // looping over the callbacks.
-  auto callbacks = it->second.callbacks;
-  // Call all callbacks associated with the object id locations we have
-  // received.  This notifies the client even if the list of locations is
-  // empty, since this may indicate that the objects have been evicted from
-  // all nodes.
-  for (const auto &callback_pair : callbacks) {
-    // We can call the callback directly without worrying about invalidating caller
-    // iterators since this is already running in the subscription callback stack.
-    // See https://github.com/ray-project/ray/issues/2959.
-    callback_pair.second(object_id, it->second.current_object_locations,
-                         it->second.spilled_url, it->second.spilled_node_id,
-                         it->second.object_size);
+  auto location_updated = UpdateObjectLocations(
+      location_info, object_id, gcs_client_, &it->second.current_object_locations,
+      &it->second.spilled_url, &it->second.spilled_node_id, &it->second.object_size);
+
+  // If the lookup has failed, that means the object is lost. Trigger the callback in this
+  // case.
+  if (location_updated || location_lookup_failed) {
+    RAY_LOG(DEBUG) << "Pushing location updates to subscribers for object " << object_id
+                   << ": " << it->second.current_object_locations.size()
+                   << " locations, spilled_url: " << it->second.spilled_url
+                   << ", spilled node ID: " << it->second.spilled_node_id
+                   << ", object size: " << it->second.object_size;
+    metrics_num_object_location_updates_++;
+    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+    // looping over the callbacks.
+    auto callbacks = it->second.callbacks;
+    // Call all callbacks associated with the object id locations we have
+    // received.  This notifies the client even if the list of locations is
+    // empty, since this may indicate that the objects have been evicted from
+    // all nodes.
+    for (const auto &callback_pair : callbacks) {
+      // We can call the callback directly without worrying about invalidating caller
+      // iterators since this is already running in the subscription callback stack.
+      // See https://github.com/ray-project/ray/issues/2959.
+      callback_pair.second(object_id, it->second.current_object_locations,
+                           it->second.spilled_url, it->second.spilled_node_id,
+                           it->second.object_size);
+    }
   }
 }
 
@@ -224,15 +233,20 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
     request->set_intended_worker_id(owner_address.worker_id());
     request->set_object_id(object_id.Binary());
-    request->set_last_version(-1);
 
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
-      ObjectLocationSubscriptionCallback(pub_message, object_id);
+      RAY_CHECK(pub_message.has_worker_object_locations_message());
+      const auto &location_info = pub_message.worker_object_locations_message();
+      ObjectLocationSubscriptionCallback(location_info, object_id,
+                                         /*location_lookup_failed*/ false);
     };
 
     auto failure_callback = [this](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       mark_as_failed_(object_id);
+      rpc::WorkerObjectLocationsPubMessage location_info;
+      ObjectLocationSubscriptionCallback(location_info, object_id,
+                                         /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
@@ -339,7 +353,6 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     auto object_location_request = request.mutable_object_location_request();
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
-    object_location_request->set_last_version(-1);
 
     rpc_client->GetObjectLocationsOwner(
         request, [this, worker_id, object_id, callback](

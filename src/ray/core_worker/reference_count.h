@@ -400,15 +400,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Subscribe to object location changes that are more recent than the given version.
-  /// The provided callback will be invoked when new locations become available.
+  /// Publish the snapshot of the object location for the given object id.
+  /// Returns non-ok status if object is already evicted or not owned by this worker.
   ///
   /// \param[in] object_id The object whose locations we want.
-  /// \param[in] last_location_version The version of the last location update the
-  /// caller received. Only more recent location updates will be returned.
   /// \return The status of the location get.
-  Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version) LOCKS_EXCLUDED(mutex_);
+  Status PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Fill up the object information to the given reply.
   ///
@@ -771,7 +768,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void PublishObjectLocations(const ObjectID &object_id,
                               const absl::flat_hash_set<NodeID> &locations,
                               int64_t object_size, const std::string &spilled_url,
-                              const NodeID &spilled_node_id, int64_t current_version,
+                              const NodeID &spilled_node_id,
                               const absl::optional<NodeID> &optional_primary_node_id);
 
   /// Address of our RPC server. This is used to determine whether we own a
