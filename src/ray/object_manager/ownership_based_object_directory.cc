@@ -143,7 +143,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 
   metrics_num_object_locations_added_++;
 
-  auto operation = [this, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
+  auto operation = [this, rpc_client, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id, node_id, done_callback](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
@@ -182,7 +182,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
 
   metrics_num_object_locations_removed_++;
 
-  auto operation = [this, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
+  auto operation = [this, rpc_client, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
   rpc_client->RemoveObjectLocationOwner(
       request, [worker_id, object_id, node_id, done_callback](
                    Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
