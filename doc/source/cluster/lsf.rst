@@ -1,9 +1,9 @@
 .. _ray-LSF-deploy:
 
 Deploying ray on LSF
-==================
+====================
 
-This document describes High-level steps to run ray cluster on LSF. 
+This document describes a couple high-level steps to run ray cluster on LSF.
 
 1) Obtain desired nodes from LSF scheduler using bsub directives.
 2) Obtain free ports on the desired nodes to start ray services like dashboard, redis etc.
