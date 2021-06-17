@@ -1562,6 +1562,10 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertEqual(sub_configs[0]["rand"], sub_configs[1]["rand"])
             self.assertEqual(sub_configs[0]["rand"], sub_configs[2]["rand"])
 
+        # Also, for different samples the random variables should differ
+        self.assertEqual(configs[0]["grid"], configs[3]["grid"])
+        self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
+
 
 if __name__ == "__main__":
     import pytest
