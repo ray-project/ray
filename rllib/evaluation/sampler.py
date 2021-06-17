@@ -1091,7 +1091,7 @@ def _process_policy_eval_results(
         pi_info_cols: dict = eval_results[policy_id][2]
 
         # In case actions is a list (representing the 0th dim of a batch of
-        # primitive actions), try to convert it first.
+        # primitive actions), try converting it first.
         if isinstance(actions, list):
             actions = np.array(actions)
 

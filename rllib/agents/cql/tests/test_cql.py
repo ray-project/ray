@@ -16,7 +16,7 @@ torch, _ = try_import_torch()
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -61,6 +61,8 @@ class TestCQL(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
         config["learning_starts"] = 0
+        # TODO:uncomment:
+        #config["bc_iters"] = 2  # 2 BC iters, 2 CQL iters.
         config["rollout_fragment_length"] = 1
 
         # Switch on off-policy evaluation.
@@ -72,10 +74,10 @@ class TestCQL(unittest.TestCase):
         config["evaluation_parallel_to_training"] = True
         config["evaluation_num_workers"] = 2
 
-        num_iterations = 30000  #TODO3
+        num_iterations = 30000  #TODO4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config, frameworks="tf"):  #TODO
+        for fw in framework_iterator(config, frameworks="torch"):  #TODO
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train().get("evaluation")
