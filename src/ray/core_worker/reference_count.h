@@ -542,10 +542,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// A logical counter for object location updates, used for object location
-    /// subscriptions. Subscribers use -1 to indicate that they want us to
-    /// immediately send them the current location data.
-    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.

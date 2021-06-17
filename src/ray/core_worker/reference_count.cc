@@ -1096,7 +1096,6 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
-  it->second.location_version++;
   const auto &object_id = it->first;
   PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
                          it->second.spilled_url, it->second.spilled_node_id,

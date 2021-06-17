@@ -156,6 +156,7 @@ bool Subscriber::PublishIfPossible(bool force) {
   }
 
   if (force || mailbox_.size() > 0) {
+    RAY_LOG(ERROR) << "Replied. mailbox size: " << mailbox_.size();
     // If force publish is invoked, mailbox could be empty. We should always add a reply
     // here because otherwise, there could be memory leak due to our grpc layer
     // implementation.
@@ -243,9 +244,10 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
   auto maybe_subscribers =
       subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
-    RAY_LOG(INFO) << "Publish a message that has no subscriber.";
+    RAY_LOG(INFO) << "Publish a message that has no subscriber. Channel type: " << channel_type;
     return;
   }
+  RAY_LOG(INFO) << "Publish a message that has a subscriber. Channel type: " << channel_type;
 
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
