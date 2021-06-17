@@ -579,7 +579,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
-    ASSERT_EQ(num_object_store_full_calls_, 1); // Spill on fallback.
+    ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
     return;
   }
 
@@ -642,11 +642,10 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
 
   num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
-    int num_requests_quota = std::min(num_requests, capacity / (object_size * num_oids_per_request));
-    int num_requests_expected =
-        std::max(
-            RayConfig::instance().pull_manager_min_active_pulls(),
-            num_requests_quota);
+    int num_requests_quota =
+        std::min(num_requests, capacity / (object_size * num_oids_per_request));
+    int num_requests_expected = std::max(
+        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
     if (RayConfig::instance().plasma_unlimited() && GetParam()) {
       num_requests_expected = num_requests;
     }

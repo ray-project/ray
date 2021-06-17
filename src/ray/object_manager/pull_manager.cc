@@ -186,9 +186,7 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-bool PullManager::OverQuota() {
-  return num_bytes_being_pulled_ > num_bytes_available_;
-}
+bool PullManager::OverQuota() { return num_bytes_being_pulled_ > num_bytes_available_; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
