@@ -58,6 +58,7 @@ steps:
   <<: *common
   commands:
     - *prelude_commands
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,flaky
       --test_env=CONDA_EXE
