@@ -18,7 +18,6 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
-import ipaddress
 import sys
 import tempfile
 import uuid
