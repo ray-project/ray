@@ -378,7 +378,7 @@ void LocalObjectManager::AddSpilledUrls(
     }
 
     auto owners = util::get_ptr(object_owners_, object_id);
-    if(owners) {
+    if (owners) {
       *num_remaining += owners->size();
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.
@@ -394,7 +394,8 @@ void LocalObjectManager::AddSpilledUrls(
                        << WorkerID::FromBinary(owner.worker_id());
         // Send spilled URL, spilled node ID, and object size to owner.
         owner_client->AddSpilledUrl(
-            request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+            request,
+            [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
               unpin_callback(status);
             });
       }
