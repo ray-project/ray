@@ -331,10 +331,11 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   RAY_CHECK(it != objects_pending_spill_.end());
   num_bytes_pending_spill_ -= it->second->GetSize();
   objects_pending_spill_.erase(it);
-
-  (*num_remaining)--;
-  if (*num_remaining == 0 && callback) {
-    callback(status);
+  if (num_remaining) {
+    (*num_remaining)--;
+    if (*num_remaining == 0 && callback) {
+      callback(status);
+    }
   }
 }
 
@@ -342,6 +343,14 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(0);
+  for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
+       ++i) {
+    const ObjectID &object_id = object_ids[i];
+    auto owners = util::get_ptr(object_owners_, object_id);
+    *num_remaining += owners ? owners->size() : 0;
+  }
+  auto total_count = *num_remaining;
+
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
@@ -379,7 +388,6 @@ void LocalObjectManager::AddSpilledUrls(
 
     auto owners = util::get_ptr(object_owners_, object_id);
     if (owners) {
-      *num_remaining += owners->size();
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.
       rpc::AddSpilledUrlRequest request;
@@ -399,7 +407,13 @@ void LocalObjectManager::AddSpilledUrls(
               unpin_callback(status);
             });
       }
+    } else {
+      UnpinSpilledObjectCallback(object_id, object_url, nullptr, nullptr, Status::OK());
     }
+  }
+  // If there is no request needs to be send, we trigger the callback here
+  if (total_count == 0) {
+    callback(Status::OK());
   }
 }
 
