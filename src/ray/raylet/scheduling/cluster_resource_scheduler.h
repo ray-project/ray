@@ -21,7 +21,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/gcs/accessor.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -409,9 +408,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
-
-  /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.

@@ -34,14 +34,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     auto cluster_resource_scheduler_ =
         std::make_shared<ClusterResourceScheduler>("local", unit_resource);
     new_placement_group_resource_manager_.reset(
-        new raylet::NewPlacementGroupResourceManager(
-            cluster_resource_scheduler_,
-            [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
-              update_called_ = true;
-            },
-            [this](const std::vector<std::string> &resource_names) {
-              delete_called_ = true;
-            }));
+        new raylet::NewPlacementGroupResourceManager(cluster_resource_scheduler_));
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
@@ -56,9 +49,6 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     auto local_node_resource = cluster_resource_scheduler_->GetLocalNodeResources();
     ASSERT_TRUE(local_node_resource == node_resources);
   }
-
-  bool update_called_ = false;
-  bool delete_called_ = false;
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
@@ -100,9 +90,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
-  ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
-  ASSERT_TRUE(update_called_);
   /// 4. check remaining resources is correct.
   std::unordered_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 1.0},
@@ -129,13 +117,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
-  ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
-  ASSERT_TRUE(update_called_);
   /// 4. return bundle resource.
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  ASSERT_TRUE(delete_called_);
   /// 5. check remaining resources is correct.
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", unit_resource);
@@ -158,12 +142,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   /// 3. prepare and commit two bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(first_bundle_spec));
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(second_bundle_spec));
-  ASSERT_FALSE(update_called_);
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->CommitBundle(first_bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(second_bundle_spec);
-  ASSERT_TRUE(update_called_);
-  ASSERT_FALSE(delete_called_);
   /// 4. check remaining resources is correct after commit phase.
   std::unordered_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 2.0},
@@ -181,11 +161,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
 
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 5. return second bundle.
-  ASSERT_TRUE(update_called_);
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->ReturnBundle(second_bundle_spec);
-  ASSERT_TRUE(update_called_);
-  ASSERT_TRUE(delete_called_);
   /// 6. check remaining resources is correct after return second bundle.
   remaining_resources = {{"CPU_group_" + group_id.Hex(), 2.0},
                          {"CPU_group_1_" + group_id.Hex(), 1.0},
@@ -196,15 +172,13 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       {{"CPU_group_" + group_id.Hex(), 1.0}, {"CPU", 1.0}}, resource_instances));
   remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
   CheckRemainingResourceCorrect(remaining_resource_instance);
-  /// 7. return first bundle.
+  /// 7. return first bundel.
   new_placement_group_resource_manager_->ReturnBundle(first_bundle_spec);
   /// 8. check remaining resources is correct after all bundle returned.
   remaining_resources = {{"CPU", 2.0}};
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", remaining_resources);
   remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
-  ASSERT_TRUE(update_called_);
-  ASSERT_TRUE(delete_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
