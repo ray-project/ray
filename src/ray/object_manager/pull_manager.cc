@@ -286,7 +286,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivateUntilWithinQuota("get request", get_request_bundles_,
                                RayConfig::instance().pull_manager_min_active_pulls(),
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
-    RAY_CHECK(!OverQuota());
+    RAY_CHECK(!OverQuota() ||
+              num_active_bundles <= RayConfig::instance().pull_manager_min_active_pulls())
+        << DebugString();
   }
 
   // Call the cancellation callbacks outside of the lock.
