@@ -1,7 +1,7 @@
 .. _ray-LSF-deploy:
 
-Deploying ray on LSF
-====================
+Deploying on LSF
+================
 
 This document describes a couple high-level steps to run ray cluster on LSF.
 
