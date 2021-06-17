@@ -515,7 +515,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_id == self_node_id_) {
     std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
     node_vector.pop_back();
-    RAY_LOG(DEBUG)
+    RAY_LOG(WARNING)
         << "The object manager with ID " << self_node_id_ << " is trying to pull object "
         << object_id << " but the object table suggests that this object manager "
         << "already has the object. It is most likely due to memory pressure, object "
