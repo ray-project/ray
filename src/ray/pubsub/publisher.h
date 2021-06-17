@@ -173,14 +173,6 @@ class PublisherInterface {
                        const rpc::PubMessage &pub_message,
                        const std::string &key_id_binary) = 0;
 
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id_binary The message id to publish.
-  virtual void PublishFailure(const rpc::ChannelType channel_type,
-                              const std::string &key_id_binary) = 0;
-
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
@@ -234,8 +226,6 @@ class Publisher : public PublisherInterface {
                                     pub_internal::SubscriptionIndex<ObjectID>());
     subscription_index_map_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     pub_internal::SubscriptionIndex<ObjectID>());
-    subscription_index_map_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                    pub_internal::SubscriptionIndex<ObjectID>());
   }
 
   ~Publisher() = default;
@@ -266,14 +256,6 @@ class Publisher : public PublisherInterface {
   /// \param key_id_binary The message id to publish.
   void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
                const std::string &key_id_binary) override;
-
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id_binary The message id to publish.
-  void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) override;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.

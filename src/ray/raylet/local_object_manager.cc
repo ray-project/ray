@@ -76,9 +76,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this,
-                                owner_address](const std::string &object_id_binary) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
+    auto owner_dead_callback = [this, object_id, owner_address]() {
       UnpinObject(object_id, owner_address);
     };
 
