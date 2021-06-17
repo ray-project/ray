@@ -20,11 +20,9 @@ namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
-    pubsub::SubscriberInterface *object_location_subscriber,
     std::function<void(const ObjectID &)> mark_as_failed)
     : ObjectDirectory(io_service, gcs_client),
       client_call_manager_(io_service),
-      object_location_subscriber_(object_location_subscriber),
       mark_as_failed_(mark_as_failed) {}
 
 namespace {
@@ -42,40 +40,61 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 }
 
 /// Update object location data based on response from the owning core worker.
-void UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
-                           const ObjectID &object_id,
+bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_reply,
+                           const Status &status, const ObjectID &object_id,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
+                           std::function<void(const ObjectID &)> mark_as_failed,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
                            NodeID *spilled_node_id, size_t *object_size) {
+  bool is_updated = false;
+
   std::unordered_set<NodeID> new_node_ids;
-  // The size can be 0 if the update was a deletion. This assumes that an
-  // object's size is always greater than 0.
-  // TODO(swang): If that's not the case, we should use a flag to check
-  // whether the size is set instead.
-  if (location_info.object_size() > 0) {
-    *object_size = location_info.object_size();
-  }
-  for (auto const &node_id : location_info.node_ids()) {
-    new_node_ids.emplace(NodeID::FromBinary(node_id));
-  }
-  // Filter out the removed nodes from the object locations.
-  FilterRemovedNodes(gcs_client, &new_node_ids);
-  if (new_node_ids != *node_ids) {
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Failed to return location updates to subscribers for " << object_id
+                  << ": " << status.ToString()
+                  << ", assuming that the object was freed or evicted.";
+    // When we can't get location updates from the owner, we assume that the object
+    // was freed or evicted, so we send an empty location update to all subscribers.
     *node_ids = new_node_ids;
-  }
-  const std::string &new_spilled_url = location_info.spilled_url();
-  if (new_spilled_url != *spilled_url) {
-    const auto new_spilled_node_id = NodeID::FromBinary(location_info.spilled_node_id());
-    RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
-                   << new_spilled_node_id;
-    if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
-      *spilled_url = "";
-      *spilled_node_id = NodeID::Nil();
-    } else {
-      *spilled_url = new_spilled_url;
-      *spilled_node_id = new_spilled_node_id;
+    // Mark the object as failed immediately here since we know it can never appear.
+    mark_as_failed(object_id);
+    is_updated = true;
+  } else {
+    // The size can be 0 if the update was a deletion. This assumes that an
+    // object's size is always greater than 0.
+    // TODO(swang): If that's not the case, we should use a flag to check
+    // whether the size is set instead.
+    if (location_reply.object_size() > 0) {
+      *object_size = location_reply.object_size();
+      is_updated = true;
+    }
+    for (auto const &node_id : location_reply.node_ids()) {
+      new_node_ids.emplace(NodeID::FromBinary(node_id));
+    }
+    // Filter out the removed nodes from the object locations.
+    FilterRemovedNodes(gcs_client, &new_node_ids);
+    if (new_node_ids != *node_ids) {
+      *node_ids = new_node_ids;
+      is_updated = true;
+    }
+    const std::string &new_spilled_url = location_reply.spilled_url();
+    if (new_spilled_url != *spilled_url) {
+      const auto new_spilled_node_id =
+          NodeID::FromBinary(location_reply.spilled_node_id());
+      RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
+                     << new_spilled_node_id;
+      if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
+        *spilled_url = "";
+        *spilled_node_id = NodeID::Nil();
+      } else {
+        *spilled_url = new_spilled_url;
+        *spilled_node_id = new_spilled_node_id;
+      }
+      is_updated = true;
     }
   }
+  return is_updated;
 }
 
 rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
@@ -123,6 +142,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_node_id(node_id.Binary());
 
   metrics_num_object_locations_added_++;
+
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id, node_id](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
@@ -174,11 +194,9 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   return Status::OK();
 };
 
-void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
-    const rpc::PubMessage &pub_message, const ObjectID &object_id) {
-  RAY_CHECK(pub_message.has_worker_object_locations_message());
-  const auto &object_location_message = pub_message.worker_object_locations_message();
-
+void OwnershipBasedObjectDirectory::SubscriptionCallback(
+    ObjectID object_id, WorkerID worker_id, Status status,
+    const rpc::GetObjectLocationsOwnerReply &reply) {
   // Objects are added to this map in SubscribeObjectLocations.
   auto it = listeners_.find(object_id);
   // Do nothing for objects we are not listening for.
@@ -189,29 +207,44 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   it->second.subscribed = true;
 
   // Update entries for this object.
-  UpdateObjectLocations(object_location_message, object_id, gcs_client_,
-                        &it->second.current_object_locations, &it->second.spilled_url,
-                        &it->second.spilled_node_id, &it->second.object_size);
-  RAY_LOG(DEBUG) << "Pushing location updates to subscribers for object " << object_id
-                 << ": " << it->second.current_object_locations.size()
-                 << " locations, spilled_url: " << it->second.spilled_url
-                 << ", spilled node ID: " << it->second.spilled_node_id
-                 << ", object size: " << it->second.object_size;
-  metrics_num_object_location_updates_++;
-  // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-  // looping over the callbacks.
-  auto callbacks = it->second.callbacks;
-  // Call all callbacks associated with the object id locations we have
-  // received.  This notifies the client even if the list of locations is
-  // empty, since this may indicate that the objects have been evicted from
-  // all nodes.
-  for (const auto &callback_pair : callbacks) {
-    // We can call the callback directly without worrying about invalidating caller
-    // iterators since this is already running in the subscription callback stack.
-    // See https://github.com/ray-project/ray/issues/2959.
-    callback_pair.second(object_id, it->second.current_object_locations,
-                         it->second.spilled_url, it->second.spilled_node_id,
-                         it->second.object_size);
+  if (UpdateObjectLocations(reply, status, object_id, gcs_client_, mark_as_failed_,
+                            &it->second.current_object_locations, &it->second.spilled_url,
+                            &it->second.spilled_node_id, &it->second.object_size)) {
+    RAY_LOG(DEBUG) << "Pushing location updates to subscribers for object " << object_id
+                   << ": " << it->second.current_object_locations.size()
+                   << " locations, spilled_url: " << it->second.spilled_url
+                   << ", spilled node ID: " << it->second.spilled_node_id
+                   << ", object size: " << it->second.object_size;
+    metrics_num_object_location_updates_++;
+    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+    // looping over the callbacks.
+    auto callbacks = it->second.callbacks;
+    // Call all callbacks associated with the object id locations we have
+    // received.  This notifies the client even if the list of locations is
+    // empty, since this may indicate that the objects have been evicted from
+    // all nodes.
+    for (const auto &callback_pair : callbacks) {
+      // We can call the callback directly without worrying about invalidating caller
+      // iterators since this is already running in the subscription callback stack.
+      // See https://github.com/ray-project/ray/issues/2959.
+      callback_pair.second(object_id, it->second.current_object_locations,
+                           it->second.spilled_url, it->second.spilled_node_id,
+                           it->second.object_size);
+    }
+  }
+
+  // Only send the next long-polling RPC if the last one was successful.
+  // If the last RPC failed, we consider the object to have been freed.
+  if (status.ok()) {
+    auto worker_it = worker_rpc_clients_.find(worker_id);
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(worker_id.Binary());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(reply.current_version());
+    worker_it->second->GetObjectLocationsOwner(
+        request,
+        std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
+                  worker_id, std::placeholders::_1, std::placeholders::_2));
   }
 }
 
@@ -220,33 +253,22 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const rpc::Address &owner_address, const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    // Create an object eviction subscription message.
-    auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
-    request->set_intended_worker_id(owner_address.worker_id());
-    request->set_object_id(object_id.Binary());
-    request->set_last_version(-1);
-
-    auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
-      ObjectLocationSubscriptionCallback(pub_message, object_id);
-    };
-
-    auto failure_callback = [this](const std::string &object_id_binary) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
-      mark_as_failed_(object_id);
-    };
-
-    auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
-
-    object_location_subscriber_->Subscribe(
-        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-        owner_address, object_id.Binary(),
-        /*Success callback*/ msg_published_callback,
-        /*Failure callback*/ failure_callback);
-
-    auto location_state = LocationListenerState();
-    location_state.owner_address = owner_address;
-    it = listeners_.emplace(object_id, std::move(location_state)).first;
+    WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+    if (rpc_client == nullptr) {
+      RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
+                       << "SubscribeObjectLocations becomes a no-op.";
+      return Status::OK();
+    }
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(-1);
+    rpc_client->GetObjectLocationsOwner(
+        request,
+        std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
+                  worker_id, std::placeholders::_1, std::placeholders::_2));
+    it = listeners_.emplace(object_id, LocationListenerState()).first;
   }
   auto &listener_state = it->second;
 
@@ -288,9 +310,6 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    object_location_subscriber_->Unsubscribe(
-        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
-        object_id.Binary());
     listeners_.erase(entry);
   }
   return Status::OK();
@@ -336,28 +355,23 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     }
 
     rpc::GetObjectLocationsOwnerRequest request;
-    auto object_location_request = request.mutable_object_location_request();
-    object_location_request->set_intended_worker_id(owner_address.worker_id());
-    object_location_request->set_object_id(object_id.Binary());
-    object_location_request->set_last_version(-1);
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(-1);
 
     rpc_client->GetObjectLocationsOwner(
         request, [this, worker_id, object_id, callback](
                      Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
+                           << object_id;
+          }
           std::unordered_set<NodeID> node_ids;
           std::string spilled_url;
           NodeID spilled_node_id;
           size_t object_size = 0;
-
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id;
-            mark_as_failed_(object_id);
-          } else {
-            UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
-                                  &node_ids, &spilled_url, &spilled_node_id,
-                                  &object_size);
-          }
+          UpdateObjectLocations(reply, status, object_id, gcs_client_, mark_as_failed_,
+                                &node_ids, &spilled_url, &spilled_node_id, &object_size);
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()
                          << " locations, spilled_url: " << spilled_url

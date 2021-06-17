@@ -49,9 +49,6 @@ class MockPublisher : public pubsub::PublisherInterface {
   MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,
                                             const pubsub::SubscriberID &subscriber_id,
                                             const std::string &key_id_binary));
-
-  MOCK_METHOD2(PublishFailure, void(const rpc::ChannelType channel_type,
-                                    const std::string &key_id_binary));
 };
 
 }  // namespace mock_pubsub
