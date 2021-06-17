@@ -27,6 +27,7 @@ void SubscriberChannel<KeyIdType>::Subscribe(
     const rpc::Address &publisher_address, const std::string &key_id_binary,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
+  cum_subscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
@@ -45,6 +46,7 @@ void SubscriberChannel<KeyIdType>::Subscribe(
 template <typename KeyIdType>
 bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_address,
                                                const std::string &key_id_binary) {
+  cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
@@ -130,6 +132,24 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
     RAY_CHECK(Unsubscribe(publisher_address, key_id))
         << "Calling UnsubscribeObject inside a failure callback is not allowed.";
   }
+}
+
+template <typename KeyIdType>
+const std::string SubscriberChannel<KeyIdType>::DebugString() const {
+  std::stringstream result;
+  const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+  std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
+  result << "Channel " << channel_name;
+  result << "\n\tcumulative subscribe requests: " << cum_subscribe_requests_;
+  result << "\n\tcumulative unsubscribe requests: " << cum_unsubscribe_requests_;
+  result << "\n\tactive subscribed publishers: " << subscription_map_.size();
+  uint64_t active_subscribed_entries = 0;
+  for (const auto &subscription_info_it : subscription_map_) {
+    active_subscribed_entries +=
+        subscription_info_it.second.subscription_callback_map.size();
+  }
+  result << "\n\tactive subscribed entries: " << active_subscribed_entries;
+  return result.str();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -343,6 +363,16 @@ bool Subscriber::CheckNoLeaks() const {
   bool command_queue_leak = commands_.size() != 0;
   return !leaks && publishers_connected_.size() == 0 && !command_batch_leak &&
          !long_polling_leak && !command_queue_leak;
+}
+
+const std::string Subscriber::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream result;
+  result << "Subscriber:";
+  for (const auto &channel_it : channels_) {
+    result << "\n" << channel_it.second->DebugString();
+  }
+  return result.str();
 }
 
 /// Per each key id, we need to define templates for these functions/classes here so
