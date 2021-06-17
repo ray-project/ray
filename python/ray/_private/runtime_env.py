@@ -82,10 +82,8 @@ class RuntimeEnvDict:
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
         else:
             self._dict["working_dir"] = None
-            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -97,8 +95,6 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 yaml_file = Path(conda)
                 if yaml_file.suffix in (".yaml", ".yml"):
-                    if working_dir and not yaml_file.is_absolute():
-                        yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
@@ -140,8 +136,6 @@ class RuntimeEnvDict:
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
-                if working_dir and not pip_file.is_absolute():
-                    pip_file = working_dir / pip_file
                 if not pip_file.is_file():
                     raise ValueError(f"{pip_file} is not a valid file")
                 self._dict["pip"] = pip_file.read_text()
@@ -165,6 +159,13 @@ class RuntimeEnvDict:
                     for (k, v) in env_vars.items())):
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
+
+        if self._dict.get("working_dir"):
+            if self._dict["env_vars"] is None:
+                self._dict["env_vars"] = {}
+            # TODO(ekl): env vars is probably not the right long term impl.
+            self._dict["env_vars"].update(
+                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
@@ -570,7 +571,6 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     for pkg_uri in pkg_uris:
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
-        logger.error("PKG_URI", pkg_uri)
         pkg_file = Path(_get_local_path(pkg_uri))
         with FileLock(str(pkg_file) + ".lock"):
             pkg_dir = fetch_package(pkg_uri)
