@@ -93,6 +93,8 @@ def get_args():
 
 def _get_mount_points():
     mnt = "/mnt"
+    if not os.path.exists(mnt):
+        return []
     return [os.path.join(mnt, d) for d in os.listdir(mnt)]
 
 
