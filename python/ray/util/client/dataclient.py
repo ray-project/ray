@@ -108,6 +108,11 @@ class DataClient:
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:
+        if self._in_shutdown:
+            raise ConnectionError(
+                "Request can't be sent because the data channel terminated. "
+                "This is likely because the server disconnected from the data "
+                "channel at some point before this request was prepared.")
         req_id = self._next_id()
         req.req_id = req_id
         self.request_queue.put(req)
@@ -127,6 +132,11 @@ class DataClient:
     def _async_send(self,
                     req: ray_client_pb2.DataRequest,
                     callback: Optional[ResponseCallable] = None) -> None:
+        if self._in_shutdown:
+            raise ConnectionError(
+                "Request can't be sent because the data channel terminated. "
+                "This is likely because the server disconnected from the data "
+                "channel at some point before this request was prepared.")
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
