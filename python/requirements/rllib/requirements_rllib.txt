@@ -1,10 +1,7 @@
-# DeepMind open-spiel
-open_spiel==0.3.1
-
 # Deep learning.
 # --------------
-tensorflow==2.4.1
-tensorflow-probability==0.12.2
+tensorflow
+tensorflow-probability
 torch==1.8.1;sys_platform=="darwin"
 torchvision==0.9.1;sys_platform=="darwin"
 
@@ -30,6 +27,8 @@ pettingzoo==1.8.2
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
+# DeepMind open-spiel
+open_spiel
 
 # Other.
 # ------
