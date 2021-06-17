@@ -213,6 +213,9 @@ class PullManager {
 
   /// Helper method that deactivates requests from the given queue until the pull
   /// memory usage is within quota.
+  ///
+  /// \param retain_min Don't deactivate if this would drop the total number of active
+  ///                   bundles (in any queue) below this threshold.
   void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
                                   int retain_min, uint64_t *highest_id_for_bundle,
                                   std::unordered_set<ObjectID> *objects_to_cancel);
