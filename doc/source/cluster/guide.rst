@@ -1,48 +1,48 @@
 .. _deployment-guide:
 
-Ray Deployment Overview
-=======================
+Ray Deployment Guide
+====================
 
-This page provides an overview of how to deploy a multi-node ray cluster, including how to:
+This page provides an overview of how to deploy a multi-node Ray cluster, including how to:
 
 * Launch the cluster.
 * Set up the autoscaler.
 * Monitor a multi-node cluster.
-* Best practices for setting up a ray cluster.
+* Best practices for setting up a Ray cluster.
 
 Launching a Ray cluster
 -----------------------
 
-There 2 recommended ways of launching a ray cluster are via:
+There 2 recommended ways of launching a Ray cluster are via:
 
 1. :ref:`The cluster launcher <cluster-cloud>`
-2. :ref:`The kubernetes operator <ray-operator>`
+2. :ref:`The kubernetes operator <Ray-operator>`
 
 Cluster Launcher
 ^^^^^^^^^^^^^^^^
 
-The goal of :ref:`the cluster launcher <cluster-cloud>` is to make it easy to deploy a ray cluster on
+The goal of :ref:`the cluster launcher <cluster-cloud>` is to make it easy to deploy a Ray cluster on
 any cloud. It will:
 
 * provision a new instance/machine using the cloud provider's SDK.
 * execute shell commands to set up Ray with the provided options.
 * (optionally) run any custom, user defined setup commands.
-* Initialize the ray cluster.
+* Initialize the Ray cluster.
 * Deploy an autoscaler process.
 
 Kubernetes Operator
 ^^^^^^^^^^^^^^^^^^^
 
-The :ref:`k8s operator <ray-operator>` serves a very similar purpose to the
+The :ref:`k8s operator <Ray-operator>` serves a very similar purpose to the
 cluster launcher, but follows the `kubernetes operator pattern
 <https://kubernetes.io/docs/concepts/extend-kubernetes/operator>`__. It's
-defined as :ref:`a helm chart <ray-helm>` and will:
+defined as :ref:`a helm chart <Ray-helm>` and will:
 
 * Create a controller (the operator).
 * Provision a new pod (head node).
 * execute shell commands to set up Ray with the provided options.
 * (optionally) run any custom, user defined setup commands.
-* Initialize the ray cluster.
+* Initialize the Ray cluster.
 
 The operator will then serve as the autoscaler.
 
@@ -57,9 +57,9 @@ resources to run, while minimizing the idle resources.
 It does this by taking into consideration:
 
 * User specified hard limits (min/max workers).
-* User specified node types (nodes in a ray cluster do _not_ have to be
+* User specified node types (nodes in a Ray cluster do _not_ have to be
   homogenous).
-* Information from the ray core's scheduling layer about the current resource
+* Information from the Ray core's scheduling layer about the current resource
   usage/demands of the cluster.
 * Programatic autoscaling hints.
 
@@ -93,47 +93,47 @@ utilization (starting from the smallest node).
 Deploying an application
 ------------------------
 
-The recommended way of connecting to a ray cluster is to use the
-``ray.client.connect()`` API and connect via the Ray Client.
+The recommended way of connecting to a Ray cluster is to use the
+``Ray.client.connect()`` API and connect via the Ray Client.
 
 .. note::
 
-  Using ``ray.client.connect()`` is generally a best practice because it allows
+  Using ``Ray.client.connect()`` is generally a best practice because it allows
   you to test your code locally, and deploy to a cluster with **no code
   changes**.
 
 To connect via Ray Client, set the ``RAY_ADDRESS`` environment variable to the
-address of the ray client server.
+address of the Ray client server.
 
-:ref:`Learn more about setting up the ray client server here <ray-client>`.
+:ref:`Learn more about setting up the Ray client server here <Ray-client>`.
 
 .. note::
 
   When deploying an application, the job will be killed if the driver
   disconnects.
 
-  A detached actor can be used to avoid having a long running driver.
+  :ref:`A detached actor <actor-lifetimes>` can be used to avoid having a long running driver.
 
 Monitoring and observability
 ----------------------------
 
 Ray comes with 3 main observability features:
 
-1. :ref:`The dashboard <ray-dashboard>`
-2. :ref:`ray status <monitor-cluster>`
+1. :ref:`The dashboard <Ray-dashboard>`
+2. :ref:`Ray status <monitor-cluster>`
 3. :ref:`Prometheus metrics <multi-node-metrics>`
 
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-:ref:`The dashboard provides detailed information about the state of the cluster <ray-dashboard>`,
+:ref:`The dashboard provides detailed information about the state of the cluster <Ray-dashboard>`,
 including the running jobs, actors, workers, nodes, etc.
 
 By default, the cluster launcher and operator will launch the dashboard, but
 not publicly expose it.
 
 If you launch your application via the cluster launcher, you can securely
-portforward local traffic to the dashboard via the ``ray dashboard`` command
+portforward local traffic to the dashboard via the ``Ray dashboard`` command
 (which establishes an SSH tunnel). The dashboard will now be visible at
 ``http://localhost:8265``.
 
@@ -144,26 +144,24 @@ node, or use `kubectl to portforward
 Observing the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Recall that the autoscaler makes decisions by considering the user defined
-configuration, scheduling information, and programatic information from the
-cluster. The autoscaler publishes its inputs from the cluster, the state of
-nodes being launched, and any errors generated, which can be accessed via the
-``ray status`` command.
+The autoscaler makes decisions by scheduling information, and programatic
+information from the cluster. This information, along with the status of
+starting nodes, can be accessed via the ``ray status`` command.
 
 To dump the current state of a cluster launched via the cluster launcher, you
-can run ``ray exec cluster.yaml "ray status"``.
+can run ``Ray exec cluster.yaml "Ray status"``.
 
-For a more "live" monitoring experience, it is recommended that you run ``ray
-status`` in a watch loop: ``ray exec cluster.yaml "watch -n 1 ray status"``.
+For a more "live" monitoring experience, it is recommended that you run ``Ray
+status`` in a watch loop: ``Ray exec cluster.yaml "watch -n 1 Ray status"``.
 
-With the kubernetes operator, you should replace ``ray exec cluster.yaml`` with
+With the kubernetes operator, you should replace ``Ray exec cluster.yaml`` with
 ``kubectl exec <head node pod>``.
 
 Prometheus metrics
 ^^^^^^^^^^^^^^^^^^
 
 Ray is capable of producing prometheus metrics. When enabled, Ray produces some
-metrics about the ray core, and some internal metrics by default. It also
+metrics about the Ray core, and some internal metrics by default. It also
 supports custom, user-defined metrics.
 
 These metrics can be consumed by any metrics infrastructure which can ingest
@@ -174,7 +172,7 @@ metrics from the prometheus server on the head node of the cluster.
 Best practices for deploying large clusters
 -------------------------------------------
 
-This section aims to document best practices for deploying ray clusters at
+This section aims to document best practices for deploying Ray clusters at
 large scale.
 
 Networking configuration
@@ -184,16 +182,16 @@ End users should only need to directly interact with the head node of the
 cluster. In particular, there are 2 services which should be exposed to users:
 
 1. The dashboard
-2. The ray client server
+2. The Ray client server
 
 .. note::
 
   While users only need 2 ports to connect to a cluster, the nodes within a
   cluster require a much wider range of ports to communicate.
 
-  See :ref:`ray port configuration <ray-ports>` for a comprehensive list.
+  See :ref:`Ray port configuration <Ray-ports>` for a comprehensive list.
 
-  Applications (such as :ref:`Ray Serve <rayserve>`) may also require additional ports to work
+  Applications (such as :ref:`Ray Serve <Rayserve>`) may also require additional ports to work
   properly.
 
 System configuration
@@ -266,7 +264,7 @@ General recommendations with AWS instance types:
 
 **How many CPUs/GPUs?**
 
-* Focus on your CPU:GPU ratio first and look at the utilization (ray dashboard
+* Focus on your CPU:GPU ratio first and look at the utilization (Ray dashboard
   should help with this). If your CPU utilization is low add GPUs, or vice
   versa.
 * The exact ratio will be very dependent on your workload.
