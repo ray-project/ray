@@ -62,11 +62,15 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
-
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
 
+        runtime_env = job_config.runtime_env
+        if runtime_env.get("pip") or runtime_env.get("conda"):
+            logger.warning("The 'pip' or 'conda' field was specified in the "
+                        "runtime env, so it may take some time to install "
+                        "the environment before ray.connect() returns.")
         try:
             self.client_worker = Worker(
                 conn_str,
