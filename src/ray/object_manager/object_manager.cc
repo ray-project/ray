@@ -941,7 +941,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num chunks received total failed: " << num_chunks_received_total_failed_;
   result << "\n- num chunks received cancelled: " << num_chunks_received_cancelled_;
   result << "\n- num chunks received thrashed: " << num_chunks_received_thrashed_;
-  result << "\n- num chunks received, plasma error : "
+  result << "\n- num chunks received, plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
   result << "\nEvent stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
