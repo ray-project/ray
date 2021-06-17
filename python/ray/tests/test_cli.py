@@ -20,6 +20,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 import glob
 import sys
 import tempfile
+import uuid
 import re
 import os
 from contextlib import contextmanager
@@ -220,9 +221,16 @@ DOCKER_TEST_CONFIG_PATH = str(
     reason=("Mac builds don't provide proper locale support"))
 def test_ray_start(configure_lang):
     runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(scripts.start, [
-        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0"
+        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0",
+        "--temp-dir", temp_dir
     ])
+
+    # Check that --temp-dir arg worked:
+    assert os.path.isfile(os.path.join(temp_dir, "ray_current_cluster"))
+    assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
+
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)

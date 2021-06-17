@@ -72,24 +72,6 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void SubscribeForObjectEviction(
-      const rpc::SubscribeForObjectEvictionRequest &request,
-      const rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply> &callback)
-      override {
-    eviction_callbacks.push_back(callback);
-  }
-
-  bool ReplyObjectEviction(Status status = Status::OK()) {
-    if (eviction_callbacks.empty()) {
-      return false;
-    }
-    auto callback = eviction_callbacks.front();
-    auto reply = rpc::SubscribeForObjectEvictionReply();
-    callback(status, reply);
-    eviction_callbacks.pop_front();
-    return true;
-  }
-
   void AddSpilledUrl(
       const rpc::AddSpilledUrlRequest &request,
       const rpc::ClientCallback<rpc::AddSpilledUrlReply> &callback) override {
@@ -108,8 +90,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::deque<rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply>>
-      eviction_callbacks;
   std::unordered_map<ObjectID, std::string> object_urls;
   std::deque<rpc::ClientCallback<rpc::AddSpilledUrlReply>> spilled_url_callbacks;
 };
@@ -396,7 +376,6 @@ TEST_F(LocalObjectManagerTest, TestPin) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -868,7 +847,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -915,7 +893,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -969,7 +946,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -979,7 +955,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // The last reference is deleted.
-  ASSERT_TRUE(owner_client->ReplyObjectEviction());
   EXPECT_CALL(*subscriber_,
               Unsubscribe(_, _, object_ids[free_objects_batch_size - 1].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
@@ -1028,7 +1003,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   }
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -1093,7 +1067,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -1145,7 +1118,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
 
   // Imagine a scenario only the first location is updated to the owner.
   ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  ASSERT_TRUE(owner_client->ReplyObjectEviction());
   EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[0].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   // Delete operation is called. In this case, the file with the url should not be
@@ -1157,7 +1129,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-    ASSERT_TRUE(owner_client->ReplyObjectEviction());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
