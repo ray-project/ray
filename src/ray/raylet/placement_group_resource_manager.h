@@ -87,6 +87,7 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
   /// \param update_resources: Called when a new custom resource is created.
+  /// \param delete_resources: Called when a custom resource is deleted.
   NewPlacementGroupResourceManager(
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       std::function<

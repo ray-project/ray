@@ -422,13 +422,6 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
-  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncGetAll(
-      [job_subscribe_handler](Status status,
-                              const std::vector<rpc::JobTableData> &result) {
-        for (const auto &job_data : result) {
-          job_subscribe_handler(JobID::FromBinary(job_data.job_id()), job_data);
-        }
-      }));
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -508,7 +501,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  // NOTE: Technically `HandleJobStarted` isn't idempotent because of we'll
+  // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because
   // `HandleJobFinisehd` will also decrement the ref count multiple times.
   runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());

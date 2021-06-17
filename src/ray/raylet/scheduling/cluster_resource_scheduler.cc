@@ -1021,7 +1021,7 @@ ClusterResourceScheduler::GetResourceTotals() const {
   RAY_CHECK(it != nodes_.end());
   const auto &local_resources = it->second.GetLocalView();
   for (size_t i = 0; i < local_resources.predefined_resources.size(); i++) {
-    std::string resource_name = ResourceEnumToString((PredefinedResources)i);
+    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
     double resource_total = local_resources.predefined_resources[i].total.Double();
     if (resource_total > 0) {
       auto data = std::make_shared<rpc::ResourceTableData>();
