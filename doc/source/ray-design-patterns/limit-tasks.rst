@@ -17,7 +17,7 @@ Ray Serve uses this pattern to limit the number of in flight queries for each wo
 Code example
 ------------
 
-Without backpressure
+**Without backpressure:**
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ Without backpressure
         result_refs.append(actor.heavy_compute.remote(large_array))
     results = ray.get(result_refs)
 
-With backpressure
+**With backpressure:**
 
 .. code-block:: python
 

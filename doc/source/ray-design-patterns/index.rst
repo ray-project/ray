@@ -36,3 +36,36 @@ which are less common but may be invaluable for certain use cases.
    :caption: Basic design antipatterns
 
    global-variables.rst
+   fine-grained-tasks.rst
+   unnecessary-ray-get.rst
+   closure-capture.rst
+   ray-get-loop.rst
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Advanced design patterns
+
+   overlapping-computation-communication.rst
+   fault-tolerance-actor-checkpointing.rst
+   concurrent-operations-async-actor.rst
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Advanced design antipatterns
+
+   redefine-task-actor-loop.rst
+   submission-order.rst
+   too-many-results.rst
+
+Contributing
+------------
+These documentation pages were created from a
+`community-maintaned document <https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#>`__.
+
+In the document, you can suggest edits to the existing patterns and antipatterns.
+There is also a list of patterns and antipattern which we would like to cover in the future.
+
+If you want to contribute, just edit the document. Once reviewed, we will make sure
+to reflect the changes on this documentation.

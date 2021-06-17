@@ -17,7 +17,7 @@ Implement generic map and reduce functionality with Ray tasks. “map” applies
 Code examples
 -------------
 
-Single-threaded map:
+**Single-threaded map:**
 
 .. code-block:: python
 
@@ -25,7 +25,7 @@ Single-threaded map:
     map_func = lambda i : i*2
     output = [map_func(i) for i in items]
 
-Ray parallel map:
+**Ray parallel map:**
 
 .. code-block:: python
 
@@ -37,7 +37,7 @@ Ray parallel map:
     map_func = lambda i : i*2
     output = ray.get([map.remote(i, map_func) for i in items])
 
-Single-threaded reduce:
+**Single-threaded reduce:**
 
 .. code-block:: python
 
@@ -45,7 +45,7 @@ Single-threaded reduce:
     map_func = lambda i : i*2
     output = sum([map_func(i) for i in items])
 
-Ray parallel reduce:
+**Ray parallel reduce:**
 
 .. code-block:: python
 
