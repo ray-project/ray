@@ -13,22 +13,27 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
   return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
-ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation) {
+ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                     const CallOptions &call_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  TaskOptions options{};
+  options.name = call_options.name;
+  options.resources = call_options.resources;
   std::vector<ObjectID> return_ids;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     core_worker.SubmitActorTask(invocation.actor_id, BuildRayFunction(invocation),
-                                invocation.args, TaskOptions(), &return_ids);
+                                invocation.args, options, &return_ids);
   } else {
-    core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, TaskOptions(),
+    core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, options,
                            &return_ids, 1, std::make_pair(PlacementGroupID::Nil(), -1),
                            true, "");
   }
   return return_ids[0];
 }
 
-ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                         const CallOptions &call_options) {
+  return Submit(invocation, call_options);
 }
 
 ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
@@ -54,8 +59,9 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
   return actor_id;
 }
 
-ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                              const CallOptions &task_options) {
+  return Submit(invocation, task_options);
 }
 
 }  // namespace api

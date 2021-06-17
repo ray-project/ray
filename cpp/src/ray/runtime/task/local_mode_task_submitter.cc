@@ -17,7 +17,8 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                        const CallOptions &call_options) {
   /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
@@ -87,17 +88,19 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                            const CallOptions &call_options) {
+  return Submit(invocation, call_options);
 }
 
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
-  Submit(invocation);
+  Submit(invocation, {});
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                                 const CallOptions &call_options) {
+  return Submit(invocation, call_options);
 }
 
 }  // namespace api
