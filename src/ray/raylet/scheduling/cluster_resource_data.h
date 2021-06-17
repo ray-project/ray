@@ -60,6 +60,9 @@ class TaskRequest {
   std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
   std::unordered_map<int64_t, FixedPoint> custom_resources;
+  /// Whether this task requires object store memory.
+  /// TODO(swang): This should be a quantity instead of a flag.
+  bool requires_object_store_memory = false;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -218,4 +221,5 @@ NodeResources ResourceMapToNodeResources(
 /// Convert a map of resources to a TaskRequest data structure.
 TaskRequest ResourceMapToTaskRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map);
+    const std::unordered_map<std::string, double> &resource_map,
+    bool requires_object_store_memory);

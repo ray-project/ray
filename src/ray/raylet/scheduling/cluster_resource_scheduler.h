@@ -84,13 +84,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// feasible if it has the total resources needed to eventually execute the
   /// task, even if those resources are currently allocated.
   ///
-  /// \param shape The resource demand's shape.
-  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
-
-  /// Check whether a task request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
   /// \param task_req Task request to be scheduled.
   /// \param resources Node's resources.
   bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;
@@ -170,7 +163,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
                                  bool force_spillback, int64_t *violations,
-                                 bool *is_infeasible, bool ignore_local_node_at_capacity);
+                                 bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -180,8 +173,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID in string format of a node that can schedule the
   //           task request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      bool force_spillback, int64_t *violations, bool *is_infeasible, bool ignore_local_node_at_capacity = false); 
+      const std::unordered_map<std::string, double> &task_request,
+      bool requires_object_store_memory, bool actor_creation,
+      bool force_spillback, int64_t *violations, bool *is_infeasible); 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;

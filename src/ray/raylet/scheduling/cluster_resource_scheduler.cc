@@ -134,15 +134,6 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-bool ClusterResourceScheduler::IsLocallyFeasible(
-    const std::unordered_map<std::string, double> shape) {
-  const TaskRequest task_req = ResourceMapToTaskRequest(string_to_int_map_, shape);
-  RAY_CHECK(nodes_.contains(local_node_id_));
-  const auto &it = nodes_.find(local_node_id_);
-  RAY_CHECK(it != nodes_.end());
-  return IsFeasible(task_req, it->second.GetLocalView());
-}
-
 bool ClusterResourceScheduler::IsFeasible(const TaskRequest &task_req,
                                           const NodeResources &resources) const {
   // First, check predefined resources.
@@ -171,6 +162,13 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
   int violations = 0;
+
+  if (task_req.requires_object_store_memory && resources.object_pulls_queued && node_id != local_node_id_) {
+    // It's okay if the local node's pull manager is at capacity because we
+    // will eventually spill the task back from the waiting queue if its args
+    // cannot be pulled.
+    return -1;
+  }
 
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -286,7 +284,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool actor_creation,
                                                          bool force_spillback,
                                                          int64_t *total_violations,
-                                                         bool *is_infeasible, bool ignore_local_node_at_capacity) {
+                                                         bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && task_req.IsEmpty()) {
@@ -313,7 +311,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
       task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
-      force_spillback, ignore_local_node_at_capacity);
+      force_spillback);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
@@ -328,11 +326,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources, const std::unordered_set<std::ObjectID> &task_deps, bool actor_creation,
-    bool force_spillback, int64_t *total_violations, bool *is_infeasible, bool ignore_local_node_at_capacity) {
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources, deps);
+    const std::unordered_map<std::string, double> &task_resources,
+    bool requires_object_store_memory, bool actor_creation,
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
+  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources, requires_object_store_memory);
   int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, force_spillback,
-                                           total_violations, is_infeasible, ignore_local_node_at_capacity);
+                                           total_violations, is_infeasible);
 
   std::string id_string;
   if (node_id == -1) {
@@ -374,7 +373,9 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
     }
   }
 
-  resources->object_pulls_queued = true;
+  // TODO(swang): We should also subtract object store memory if the task has
+  // arguments. Right now we do not modify object_pulls_queued in case of
+  // performance regressions in spillback.
 
   return true;
 }
@@ -915,7 +916,8 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
     const std::unordered_map<std::string, double> &task_resources,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
+  // We don't track object store memory demands so no need to allocate them.
+  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
   return AllocateLocalTaskResources(task_request, task_allocation);
 }
 
@@ -936,7 +938,8 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
+  // We don't track object store memory demands so no need to allocate them.
+  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
   return SubtractRemoteNodeAvailableResources(node_id, task_request);
@@ -1021,9 +1024,12 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
-  //if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
-    resources_data.set_object_pulls_queued(last_report_resources_->object_pulls_queued);
-  //}
+
+  if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
+    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
+    resources_data.set_resources_available_changed(true);
+
+  }
 
   if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));

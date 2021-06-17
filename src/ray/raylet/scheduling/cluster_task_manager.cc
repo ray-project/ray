@@ -43,14 +43,6 @@ ClusterTaskManager::ClusterTaskManager(
       metric_tasks_spilled_(0) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
-  int64_t num_pending = 0;
-  for (auto shapes_it = tasks_to_schedule_.begin();
-       shapes_it != tasks_to_schedule_.end(); shapes_it++) {
-    const auto &work_queue = shapes_it->second;
-    num_pending += work_queue.size();
-  }
-  RAY_LOG(DEBUG) << "XXX SchedulePendingTasks num pending: " << num_pending;
-
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryLocalInfeasibleTaskScheduling();
   bool did_schedule = false;
@@ -73,7 +65,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          placement_resources,
+          /*requires_object_store_memory=*/false,
+          task.GetTaskSpecification().IsActorCreationTask(),
           /*force_spillback=*/false, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -275,7 +269,9 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   int64_t _unused;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false,
+      placement_resources,
+      /*requires_object_store_memory=*/false,
+      spec.IsActorCreationTask(), /*force_spillback=*/false,
       &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
@@ -826,7 +822,9 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     int64_t _unused;
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources,
+        /*requires_object_store_memory=*/false,
+        task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/false, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
@@ -1049,7 +1047,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "XXX Attempting to spill back from waiting task queue, num waiting: " << waiting_task_queue_.size();
+  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: " << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1082,12 +1080,14 @@ void ClusterTaskManager::SpillWaitingTasks() {
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
     bool is_infeasible;
-    // TODO(swang): The policy currently does not account for object store
-    // memory availability. Ideally, we should pick the node with the most
-    // memory availability.
+    // TODO(swang): The policy currently does not account for the amount of
+    // object store memory availability. Ideally, we should pick the node with
+    // the most memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/force_spillback, &_unused, &is_infeasible, /*ignore_local_node_at_capacity=*/true);
+        placement_resources,
+        /*requires_object_store_memory=*/true,
+        task.GetTaskSpecification().IsActorCreationTask(),
+        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);

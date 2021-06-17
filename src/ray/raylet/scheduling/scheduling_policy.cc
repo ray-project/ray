@@ -7,8 +7,7 @@ namespace raylet_scheduling_policy {
 int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float hybrid_threshold, bool force_spillback,
-                     bool require_available, bool ignore_local_node_at_capacity,
-                     std::function<bool(const ObjectID &obj_id)> is_object_being_pulled) {
+                     bool require_available) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -45,13 +44,16 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
       continue;
     }
 
-    bool ignore_at_capacity = false;
-    if (node_id == local_node_id && ignore_local_node_at_capacity) {
-      ignore_at_capacity = true;
+    bool ignore_pull_manager_at_capacity = false;
+    if (node_id == local_node_id) {
+      // It's okay if the local node's pull manager is at
+      // capacity because we will eventually spill the task
+      // back from the waiting queue if its args cannot be
+      // pulled.
+      ignore_pull_manager_at_capacity = true;
     }
-
-    bool is_available = node.GetLocalView().IsAvailable(task_request, ignore_at_capacity, is_object_being_pulled);
-    RAY_LOG(DEBUG) << "XXX Node " << node_id << " is " << (is_available ? "available" : "not available");
+    bool is_available = node.GetLocalView().IsAvailable(task_request, ignore_pull_manager_at_capacity);
+    RAY_LOG(DEBUG) << "Node " << node_id << " is " << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
     if (critical_resource_utilization < hybrid_threshold) {
@@ -80,16 +82,6 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;
     }
-  }
-
-  if (best_is_available) {
-    RAY_LOG(DEBUG) << "XXX Best node is available";
-  } else {
-    RAY_LOG(DEBUG) << "XXX Best node is not available";
-  }
-
-  if (best_node_id == local_node_id) {
-    RAY_LOG(DEBUG) << "XXX Best node is local node";
   }
 
   return best_node_id;

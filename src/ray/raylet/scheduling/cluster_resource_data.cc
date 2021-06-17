@@ -62,9 +62,11 @@ std::vector<double> VectorFixedPointToVectorDouble(
 /// Convert a map of resources to a TaskRequest data structure.
 TaskRequest ResourceMapToTaskRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map) {
+    const std::unordered_map<std::string, double> &resource_map,
+    bool requires_object_store_memory) {
   TaskRequest task_request;
 
+  task_request.requires_object_store_memory = requires_object_store_memory;
   task_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
@@ -180,9 +182,6 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
     }
 
     float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
-    if (i == OBJECT_STORE_MEM) {
-      RAY_LOG(DEBUG) << "XXX Object store memory at utilization " << utilization;
-    }
     if (utilization > highest) {
       highest = utilization;
     }
@@ -190,17 +189,18 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const TaskRequest &task_req, std::function<bool(const ObjectID &obj_id)> is_object_being_pulled) const {
-  //if (!ignore_at_capacity && object_pulls_queued) {
-  //  RAY_LOG(DEBUG) << "XXX At pull manager capacity";
-  //  return false;
-  //}
+bool NodeResources::IsAvailable(const TaskRequest &task_req, bool ignore_pull_manager_at_capacity) const {
+  if (!ignore_pull_manager_at_capacity && task_req.requires_object_store_memory
+      && object_pulls_queued) {
+    RAY_LOG(DEBUG) << "At pull manager capacity";
+    return false;
+  }
   
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (task_req.predefined_resources[i] != 0) {
-        RAY_LOG(DEBUG) << "XXX At resource capacity";
+        RAY_LOG(DEBUG) << "At resource capacity";
         return false;
       }
       continue;
@@ -210,7 +210,7 @@ bool NodeResources::IsAvailable(const TaskRequest &task_req, std::function<bool(
     const auto &demand = task_req.predefined_resources[i];
 
     if (resource < demand) {
-      RAY_LOG(DEBUG) << "XXX At resource capacity";
+      RAY_LOG(DEBUG) << "At resource capacity";
       return false;
     }
   }
