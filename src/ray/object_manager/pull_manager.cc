@@ -131,6 +131,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   *highest_req_id_being_pulled = next_request_it->first;
 
   RecalculateBytesBeingPulled();
+  num_active_bundles_ += 1;
   return true;
 }
 
@@ -168,12 +169,16 @@ void PullManager::DeactivatePullBundleRequest(
   }
 
   RecalculateBytesBeingPulled();
+  num_active_bundles_ -= 1;
 }
 
 void PullManager::DeactivateUntilWithinQuota(
-    const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
-    std::unordered_set<ObjectID> *object_ids_to_cancel) {
-  while (!WithinQuota() && *highest_id_for_bundle != 0) {
+    const std::string &debug_name, Queue &bundles, int retain_min,
+    uint64_t *highest_id_for_bundle, std::unordered_set<ObjectID> *object_ids_to_cancel) {
+  while (OverQuota() && *highest_id_for_bundle != 0) {
+    if (num_active_bundles_ <= retain_min) {
+      return;
+    }
     RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
@@ -200,15 +205,15 @@ void PullManager::RecalculateBytesBeingPulled() {
         num_bytes_already_pulled += it->second.object_size;
       }
     }
-    if (num_bytes_being_pulled != num_bytes_being_pulled_) {
-      RAY_LOG(DEBUG) << "Updating num bytes being pulled: " << num_bytes_being_pulled;
+    if (num_bytes_already_pulled != num_bytes_already_pulled_) {
+      RAY_LOG(DEBUG) << "Updating num bytes already pulled: " << num_bytes_already_pulled;
       num_bytes_already_pulled_ = num_bytes_already_pulled;
     }
   }
 }
 
-bool PullManager::WithinQuota() {
-  return num_bytes_being_pulled_ < num_bytes_available_ + num_bytes_being_pulled_;
+bool PullManager::OverQuota() {
+  return num_bytes_being_pulled_ > num_bytes_available_ + num_bytes_being_pulled_;
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
@@ -227,13 +232,14 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   bool get_requests_remaining = !get_request_bundles_.empty();
   while (get_requests_remaining) {
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
-    DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
+                               /*retain_min=*/0, &highest_task_req_id_being_pulled_,
+                               &object_ids_to_cancel);
+    DeactivateUntilWithinQuota("wait request", wait_request_bundles_, /*retain_min=*/0,
                                &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
 
     // Activate the next get request if we have space, or are in unlimited allocation
     // mode.
-    if (WithinQuota() || RayConfig::instance().plasma_unlimited()) {
+    if (!OverQuota() || RayConfig::instance().plasma_unlimited()) {
       get_requests_remaining = ActivateNextPullBundleRequest(
           get_request_bundles_, &highest_get_req_id_being_pulled_, &objects_to_pull);
     } else {
@@ -245,12 +251,13 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   bool wait_requests_remaining = !wait_request_bundles_.empty();
   while (wait_requests_remaining) {
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
+                               /*retain_min=*/0, &highest_task_req_id_being_pulled_,
+                               &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
-    if (WithinQuota()) {
+    if (!OverQuota()) {
       wait_requests_remaining = ActivateNextPullBundleRequest(
-          wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
+          wait_request_bundles_, 0, &highest_wait_req_id_being_pulled_, &objects_to_pull);
     } else {
       break;
     }
@@ -258,7 +265,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
-  while (WithinQuota()) {
+  while (!OverQuota()) {
     if (!ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
                                        &objects_to_pull)) {
@@ -268,16 +275,18 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
+                             RayConfig::instance().pull_manager_min_active_pulls(),
                              &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
   DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
+                             RayConfig::instance().pull_manager_min_active_pulls(),
                              &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
     DeactivateUntilWithinQuota("get request", get_request_bundles_,
+                               RayConfig::instance().pull_manager_min_active_pulls(),
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
-    RAY_CHECK(num_bytes_being_pulled_ <=
-              num_bytes_available_ + num_bytes_already_pulled_);
+    RAY_CHECK(!OverQuota());
   }
 
   // Call the cancellation callbacks outside of the lock.
@@ -644,6 +653,7 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
+  result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
   return result.str();
 }

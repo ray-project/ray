@@ -179,8 +179,9 @@ class PullManager {
   /// already local.
   void RecalculateBytesBeingPulled();
 
-  /// Returns whether there is space available for pulls.
-  bool WithinQuota();
+  /// Returns whether the set of active pull requests exceeds the memory allowance
+  /// for pulls. At least one active pull request is allowed at all times.
+  bool OverQuota();
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -216,7 +217,7 @@ class PullManager {
   /// Helper method that deactivates requests from the given queue until the pull
   /// memory usage is within quota.
   void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
-                                  uint64_t *highest_id_for_bundle,
+                                  int retain_min, uint64_t *highest_id_for_bundle,
                                   std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
@@ -272,6 +273,9 @@ class PullManager {
   /// The total number of bytes that is available to store objects that we are
   /// pulling.
   size_t num_bytes_available_;
+
+  /// The number of currently active bundles.
+  int64_t num_active_bundles_ = 0;
 
   /// Triggered when the first request in the queue can't be pulled due to
   /// out-of-memory. This callback should try to make more bytes available.
