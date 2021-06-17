@@ -341,7 +341,7 @@ void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data)
   if (config_.grpc_based_resource_broadcast) {
     grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
         raylet_client_pool_,
-        [this](rpc::ResourceUsageBatchData &buffer) {
+        [this](rpc::ResourceUsageBroadcastData &buffer) {
           gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
         }
 
@@ -408,7 +408,7 @@ void GcsServer::InstallEventListeners() {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
     gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+    gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (config_.pull_based_resource_reporting) {
@@ -488,13 +488,12 @@ void GcsServer::PrintDebugInfo() {
 
 void GcsServer::PrintAsioStats() {
   /// If periodic asio stats print is enabled, it will print it.
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms != -1 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    RAY_LOG(INFO) << "Event loop stats:\n\n" << main_service_.StatsString() << "\n\n";
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
+    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
     execute_after(main_service_, [this] { PrintAsioStats(); },
-                  asio_stats_print_interval_ms /* milliseconds */);
+                  event_stats_print_interval_ms /* milliseconds */);
   }
 }
 

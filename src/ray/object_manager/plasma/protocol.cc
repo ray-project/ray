@@ -272,16 +272,17 @@ Status SendUnfinishedCreateReply(const std::shared_ptr<Client> &client,
 Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id,
                        const PlasmaObject &object, PlasmaError error_code) {
   flatbuffers::FlatBufferBuilder fbb;
-  PlasmaObjectSpec plasma_object(FD2INT(object.store_fd), object.data_offset,
-                                 object.data_size, object.metadata_offset,
-                                 object.metadata_size, object.device_num);
+  PlasmaObjectSpec plasma_object(
+      FD2INT(object.store_fd.first), object.store_fd.second, object.data_offset,
+      object.data_size, object.metadata_offset, object.metadata_size, object.device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
   fb::PlasmaCreateReplyBuilder crb(fbb);
   crb.add_error(static_cast<PlasmaError>(error_code));
   crb.add_plasma_object(&plasma_object);
   crb.add_object_id(object_string);
   crb.add_retry_with_request_id(0);
-  crb.add_store_fd(FD2INT(object.store_fd));
+  crb.add_store_fd(FD2INT(object.store_fd.first));
+  crb.add_unique_fd_id(object.store_fd.second);
   crb.add_mmap_size(object.mmap_size);
   if (object.device_num != 0) {
     RAY_LOG(FATAL) << "This should be unreachable.";
@@ -303,13 +304,15 @@ Status ReadCreateReply(uint8_t *data, size_t size, ObjectID *object_id,
     return Status::OK();
   }
 
-  object->store_fd = INT2FD(message->plasma_object()->segment_index());
+  object->store_fd.first = INT2FD(message->plasma_object()->segment_index());
+  object->store_fd.second = message->plasma_object()->unique_fd_id();
   object->data_offset = message->plasma_object()->data_offset();
   object->data_size = message->plasma_object()->data_size();
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
 
-  *store_fd = INT2FD(message->store_fd());
+  store_fd->first = INT2FD(message->store_fd());
+  store_fd->second = message->unique_fd_id();
   *mmap_size = message->mmap_size();
 
   object->device_num = message->plasma_object()->device_num();
@@ -591,18 +594,22 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   std::vector<flatbuffers::Offset<fb::CudaHandle>> handles;
   for (int64_t i = 0; i < num_objects; ++i) {
     const PlasmaObject &object = plasma_objects[object_ids[i]];
-    objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd), object.data_offset,
+    objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd.first),
+                                       object.store_fd.second, object.data_offset,
                                        object.data_size, object.metadata_offset,
                                        object.metadata_size, object.device_num));
   }
   std::vector<int> store_fds_as_int;
+  std::vector<int64_t> unique_fd_ids;
   for (MEMFD_TYPE store_fd : store_fds) {
-    store_fds_as_int.push_back(FD2INT(store_fd));
+    store_fds_as_int.push_back(FD2INT(store_fd.first));
+    unique_fd_ids.push_back(store_fd.second);
   }
   auto message = fb::CreatePlasmaGetReply(
       fbb, ToFlatbuffer(&fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(MakeNonNull(objects.data()), num_objects),
       fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
+      fbb.CreateVector(MakeNonNull(unique_fd_ids.data()), unique_fd_ids.size()),
       fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
       fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
@@ -620,7 +627,8 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
   }
   for (uoffset_t i = 0; i < num_objects; ++i) {
     const PlasmaObjectSpec *object = message->plasma_objects()->Get(i);
-    plasma_objects[i].store_fd = INT2FD(object->segment_index());
+    plasma_objects[i].store_fd.first = INT2FD(object->segment_index());
+    plasma_objects[i].store_fd.second = object->unique_fd_id();
     plasma_objects[i].data_offset = object->data_offset();
     plasma_objects[i].data_size = object->data_size();
     plasma_objects[i].metadata_offset = object->metadata_offset();
@@ -629,7 +637,8 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {
-    store_fds.push_back(INT2FD(message->store_fds()->Get(i)));
+    store_fds.push_back(
+        {INT2FD(message->store_fds()->Get(i)), message->unique_fd_ids()->Get(i)});
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
   }
   return Status::OK();

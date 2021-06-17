@@ -1,0 +1,41 @@
+- name: single_node
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: single_node.yaml
+
+  run:
+    timeout: 12000
+    prepare: sleep 0
+    script: python single_node/test_single_node.py
+
+- name: object_store
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: object_store.yaml
+
+  run:
+    timeout: 600
+    prepare: sleep 0
+    script: python object_store/test_object_store.py
+
+- name: distributed
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: sleep 0
+    script: python distributed/test_distributed.py

@@ -116,7 +116,6 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), publisher_.get(), subscriber_.get(),
-            /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
         manager_(rpc::Address(),
                  [&](const std::string &ip, int port) { return raylet_client_; },

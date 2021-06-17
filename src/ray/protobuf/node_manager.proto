@@ -137,10 +137,14 @@ message ObjectStoreStats {
   int64 object_store_bytes_used = 7;
   // The max capacity of the object store.
   int64 object_store_bytes_avail = 8;
+  // The number of bytes pinned as the primary copy of objects.
+  int64 object_store_bytes_primary_copy = 9;
+  // The number of bytes allocated from the filesystem (fallback allocs).
+  int64 object_store_bytes_fallback = 10;
   // The number of local objects total.
-  int64 num_local_objects = 9;
+  int64 num_local_objects = 11;
   // The number of plasma object bytes that are consumed by core workers.
-  int64 consumed_bytes = 10;
+  int64 consumed_bytes = 12;
 }
 
 message GetNodeStatsReply {

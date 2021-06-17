@@ -22,14 +22,14 @@ namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
 
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
@@ -41,8 +41,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
-      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -265,13 +264,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
   // Randomly select one of the best nodes to spillback.
   int64_t best_node = -1;
   if (!best_nodes.empty()) {
-    int idx;
-    if (loadbalance_spillback_) {
-      idx = std::rand() % best_nodes.size();
-    } else {
-      idx = 0;
-    }
-    best_node = best_nodes[idx];
+    best_node = best_nodes[0];
   }
 
   // If there's no best node, and the task is not feasible locally,
@@ -310,7 +303,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
+      task_req, local_node_id_, nodes_, spread_threshold_, force_spillback,
       force_spillback);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
@@ -1019,6 +1012,34 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
   }
+}
+
+ray::gcs::NodeResourceInfoAccessor::ResourceMap
+ClusterResourceScheduler::GetResourceTotals() const {
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  const auto &local_resources = it->second.GetLocalView();
+  for (size_t i = 0; i < local_resources.predefined_resources.size(); i++) {
+    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
+    double resource_total = local_resources.predefined_resources[i].total.Double();
+    if (resource_total > 0) {
+      auto data = std::make_shared<rpc::ResourceTableData>();
+      data->set_resource_capacity(resource_total);
+      map.emplace(resource_name, std::move(data));
+    }
+  }
+
+  for (auto entry : local_resources.custom_resources) {
+    std::string resource_name = string_to_int_map_.Get(entry.first);
+    double resource_total = entry.second.total.Double();
+    if (resource_total > 0) {
+      auto data = std::make_shared<rpc::ResourceTableData>();
+      data->set_resource_capacity(resource_total);
+      map.emplace(resource_name, std::move(data));
+    }
+  }
+  return map;
 }
 
 }  // namespace ray

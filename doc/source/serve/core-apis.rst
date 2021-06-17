@@ -245,7 +245,7 @@ your deployment.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
 desired conda environment must be present on all nodes.  
-See :ref:`conda-environments-for-tasks-and-actors` for details.
+See :ref:`runtime-environments` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,

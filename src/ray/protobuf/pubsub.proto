@@ -38,7 +38,7 @@ message PubMessage {
   /// The key id (e.g., object id) in bytes.
   bytes key_id = 2;
   /// A message for the publish message.
-  oneof pub_message_oneof {
+  oneof pub_message_one_of {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
   }
@@ -90,7 +90,7 @@ message SubMessage {
   /// Subscribe message is one of other protobuf messages.
   /// It needs messages with different payloads because the publisher
   /// need more metadata than key id & channel type for subscription.
-  oneof sub_message_oneof {
+  oneof sub_message_one_of {
     WorkerObjectEvictionSubMessage worker_object_eviction_message = 1;
     WorkerRefRemovedSubMessage worker_ref_removed_message = 2;
   }
