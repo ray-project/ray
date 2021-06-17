@@ -474,8 +474,7 @@ def test_many_args(ray_start_cluster):
         },
         object_store_memory=int(1e8))
     for _ in range(3):
-        cluster.add_node(
-            num_cpus=1, object_store_memory=int(1e8))
+        cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -489,17 +488,20 @@ def test_many_args(ray_start_cluster):
 
     xs = [put.remote() for _ in range(200)]
     ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    num_tasks_submitted_before, num_leases_requested_before = ray.worker.global_worker.core_worker.get_task_submission_stats()
+    num_tasks_submitted_before, num_leases_requested_before = ray.worker.global_worker.core_worker.get_task_submission_stats(
+    )
     tasks = []
     for i in range(100):
         args = [np.random.choice(xs) for _ in range(10)]
         tasks.append(f.remote(i, *args))
     ray.get(tasks)
 
-    num_tasks_submitted, num_leases_requested = ray.worker.global_worker.core_worker.get_task_submission_stats()
+    num_tasks_submitted, num_leases_requested = ray.worker.global_worker.core_worker.get_task_submission_stats(
+    )
     num_tasks_submitted -= num_tasks_submitted_before
     num_leases_requested -= num_leases_requested_before
-    print("submitted:", num_tasks_submitted, "leases requested:", num_leases_requested)
+    print("submitted:", num_tasks_submitted, "leases requested:",
+          num_leases_requested)
     assert num_tasks_submitted == 100
     assert num_leases_requested <= 10 * num_tasks_submitted
 

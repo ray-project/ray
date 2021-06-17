@@ -415,11 +415,12 @@ def test_ray_get_task_args_deadlock(shutdown_only):
     num_objects = 10
     # Head node can fit all of the objects at once.
     cluster.add_node(
-        num_cpus=0, object_store_memory=4 * num_objects * object_size,
+        num_cpus=0,
+        object_store_memory=4 * num_objects * object_size,
         _system_config={
             "asio_event_loop_stats_collection_enabled": True,
             "asio_stats_print_interval_ms": 1000,
-            })
+        })
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
