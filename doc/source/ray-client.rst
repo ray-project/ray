@@ -4,25 +4,33 @@
 Ray Client
 **********
 
-===========
-Basic usage
-===========
+==================
+What is Ray Client
+==================
 
-The Ray client server is automatically started on port ``10001`` when you use ``ray start --head`` or Ray in an autoscaling cluster. The port can be changed by specifying ``--ray-client-server-port`` in the ``ray start`` command to be any integer between 1024 and 65535.
+Ray Client allows you to interact with a remote Ray cluster just like you would with Ray running on your local machine. The entire `Ray API  <package-ref.html>`_ works over Ray Client!
+You can scale your local Ray scripts by changing ``ray.init()`` to ``ray.client(...).connect()``, while maintaining the ability to develop interactively in a python shell.
 
-To start the server manually, you can run:
 
-``python -m ray.util.client.server [--host host_ip] [--port port] [--redis-address address] [--redis-password password]``
+==================
+Getting Started
+==================
 
-This runs ``ray.init()`` with default options and exposes the client gRPC port at ``host_ip:port`` (by default, ``0.0.0.0:10001``). Providing ``redis-address`` and ``redis-password`` will be passed into ``ray.init()`` when the server starts, allowing connection to an existing Ray cluster, as per the `cluster setup <cluster/index.html>`_ instructions.
+1. Follow the directions in `"Start a Ray Cluster"  <cluster/quickstart.html>`_ to start a Ray Cluster. 
+The server side of Ray Client is automatically started on port ``10001`` of the head node. 
+This can be modified by adding ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
 
-From here, another Ray script can access that server from a networked machine with ``ray.client().connect()``
+2. Ensure that the Ray Client port on the head node is reachable from your local machine.
+This means opening that port up (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_) 
+or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_). 
+
+3. Connect to the Ray Cluster with the following and then use Ray like you normally would:
+
+..
 
 .. code-block:: python
 
    import ray
-   import ray.util
-
    ray.client("<head_node_host>:10001").connect()  # replace with the appropriate host and port
 
    # Normal Ray code follows
@@ -33,7 +41,14 @@ From here, another Ray script can access that server from a networked machine wi
    do_work.remote(2)
    #....
 
-When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
+
+
+=======================
+Things to know
+=======================
+
+
+* When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
 =======================
 Versioning requirements
