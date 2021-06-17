@@ -155,7 +155,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn: "ObservationFunction" = None,
             observation_filter: str = "NoFilter",
             clip_rewards: bool = None,
-            clip_actions: bool = True,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
             env_config: EnvConfigDict = None,
             model_config: ModelConfigDict = None,
             policy_config: TrainerConfigDict = None,
@@ -247,6 +248,8 @@ class RolloutWorker(ParallelIteratorWorker):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
+            normalize_actions (bool): Whether to normalize actions to the
+                action space's bounds.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
             env_config (EnvConfigDict): Config to pass to the env creator.
@@ -657,6 +660,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
@@ -683,6 +687,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,

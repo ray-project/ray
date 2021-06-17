@@ -141,7 +141,8 @@ def cql_loss(policy: Policy, model: ModelV2,
 
             logits = model.get_policy_output(obs)
             mean, log_std = torch.chunk(logits, 2, dim=-1)
-            # Mean Clamping for Stability
+
+            # Mean clamping for stability.
             mean = torch.clamp(mean, MEAN_MIN, MEAN_MAX)
             log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT,
                                   MAX_LOG_NN_OUTPUT)
@@ -149,7 +150,7 @@ def cql_loss(policy: Policy, model: ModelV2,
             normal_dist = torch.distributions.Normal(mean, std)
             return torch.sum(
                 normal_dist.log_prob(z) -
-                torch.log(1 - actions * actions + SMALL_NUMBER),
+                torch.log(1 - save_normed_actions**2 + SMALL_NUMBER),
                 dim=-1)
 
         bc_logp = bc_log(model, model_out_t, actions)

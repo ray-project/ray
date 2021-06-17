@@ -465,6 +465,26 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
+
 
 # TD3
 py_test(

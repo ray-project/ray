@@ -155,6 +155,7 @@ def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
     elif isinstance(action_space, Simplex):
         return Dirichlet
     else:
+        assert isinstance(action_space, Box)
         if config["normalize_actions"]:
             return SquashedGaussian if \
                 not config["_use_beta_distribution"] else Beta
