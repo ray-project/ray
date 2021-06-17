@@ -143,8 +143,9 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 
   metrics_num_object_locations_added_++;
 
+  auto operation = [this, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
   rpc_client->AddObjectLocationOwner(
-      request, [worker_id, object_id, node_id](
+      request, [worker_id, object_id, node_id, done_callback](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
@@ -155,7 +156,10 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
           RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
                          << " on owner " << worker_id;
         }
+        done_callback();
       });
+  };
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 }
 
@@ -178,8 +182,9 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
 
   metrics_num_object_locations_removed_++;
 
+  auto operation = [this, request, worker_id, object_id, node_id](const SequencerDoneCallback &done_callback) {
   rpc_client->RemoveObjectLocationOwner(
-      request, [worker_id, object_id, node_id](
+      request, [worker_id, object_id, node_id, done_callback](
                    Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
@@ -190,7 +195,10 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
           RAY_LOG(DEBUG) << "Removed location " << node_id << " for object " << object_id
                          << " on owner " << worker_id;
         }
+        done_callback();
       });
+  };
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 };
 
