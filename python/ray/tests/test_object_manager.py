@@ -268,7 +268,6 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 # (4) Allow the local object to be evicted.
 # (5) Try to get the object again. Now the retry timer should kick in and
 #     successfuly pull the remote object.
-@pytest.mark.timeout(30)
 def test_pull_request_retry(shutdown_only):
     cluster = Cluster()
     cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
@@ -305,7 +304,6 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
-@pytest.mark.timeout(30)
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -339,7 +337,6 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-@pytest.mark.timeout(30)
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
@@ -384,7 +381,6 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     del allocated
 
 
-@pytest.mark.timeout(30)
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -417,7 +413,6 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
-@pytest.mark.timeout(30)
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
