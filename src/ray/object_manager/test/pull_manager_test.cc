@@ -37,6 +37,7 @@ class PullManagerTestWithCapacity {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
     ASSERT_TRUE(pull_manager_.wait_request_bundles_.empty());
     ASSERT_TRUE(pull_manager_.task_argument_bundles_.empty());
+    ASSERT_EQ(pull_manager_.num_active_bundles_, 0);
     ASSERT_EQ(pull_manager_.highest_get_req_id_being_pulled_, 0);
     ASSERT_EQ(pull_manager_.highest_wait_req_id_being_pulled_, 0);
     ASSERT_EQ(pull_manager_.highest_task_req_id_being_pulled_, 0);
@@ -78,6 +79,10 @@ class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
   void AssertNumActiveRequestsEquals(size_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
+  }
+
+  void AssertNumActiveBundlesEquals(size_t num_bundles) {
+    ASSERT_EQ(pull_manager_.num_active_bundles_, num_bundles);
   }
 
   bool IsUnderCapacity(size_t num_bytes_requested) {
@@ -579,6 +584,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
+    AssertNumActiveBundlesEquals(1);
     ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
     return;
   }
