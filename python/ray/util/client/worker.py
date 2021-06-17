@@ -357,7 +357,7 @@ class Worker:
             warnings.warn(
                 "More than 10MB of messages have been created to schedule "
                 "tasks on the server. If you're running many fine-grained "
-                "tasks consider, consider running them inside a single remote "
+                "tasks, consider running them inside a single remote "
                 "function. See the section on \"Too fine-grained tasks\" in "
                 "the Ray Design Patterns document for more details. If your "
                 "functions frequently use large objects, consider storing the "
