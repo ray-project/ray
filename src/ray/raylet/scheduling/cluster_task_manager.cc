@@ -243,10 +243,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
             ReleaseTaskArgs(task_id);
             // It may be that a worker isn't available with the runtime env of this task.
             // While the worker is starting up and installing this runtime env, we should
-            // continue in this iteration, because we may be able to start another task
+            // continue to the next runtime env, because we may be able to start another task
             // with a different runtime env.
-            runtime_env_hash_it++;
-            continue;
+            break;
           }
 
           RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
