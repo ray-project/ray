@@ -57,8 +57,9 @@ static int DoGetNextJobID(redisContext *context) {
   RAY_CHECK(under_retry_limit) << "No entry found for JobCounter";
   RAY_CHECK(reply->type == REDIS_REPLY_INTEGER)
       << "Expected integer, found Redis type " << reply->type << " for JobCounter";
+  int counter = reply->integer;
   freeReplyObject(reply);
-  return reply->integer;
+  return counter;
 }
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
