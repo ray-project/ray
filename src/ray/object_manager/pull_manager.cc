@@ -257,7 +257,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     // Activate the next wait request if we have space.
     if (!OverQuota()) {
       wait_requests_remaining = ActivateNextPullBundleRequest(
-          wait_request_bundles_, 0, &highest_wait_req_id_being_pulled_, &objects_to_pull);
+          wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
     } else {
       break;
     }
@@ -286,8 +286,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivateUntilWithinQuota("get request", get_request_bundles_,
                                RayConfig::instance().pull_manager_min_active_pulls(),
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
-    RAY_CHECK(!OverQuota() ||
-              num_active_bundles <= RayConfig::instance().pull_manager_min_active_pulls())
+    RAY_CHECK(!OverQuota() || num_active_bundles_ <=
+                                  RayConfig::instance().pull_manager_min_active_pulls())
         << DebugString();
   }
 
@@ -296,6 +296,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     cancel_pull_request_(obj_id);
   }
 
+  // Only has an effect if pull_manager_min_active_pulls == 0.
   TriggerOutOfMemoryHandlingIfNeeded();
 
   {
@@ -312,7 +313,8 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
   if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
       highest_task_req_id_being_pulled_ > 0) {
     // At least one request is being actively pulled, so there is
-    // currently enough space.
+    // currently enough space. Note that if pull_manager_min_active_pulls > 0, then
+    // we will always return here.
     return;
   }
 
