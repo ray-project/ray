@@ -323,7 +323,8 @@ def set_task_options(task: ray_client_pb2.ClientTask,
 
     # If there's a non-null "placement_group" in `options`, convert the
     # placement group to a dict so that `options` can be passed to json.dumps.
-    if options.get("placement_group", None):
+    pg = options.get("placement_group", None)
+    if pg and pg != "default":
         options["placement_group"] = options["placement_group"].to_dict()
 
     options_str = json.dumps(options)
