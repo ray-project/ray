@@ -12,7 +12,7 @@ import warnings
 @pytest.fixture(autouse=True)
 def reset_debug_logs():
     """Resets internal state of ray.util.debug so that warning can be tested
-    for more than once in the same process"""
+    more than once in the same process"""
     _logged.clear()
 
 

@@ -62,10 +62,13 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 # began exceeds this value, a warning should be raised
 TASK_WARNING_THRESHOLD = 1000
 
-# Link to the Ray Design Pattern doc to use in the task overhead warning
+# Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
-DESIGN_PATTERN_DOC_LINK = \
-    "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/" # noqa E501
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = \
+    "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.f7ins22n6nyl" # noqa E501
+
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = \
+    "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu" # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -347,24 +350,28 @@ class Worker:
             warnings.warn(
                 f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
                 "scheduled. This can be slow on Ray Client due to "
-                "communication overhead over the network. If you're running many fine-grained "
-                "tasks, consider running them in a single remote function."
-                "See the section on \"Too fine-grained tasks\" in the Ray "
-                "Design Patterns document for more details: "
-                f"{DESIGN_PATTERN_DOC_LINK}", UserWarning)
+                "communication overhead over the network. If you're running "
+                "many fine-grained tasks, consider running them in a single "
+                "remote function. See the section on \"Too fine-grained "
+                "tasks\" in the Ray Design Patterns document for more "
+                f"details: {DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK}",
+                UserWarning)
         if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
                 and log_once("client_communication_overhead_warning"):
             warnings.warn(
                 "More than 10MB of messages have been created to schedule "
-                "tasks on the server. If you're running many fine-grained "
-                "tasks, consider running them inside a single remote "
-                "function. See the section on \"Too fine-grained tasks\" in "
-                "the Ray Design Patterns document for more details. If your "
-                "functions frequently use large objects, consider storing the "
-                "objects remotely with ray.put. An example of this is shown "
-                "in the \"Closure capture of large / unserializable object\" "
-                "section of the Ray Design Patterns document, available here: "
-                f"{DESIGN_PATTERN_DOC_LINK}", UserWarning)
+                "tasks on the server. This can be slow on Ray Client due to "
+                "communication overhead over the network. If you're running "
+                "many fine-grained tasks, consider running them inside a "
+                "single remote function. See the section on \"Too "
+                "fine-grained tasks\" in the Ray Design Patterns document for "
+                f"more details: {DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK}. If "
+                "your functions frequently use large objects, consider "
+                "storing the objects remotely with ray.put. An example of "
+                "this is shown in the \"Closure capture of large / "
+                "unserializable object\" section of the Ray Design Patterns "
+                "document, available here: "
+                f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
