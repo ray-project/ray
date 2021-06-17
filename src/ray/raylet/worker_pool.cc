@@ -1272,6 +1272,9 @@ std::size_t WorkerCacheKey::Hash() const {
       // either.  Sort the variables so different permutations yield the same hash.
       std::sort(env_vars.begin(), env_vars.end());
       for (auto &pair : env_vars) {
+        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
+        // separate runs of a program, which may cause problems if these hashes are
+        // communicated between different Raylets and compared.
         boost::hash_combine(hash_, pair.first);
         boost::hash_combine(hash_, pair.second);
       }

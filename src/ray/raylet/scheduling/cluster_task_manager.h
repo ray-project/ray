@@ -235,7 +235,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+  /// The tasks are also keyed by their runtime_env_hash (int).
+  std::unordered_map<SchedulingClass, std::unordered_map<int, std::deque<Work>>>
+      tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.

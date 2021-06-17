@@ -79,6 +79,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnv() const;
 
+  int GetRuntimeEnvHash() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;

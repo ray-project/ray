@@ -3,6 +3,9 @@
 #include <sstream>
 
 #include "ray/util/logging.h"
+// the below line gives "src/ray/common/task/task_spec.cc:6:10:
+// fatal error: 'ray/raylet/worker_pool.h' file not found"
+// #include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
@@ -117,6 +120,12 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
 
 bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+}
+
+int TaskSpecification::GetRuntimeEnvHash() const {
+  // WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv()};
+  // return env.IntHash();
+  return 0;
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
