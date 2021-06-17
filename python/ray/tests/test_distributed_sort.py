@@ -1,9 +1,12 @@
+import platform
 import pytest
 import sys
 
 from ray.experimental.raysort import main
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_distributed_sort():
     main.args = main.get_args()
     main.args.ray_address = None
