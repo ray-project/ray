@@ -105,7 +105,6 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
 
   RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
                  << " num bytes being pulled: " << num_bytes_being_pulled_
-                 << " num bytes already pulled: " << num_bytes_already_pulled_
                  << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
   for (const auto &ref : next_request_it->second.objects) {
@@ -130,7 +129,6 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
   RAY_CHECK(next_request_it->first > *highest_req_id_being_pulled);
   *highest_req_id_being_pulled = next_request_it->first;
 
-  RecalculateBytesAlreadyPulled();
   num_active_bundles_ += 1;
   return true;
 }
@@ -168,7 +166,6 @@ void PullManager::DeactivatePullBundleRequest(
     }
   }
 
-  RecalculateBytesAlreadyPulled();
   num_active_bundles_ -= 1;
 }
 
@@ -189,35 +186,11 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-// TODO(ekl) we may want to maintain this value incrementally if it turns out to
-// be high overhead to re-calculate.
-void PullManager::RecalculateBytesAlreadyPulled() {
-  // Compensate for memory consumed by in-progress pulls by adding it to the available
-  // total. This avoids deadlock due to already-local objects.
-  if (RayConfig::instance().pull_manager_calculate_bytes_already_pulled()) {
-    absl::MutexLock lock(&active_objects_mu_);
-    size_t num_bytes_already_pulled = 0;
-    for (auto &pair : active_object_pull_requests_) {
-      const auto &object_id = pair.first;
-      if (object_is_local_(object_id)) {
-        auto it = object_pull_requests_.find(object_id);
-        RAY_CHECK(it != object_pull_requests_.end());
-        num_bytes_already_pulled += it->second.object_size;
-      }
-    }
-    if (num_bytes_already_pulled != num_bytes_already_pulled_) {
-      RAY_LOG(DEBUG) << "Updating num bytes already pulled: " << num_bytes_already_pulled;
-      num_bytes_already_pulled_ = num_bytes_already_pulled;
-    }
-  }
-}
-
 bool PullManager::OverQuota() {
-  return num_bytes_being_pulled_ - num_bytes_already_pulled_ > num_bytes_available_;
+  return num_bytes_being_pulled_ > num_bytes_available_;
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
-  RecalculateBytesAlreadyPulled();
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -633,7 +606,6 @@ std::string PullManager::DebugString() const {
   result << "PullManager:";
   result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
   result << "\n- num bytes being pulled: " << num_bytes_being_pulled_;
-  result << "\n- num bytes already pulled: " << num_bytes_already_pulled_;
   result << "\n- num get request bundles: " << get_request_bundles_.size();
   result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();
