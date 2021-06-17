@@ -1160,6 +1160,8 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
+        worker_shim_pid (int): The PID of the process for setup worker
+            runtime env.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"

@@ -1085,10 +1085,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
-    if (worker_shim_pid == 0) {
-      worker_shim_pid = pid;
-    }
-    worker->SetShimProcess(Process::FromPid(worker_shim_pid));
+    // Don't need to set shim pid for driver
     worker->SetProcess(Process::FromPid(pid));
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
