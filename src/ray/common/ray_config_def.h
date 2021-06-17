@@ -103,9 +103,6 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// spilling).
 RAY_CONFIG(bool, plasma_unlimited, true)
 
-/// DEBUG-ONLY: Whether to take into account bytes already being pulled.
-RAY_CONFIG(bool, pull_manager_calculate_bytes_already_pulled, true)
-
 /// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
 RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
 

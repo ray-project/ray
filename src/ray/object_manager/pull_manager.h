@@ -176,7 +176,8 @@ class PullManager {
       EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Returns whether the set of active pull requests exceeds the memory allowance
-  /// for pulls. At least one active pull request is allowed at all times.
+  /// for pulls. Note that exceeding the quota is allowed in certain situations,
+  /// e.g., for get requests and to ensure at least one active request.
   bool OverQuota();
 
   /// Try to Pull an object from one of its expected client locations. If there
