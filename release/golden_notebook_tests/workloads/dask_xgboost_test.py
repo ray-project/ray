@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import dask
 import dask.dataframe as dd
@@ -9,15 +10,9 @@ from xgboost_ray import RayDMatrix, RayParams, train
 FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
            "00280/HIGGS.csv.gz"
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing.")
-args = parser.parse_args()
 
-
-def main():
-    ray.client("anyscale://").connect()
-
+@ray.remote
+def test():
     print("Loading HIGGS data.")
 
     dask.config.set(scheduler=ray_dask_get)
@@ -52,4 +47,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Finish quickly for testing.")
+    args = parser.parse_args()
+
+    address = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
+    if address.startswith("anyscale://"):
+        ray.client(address=address).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
+
+    ray.get(test.remote())

@@ -4,6 +4,7 @@
     compute_template: compute_tpl.yaml
 
   run:
+    use_connect: True
     timeout: 900
     script: python workloads/dask_xgboost_test.py
 
@@ -13,5 +14,6 @@
     compute_template: compute_tpl.yaml
 
   run:
+    use_connect: True
     timeout: 900
     script: python workloads/modin_xgboost_test.py
