@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/sequencer.h"
 
 namespace ray {
 
@@ -79,6 +80,9 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// for any subsequent requests.
   absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClient>>
       worker_rpc_clients_;
+  /// Used to order add/remove updates for a single ObjectID,
+  /// so we don't lose updates at the directory.
+  Sequencer<ObjectID> sequencer_;
 
   /// Get or create the rpc client in the worker_rpc_clients.
   std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);

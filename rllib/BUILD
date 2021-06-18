@@ -2415,6 +2415,24 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
 py_test(
     name = "examples/trajectory_view_api_tf",
     main = "examples/trajectory_view_api.py",
