@@ -1,4 +1,3 @@
-import argparse
 import json
 import time
 
@@ -17,12 +16,6 @@ from ray.tune.schedulers import create_scheduler
 from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--gpu", action="store_true")
-parser.add_argument(
-    "--smoke-test", action="store_true", help=("Finish quickly for testing."))
-args = parser.parse_args()
 
 CIFAR10_STATS = {
     "mean": (0.4914, 0.4822, 0.4465),
@@ -95,6 +88,16 @@ def train(config, checkpoint_dir=None):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gpu", action="store_true")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help=("Finish quickly for testing."))
+    args = parser.parse_args()
+
     if args.smoke_test:
         ray.init()
     else:
@@ -102,7 +105,7 @@ if __name__ == "__main__":
 
     horovod_trainable = DistributedTrainableCreator(
         train,
-        use_gpu=False if args.smoke_test else True,
+        use_gpu=False if args.smoke_test else args.gpu,
         num_hosts=1 if args.smoke_test else 2,
         num_slots=1 if args.smoke_test else 2,
         replicate_pem=False)
