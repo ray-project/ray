@@ -192,7 +192,6 @@ class RuntimeEnvDict:
         if all(val is None for val in self._dict.values()):
             self._dict = {}
 
-        logger.error(f"GOT RUNTIME ENV DICT PARSED: {self._dict}")
     def get_parsed_dict(self) -> dict:
         return self._dict
 
