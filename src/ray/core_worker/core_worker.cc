@@ -711,9 +711,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Publisher stats:\n\n"
+                        << object_info_publisher_->DebugString();
         },
         event_stats_print_interval_ms);
-    object_info_publisher_->DebugString();
   }
 }
 

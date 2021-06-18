@@ -153,7 +153,7 @@ const std::string SubscriberChannel<KeyIdType>::DebugString() const {
     active_subscribed_entries +=
         subscription_info_it.second.subscription_callback_map.size();
   }
-  result << "\n\tactive subscribed entries: " << active_subscribed_entries;
+  result << "\n- active subscribed entries: " << active_subscribed_entries;
   return result.str();
 }
 
