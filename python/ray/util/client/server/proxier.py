@@ -20,6 +20,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
+from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -116,7 +117,7 @@ class ProxyManager():
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._session_dir: str = session_dir or ""
+        self._node: Optional[Any] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -150,18 +151,22 @@ class ProxyManager():
         self._session_dir = connection_tuple["session_dir"]
         return self.redis_address
 
-    def _get_session_dir(self) -> str:
+    def _get_node(self) -> Any:
         """
         Gets the session_dir of this running Ray session. This usually
         looks like /tmp/ray/session_<timestamp>.
         """
-        if self._session_dir:
-            return self._session_dir
-        # Connect a driver to an already running cluster.
-        connection_tuple = ray.init(address=self._get_redis_address())
-        ray.shutdown()
-        self._session_dir = connection_tuple["session_dir"]
-        return self._session_dir
+        if self._node:
+            return self._node
+
+        self._node = ray.node.Node(
+            RayParams(redis_address=self._get_redis_address()),
+            head=False,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+            connect_only=True)
+
+        return self._node
 
     def create_specific_server(self, client_id: str) -> SpecificServer:
         """
@@ -191,13 +196,19 @@ class ProxyManager():
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
+        node = self._get_node()
+        output, error = node.get_log_file_handles(
+            f"ray_client_server_{specific_server.port}", unique=True)
+
         proc = start_ray_client_server(
             self._get_redis_address(),
             specific_server.port,
+            stdout_file=output,
+            stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=self._get_session_dir())
+            session_dir=node._session_dir)
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
