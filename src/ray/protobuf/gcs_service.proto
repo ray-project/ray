@@ -50,6 +50,13 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
+message GetNextJobIDRequest {
+}
+message GetNextJobIDReply {
+  GcsStatus status = 1;
+  int32 job_id = 2;
+}
+
 // Service for job info access.
 service JobInfoGcsService {
   // Add job to GCS Service.
@@ -60,6 +67,8 @@ service JobInfoGcsService {
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
   // Report job error.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+  // Get next job id.
+  rpc GetNextJobID(GetNextJobIDRequest) returns (GetNextJobIDReply);
 }
 
 message GetActorInfoRequest {

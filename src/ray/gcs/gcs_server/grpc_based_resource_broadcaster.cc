@@ -6,7 +6,7 @@ namespace gcs {
 
 GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    std::function<void(rpc::ResourceUsageBatchData &)>
+    std::function<void(rpc::ResourceUsageBroadcastData &)>
         get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
                        std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
@@ -14,7 +14,8 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
         send_batch
 
     )
-    : ticker_(broadcast_service_),
+    : seq_no_(0),
+      ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
       send_batch_(send_batch),
@@ -89,12 +90,14 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
 }
 
 void GrpcBasedResourceBroadcaster::SendBroadcast() {
-  rpc::ResourceUsageBatchData batch;
+  rpc::ResourceUsageBroadcastData batch;
   get_resource_usage_batch_for_broadcast_(batch);
 
   if (batch.batch_size() == 0) {
     return;
   }
+
+  batch.set_seq_no(seq_no_++);
 
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();

@@ -151,7 +151,7 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Number of attempts to ping the Redis server. See
 # `services.py:wait_for_redis_to_start`.
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 12)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
