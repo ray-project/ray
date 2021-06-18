@@ -35,8 +35,14 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
 }
 
 NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
-    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_)
-    : cluster_resource_scheduler_(cluster_resource_scheduler_) {}
+    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+
+    std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
+        update_resources,
+    std::function<void(const std::vector<std::string> &resource_names)> delete_resources)
+    : cluster_resource_scheduler_(cluster_resource_scheduler),
+      update_resources_(update_resources),
+      delete_resources_(delete_resources) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
@@ -106,6 +112,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
     cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
+  update_resources_(cluster_resource_scheduler_->GetResourceTotals());
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(
@@ -133,6 +140,8 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       std::make_shared<TaskResourceInstances>();
   cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
                                                           resource_instances);
+
+  std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
     if (cluster_resource_scheduler_->IsAvailableResourceEmpty(resource.first)) {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
@@ -140,9 +149,11 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       // Delete local resource if available resource is empty when return bundle, or there
       // will be resource leak.
       cluster_resource_scheduler_->DeleteLocalResource(resource.first);
+      deleted.push_back(resource.first);
     }
   }
   pg_bundles_.erase(it);
+  delete_resources_(deleted);
 }
 
 }  // namespace raylet

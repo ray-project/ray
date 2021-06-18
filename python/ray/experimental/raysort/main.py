@@ -13,7 +13,7 @@ from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
 from ray.experimental.raysort import sortlib
 from ray.experimental.raysort import tracing_utils
-from ray.experimental.raysort.types import BlockInfo, ByteCount, RecordCount, PartId, PartitionInfo, Path
+from ray.experimental.raysort.types import BlockInfo, ByteCount, RecordCount, PartId, PartitionInfo, Path  # noqa: E501
 
 # ------------------------------------------------------------
 #     Parse Arguments
@@ -94,6 +94,8 @@ def get_args():
 
 def _get_mount_points():
     mnt = "/mnt"
+    if not os.path.exists(mnt):
+        return []
     return [os.path.join(mnt, d) for d in os.listdir(mnt)]
 
 
@@ -202,7 +204,8 @@ def mapper(boundaries: List[int], mapper_id: PartId,
         ]
 
     part = _load_partition(path)
-    sort_fn = _dummy_sort_and_partition if args.skip_sorting else sortlib.sort_and_partition
+    sort_fn = _dummy_sort_and_partition \
+        if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
     logging.info(f"{task_id} saving to object store")
     return [ray.put(part[offset:offset + size]) for offset, size in blocks]

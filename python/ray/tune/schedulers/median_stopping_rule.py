@@ -179,7 +179,7 @@ class MedianStoppingRule(FIFOScheduler):
                                  trial: Trial, time: float) -> str:
         pause = time - self._last_pause[trial] > self._min_time_slice
         pause = pause and [
-            t for t in trial_runner.get_trials()
+            t for t in trial_runner.get_live_trials()
             if t.status in (Trial.PENDING, Trial.PAUSED)
         ]
         return TrialScheduler.PAUSE if pause else TrialScheduler.CONTINUE
