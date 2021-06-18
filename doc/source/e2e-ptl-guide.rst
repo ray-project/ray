@@ -1,5 +1,6 @@
 Using Ray with Pytorch Lightning
-==============================
+================================
+
 PyTorch Lightning is a framework which brings structure into training PyTorch models. It
 aims to avoid boilerplate code, so you don't have to write the same training
 loops all over again when building a new model.
