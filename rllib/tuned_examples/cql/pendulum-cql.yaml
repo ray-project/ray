@@ -27,7 +27,7 @@ pendulum-cql:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
         train_batch_size: 2000
-        bc_iters: 100
+        bc_iters: 30
         no_done_at_end: true
         n_step: 3
         optimization:
