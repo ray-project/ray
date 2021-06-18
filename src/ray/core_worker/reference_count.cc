@@ -35,6 +35,15 @@ bool ReferenceCounter::OwnObjects() const {
   return !object_id_refs_.empty();
 }
 
+bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    return it->second.owned_by_us;
+  }
+  return false;
+}
+
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
@@ -438,14 +447,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
 
-  // If distributed ref counting is not enabled, then delete the object as soon
-  // as its local ref count goes to 0.
-  size_t local_ref_count =
-      it->second.local_ref_count + it->second.submitted_task_ref_count;
-  if (!distributed_ref_counting_enabled_ && local_ref_count == 0) {
-    should_delete_value = true;
-  }
-
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
@@ -757,6 +758,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
     const rpc::WorkerAddress &borrower_addr) {
+  absl::MutexLock lock(&mutex_);
   // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
@@ -771,63 +773,42 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
   const ObjectID &object_id = ref_it->first;
-  rpc::WaitForRefRemovedRequest request;
+  auto sub_message = std::make_unique<rpc::SubMessage>();
+  auto *request = sub_message->mutable_worker_ref_removed_message();
   // Only the owner should send requests to borrowers.
   RAY_CHECK(ref_it->second.owned_by_us);
-  request.mutable_reference()->set_object_id(object_id.Binary());
-  request.mutable_reference()->mutable_owner_address()->CopyFrom(
+  request->mutable_reference()->set_object_id(object_id.Binary());
+  request->mutable_reference()->mutable_owner_address()->CopyFrom(
       *ref_it->second.owner_address);
-  request.set_contained_in_id(contained_in_id.Binary());
-  request.set_intended_worker_id(addr.worker_id.Binary());
-  request.set_subscriber_worker_id(rpc_address_.ToProto().worker_id());
+  request->set_contained_in_id(contained_in_id.Binary());
+  request->set_intended_worker_id(addr.worker_id.Binary());
+  request->set_subscriber_worker_id(rpc_address_.ToProto().worker_id());
 
-  auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
+  // If the message is published, this callback will be invoked.
+  const auto message_published_callback = [this, addr,
+                                           object_id](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.has_worker_ref_removed_message());
+    const ReferenceTable new_borrower_refs =
+        ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
-                 << addr.port << " for object " << object_id;
-  // Send the borrower a message about this object. The borrower responds once
-  // it is no longer using the object ID.
-  conn->WaitForRefRemoved(
-      request, [this, object_id, addr](const Status &status,
-                                       const rpc::WaitForRefRemovedReply &reply) {
-        RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
-                       << addr.port << " of object " << object_id;
-        // If the message is published, this callback will be invoked.
-        const auto message_published_callback = [this, addr,
-                                                 object_id](const rpc::PubMessage &msg) {
-          RAY_CHECK(msg.has_worker_ref_removed_message());
-          const ReferenceTable new_borrower_refs =
-              ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
+    CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
+    // Unsubscribe the object once the message is published.
+    RAY_CHECK(object_status_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
+        object_id.Binary()));
+  };
 
-          absl::MutexLock lock(&mutex_);
-          CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
-          // Unsubscribe the object once the message is published.
-          RAY_CHECK(object_status_subscriber_->Unsubscribe(
-              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-              object_id.Binary()));
-        };
+  // If the borrower is failed, this callback will be called.
+  const auto publisher_failed_callback = [this, addr, object_id]() {
+    // When the request is failed, there's no new borrowers ref published from this
+    // borrower.
+    CleanupBorrowersOnRefRemoved({}, object_id, addr);
+  };
 
-        // If the borrower is failed, this callback will be called.
-        const auto publisher_failed_callback = [this, addr, object_id]() {
-          // When the request is failed, there's no new borrowers ref published from this
-          // borrower.
-          absl::MutexLock lock(&mutex_);
-          CleanupBorrowersOnRefRemoved({}, object_id, addr);
-        };
-
-        // If the request was failed, we just invoke the failure callback right away.
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Ref removed subscription to " << addr.ip_address << ":"
-                        << addr.port << " for an object " << object_id << " has failed.";
-          publisher_failed_callback();
-          return;
-        }
-
-        absl::MutexLock lock(&mutex_);
-        object_status_subscriber_->Subscribe(
-            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
-            object_id.Binary(), message_published_callback, publisher_failed_callback);
-      });
+  object_status_subscriber_->Subscribe(
+      std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+      addr.ToProto(), object_id.Binary(), message_published_callback,
+      publisher_failed_callback);
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
@@ -886,8 +867,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
   }
 }
 
-void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
-                                        const WorkerID &subscriber_worker_id) {
+void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   ReferenceTable borrowed_refs;
   RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
@@ -916,9 +896,6 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
                  << " borrowed references.";
   object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     pub_message, object_id.Binary());
-  object_status_publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
-      object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1122,7 +1099,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   it->second.location_version++;
   for (const auto &callback : callbacks) {
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   }
 }
 
@@ -1143,7 +1121,8 @@ Status ReferenceCounter::SubscribeObjectLocations(
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
     callback(it->second.locations, it->second.object_size, it->second.spilled_url,
-             it->second.spilled_node_id, it->second.location_version);
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
   } else {
     // Otherwise, save the callback for later invocation.
     it->second.location_subscription_callbacks.push_back(callback);

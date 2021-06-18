@@ -1287,6 +1287,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_policy",
+    tags = ["policy"],
+    size = "medium",
+    srcs = ["policy/tests/test_policy.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["policy"],
     size = "small",
@@ -1548,6 +1555,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_P"],
     size = "medium",
     srcs = ["tests/test_placement_groups.py"]
+)
+
+py_test(
+    name = "tests/test_ray_client",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    srcs = ["tests/test_ray_client.py"]
 )
 
 py_test(
@@ -2265,6 +2279,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/parallel_evaluation_and_training_tf2",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6"]
+)
+
+py_test(
     name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
@@ -2342,6 +2365,24 @@ py_test(
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--framework=torch"],
 )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
 
 py_test(
     name = "examples/trajectory_view_api_tf",
@@ -2440,4 +2481,28 @@ py_test(
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
     args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
+    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
 )

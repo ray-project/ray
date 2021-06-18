@@ -35,12 +35,16 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   auto id1 = ObjectID::FromRandom();
   auto id2 = ObjectID::FromRandom();
 
-  // Check delete without get.
+  // Check basic put and get.
+  ASSERT_TRUE(provider->GetIfExists(id1) == nullptr);
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj2, id2));
+  ASSERT_TRUE(provider->GetIfExists(id1) != nullptr);
   ASSERT_EQ(unhandled_count, 0);
+
+  // Check delete without get.
   provider->Delete({id1, id2});
-  ASSERT_EQ(unhandled_count, 2);
+  ASSERT_EQ(unhandled_count, 1);
   unhandled_count = 0;
 
   // Check delete after get.

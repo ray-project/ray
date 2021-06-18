@@ -36,6 +36,7 @@ spec:
         properties:
           status:
             type: object
+            x-kubernetes-preserve-unknown-fields: true
             properties:
               phase:
                 description: Updating, Running, Error, or AutoscalingExceptionRecovery

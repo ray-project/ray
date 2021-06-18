@@ -16,14 +16,14 @@ To start the server manually, you can run:
 
 This runs ``ray.init()`` with default options and exposes the client gRPC port at ``host_ip:port`` (by default, ``0.0.0.0:10001``). Providing ``redis-address`` and ``redis-password`` will be passed into ``ray.init()`` when the server starts, allowing connection to an existing Ray cluster, as per the `cluster setup <cluster/index.html>`_ instructions.
 
-From here, another Ray script can access that server from a networked machine with ``ray.util.connect()``
+From here, another Ray script can access that server from a networked machine with ``ray.client().connect()``
 
 .. code-block:: python
 
    import ray
    import ray.util
 
-   ray.util.connect("<head_node_host>:10001")  # replace with the appropriate host and port
+   ray.client("<head_node_host>:10001").connect()  # replace with the appropriate host and port
 
    # Normal Ray code follows
    @ray.remote

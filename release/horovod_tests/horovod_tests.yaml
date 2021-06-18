@@ -1,13 +1,14 @@
 - name: horovod_test
-  owner:
-    mail: "amog@anyscale.com"
-    slack: "@tune-team"
-
   cluster:
     app_config: app_config.yaml
-    compute_template: cluster.yaml
+    compute_template: compute_tpl.yaml
 
   run:
-    timeout: 3600 # 10 hours.
-    prepare: python ../util/wait_cluster 3 600
+    timeout: 36000
+    prepare: python wait_cluster.py 3 600
     script: python workloads/horovod_test.py
+    long_running: True
+
+  smoke_test:
+    run:
+      timeout: 1800

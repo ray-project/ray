@@ -235,10 +235,8 @@ def get_ray_address_to_use_or_die():
     Returns:
         A string to pass into `ray.init(address=...)`
     """
-    if "RAY_ADDRESS" in os.environ:
-        return os.environ.get("RAY_ADDRESS")
-
-    return find_redis_address_or_die()
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          find_redis_address_or_die())
 
 
 def find_redis_address_or_die():
@@ -256,6 +254,41 @@ def find_redis_address_or_die():
     return redis_addresses.pop()
 
 
+def wait_for_node(redis_address,
+                  node_plasma_store_socket_name,
+                  redis_password=None,
+                  timeout=30):
+    """Wait until this node has appeared in the client table.
+
+    Args:
+        redis_address (str): The redis address.
+        node_plasma_store_socket_name (str): The
+            plasma_store_socket_name for the given node which we wait for.
+        redis_password (str): the redis password.
+        timeout: The amount of time in seconds to wait before raising an
+            exception.
+
+    Raises:
+        TimeoutError: An exception is raised if the timeout expires before
+            the node appears in the client table.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        clients = global_state.node_table()
+        object_store_socket_names = [
+            client["ObjectStoreSocketName"] for client in clients
+        ]
+        if node_plasma_store_socket_name in object_store_socket_names:
+            return
+        else:
+            time.sleep(0.1)
+    raise TimeoutError("Timed out while waiting for node to startup.")
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -269,16 +302,26 @@ def get_address_info_from_redis_helper(redis_address,
             "Redis has started but no raylets have registered yet.")
 
     relevant_client = None
+    head_node_client = None
     for client_info in client_table:
         if not client_info["Alive"]:
             continue
         client_node_ip_address = client_info["NodeManagerAddress"]
-        if (client_node_ip_address == node_ip_address
-                or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())
-                or client_node_ip_address == redis_ip_address):
+        if client_node_ip_address == node_ip_address:
             relevant_client = client_info
             break
+        if ((client_node_ip_address == "127.0.0.1"
+             and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
+            head_node_client = client_info
+
+    if relevant_client is None and head_node_client is not None:
+        logger.info(f"This node has an IP address of {node_ip_address}, "
+                    "while we can not found the matched Raylet address. "
+                    "This maybe come from when you connect the Ray cluster "
+                    "with a different IP address or connect a container.")
+        relevant_client = head_node_client
+
     if relevant_client is None:
         raise RuntimeError(
             f"This node has an IP address of {node_ip_address}, and Ray "
@@ -1461,13 +1504,8 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "",
-            redis_address,
-            plasma_store_name,
-            raylet_name,
-            redis_password,
-            session_dir,
-        )
+            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1519,6 +1557,7 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--runtime-env-dir={resource_dir}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1643,14 +1682,9 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(
-        cpp_worker_options,
-        redis_address,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-):
+def build_cpp_worker_command(cpp_worker_options, redis_address,
+                             plasma_store_name, raylet_name, redis_password,
+                             session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
 
     Args:
@@ -1661,14 +1695,21 @@ def build_cpp_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        log_dir (str): The path of logs.
+        node_ip_address (str): The ip address for this node.
     Returns:
         The command string for starting CPP worker.
     """
 
     command = [
-        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
-        session_dir
+        DEFAULT_WORKER_EXECUTABLE,
+        f"--ray-plasma-store-socket-name={plasma_store_name}",
+        f"--ray-raylet-socket-name={raylet_name}",
+        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray-redis-address={redis_address}",
+        f"--ray-redis-password={redis_password}",
+        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}"
     ]
 
     return command
@@ -1834,7 +1875,8 @@ def start_monitor(redis_address,
                   redis_password=None,
                   fate_share=None,
                   max_bytes=0,
-                  backup_count=0):
+                  backup_count=0,
+                  monitor_ip=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1850,7 +1892,8 @@ def start_monitor(redis_address,
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-
+        monitor_ip (str): IP address of the machine that the monitor will be
+            run on. Can be excluded, but required for autoscaler metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1865,6 +1908,8 @@ def start_monitor(redis_address,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:
         command.append("--redis-password=" + redis_password)
+    if monitor_ip:
+        command.append("--monitor-ip=" + monitor_ip)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,

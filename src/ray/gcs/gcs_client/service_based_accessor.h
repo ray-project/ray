@@ -49,6 +49,8 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) override;
+
  private:
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
@@ -454,7 +456,7 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetAll(
