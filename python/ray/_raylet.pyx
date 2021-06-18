@@ -1813,13 +1813,12 @@ cdef class CoreWorker:
         with runtime_env["env_vars"] of the parent rather than overwriting it.
         This is so that env vars set in the parent propagate to child actors
         and tasks even if a new env var is set in the child.
-        
+
         Args:
             runtime_env_dict (dict): A runtime env for a child actor or task.
         Returns:
             The resulting merged JSON-serialized runtime env.
         """
-
 
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
 
