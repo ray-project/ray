@@ -165,8 +165,8 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [
-        "tuned_examples/cql/pendulum-cql.yaml"
-        "tests/data/pendulum/huge.zip"
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/huge.zip",
     ],
     args = ["--yaml-dir=tuned_examples/cql"]
 )
@@ -179,8 +179,8 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [
-        "tuned_examples/cql/pendulum-cql.yaml"
-        "tests/data/pendulum/huge.zip"
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/huge.zip",
     ],
     args = ["--yaml-dir=tuned_examples/cql", "--framework=torch"]
 )
