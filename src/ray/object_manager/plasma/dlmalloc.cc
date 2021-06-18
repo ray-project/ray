@@ -265,6 +265,6 @@ bool IsOutsideInitialAllocation(void *p) {
   return (p < initial_region_ptr) || (p >= (initial_region_ptr + initial_region_size));
 }
 
-const PlasmaStoreInfo *plasma_config;
+const PlasmaStoreConfig *plasma_config;
 
 }  // namespace plasma

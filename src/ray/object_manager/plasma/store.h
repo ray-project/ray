@@ -68,8 +68,8 @@ class PlasmaStore {
   /// Stop this store.
   void Stop();
 
-  /// Get a const pointer to the internal PlasmaStoreInfo object.
-  const PlasmaStoreInfo *GetPlasmaStoreInfo();
+  /// Get a const pointer to the internal PlasmaStoreConfig object.
+  const PlasmaStoreConfig *GetPlasmaStoreConfig() const;
 
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
@@ -263,10 +263,10 @@ class PlasmaStore {
   boost::asio::basic_socket_acceptor<ray::local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   ray::local_stream_socket socket_;
-
-  /// The plasma store information, including the object tables, that is exposed
-  /// to the eviction policy.
-  PlasmaStoreInfo store_info_;
+  /// The plasma store configs
+  PlasmaStoreConfig plasma_config_;
+  // object tables store all objects in plasma store.
+  ObjectTable object_table_;
   /// The state that is managed by the eviction policy.
   EvictionPolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are

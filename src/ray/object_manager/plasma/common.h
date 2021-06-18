@@ -45,8 +45,7 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
-/// This type is used by the Plasma store. It is here because it is exposed to
-/// the eviction policy.
+/// ObjectTableEntry stores the memory allocation information of a Plasma Object.
 struct ObjectTableEntry {
   ObjectTableEntry();
 
@@ -86,7 +85,8 @@ struct ObjectTableEntry {
   plasma::flatbuf::ObjectSource source;
 };
 
-/// Mapping from ObjectIDs to information about the object.
+/// ObjectTable stores the mapping from an ObjectID to its memory allocation infomation
+/// in PlasmaStore.
 typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTable;
 
 }  // namespace plasma

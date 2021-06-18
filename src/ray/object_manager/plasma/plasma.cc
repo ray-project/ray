@@ -25,10 +25,10 @@ ObjectTableEntry::ObjectTableEntry() : pointer(nullptr), ref_count(0) {}
 
 ObjectTableEntry::~ObjectTableEntry() { pointer = nullptr; }
 
-ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
+ObjectTableEntry *GetObjectTableEntry(const ObjectTable &object_table,
                                       const ObjectID &object_id) {
-  auto it = store_info->objects.find(object_id);
-  if (it == store_info->objects.end()) {
+  auto it = object_table.find(object_id);
+  if (it == object_table.end()) {
     return NULL;
   }
   return it->second.get();

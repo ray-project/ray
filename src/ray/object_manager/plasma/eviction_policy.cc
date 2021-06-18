@@ -90,8 +90,10 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size)
-    : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
+EvictionPolicy::EvictionPolicy(const ObjectTable &object_table, int64_t max_size)
+    : pinned_memory_bytes_(0),
+      object_table_(object_table),
+      cache_("global lru", max_size) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
                                              std::vector<ObjectID> *objects_to_evict) {
@@ -145,7 +147,7 @@ void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
 }
 
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
-  auto entry = store_info_->objects[object_id].get();
+  auto entry = GetObjectTableEntry(object_table_, object_id);
   return entry->data_size + entry->metadata_size;
 }
 

@@ -94,10 +94,9 @@ class EvictionPolicy {
  public:
   /// Construct an eviction policy.
   ///
-  /// \param store_info Information about the Plasma store that is exposed
-  ///        to the eviction policy.
+  /// \param object_table Reference to the object_table
   /// \param max_size Max size in bytes total of objects to store.
-  explicit EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size);
+  explicit EvictionPolicy(const ObjectTable &object_table, int64_t max_size);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -171,8 +170,8 @@ class EvictionPolicy {
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
-  /// Pointer to the plasma store info.
-  PlasmaStoreInfo *store_info_;
+  /// A reference to the plasma object table
+  const ObjectTable &object_table_;
   /// Datastructure for the LRU cache.
   LRUCache cache_;
 };
