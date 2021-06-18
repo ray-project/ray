@@ -64,6 +64,8 @@ class _TrialIterator:
              (same as tune.run).
         unresolved_spec (dict): Experiment specification
             that might have unresolved distributions.
+        constant_grid_search (bool): Should random variables be sampled
+            first before iterating over grid variants (True) or not (False).
         output_path (str): A specific output path within the local_dir.
         points_to_evaluate (list): Same as tune.run.
         lazy_eval (bool): Whether variants should be generated
@@ -76,6 +78,7 @@ class _TrialIterator:
                  uuid_prefix: str,
                  num_samples: int,
                  unresolved_spec: dict,
+                 constant_grid_search: bool = False,
                  output_path: str = "",
                  points_to_evaluate: Optional[List] = None,
                  lazy_eval: bool = False,
@@ -85,6 +88,7 @@ class _TrialIterator:
         self.uuid_prefix = uuid_prefix
         self.num_samples_left = num_samples
         self.unresolved_spec = unresolved_spec
+        self.constant_grid_search = constant_grid_search
         self.output_path = output_path
         self.points_to_evaluate = points_to_evaluate or []
         self.num_points_to_evaluate = len(self.points_to_evaluate)
@@ -133,13 +137,18 @@ class _TrialIterator:
             config = self.points_to_evaluate.pop(0)
             self.num_samples_left -= 1
             self.variants = _VariantIterator(
-                get_preset_variants(self.unresolved_spec, config),
+                get_preset_variants(
+                    self.unresolved_spec,
+                    config,
+                    constant_grid_search=self.constant_grid_search),
                 lazy_eval=self.lazy_eval)
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
         elif self.num_samples_left > 0:
             self.variants = _VariantIterator(
-                generate_variants(self.unresolved_spec),
+                generate_variants(
+                    self.unresolved_spec,
+                    constant_grid_search=self.constant_grid_search),
                 lazy_eval=self.lazy_eval)
             self.num_samples_left -= 1
             resolved_vars, spec = next(self.variants)
@@ -166,6 +175,11 @@ class BasicVariantGenerator(SearchAlgorithm):
             configurations.
         max_concurrent (int): Maximum number of concurrently running trials.
             If 0 (default), no maximum is enforced.
+        constant_grid_search (bool): If this is set to ``True``, Ray Tune will
+            *first* try to sample random values and keep them constant over
+            grid search parameters. If this is set to ``False`` (default),
+            Ray Tune will sample new random parameters in each grid search
+            condition.
 
 
     Example:
@@ -232,7 +246,8 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     def __init__(self,
                  points_to_evaluate: Optional[List[Dict]] = None,
-                 max_concurrent: int = 0):
+                 max_concurrent: int = 0,
+                 constant_grid_search: bool = False):
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None
@@ -250,6 +265,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
         self._total_samples = 0
         self.max_concurrent = max_concurrent
+        self._constant_grid_search = constant_grid_search
         self._live_trials = set()
 
     @property
@@ -284,6 +300,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                 uuid_prefix=self._uuid_prefix,
                 num_samples=experiment.spec.get("num_samples", 1),
                 unresolved_spec=experiment.spec,
+                constant_grid_search=self._constant_grid_search,
                 output_path=experiment.dir_name,
                 points_to_evaluate=points_to_evaluate,
                 lazy_eval=lazy_eval,
