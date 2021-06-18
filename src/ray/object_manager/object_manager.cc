@@ -174,6 +174,9 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
+  // TODO Give the pull manager a chance to pin task args as soon as they appear.
+  // pull_manager->HandleObjectAdded(object_id, ray_object);
+
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
   auto iter = unfulfilled_push_requests_.find(object_id);
