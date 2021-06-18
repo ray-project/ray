@@ -780,6 +780,7 @@ def jobs():
     """
     return state.job_table()
 
+
 def next_job_id():
     """Get next job id from GCS.
 
