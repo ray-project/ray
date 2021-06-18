@@ -67,7 +67,7 @@ class RayAPIStub:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
         if job_config is not None:
-            runtime_env = json.load(job_config.get_serialized_runtime_env())
+            runtime_env = json.loads(job_config.get_serialized_runtime_env())
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "
