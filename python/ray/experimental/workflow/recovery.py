@@ -41,13 +41,13 @@ def _recover_workflow_step(input_object_refs: List[str],
     reader = workflow_storage.WorkflowStorage()
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
-        input_workflows[index] = reader.read_step_output(_step_id)
-    input_object_refs = [reader.read_object_ref(r) for r in input_object_refs]
+        input_workflows[index] = reader.load_step_output(_step_id)
+    input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
     step_id = workflow_context.get_current_step_id()
     with serialization_context.workflow_args_resolving_context(
             input_workflows, input_object_refs):
-        args, kwargs = reader.read_step_args(step_id)
-    func: Callable = reader.read_step_func_body(step_id)
+        args, kwargs = reader.load_step_args(step_id)
+    func: Callable = reader.load_step_func_body(step_id)
     return func(*args, **kwargs)
 
 
@@ -108,4 +108,4 @@ def resume_workflow_job(workflow_id: str, store: storage.Storage
                                              reader.get_entrypoint_step_id())
     if isinstance(r, Workflow):
         return r
-    return ray.put(reader.read_step_output(r))
+    return ray.put(reader.load_step_output(r))
