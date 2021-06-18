@@ -11,6 +11,26 @@ import ray
 from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
+if os.environ.get("CI") == "true":
+
+    @pytest.hookimpl(tryfirst=True, hookwrapper=True)
+    def pytest_runtest_makereport(item, call):
+        from pathlib import Path
+        # execute all other hooks to obtain the report object
+        outcome = yield
+        rep = outcome.get_result()
+
+        # we only look at actual failing test calls, not setup/teardown
+        if rep.when == "call" and rep.failed:
+            ray_log_dir = Path("/tmp/ray/session_latest/logs")
+            if ray_log_dir.is_dir():
+                print(f"========== failure log for {rep.nodeid} ==========")
+                for f in Path(ray_log_dir).iterdir():
+                    if f.is_file():
+                        print(f"------- {rep.nodeid}:{f.name} -----")
+                        print("\n".join(
+                            f.read_text().rstrip().split("\n")[-100:]))
+
 
 @pytest.fixture
 def shutdown_only():
