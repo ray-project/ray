@@ -35,7 +35,7 @@ if not job_config.runtime_env:
 
 try:
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.util.connect("{address}", job_config=job_config, namespace="")
+        ray.client("{address}").env({runtime_env}).namespace("").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
