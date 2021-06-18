@@ -9,7 +9,7 @@ ENV_STATE = "state"
 
 
 @PublicAPI
-class MultiAgentEnv(gym.Env):
+class MultiAgentEnv:
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
@@ -192,6 +192,6 @@ def make_multi_agent(env_name_or_creator):
 
         @override(MultiAgentEnv)
         def render(self, mode=None):
-            return [a.render(mode) for a in self.agents]
+            return self.agents[0].render(mode)
 
     return MultiEnv

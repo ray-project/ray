@@ -660,6 +660,12 @@ def _env_runner(
                             "rendering! Try `pip install gym[all]`.")
                 if simple_image_viewer:
                     simple_image_viewer.imshow(rendered)
+            elif rendered not in [True, False, None]:
+                raise ValueError(
+                    "The env's ({base_env}) `try_render()` method returned an"
+                    " unsupported value! Make sure you either return a "
+                    "uint8/w x h x 3 (RGB) image or handle rendering in a "
+                    "window and then return `True`.")
             perf_stats.env_render_time += time.time() - t5
 
 

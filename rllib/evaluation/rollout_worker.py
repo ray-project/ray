@@ -397,8 +397,16 @@ class RolloutWorker(ParallelIteratorWorker):
 
                 def wrap(env):
                     cls = env.__class__
+                    # Add gym.Env as mixin parent to the env's class
+                    # (so it can be wrapped).
+                    env.__class__ = \
+                        type(env.__class__.__name__, (type(env), gym.Env), {})
+                    # Wrap the (now gym.Env) env with our (multi-agent capable)
+                    # recording wrapper.
                     env = record_env_wrapper(env, record_env, log_dir,
                                              policy_config)
+                    # Make sure, we make the wrapped object a member of the
+                    # original MultiAgentEnv sub-class again.
                     if type(env) is not cls:
                         env.__class__ = \
                             type(cls.__name__, (type(env), cls), {})
