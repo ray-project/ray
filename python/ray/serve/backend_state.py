@@ -530,7 +530,7 @@ class BackendState:
             shutdown_goals.append(
                 self.delete_backend(backend_tag, force_kill=True))
 
-        # TODO(jiaodong): This might not be 100% safe since we deleted 
+        # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed
         # yet. Need to address in follow-up PRs.
         self._kv_store.delete(CHECKPOINT_KEY)
