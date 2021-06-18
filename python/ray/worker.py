@@ -1279,7 +1279,11 @@ def connect(node,
     if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
-        uris = worker.core_worker.get_job_config().runtime_env.uris
+        # TODO(ekl) get rid of the env var hack and get runtime env from the
+        # task spec and/or job config only.
+        uris = os.environ.get("RAY_PACKAGING_URI")
+        uris = [uris] if uris else \
+            worker.core_worker.get_job_config().runtime_env.uris
         working_dir = runtime_env.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
