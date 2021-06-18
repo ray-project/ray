@@ -391,7 +391,7 @@ class RolloutWorker(ParallelIteratorWorker):
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
-            # MultiAgentEnv (basically a gym.Env) -> Wrap and make
+            # MultiAgentEnv (a gym.Env) -> Wrap and make
             # the wrapped Env yet another MultiAgentEnv.
             if isinstance(self.env, MultiAgentEnv):
 
