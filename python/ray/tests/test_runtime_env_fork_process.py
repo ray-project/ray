@@ -1,5 +1,4 @@
 # coding: utf-8
-import argparse
 import os
 import sys
 
@@ -14,8 +13,8 @@ def test_fork_process_in_runtime_env(ray_start_cluster):
     directory = os.path.dirname(os.path.realpath(__file__))
     setup_worker_path = os.path.join(directory, "mock_setup_worker.py")
     cluster.add_node(num_cpus=1, setup_worker_path=setup_worker_path)
-    job_config = ray.job_config.JobConfig(runtime_env={
-        "env_vars": {
+    job_config = ray.job_config.JobConfig(
+        runtime_env={"env_vars": {
             "a": "b",
         }})
     ray.init(address=cluster.address, job_config=job_config)
@@ -43,4 +42,3 @@ def test_fork_process_in_runtime_env(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
-
