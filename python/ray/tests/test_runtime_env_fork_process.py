@@ -7,7 +7,6 @@ import pytest
 import ray
 
 
-@pytest.mark.parametrize("use_runtime_env", [True, False])
 def test_fork_process_in_runtime_env(ray_start_cluster):
     cluster = ray_start_cluster
     directory = os.path.dirname(os.path.realpath(__file__))
