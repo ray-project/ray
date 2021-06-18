@@ -196,7 +196,7 @@ class AgentIOTest(unittest.TestCase):
                             "policy_2": gen_policy(),
                         },
                         "policy_mapping_fn": (
-                            lambda aid, **kwargs: random.choice(
+                            lambda agent_id: random.choice(
                                 ["policy_1", "policy_2"])),
                     },
                     "framework": fw,
@@ -218,7 +218,7 @@ class AgentIOTest(unittest.TestCase):
                             "policy_2": gen_policy(),
                         },
                         "policy_mapping_fn": (
-                            lambda aid, **kwargs: random.choice(
+                            lambda agent_id: random.choice(
                                 ["policy_1", "policy_2"])),
                     },
                     "framework": fw,
