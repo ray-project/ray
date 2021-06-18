@@ -156,7 +156,6 @@ bool Subscriber::PublishIfPossible(bool force) {
   }
 
   if (force || mailbox_.size() > 0) {
-    RAY_LOG(ERROR) << "Replied. mailbox size: " << mailbox_.size();
     // If force publish is invoked, mailbox could be empty. We should always add a reply
     // here because otherwise, there could be memory leak due to our grpc layer
     // implementation.
