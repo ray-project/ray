@@ -292,8 +292,11 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             return None
 
         stub = ray_client_pb2_grpc.RayletDriverStub(chan)
-        return getattr(stub, method)(
-            request, metadata=[("client_id", client_id)])
+        try:
+            return getattr(stub, method)(
+                request, metadata=[("client_id", client_id)])
+        except Exception:
+            logger.exception(f"Proxying call to {method} failed!")
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
         return self._call_inner_function(request, context, "Init")
@@ -436,6 +439,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 new_iter, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 yield self.modify_connection_info_resp(resp)
+        except Exception:
+            logger.exception("Proxying Datapath failed!")
         finally:
             server.set_result(None)
             with self.clients_lock:
@@ -474,8 +479,11 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
         resp_stream = stub.Logstream(
             request_iterator, metadata=[("client_id", client_id)])
-        for resp in resp_stream:
-            yield resp
+        try:
+            for resp in resp_stream:
+                yield resp
+        except Exception:
+            logger.exception("Proxying Logstream failed!")
 
 
 def serve_proxier(connection_str: str,
