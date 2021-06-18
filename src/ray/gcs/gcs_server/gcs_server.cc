@@ -38,7 +38,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num),
       client_call_manager_(main_service),
       raylet_client_pool_(
-          std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)) {}
+          std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
+      pubsub_periodical_runner_(main_service_) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -58,6 +59,12 @@ void GcsServer::Start() {
 
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
+
+  // Init grpc based pubsub
+  // TODO(before merging): Make these constants configurable.
+  grpc_pubsub_publisher_.reset(new pubsub::Publisher(
+      &pubsub_periodical_runner_, []() { return absl::GetCurrentTimeNanos(); }, 60 * 1000,
+      1024));
 
   // Init gcs table storage.
   gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
