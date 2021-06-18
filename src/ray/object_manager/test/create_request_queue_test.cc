@@ -475,13 +475,8 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   // Request would block.
   auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
-  if (RayConfig::instance().plasma_unlimited()) {
-    result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
-    ASSERT_EQ(result.first.data_size, 1234);
-  } else {
-    ASSERT_EQ(result.first.data_size, 0);
-    ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
-  }
+  ASSERT_EQ(result.first.data_size, 0);
+  ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
   ASSERT_TRUE(queue_.ProcessRequests().ok());
 
   // Queue is empty again, request can be fulfilled.

@@ -66,11 +66,9 @@ void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
   if (!mem) {
     return nullptr;
   }
+  RAY_CHECK(IsOutsideInitialAllocation(mem));
   allocated_ += bytes;
-  // The allocation was servicable using the initial region, no need to fallback.
-  if (IsOutsideInitialAllocation(mem)) {
-    fallback_allocated_ += bytes;
-  }
+  fallback_allocated_ += bytes;
   return mem;
 }
 

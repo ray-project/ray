@@ -63,12 +63,6 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
 
-  // Immediately fulfill it using the fallback allocator.
-  if (RayConfig::instance().plasma_unlimited()) {
-    PlasmaError error = create_callback(&result, /*fallback_allocator=*/true);
-    return {result, error};
-  }
-
   if (!queue_.empty()) {
     // There are other requests queued. Return an out-of-memory error
     // immediately because this request cannot be served.
