@@ -5,31 +5,24 @@ from dataclasses import dataclass
 
 import ray
 from ray.experimental.workflow.common import StepID
-from typing import Any, Callable, Optional, List, Dict, Tuple
+from typing import Any, Callable, List, Dict, Tuple
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
 
+# TODO(suquark): I did not come up with a better name :(
 @dataclass
-class StepInspectResult:
-    # The step output checkpoint exists and valid. If this field
-    # is set, we do not set all other fields below.
-    output_object_valid: bool = False
-    # The ID of the step that could contain the output checkpoint of this
-    # step. If this field is set, we do not set all other fields below.
-    output_step_id: Optional[StepID] = None
-    # The step input arguments checkpoint exists and valid.
-    args_valid: bool = False
-    # The step function body checkpoint exists and valid.
-    func_body_valid: bool = False
-    # The object refs in the inputs of the workflow.
-    object_refs: Optional[List[str]] = None
-    # The workflows in the inputs of the workflow.
-    workflows: Optional[List[str]] = None
-
-    def is_recoverable(self) -> bool:
-        return (self.args_valid and self.object_refs is not None
-                and self.workflows is not None and self.func_body_valid)
+class StepChecklist:
+    # does the step output checkpoint exists?
+    output_object_exists: bool
+    # does the step output metadata exists?
+    output_metadata_exists: bool
+    # does the step input metadata exists?
+    input_metadata_exists: bool
+    # does the step input argument exists?
+    args_exists: bool
+    # does the step function body exists?
+    func_body_exists: bool
 
 
 class Storage(metaclass=abc.ABCMeta):
@@ -82,22 +75,6 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def update_output_forward(self, workflow_id: str,
-                              forward_output_to: StepID,
-                              output_step_id: StepID) -> None:
-        """Update output forward. The output of 'output_step_id' should
-        forward to the step 'forward_output_to'. When resume from
-        'forward_output_to' step, that step can directly read
-        the output of 'output_step_id'.
-
-        Args:
-            workflow_id: ID of the workflow job.
-            forward_output_to: step 'forward_output_to'.
-            output_step_id: step 'output_step_id'.
-        """
-        pass
-
-    @abstractmethod
     def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
@@ -108,7 +85,6 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             Output of the workflow step.
         """
-        pass
 
     @abstractmethod
     def dump_step_output(self, workflow_id: str, step_id: StepID,
@@ -119,7 +95,6 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             output: The output object.
         """
-        pass
 
     @abstractmethod
     def load_step_func_body(self, workflow_id: str,
@@ -144,7 +119,6 @@ class Storage(metaclass=abc.ABCMeta):
             step_id: ID of the workflow step.
             func_body: The step function to be written.
         """
-        pass
 
     @abstractmethod
     def load_step_args(self, workflow_id: str, step_id: StepID) -> ArgsType:
@@ -159,7 +133,6 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             Args and kwargs.
         """
-        pass
 
     @abstractmethod
     def dump_step_args(self, workflow_id: str, step_id: StepID,
@@ -171,7 +144,6 @@ class Storage(metaclass=abc.ABCMeta):
             step_id: ID of the workflow step.
             args: The step input args to be written.
         """
-        pass
 
     @abstractmethod
     def load_object_ref(self, workflow_id: str,
@@ -184,7 +156,6 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             The object ref.
         """
-        pass
 
     @abstractmethod
     def dump_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
@@ -194,35 +165,19 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             rref: The ObjectRef to be saved.
         """
-        pass
 
     @abstractmethod
-    def get_entrypoint_step_id(self, workflow_id: str) -> StepID:
-        """Get the entrypoint step ID of the workflow.
+    def step_field_exists(self, workflow_id: str,
+                          step_id: StepID) -> StepChecklist:
+        """Check the existence of step fields in the storage.
 
         Args:
             workflow_id: ID of the workflow job.
+            step_id: ID of the step.
 
         Returns:
-            The ID of the entrypoint step.
+            A dataclass of the step fields.
         """
-        pass
-
-    @abstractmethod
-    def inspect_step(self, workflow_id: str,
-                     step_id: StepID) -> StepInspectResult:
-        """
-        Get the status of a workflow step. The status indicates whether
-        the workflow step can be recovered etc.
-
-        Args:
-            workflow_id: ID of the workflow job.
-            step_id: The ID of a workflow step
-
-        Returns:
-            The status of the step.
-        """
-        pass
 
     @abstractmethod
     def validate_workflow(self, workflow_id: str) -> None:
@@ -231,4 +186,3 @@ class Storage(metaclass=abc.ABCMeta):
         Args:
             workflow_id: ID of the workflow job.
         """
-        pass

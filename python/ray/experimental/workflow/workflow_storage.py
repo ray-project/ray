@@ -3,14 +3,38 @@ This module is higher-level abstraction of storage directly used by
 workflows.
 """
 
+import json
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
+
+from dataclasses import dataclass
 
 import ray
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.storage.base import StepInspectResult
+
+
+@dataclass
+class StepInspectResult:
+    # The step output checkpoint exists and valid. If this field
+    # is set, we do not set all other fields below.
+    output_object_valid: bool = False
+    # The ID of the step that could contain the output checkpoint of this
+    # step. If this field is set, we do not set all other fields below.
+    output_step_id: Optional[StepID] = None
+    # The step input arguments checkpoint exists and valid.
+    args_valid: bool = False
+    # The step function body checkpoint exists and valid.
+    func_body_valid: bool = False
+    # The object refs in the inputs of the workflow.
+    object_refs: Optional[List[str]] = None
+    # The workflows in the inputs of the workflow.
+    workflows: Optional[List[str]] = None
+
+    def is_recoverable(self) -> bool:
+        return (self.args_valid and self.object_refs is not None
+                and self.workflows is not None and self.func_body_valid)
 
 
 class WorkflowStorage:
@@ -28,19 +52,22 @@ class WorkflowStorage:
         self._storage = store
         self._workflow_id = workflow_id
 
-    def update_output_forward(self, forward_output_to: StepID,
-                              output_step_id: StepID) -> None:
-        """Update output forward. The output of 'output_step_id' should
-        forward to the step 'forward_output_to'. When resume from
+    def update_output_shortcut(self, forward_output_to: StepID,
+                               shortcut_output_step_id: StepID) -> None:
+        """Update output shortcut. The output of 'shortcut_output_step_id'
+        should forward to the step 'forward_output_to'. When resume from
         'forward_output_to' step, that step can directly read
-        the output of 'output_step_id'.
+        the output of 'shortcut_output_step_id'.
 
         Args:
             forward_output_to: step 'forward_output_to'.
-            output_step_id: step 'output_step_id'.
+            shortcut_output_step_id: step 'shortcut_output_step_id'.
         """
-        self._storage.update_output_forward(self._workflow_id,
-                                            forward_output_to, output_step_id)
+        metadata = self._storage.load_step_output_metadata(
+            self._workflow_id, forward_output_to)
+        metadata["output_step_id_shortcut"] = shortcut_output_step_id
+        self._storage.dump_step_output_metadata(self._workflow_id,
+                                                forward_output_to, metadata)
 
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
@@ -88,13 +115,20 @@ class WorkflowStorage:
         """
         return self._storage.load_object_ref(self._workflow_id, object_id)
 
+    def _locate_output_step_id(self, step_id: StepID):
+        metadata = self._storage.load_step_output_metadata(
+            self._workflow_id, step_id)
+        return (metadata.get("output_step_id_shortcut")
+                or metadata["output_step_id"])
+
     def get_entrypoint_step_id(self) -> StepID:
         """Load the entrypoint step ID of the workflow.
 
         Returns:
             The ID of the entrypoint step.
         """
-        return self._storage.get_entrypoint_step_id(self._workflow_id)
+        # empty StepID represents the workflow driver
+        return self._locate_output_step_id("")
 
     def inspect_step(self, step_id: StepID) -> StepInspectResult:
         """
@@ -107,7 +141,32 @@ class WorkflowStorage:
         Returns:
             The status of the step.
         """
-        return self._storage.inspect_step(self._workflow_id, step_id)
+
+        field_list = self._storage.step_field_exists(self._workflow_id,
+                                                     step_id)
+        # does this step contains output checkpoint file?
+        if field_list.output_object_exists:
+            return StepInspectResult(output_object_valid=True)
+        # do we know where the output comes from?
+        if field_list.output_metadata_exists:
+            return StepInspectResult(
+                output_step_id=self._locate_output_step_id(step_id))
+
+        # read inputs metadata
+        try:
+            metadata = self._storage.load_step_input_metadata(
+                self._workflow_id, step_id)
+            input_object_refs = metadata["object_refs"]
+            input_workflows = metadata["workflows"]
+        except (FileNotFoundError, json.JSONDecodeError):
+            input_object_refs = None
+            input_workflows = None
+        return StepInspectResult(
+            args_valid=field_list.args_exists,
+            func_body_valid=field_list.func_body_exists,
+            object_refs=input_object_refs,
+            workflows=input_workflows,
+        )
 
     def validate_workflow(self) -> None:
         """Check if the workflow structured correctly."""
@@ -154,7 +213,7 @@ class WorkflowStorage:
                     self._write_step_inputs(w.id, w.get_inputs())
                 assert step_id != ret.id
                 self._storage.dump_step_output_metadata(
-                    self._workflow_id, step_id, {"step_id": ret.id})
+                    self._workflow_id, step_id, {"output_step_id": ret.id})
             forward_src = ret.id
         else:
             # This workflow step returns a object.
@@ -162,4 +221,4 @@ class WorkflowStorage:
             self._storage.dump_step_output(self._workflow_id, step_id, ret)
             forward_src = step_id
         if forward_output_to is not None:
-            self.update_output_forward(forward_output_to, forward_src)
+            self.update_output_shortcut(forward_output_to, forward_src)
