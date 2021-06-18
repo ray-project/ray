@@ -109,7 +109,10 @@ if __name__ == "__main__":
                 reward_mean = t.last_result["episode_reward_mean"] if \
                     exp["config"].get("evaluation_interval", 0) == 0 else \
                     t.last_result["evaluation"]["episode_reward_mean"]
-                if reward_mean >= t.stopping_criterion["episode_reward_mean"]:
+
+                if reward_mean >= t.stopping_criterion.get(
+                        "episode_reward_mean", t.
+                        stopping_criterion["evaluation/episode_reward_mean"]):
                     passed = True
                     break
 

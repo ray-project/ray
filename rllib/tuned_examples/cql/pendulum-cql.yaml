@@ -27,9 +27,13 @@ pendulum-cql:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
         train_batch_size: 2000
-        bc_iters: 200
+        bc_iters: 100
         no_done_at_end: true
         n_step: 3
+        optimization:
+          actor_learning_rate: 0.001
+          critic_learning_rate: 0.001
+          entropy_learning_rate: 0.001
         prioritized_replay: false
         timesteps_per_iteration: 1000
         learning_starts: 256
