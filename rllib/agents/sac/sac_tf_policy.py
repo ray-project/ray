@@ -154,7 +154,7 @@ def _get_dist_class(policy: Policy,
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
     """
-    if hasattr(policy, "dist_class"):
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
         return policy.dist_class
     elif config["model"].get("custom_action_dist"):
         action_dist_class, _ = ModelCatalog.get_action_dist(

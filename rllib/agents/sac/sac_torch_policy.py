@@ -48,7 +48,7 @@ def _get_dist_class(policy: Policy,
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
     """
-    if hasattr(policy, "dist_class"):
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
         return policy.dist_class
     elif config["model"].get("custom_action_dist"):
         action_dist_class, _ = ModelCatalog.get_action_dist(
@@ -218,8 +218,8 @@ def actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
-        action_dist_class = _get_dist_class(
-            policy, policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
