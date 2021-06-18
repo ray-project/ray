@@ -319,7 +319,7 @@ class BackendReplica(VersionedReplica):
             self._actor.cleanup()
             return True
 
-        timeout_passed = time.time() > self._shutdown_deadline
+        timeout_passed = time.time() >= self._shutdown_deadline
 
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
@@ -513,22 +513,23 @@ class BackendState:
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
 
-    def shutdown(self) -> List[Optional[GoalId]]:
+    def shutdown(self) -> List[GoalId]:
         """
-        Shutdown all running replicas by notifying the controller, and leave 
+        Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
 
-        Once shutdown signal is received, it will also prevent any new 
+        Once shutdown signal is received, it will also prevent any new
         deployments or replicas from being created.
 
-        One can send multiple shutdown signals but won't effectively make any 
+        One can send multiple shutdown signals but won't effectively make any
         difference compare to calling it once.
         """
 
         shutdown_goals = []
         for backend_tag, _ in self._replicas.items():
-            shutdown_goals.append(
-                self.delete_backend(backend_tag, force_kill=True))
+            goal = self.delete_backend(backend_tag, force_kill=True)
+            if goal is not None:
+                shutdown_goals.append(goal)
 
         # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed
@@ -596,8 +597,8 @@ class BackendState:
 
         Args:
             backend_tag (BackendTag): Identifier of a backend
-            backend_info (Optional[BackendInfo]): Contains backend and 
-                replica config, if passed in as None, we're marking 
+            backend_info (Optional[BackendInfo]): Contains backend and
+                replica config, if passed in as None, we're marking
                 target backend as shutting down.
         """
         existing_goal_id = self._backend_goals.get(backend_tag)

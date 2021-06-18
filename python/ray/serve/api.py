@@ -134,7 +134,9 @@ class Client:
         instance.
         """
         if (not self._shutdown) and ray.is_initialized():
-            ray.get(self._controller.shutdown.remote())
+            for goal_id in ray.get(self._controller.shutdown.remote()):
+                self._wait_for_goal(goal_id)
+
             ray.kill(self._controller, no_restart=True)
 
             # Wait for the named actor entry gets removed as well.

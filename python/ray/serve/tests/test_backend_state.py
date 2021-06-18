@@ -1423,10 +1423,10 @@ def test_health_check(mock_backend_state):
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
 
 
-def test_shutdown_through_controller(mock_backend_state):
+def test_shutdown(mock_backend_state):
     """
-    Test to ensure a shutdown action goes through controller's backend 
-    state change and handled by controller's main event loop.
+    Test that shutdown waits for all backends to be deleted and the backends
+    are force-killed without a grace period.
     """
     backend_state, timer, goal_manager = mock_backend_state
 
@@ -1451,6 +1451,8 @@ def test_shutdown_through_controller(mock_backend_state):
 
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert backend_state._replicas[TEST_TAG].get()[0]._actor.stopped
+    assert backend_state._replicas[TEST_TAG].get()[
+        0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas[TEST_TAG].get()[0]._actor.cleaned_up
     assert not goal_manager.check_complete(shutdown_goal)
 
