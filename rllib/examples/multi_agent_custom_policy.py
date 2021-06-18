@@ -78,7 +78,7 @@ if __name__ == "__main__":
                 "random": (RandomPolicy, obs_space, act_space, {}),
             },
             "policy_mapping_fn": (
-                lambda aid, **kwargs: ["pg_policy", "random"][aid % 2]),
+                lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
         },
         "framework": args.framework,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

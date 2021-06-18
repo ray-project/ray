@@ -12,6 +12,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
@@ -635,6 +636,72 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
         self.assertEqual(num_checkpoints(trial), 3)
+
+    def testCheckpointAtEndNotBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial(
+            "__fake",
+            checkpoint_at_end=True,
+            stopping_criterion={"training_iteration": 4})
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+
+        runner.step()  # run iteration 1
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 1)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 2
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 2)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 3
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 4
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
+        self.assertEqual(num_checkpoints(trial), 1)
+
+    def testCheckpointAtEndBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial(
+            "__fake",
+            checkpoint_at_end=True,
+            stopping_criterion={"training_iteration": 4})
+        # Force result buffer length
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(result_buffer_length=7))
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iterations 1-7
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 7)
+        self.assertEqual(num_checkpoints(trial), 1)
 
     def testUserCheckpoint(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early

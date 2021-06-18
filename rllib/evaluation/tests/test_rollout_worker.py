@@ -514,8 +514,7 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_mapping_fn=lambda agent_id, episode, **kwargs:
-            "pol0" if agent_id == 0 else "pol1",
+            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="env_steps",
             batch_mode="truncate_episodes",
@@ -532,8 +531,7 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_mapping_fn=lambda agent_id, episode, **kwargs:
-            "pol0" if agent_id == 0 else "pol1",
+            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="agent_steps",
             batch_mode="truncate_episodes")
