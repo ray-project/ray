@@ -456,8 +456,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   if (worker_shim_pid == 0) {
     worker_shim_pid = pid;
   }
-  worker->SetShimProcess(Process::FromPid(worker_shim_pid));
   auto shim_process = Process::FromPid(worker_shim_pid);
+  worker->SetShimProcess(shim_process);
   if (state.starting_worker_processes.count(shim_process) == 0) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
                      << shim_process.GetId();
@@ -466,7 +466,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   auto process = Process::FromPid(pid);
-  worker->SetShimProcess(shim_process);
   worker->SetProcess(process);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
