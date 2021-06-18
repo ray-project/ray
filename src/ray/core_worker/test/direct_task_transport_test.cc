@@ -166,7 +166,6 @@ class MockRayletClient : public WorkerLeaseInterface {
   // Trigger reply to RequestWorkerLease.
   bool GrantWorkerLease(const std::string &address, int port,
                         const NodeID &retry_at_raylet_id, bool cancel = false,
-                        bool work_stealing_test = false,
                         std::string worker_id = std::string()) {
     rpc::RequestWorkerLeaseReply reply;
     if (cancel) {
@@ -179,7 +178,9 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_ip_address(address);
       reply.mutable_worker_address()->set_port(port);
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
-      if (work_stealing_test) {
+      // Set the worker ID if the worker_id string is a valid, non-empty argument. A
+      // worker ID can only be set using a 28-characters string.
+      if (worker_id.length() == 28) {
         reply.mutable_worker_address()->set_worker_id(worker_id);
       }
     }
@@ -1609,12 +1610,11 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  // Grant a worker lease, and check that one more worker was requested due to the Eager
+  // Grant a worker lease, and check that one more worker is requested due to the Eager
   // Worker Requesting Mode.
   std::string worker1_id = "worker1_ID_abcdefghijklmnopq";
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil(), false,
-                                              true, worker1_id));
-
+                                              worker1_id));
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1626,8 +1626,7 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
 
   std::string worker2_id = "worker2_ID_abcdefghijklmnopq";
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil(), false,
-                                              true, worker2_id));
-
+                                              worker2_id));
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1748,6 +1747,239 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   ASSERT_EQ(task_finisher->num_tasks_complete, 20);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 2);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+}
+
+TEST(DirectTaskTransportTest, TestNoStealingByExpiredWorker) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the
+  // pipelining of task submissions. This is done by passing a
+  // max_tasks_in_flight_per_worker parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), 1000, actor_creator, max_tasks_in_flight_per_worker);
+
+  // prepare 30 tasks and save them in a vector
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 30; i++) {
+    tasks.push_back(BuildEmptyTaskSpec());
+  }
+  ASSERT_EQ(tasks.size(), 30);
+
+  // Submit the tasks, and check that one worker is requested.
+  for (int i = 1; i <= 30; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Grant a worker lease, and check that one more worker is requested due to the Eager
+  // Worker Requesting Mode.
+  std::string worker1_id = "worker1_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil(), false,
+                                              worker1_id));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Grant a second worker lease, and check that one more worker is requested due to the
+  // Eager Worker Requesting Mode.
+  std::string worker2_id = "worker2_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil(), false,
+                                              worker2_id));
+  ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Grant a third worker lease, and check that one more worker is requested due to the
+  // Eager Worker Requesting Mode.
+  std::string worker3_id = "worker3_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1003, NodeID::Nil(), false,
+                                              worker3_id));
+  ASSERT_EQ(raylet_client->num_workers_requested, 4);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 30);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // First worker runs the first 9 tasks and returns an error on completion of the last
+  // one (10th task).
+  for (int i = 1; i <= 10; i++) {
+    bool found_error = (i == 10);
+    auto status = Status::OK();
+    ASSERT_TRUE(status.ok());
+    if (found_error) {
+      status = Status::UnknownError("Worker has experienced an unknown error!");
+      ASSERT_FALSE(status.ok());
+    }
+    ASSERT_TRUE(worker_client->ReplyPushTask(status));
+  }
+
+  // Check that the first worker does not start stealing, and that it is returned to the
+  // Raylet instead.
+  ASSERT_EQ(raylet_client->num_workers_requested, 4);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 9);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Second worker runs the first 9 tasks. Then we let its lease expire, and check that it
+  // does not initiate stealing.
+  for (int i = 1; i <= 9; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(1000));  // Sleep for 1s, causing the lease to time out.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // Check that the second worker does not start stealing, and that it is returned to the
+  // Raylet instead.
+  ASSERT_EQ(raylet_client->num_workers_requested, 4);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 19);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Last worker finishes its workload and returns
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 4);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 29);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+}
+
+TEST(DirectTaskTransportTest, TestNoWorkerRequestedIfStealingUnavailable) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the
+  // pipelining of task submissions. This is done by passing a
+  // max_tasks_in_flight_per_worker parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
+
+  // prepare 2 tasks and save them in a vector
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 10; i++) {
+    tasks.push_back(BuildEmptyTaskSpec());
+  }
+  ASSERT_EQ(tasks.size(), 10);
+
+  // submit both tasks
+  for (int i = 1; i <= 10; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Grant a worker lease, and check that one more worker is requested due to the Eager
+  // Worker Requesting Mode, even if the task queue is empty.
+  std::string worker1_id = "worker1_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil(), false,
+                                              worker1_id));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Execute 9 tasks
+  for (int i = 1; i <= 9; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 9);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Grant a second worker, which returns immediately because there are no stealable
+  // tasks.
+  std::string worker2_id = "worker2_ID_abcdefghijklmnopq";
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil(), false,
+                                              worker2_id));
+
+  // Check that no more workers are requested now that there are no more stealable tasks.
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 9);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
+
+  // Last task runs and first worker is returned
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }

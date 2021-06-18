@@ -120,8 +120,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const SchedulingKey &scheduling_key) {
   client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0, false,
-                                          0, assigned_resources, scheduling_key);
+  LeaseEntry new_lease_entry =
+      LeaseEntry(std::move(lease_client), expiration, assigned_resources, scheduling_key);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -163,13 +163,10 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
 
   // Check that there is at least one worker (other than the thief) with the current
   // SchedulingKey and that there are stealable tasks
-  if (max_tasks_in_flight_per_worker_ == 1 ||
-      scheduling_key_entry.active_workers.size() <= 1 ||
+  if (scheduling_key_entry.active_workers.size() <= 1 ||
       !scheduling_key_entry.StealableTasks()) {
     return false;
   }
-  RAY_CHECK(scheduling_key_entry.active_workers.size() > 1);
-  RAY_CHECK(scheduling_key_entry.StealableTasks());
 
   // Iterate through the active workers with the relevant SchedulingKey, and select the
   // best one for stealing by updating the victim_raw_addr (pointing to the designated
@@ -247,7 +244,6 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
     ReturnWorker(thief_addr, was_error, scheduling_key);
     return;
   }
-  RAY_CHECK(!was_error);
 
   RAY_LOG(DEBUG) << "Beginning to steal work now! Thief is worker: "
                  << thief_addr.worker_id;
@@ -378,8 +374,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
-  if (!task_queue.empty() ||
-      (max_tasks_in_flight_per_worker_ > 1 && scheduling_key_entry.StealableTasks())) {
+  if (!task_queue.empty() || scheduling_key_entry.StealableTasks()) {
     // There are still pending tasks, or there are tasks that can be stolen by a new
     // worker, so let the worker lease request succeed.
     return;
@@ -467,7 +462,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (task_queue.empty()) {
     // If any worker has more than one task in flight, then that task can be stolen.
     bool stealable_tasks = scheduling_key_entry.StealableTasks();
-    if (max_tasks_in_flight_per_worker_ == 1 || !stealable_tasks) {
+    if (!stealable_tasks) {
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.

@@ -535,7 +535,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
                    << worker_context_.GetWorkerID()
                    << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
-    // task stolen. respond accordingly
     reply->set_task_stolen(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };

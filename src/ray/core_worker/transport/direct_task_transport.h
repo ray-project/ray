@@ -235,23 +235,20 @@ class CoreWorkerDirectTaskSubmitter {
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
-    uint32_t tasks_in_flight;
-    bool currently_stealing;
+    uint32_t tasks_in_flight = 0;
+    bool currently_stealing = false;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
 
     LeaseEntry(
         std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-        int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
-        bool currently_stealing = false, int64_t stolen_tasks_to_wait_for = 0,
+        int64_t lease_expiration_time = 0,
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
                                                        ActorID::Nil()))
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
-          tasks_in_flight(tasks_in_flight),
-          currently_stealing(currently_stealing),
           assigned_resources(assigned_resources),
           scheduling_key(scheduling_key) {}
 
@@ -314,12 +311,19 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether the pipelines to the active workers associated with a
     // SchedulingKeyEntry are all full.
     inline bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
-      return total_tasks_in_flight ==
+      return total_tasks_in_flight >=
              (active_workers.size() * max_tasks_in_flight_per_worker);
     }
 
     // Check whether there exists at least one task that can be stolen
     inline bool StealableTasks() const {
+      // TODO: Make this function more accurate without introducing excessive
+      // inefficiencies. Currently, there is one scenario where this function can return
+      // false even if there are stealable tasks. This happens if the number of tasks in
+      // flight is less or equal to the number of active workers (so the condition below
+      // evaluates to FALSE), but some workers have more than 1 task queued, while others
+      // have none.
+
       // If any worker has more than one task in flight, then that task can be stolen.
       return total_tasks_in_flight > active_workers.size();
     }
