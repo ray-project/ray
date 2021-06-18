@@ -295,6 +295,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
 
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   /// Metrics collected since the last report.
   uint64_t metric_tasks_queued_;
   uint64_t metric_tasks_dispatched_;
