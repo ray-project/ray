@@ -357,6 +357,10 @@ def test_heartbeat_ip(shutdown_only):
     global_state_accessor.disconnect()
 
 
+def test_next_job_id(ray_start_regular):
+    assert ray.state.next_job_id().int() + 1 == ray.state.next_job_id().int()
+
+
 if __name__ == "__main__":
     import pytest
     import sys

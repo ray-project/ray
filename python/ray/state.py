@@ -277,6 +277,16 @@ class GlobalState:
 
         return results
 
+    def next_job_id(self):
+        """Get next job id from GCS.
+
+        Returns:
+            Information about the node in the cluster.
+        """
+        self._check_connected()
+
+        return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
+
     def profile_table(self):
         self._check_connected()
 
@@ -769,6 +779,14 @@ def jobs():
         - "StopTime" (UNIX timestamp of the stop time of this job, if any)
     """
     return state.job_table()
+
+def next_job_id():
+    """Get next job id from GCS.
+
+    Returns:
+        Information about the node in the cluster.
+    """
+    return state.next_job_id()
 
 
 @client_mode_hook
