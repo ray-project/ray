@@ -44,7 +44,8 @@ class RayRuntime {
                            std::vector<ray::api::TaskArg> &args,
                            const CallOptions &task_options) = 0;
   virtual std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<ray::api::TaskArg> &args) = 0;
+                                  std::vector<ray::api::TaskArg> &args,
+                                  const ActorCreationOptions &create_options) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
                                 const std::string &actor,
                                 std::vector<ray::api::TaskArg> &args,

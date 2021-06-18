@@ -93,7 +93,8 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, call_options);
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
+ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                            const ActorCreationOptions &create_options) {
   Submit(invocation, {});
   return invocation.actor_id;
 }

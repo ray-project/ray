@@ -19,7 +19,8 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitTask(InvocationSpec &invocation, const CallOptions &call_options);
 
-  ActorID CreateActor(InvocationSpec &invocation);
+  ActorID CreateActor(InvocationSpec &invocation,
+                      const ActorCreationOptions &create_options);
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 

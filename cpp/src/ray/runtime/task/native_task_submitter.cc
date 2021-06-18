@@ -36,20 +36,16 @@ ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, call_options);
 }
 
-ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
+ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                         const ActorCreationOptions &create_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-
   std::unordered_map<std::string, double> resources;
-  std::string name = "";
-  ActorCreationOptions actor_options{0,
-                                     0,
-                                     1,
-                                     resources,
-                                     resources,
-                                     {},
-                                     /*is_detached=*/false,
-                                     name,
-                                     /*is_asyncio=*/false};
+  std::string name = create_options.name;
+  ray::ActorCreationOptions actor_options{
+      create_options.max_restarts, 0,         create_options.max_concurrency,
+      create_options.resources,    resources, {},
+      /*is_detached=*/false,       name,
+      /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);

@@ -140,11 +140,11 @@ std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function
 
 std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<ray::api::TaskArg> &args) {
+    std::vector<ray::api::TaskArg> &args, const ActorCreationOptions &create_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_CREATION_TASK, ConfigInternal::Instance().dynamic_library_path,
       remote_function_holder, args, ActorID::Nil());
-  return task_submitter_->CreateActor(invocation_spec).Binary();
+  return task_submitter_->CreateActor(invocation_spec, create_options).Binary();
 }
 
 std::string AbstractRayRuntime::CallActor(
