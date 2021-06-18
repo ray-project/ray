@@ -143,19 +143,24 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 
   metrics_num_object_locations_added_++;
 
-  rpc_client->AddObjectLocationOwner(
-      request, [worker_id, object_id, node_id](
-                   Status status, const rpc::AddObjectLocationOwnerReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
-                         << node_id << " for " << object_id
-                         << ", the object has most likely been freed: "
-                         << status.ToString();
-        } else {
-          RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
-                         << " on owner " << worker_id;
-        }
-      });
+  auto operation = [rpc_client, request, worker_id, object_id,
+                    node_id](const SequencerDoneCallback &done_callback) {
+    rpc_client->AddObjectLocationOwner(
+        request, [worker_id, object_id, node_id, done_callback](
+                     Status status, const rpc::AddObjectLocationOwnerReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
+                           << node_id << " for " << object_id
+                           << ", the object has most likely been freed: "
+                           << status.ToString();
+          } else {
+            RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
+                           << " on owner " << worker_id;
+          }
+          done_callback();
+        });
+  };
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 }
 
@@ -178,19 +183,24 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
 
   metrics_num_object_locations_removed_++;
 
-  rpc_client->RemoveObjectLocationOwner(
-      request, [worker_id, object_id, node_id](
-                   Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
-                         << node_id << " for " << object_id
-                         << ", the object has most likely been freed: "
-                         << status.ToString();
-        } else {
-          RAY_LOG(DEBUG) << "Removed location " << node_id << " for object " << object_id
-                         << " on owner " << worker_id;
-        }
-      });
+  auto operation = [rpc_client, request, worker_id, object_id,
+                    node_id](const SequencerDoneCallback &done_callback) {
+    rpc_client->RemoveObjectLocationOwner(
+        request, [worker_id, object_id, node_id, done_callback](
+                     Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
+                           << node_id << " for " << object_id
+                           << ", the object has most likely been freed: "
+                           << status.ToString();
+          } else {
+            RAY_LOG(DEBUG) << "Removed location " << node_id << " for object "
+                           << object_id << " on owner " << worker_id;
+          }
+          done_callback();
+        });
+  };
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 };
 

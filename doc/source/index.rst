@@ -337,6 +337,7 @@ Papers
    iter.rst
    xgboost-ray.rst
    ray-client.rst
+   ray-collective.rst
 
 .. toctree::
    :hidden:
