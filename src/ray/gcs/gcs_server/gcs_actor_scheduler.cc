@@ -17,7 +17,9 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/task/scheduling_resources_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/util/event_label.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -481,43 +483,337 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
 }
 
 NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
-  RAY_CHECK(actor->GetWorkerProcessID().IsNil());
-  bool need_sole_worker_process =
-      ray::NeedSoleWorkerProcess(actor->GetCreationTaskSpecification());
-  if (auto selected_worker_process =
-          SelectOrAllocateWorkerProcess(actor, need_sole_worker_process)) {
+  RAY_CHECK(actor->GetActorWorkerAssignmentID().IsNil());
+  bool need_sole_actor_worker_assignment =
+      ray::NeedSoleActorWorkerAssignment(actor->GetCreationTaskSpecification());
+  if (auto selected_actor_worker_assignment =
+          SelectOrAllocateActorWorkerAssignment(actor, need_sole_actor_worker_assignment)) {
     // If succeed in selecting an available worker process then just assign the actor, it
     // will cosume a slot inside the worker process.
-    RAY_CHECK(selected_worker_process->AssignActor(actor->GetActorID()))
+    RAY_CHECK(selected_actor_worker_assignment->AssignActor(actor->GetActorID()))
         << ", actor id = " << actor->GetActorID()
-        << ", worker_process = " << selected_worker_process->ToString();
+        << ", actor_worker_assignment = " << selected_actor_worker_assignment->ToString();
     // Bind the worker process id to the physical worker process.
-    actor->SetWorkerProcessID(selected_worker_process->GetWorkerProcessID());
+    actor->SetActorWorkerAssignmentID(selected_actor_worker_assignment->GetActorWorkerAssignmentID());
 
     std::ostringstream ss;
-    ss << "Finished selecting node " << selected_worker_process->GetNodeID()
+    ss << "Finished selecting node " << selected_actor_worker_assignment->GetNodeID()
        << " to schedule actor " << actor->GetActorID()
-       << " with worker_process_id = " << selected_worker_process->GetWorkerProcessID();
+       << " with actor_worker_assignment_id = " << selected_actor_worker_assignment->GetActorWorkerAssignmentID();
     RAY_EVENT(INFO, EVENT_LABEL_ACTOR_NODE_SCHEDULED)
             .WithField("job_id", actor->GetActorID().JobId().Hex())
             .WithField("actor_id", actor->GetActorID().Hex())
         << ss.str();
     RAY_LOG(INFO) << ss.str();
-    return selected_worker_process->GetNodeID();
+    return selected_actor_worker_assignment->GetNodeID();
   }
 
   // If failed to select an available worker process then reset the worker process id of
   // the actor and just return a nil node id.
   std::ostringstream ss;
   ss << "There are no available resources to schedule the actor " << actor->GetActorID()
-     << ", need sole worker process = " << need_sole_worker_process;
+     << ", need sole actor worker assignment = " << need_sole_actor_worker_assignment;
   RAY_EVENT(ERROR, EVENT_LABEL_ACTOR_NODE_SCHEDULED)
           .WithField("job_id", actor->GetActorID().JobId().Hex())
           .WithField("actor_id", actor->GetActorID().Hex())
       << ss.str();
   RAY_LOG(WARNING) << ss.str();
   return NodeID::Nil();
-};
+}
+
+std::shared_ptr<GcsActorWorkerAssignment>
+GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
+    std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment) {
+  auto job_id = actor->GetActorID().JobId();
+  auto job_scheduling_context =
+      gcs_job_distribution_->FindOrCreateJobSchedulingContext(job_id);
+
+  const auto &task_spec = actor->GetCreationTaskSpecification();
+  auto required_resources = task_spec.GetRequiredPlacementResources();
+
+  if (need_sole_actor_worker_assignment) {
+    // If the task needs a sole worker process then allocate a new one.
+    return AllocateNewActorWorkerAssignment(job_scheduling_context, required_resources,
+                                    /*is_shared=*/false, task_spec);
+  }
+
+  std::shared_ptr<GcsActorWorkerAssignment> selected_actor_worker_assignment;
+
+  // Otherwise, the task needs a shared worker process.
+  // If there are unused slots in the allocated shared worker process, select the one
+  // with the largest number of slots.
+  const auto &shared_actor_worker_assignments =
+      job_scheduling_context->GetSharedActorWorkerAssignments();
+  // Select a worker process with the largest number of available slots.
+  size_t max_available_slot_count = 0;
+  for (const auto &entry : shared_actor_worker_assignments) {
+    const auto &shared_actor_worker_assignment = entry.second;
+    if (max_available_slot_count < shared_actor_worker_assignment->GetAvailableSlotCount()) {
+      max_available_slot_count = shared_actor_worker_assignment->GetAvailableSlotCount();
+      selected_actor_worker_assignment = shared_actor_worker_assignment;
+    }
+  }
+
+  if (selected_actor_worker_assignment && !selected_actor_worker_assignment->IsDummy()) {
+    return selected_actor_worker_assignment;
+  }
+
+  // If the resources required do not contain `kMemory_ResourceLabel` then add one
+  // with the value of `worker_process_default_memory_units`
+  RAY_CHECK(task_spec.GetLanguage() == rpc::Language::JAVA);
+  const auto &job_config = job_scheduling_context->GetJobConfig();
+  required_resources.AddOrUpdateResource(
+      kMemory_ResourceLabel, job_config.java_worker_process_default_memory_units_);
+
+  if (selected_actor_worker_assignment == nullptr) {
+    // If there are no existing shared worker process then allocate a new one.
+    selected_actor_worker_assignment =
+        AllocateNewActorWorkerAssignment(job_scheduling_context, required_resources,
+                                 /*is_shared=*/true, task_spec);
+  } else {
+    RAY_CHECK(selected_actor_worker_assignment->IsDummy());
+    // If an existing shared worker process is selected and the `NodeID` of the worker
+    // process is `Nil`, it means that a initial worker process is selected.
+    // The initial worker process only deduct resources from job available
+    // resources when initialized, not from the cluster resource pool, so we need
+    // allocate now.
+    auto selected_node_id = AllocateResources(job_scheduling_context, required_resources);
+    if (!selected_node_id.IsNil()) {
+      // If the resources are allocated successfully then update the status of the
+      // initial worker process as well as the job scheduling context.
+      selected_actor_worker_assignment->SetNodeID(selected_node_id);
+      selected_actor_worker_assignment->SetResources(required_resources);
+      RAY_CHECK(gcs_job_distribution_->UpdateNodeToJob(selected_actor_worker_assignment));
+    } else {
+      WarnResourceAllocationFailure(job_scheduling_context, task_spec,
+                                    required_resources);
+      selected_actor_worker_assignment = nullptr;
+    }
+  }
+
+  return selected_actor_worker_assignment;
+}
+
+std::shared_ptr<GcsActorWorkerAssignment>
+GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
+    std::shared_ptr<ray::gcs::GcsJobSchedulingContext> job_scheduling_context,
+    const ResourceSet &required_resources, bool is_shared,
+    const TaskSpecification &task_spec) {
+  const auto &job_config = job_scheduling_context->GetJobConfig();
+  // Figure out the `num_workers_per_process` and `slot_capacity`.
+  int num_workers_per_process = 1;
+  const auto &language = task_spec.GetLanguage();
+  if (language == rpc::Language::JAVA) {
+    num_workers_per_process = job_config.num_java_workers_per_process_;
+  }
+  auto slot_capacity = is_shared ? num_workers_per_process : 1;
+
+  RAY_LOG(INFO) << "Allocating new worker process for job " << job_config.job_id_
+                << ", language = " << rpc::Language_Name(language)
+                << ", is_shared = " << is_shared << ", slot_capacity = " << slot_capacity
+                << "\nrequired_resources = " << required_resources.ToString();
+  RAY_LOG(DEBUG) << "Current cluster resources = " << gcs_resource_manager_->ToString();
+
+  // Allocate resources from cluster.
+  auto selected_node_id = AllocateResources(required_resources);
+  if (selected_node_id.IsNil()) {
+    ray::stats::AllocateResourceFailedCount().Record(1);
+    WarnResourceAllocationFailure(job_scheduling_context, task_spec, required_resources);
+    return nullptr;
+  }
+
+  // Create a new gcs actor worker assignment.
+  auto gcs_actor_worker_assignment =
+      GcsActorWorkerAssignment::Create(selected_node_id, job_config.job_id_, language,
+                               required_resources, is_shared, slot_capacity);
+
+  // Add the gcs actor worker assignment to the job scheduling context which manager the lifetime
+  // of the worker process.
+  RAY_CHECK(gcs_job_distribution_->AddActorWorkerAssignment(gcs_actor_worker_assignment));
+  RAY_LOG(INFO) << "Succeed in allocating new actor worker assignment for job "
+                << job_config.job_id_ << " from node " << selected_node_id
+                << ", actor_worker_assignment = " << gcs_actor_worker_assignment->ToString();
+
+  return gcs_actor_worker_assignment;
+}
+
+NodeID GcsBasedActorScheduler::AllocateResources(const ResourceSet &required_resources) {
+  auto selected_nodes = resource_scheduler_->Schedule({&required_resources}, SchedulingType::SPREAD);
+
+  if (selected_nodes.size() == 0) {
+    RAY_LOG(INFO)
+        << "Scheduling resources failed, schedule type = SchedulingType::SPREAD";
+    return NodeID::Nil();
+  }
+
+  RAY_CHECK(selected_nodes.size() == 1);
+
+  auto selected_node_id = selected_nodes[0];
+  if (!selected_node_id.IsNil()) {
+    // Acquire the resources from the selected node.
+    RAY_CHECK(
+        gcs_resource_manager_->AcquireResources(selected_node_id, required_resources));
+  }
+
+  return selected_node_id;
+}
+
+NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
+    const ResourceSet &required_resources) const {
+  const auto &cluster_map = gcs_resource_manager_->GetClusterResources();
+
+  /// Get the highest score node
+  LeastResourceScorer scorer;
+
+  double highest_score = -1;
+  highest_score_node = NodeID::Nil();
+  for (const auto &pair : cluster_map) {
+    double least_resource_val =
+        scorer.Score(required_resources, pair.second);
+    if (least_resource_val > highest_score) {
+      highest_score = least_resource_val;
+      highest_score_node = pair.first;
+    }
+  }
+
+  return highest_score_node;
+}
+
+void GcsBasedActorScheduler::WarnResourceAllocationFailure(
+    std::shared_ptr<GcsJobSchedulingContext> job_scheduling_context,
+    const TaskSpecification &task_spec, const ResourceSet &required_resources) const {
+  const auto &job_config = job_scheduling_context->GetJobConfig();
+  auto scheduling_node_id = GetHighestScoreNodeResource(required_resources);
+  ScheudlingResources *scheduling_resource = nullptr;
+  auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);
+  if (iter != gcs_resource_manager_->GetClusterResources().end()) {
+    scheduling_resource = &iter->second;
+  }
+  const std::string &scheduling_resource_str =
+      scheduling_resource ? scheduling_resource->DebugString() : "None";
+  // Return nullptr if the cluster resources are not enough.
+  std::ostringstream ostr;
+  ostr << "No enough resources for creating actor " << task_spec.ActorCreationId()
+       << "\nActor class: " << task_spec.FunctionDescriptor()->ToString()
+       << "\nJob id: " << job_config.job_id_
+       << "\nRequired resources: " << required_resources.ToString()
+       << "\nThe node with the most resources is:"
+       << "\n   Node id: " << scheduling_node_id
+       << "\n   Node resources: " << scheduling_resource_str;
+
+  std::string message = ostr.str();
+
+  RAY_LOG(WARNING) << message;
+  RAY_LOG(DEBUG) << "Cluster resources: " << gcs_resource_manager_->ToString();
+
+  RAY_EVENT(ERROR, EVENT_LABEL_JOB_FAILED_TO_ALLOCATE_RESOURCE)
+          .WithField("job_id", job_config.job_id_.Hex())
+      << message;
+}
+
+void GcsBasedActorScheduler::HandleWorkerLeaseReply(
+    std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node,
+    const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+        auto node_id = NodeID::FromBinary(node->node_id());
+        // If the actor is still in the leasing map and the status is ok, remove the actor
+        // from the leasing map and handle the reply. Otherwise, lease again, because it
+        // may be a network exception.
+        // If the actor is not in the leasing map, it means that the actor has been
+        // cancelled as the node is dead, just do nothing in this case because the
+        // gcs_actor_manager will reconstruct it again.
+        auto iter = node_to_actors_when_leasing_.find(node_id);
+        if (iter != node_to_actors_when_leasing_.end()) {
+          auto actor_iter = iter->second.find(actor->GetActorID());
+          if (actor_iter == iter->second.end()) {
+            // if actor is not in leasing state, it means it is cancelled.
+            RAY_LOG(INFO)
+                << "Raylet granted a lease request, but the outstanding lease "
+                   "request for "
+                << actor->GetActorID()
+                << " has been already cancelled. The response will be ignored. Job id = "
+                << actor->GetActorID().JobId();
+            return;
+          }
+
+          if (status.ok()) {
+            // Remove the actor from the leasing map as the reply is returned from the
+            // remote node.
+            iter->second.erase(actor_iter);
+            if (iter->second.empty()) {
+              node_to_actors_when_leasing_.erase(iter);
+            }
+            if (reply.rejected()) {
+              std::ostringstream ss;
+              ss << "Failed to lease worker from node " << node_id << " for actor "
+                 << actor->GetActorID()
+                 << " as the resources are seized by normal tasks, job id = "
+                 << actor->GetActorID().JobId();
+              RAY_LOG(INFO) << ss.str();
+              HandleWorkerLeaseRejectedReply(actor, reply);
+            } else {
+                std::ostringstream ss;
+                ss << "Finished leasing worker from node " << node_id << " for actor "
+                   << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
+                RAY_LOG(INFO) << ss.str();
+                HandleWorkerLeaseGrantedReply(actor, reply);
+            }
+          } else {
+            std::ostringstream ss;
+            ss << "Failed to lease worker from node " << node_id << " for actor "
+               << actor->GetActorID() << ", status = " << status
+               << ", job id = " << actor->GetActorID().JobId();
+            RAY_LOG(WARNING) << ss.str();
+            RetryLeasingWorkerFromNode(actor, node);
+          }
+        }
+    }
+
+void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
+    std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply) {
+  // The request was rejected because of insufficient resources.
+  if (resources_seized_by_normal_tasks_callback_) {
+    auto node_id = actor->GetNodeID();
+    resources_seized_by_normal_tasks_callback_(node_id, reply.resources_data());
+  }
+  CancelOnActorWorkerAssignment(actor->GetActorID(), actor->GetActorWorkerAssignmentID());
+  actor->UpdateAddress(rpc::Address());
+  actor->SetActorWorkerAssignmentID(UniqueID::Nil());
+  Reschedule(actor);
+}
+
+void GcsBasedActorScheduler::CancelOnActorWorkerAssignment(
+    const ActorID &actor_id, const UniqueID &actor_worker_assignment_id) {
+  RAY_LOG(INFO) << "Removing actor " << actor_id << " from assignment "
+                << actor_worker_assignment_id << ", job id = " << actor_id.JobId();
+  if (auto actor_worker_assignment = gcs_job_distribution_->GetActorWorkerAssignmentById(
+          actor_id.JobId(), actor_worker_assignment_id)) {
+    if (actor_worker_assignment->RemoveActor(actor_id)) {
+      RAY_LOG(INFO) << "Finished removing actor " << actor_id << " from assignment "
+                    << actor_worker_assignment_id << ", job id = " << actor_id.JobId();
+      if (actor_worker_assignment->GetUsedSlotCount() == 0) {
+        auto node_id = actor_worker_assignment->GetNodeID();
+        RAY_LOG(INFO) << "Remove actor worker assignment " << actor_worker_assignment_id << " from node "
+                      << node_id << " as there are no more actors bind to it.";
+        // Recycle this actor worker assignment.
+        auto removed_actor_worker_assignment =
+            gcs_job_distribution_->RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
+                actor_worker_assignment->GetNodeID(), actor_worker_assignment_id, actor_id.JobId());
+        RAY_CHECK(removed_actor_worker_assignment == actor_worker_assignment);
+        if (gcs_resource_manager_->ReleaseResources(
+                node_id, removed_actor_worker_assignment->GetResources())) {
+          NotifyClusterResourcesChanged();
+        }
+      }
+    } else {
+      RAY_LOG(WARNING) << "Failed to remove actor " << actor_id << " from assignment "
+                       << actor_worker_assignment_id
+                       << " as the actor is already removed from this assignment.";
+    }
+  } else {
+    RAY_LOG(WARNING) << "Failed to remove actor " << actor_id << " from assignment "
+                     << actor_worker_assignment_id << " as the assignment does not exist.";
+  }
+}
 
 }  // namespace gcs
 }  // namespace ray

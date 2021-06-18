@@ -206,6 +206,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
+  absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
+
   /// Debug info.
   enum CountType {
     GET_RESOURCES_REQUEST = 0,

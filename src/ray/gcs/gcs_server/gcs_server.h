@@ -18,6 +18,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_job_distribution.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
@@ -179,6 +180,8 @@ class GcsServer {
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
+  /// Job distribution on cluster nodes.
+  std::shared_ptr<GcsJobDistribution> gcs_job_distribution_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
   /// Actor info service.
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;

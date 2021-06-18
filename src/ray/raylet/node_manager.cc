@@ -526,6 +526,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
+    resources_data->set_resources_normal_task_timestamp(current_sys_time_ns());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
@@ -1580,27 +1581,51 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     backlog_size = request.backlog_size();
   }
   Task task(task_message, backlog_size);
-  bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
-  ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
-
-  if (is_actor_creation_task) {
-    actor_id = task.GetTaskSpecification().ActorCreationId();
-
-    // Save the actor creation task spec to GCS, which is needed to
-    // reconstruct the actor when raylet detect it dies.
-    std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
-    data->mutable_task()->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
-  }
 
   if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }
 
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+  if (!(RayConfig::instance().gcs_task_scheduling_enabled() &&
+        task.GetTaskSpecification().IsActorCreationTask())) {
+    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+    return;
+  }
+
+  const auto &task_id = task.GetTaskSpecification().TaskId();
+  auto actor_id = task.GetTaskSpecification().ActorCreationId();
+
+  auto send_reply_callback_wrapper =
+      [this, actor_id, task_id, assignment_id, reply, send_reply_callback](
+          Status status, std::function<void()> success, std::function<void()> failure) {
+        if (!reply->rejected()) {
+          send_reply_callback(status, success, failure);
+          return;
+        }
+
+        // If the reqiured resource and normal task resource exceed available resource,
+        // reject it.
+        ResourceSet normal_task_resources =
+            cluster_task_manager_->CalcNormalTaskResources();
+        std::string msg = "Reject leasing as the raylet has no enough resources.";
+        RAY_LOG(INFO) << msg << " actor_id = " << actor_id
+                      << ", normal_task_resources = " << normal_task_resources.ToString()
+                      << ", local_resoruce_view = "
+                      << cluster_resource_scheduler_->GetLocalResourceViewString();
+        auto resources_data = reply->mutable_resources_data();
+        resources_data->set_node_id(self_node_id_.Binary());
+        resources_data->set_resources_normal_task_changed(true);
+        auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+        normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                           normal_task_resources.GetResourceMap().end()};
+        resources_data->set_resources_normal_task_timestamp(current_sys_time_ns());
+
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      };
+
+  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
