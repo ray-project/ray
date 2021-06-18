@@ -18,9 +18,11 @@
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
 
+#include <functional>
 #include <sstream>
 
 #include "ray/common/status.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -124,3 +126,31 @@ inline std::unordered_map<K, V> MapFromProtobuf(
 }
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::rpc::Address> {
+  size_t operator()(const ray::rpc::Address &addr) const {
+    std::hash<std::string> str_fn;
+    std::hash<std::int32_t> int32_fn;
+
+    const auto &worker_id = addr.worker_id();
+    if (!addr.worker_id().empty()) {
+      return str_fn(worker_id);
+    } else {
+      return str_fn(addr.raylet_id()) ^ str_fn(addr.ip_address()) ^ int32_fn(addr.port());
+    }
+  }
+};
+
+template <>
+struct equal_to<ray::rpc::Address> {
+  bool operator()(const ray::rpc::Address &lhs, const ray::rpc::Address &rhs) const {
+    if (!lhs.worker_id().empty() && !rhs.worker_id().empty()) {
+      return lhs.worker_id() == rhs.worker_id();
+    }
+    return lhs.raylet_id() == rhs.raylet_id() && lhs.ip_address() == rhs.ip_address() &&
+           lhs.port() == rhs.port();
+  }
+};
+}  // namespace std

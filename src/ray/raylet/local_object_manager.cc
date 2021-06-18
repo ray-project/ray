@@ -34,7 +34,7 @@ void LocalObjectManager::PinObjects(
       // This request is to share the ownership with existing objects
       // append the owner to the list
       auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-      owners.push_back(owner_address);
+      RAY_CHECK(owners.emplace(owner_address).second) << "Owner has been added";
     } else {
       auto &object = objects->at(i);
       if (object == nullptr) {
@@ -46,7 +46,7 @@ void LocalObjectManager::PinObjects(
       pinned_objects_size_ += object->GetSize();
       RAY_CHECK(pinned_objects_.emplace(object_id, std::move(object)).second)
           << "object_id " << object_id << " has been added.";
-      object_owners_[object_id].push_back(owner_address);
+      object_owners_[object_id].emplace(owner_address);
     }
   }
 }
@@ -97,31 +97,25 @@ void LocalObjectManager::UnpinObject(const ObjectID &object_id,
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
 
-  auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-  auto owner_check = [worker_id = owner_address.worker_id()](const auto &v) {
-    return worker_id == v.worker_id();
-  };
-  auto it = std::find_if(owners.begin(), owners.end(), owner_check);
-  RAY_CHECK(it != owners.end())
-      << "Fail to remove owner " << WorkerID::FromBinary(owner_address.worker_id())
-      << " for object " << object_id;
-  it = owners.erase(it);
-  RAY_CHECK(std::find_if(it, owners.end(), owner_check) == owners.end())
-      << "There are duplicate owners " << WorkerID::FromBinary(owner_address.worker_id())
-      << " for object_id " << object_id;
-
-  // In case we still have owners for the object, we don't delete
-  if (!owners.empty()) {
-    return;
-  }
-
-  object_owners_.erase(object_id);
-
-  spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
+    // TODO (yic) Support object spilling as well
+    auto &owners = util::get_ref_or_fail(object_owners_, object_id);
+    auto it = owners.find(owner_address);
+    RAY_CHECK(it != owners.end())
+        << "Fail to remove owner " << WorkerID::FromBinary(owner_address.worker_id())
+        << " for object " << object_id;
+    owners.erase(it);
+
+    // In case we still have owners for the object, we don't delete
+    if (!owners.empty()) {
+      return;
+    }
+    object_owners_.erase(object_id);
     pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
     pinned_objects_.erase(object_id);
   }
+
+  spilled_object_pending_delete_.push(object_id);
 
   // Try to evict all copies of the object from the cluster.
   if (free_objects_period_ms_ >= 0) {
@@ -264,6 +258,7 @@ void LocalObjectManager::SpillObjectsInternal(
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
+        std::vector<ObjectID> live_objects_to_spill;
         for (const auto &object_id : objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
@@ -273,7 +268,7 @@ void LocalObjectManager::SpillObjectsInternal(
           //    1. Remove the owner from spilling storage since now it's
           //       a dynamic info
           //    2. Pass the owner info through a different path as right now.
-          auto &owner = util::get_ref_or_fail(object_owners_, object_id)[0];
+          const auto &owner = *util::get_ref_or_fail(object_owners_, object_id).begin();
           request.add_owner_addresses()->MergeFrom(owner);
         }
         io_worker->rpc_client()->SpillObjects(
@@ -329,26 +324,17 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   RAY_CHECK(it != objects_pending_spill_.end());
   num_bytes_pending_spill_ -= it->second->GetSize();
   objects_pending_spill_.erase(it);
-  if (num_remaining) {
-    (*num_remaining)--;
-    if (*num_remaining == 0 && callback) {
-      callback(status);
-    }
+  object_owners_.erase(object_id);
+  (*num_remaining)--;
+  if (*num_remaining == 0 && callback) {
+    callback(status);
   }
 }
 
 void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
-  auto num_remaining = std::make_shared<size_t>(0);
-  for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
-       ++i) {
-    const ObjectID &object_id = object_ids[i];
-    auto owners = util::get_ptr(object_owners_, object_id);
-    *num_remaining += owners ? owners->size() : 0;
-  }
-  auto total_count = *num_remaining;
-
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
@@ -384,34 +370,23 @@ void LocalObjectManager::AddSpilledUrls(
       url_ref_count_[base_url_it->second] += 1;
     }
 
-    auto owners = util::get_ptr(object_owners_, object_id);
-    if (owners) {
-      // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
-      // spill RPC.
-      rpc::AddSpilledUrlRequest request;
-      request.set_object_id(object_id.Binary());
-      request.set_spilled_url(object_url);
-      request.set_spilled_node_id(node_id_object_spilled.Binary());
-      request.set_size(it->second->GetSize());
-      for (auto &owner : *owners) {
-        auto owner_client = owner_client_pool_.GetOrConnect(owner);
-        RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
-                       << object_id << " to owner "
-                       << WorkerID::FromBinary(owner.worker_id());
-        // Send spilled URL, spilled node ID, and object size to owner.
-        owner_client->AddSpilledUrl(
-            request,
-            [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
-              unpin_callback(status);
-            });
-      }
-    } else {
-      UnpinSpilledObjectCallback(object_id, object_url, nullptr, nullptr, Status::OK());
-    }
-  }
-  // If there is no request needs to be send, we trigger the callback here
-  if (total_count == 0) {
-    callback(Status::OK());
+    // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+    // spill RPC.
+    rpc::AddSpilledUrlRequest request;
+    request.set_object_id(object_id.Binary());
+    request.set_spilled_url(object_url);
+    request.set_spilled_node_id(node_id_object_spilled.Binary());
+    request.set_size(it->second->GetSize());
+
+    auto &owners = util::get_ref_or_fail(object_owners_, object_id);
+    auto owner_client = owner_client_pool_.GetOrConnect(*owners.begin());
+    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
+                   << " to owner " << WorkerID::FromBinary(owners.begin()->worker_id());
+    // Send spilled URL, spilled node ID, and object size to owner.
+    owner_client->AddSpilledUrl(
+        request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+          unpin_callback(status);
+        });
   }
 }
 
