@@ -118,9 +118,12 @@ ray.shutdown()
     jobs = list(ray.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
 
-    # jobs[0] is the test case driver.
+    driver = jobs[0]
     finished = jobs[1]
     running = jobs[2]
+
+    # The initial driver timestamp/start time go down a different code path.
+    assert driver["Timestamp"] == driver["StartTime"]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]
@@ -141,6 +144,7 @@ ray.shutdown()
     prev_running = jobs[2]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
+    assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
     assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
 

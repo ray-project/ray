@@ -2,7 +2,7 @@ import copy
 import glob
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from ray.util.debug import log_once
 
@@ -179,6 +179,32 @@ class Searcher:
                 no more suggestions/configurations will be provided.
                 If None is returned, Tune will skip the querying of the
                 searcher for this step.
+
+        """
+        raise NotImplementedError
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        """Pass results from a point that has been evaluated separately.
+
+        This method allows for information from outside the
+        suggest - on_trial_complete loop to be passed to the search
+        algorithm.
+        This functionality depends on the underlying search algorithm
+        and may not be always available.
+
+        Args:
+            parameters (dict): Parameters used for the trial.
+            value (float): Metric value obtained in the trial.
+            error (bool): True if the training process raised an error.
+            pruned (bool): True if trial was pruned.
+            intermediate_values (list): List of metric values for
+                intermediate iterations of the result. None if not
+                applicable.
 
         """
         raise NotImplementedError
@@ -394,6 +420,15 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
             self.num_unfinished_live_trials -= 1
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        return self.searcher.add_evaluated_point(parameters, value, error,
+                                                 pruned, intermediate_values)
 
     def get_state(self) -> Dict:
         state = self.__dict__.copy()
