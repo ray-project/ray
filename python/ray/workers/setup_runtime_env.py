@@ -30,19 +30,12 @@ parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
 
-def setup(input_args):
-    # remaining_args contains the arguments to the original worker command,
-    # minus the python executable, e.g. default_worker.py --node-ip-address=...
-    args, remaining_args = parser.parse_known_args(args=input_args)
+def setup_runtime_env(serialized_runtime_env, runtime_dir):
 
-    commands = []
-    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-
-    py_executable: str = sys.executable
+    runtime_env: dict = json.loads(serialized_runtime_env or "{}")
 
     if runtime_env.get("conda") or runtime_env.get("pip"):
-        conda_dict = get_conda_dict(runtime_env, args.session_dir)
-        py_executable = "python"
+        conda_dict = get_conda_dict(runtime_env, runtime_dir)
         if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:
@@ -62,9 +55,8 @@ def setup(input_args):
                            sort_keys=True).encode("utf-8")).hexdigest()
             conda_hash_str = f"conda-generated-{conda_hash}"
             file_lock_name = f"ray-{conda_hash_str}.lock"
-            with FileLock(os.path.join(args.session_dir, file_lock_name)):
-                conda_dir = os.path.join(args.session_dir, "runtime_resources",
-                                         "conda")
+            with FileLock(os.path.join(runtime_dir, file_lock_name)):
+                conda_dir = os.path.join(runtime_dir, "conda")
                 try_to_create_directory(conda_dir)
                 conda_yaml_path = os.path.join(conda_dir, "environment.yml")
                 with open(conda_yaml_path, "w") as file:
@@ -75,7 +67,27 @@ def setup(input_args):
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
 
-        commands += get_conda_activate_commands(conda_env_name)
+        return {"conda_env_name": conda_env_name}
+
+    return {}
+
+
+def setup_worker(input_args):
+    # remaining_args contains the arguments to the original worker command,
+    # minus the python executable, e.g. default_worker.py --node-ip-address=...
+    args, remaining_args = parser.parse_known_args(args=input_args)
+
+    commands = []
+    print("setup input args " + args.serialized_runtime_env)
+    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
+    py_executable: str = sys.executable
+
+    result = runtime_env.get("result")
+    if result:
+        conda_env_name = result.get("conda_env_name")
+        conda_activate_commands = get_conda_activate_commands(conda_env_name)
+        if (conda_activate_commands):
+            commands += conda_activate_commands
 
     commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_separator = " && "
@@ -84,11 +96,10 @@ def setup(input_args):
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
-
     os.execvp("bash", ["bash", "-c", command_str])
 
 
-def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
+def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
     """ Construct a conda dependencies dict from a runtime env.
 
         This function does not inject Ray or Python into the conda dict.
@@ -108,7 +119,7 @@ def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
-        conda_dir = os.path.join(session_dir, "runtime_resources", "conda")
+        conda_dir = os.path.join(runtime_env_dir, "conda")
         requirements_txt_path = os.path.join(
             conda_dir, f"requirements-{pip_hash_str}.txt")
         conda_dict = {
@@ -118,7 +129,7 @@ def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
             }]
         }
         file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(session_dir, file_lock_name)):
+        with FileLock(os.path.join(runtime_env_dir, file_lock_name)):
             try_to_create_directory(conda_dir)
             with open(requirements_txt_path, "w") as file:
                 file.write(requirements_txt)

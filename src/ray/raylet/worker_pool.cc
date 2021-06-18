@@ -151,7 +151,7 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const std::vector<std::string> &dynamic_options,
+    const std::vector<std::string> &dynamic_options, const int runtime_env_hash,
     const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
@@ -302,9 +302,8 @@ Process WorkerPool::StartWorkerProcess(
       }
     }
 
-    WorkerCacheKey env = {override_environment_variables, serialized_runtime_env};
-    const std::string runtime_env_hash_str = std::to_string(env.IntHash());
-    worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);
+    worker_command_args.push_back("--runtime-env-hash=" +
+                                  std::to_string(runtime_env_hash));
   }
 
   // We use setproctitle to change python worker process title,
@@ -838,12 +837,14 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  auto start_worker_process_fn = [this](const TaskSpecification &task_spec, State &state,
-                                        std::vector<std::string> dynamic_options,
-                                        bool dedicated) -> Process {
+  auto start_worker_process_fn =
+      [this](const TaskSpecification &task_spec, State &state,
+             std::vector<std::string> dynamic_options, bool dedicated,
+             const int runtime_env_hash,
+             const std::string &serialized_runtime_env) -> Process {
     Process proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                       task_spec.JobId(), dynamic_options,
-                                      task_spec.SerializedRuntimeEnv(),
+                                      runtime_env_hash, serialized_runtime_env,
                                       task_spec.OverrideEnvironmentVariables());
     if (proc.IsValid()) {
       WarnAboutSize();
@@ -885,7 +886,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, dynamic_options](bool done) {
+            [start_worker_process_fn, &state, task_spec, dynamic_options](
+                bool done, const std::string &serialized_runtime_env) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (!done) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
@@ -894,10 +896,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                                   "Wait for next time to retry or reschedule.";
                 return;
               }
-              start_worker_process_fn(task_spec, state, dynamic_options, true);
+              start_worker_process_fn(task_spec, state, dynamic_options, true, 0,
+                                      serialized_runtime_env);
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, dynamic_options, true);
+        proc = start_worker_process_fn(task_spec, state, dynamic_options, true, 0, "");
       }
     }
   } else {
@@ -942,16 +945,18 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec](bool successful) {
+            [start_worker_process_fn, &state, task_spec, runtime_env_hash](
+                bool successful, const std::string &serialized_runtime_env) {
               if (!successful) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
                 return;
               }
-              start_worker_process_fn(task_spec, state, {}, false);
+              start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
+                                      serialized_runtime_env);
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, {}, false);
+        proc = start_worker_process_fn(task_spec, state, {}, false, 0, "");
       }
     }
   }

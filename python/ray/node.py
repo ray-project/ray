@@ -779,6 +779,7 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.worker_setup_hook,
+            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,
