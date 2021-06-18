@@ -161,14 +161,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     "clip_rewards": None,
     # If True, RLlib will learn entirely inside a normalized action space
     # (0.0 centered with small stddev; only affecting Box components) and
-    # only unsquash actions to the bounds of env's action space before
-    # sending actions back to the env.
-    # TODO: (sven) This option should be the default and always be True.
-    "normalize_actions": False,
+    # only unsquash actions (and clip just in case) to the bounds of
+    # env's action space before sending actions back to the env.
+    "normalize_actions": True,
     # If True, RLlib will clip actions according to the env's bounds
     # before sending them back to the env.
     # TODO: (sven) This option should be obsoleted and always be False.
-    "clip_actions": True,
+    "clip_actions": False,
     # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
     # The default learning rate.
