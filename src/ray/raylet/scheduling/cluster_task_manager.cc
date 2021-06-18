@@ -24,7 +24,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes)
+    size_t max_pinned_task_arguments_bytes, std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -38,6 +38,7 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
+      gcs_client_(gcs_client),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0) {}
@@ -565,9 +566,6 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  // TODO (WangTao): Find a way to check if load changed and combine it with light
-  // heartbeat. Now we just report it every time.
-  data.set_resource_load_changed(true);
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -727,6 +725,15 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
+  }
+
+  // Check whether resources have changed.
+  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
+  std::unordered_map<std::string, double> local_resource_map(
+      data->resource_load().begin(), data->resource_load().end());
+  ResourceSet local_resource(local_resource_map);
+  if (!last_heartbeat_resources->GetLoadResources().IsEqual(local_resource)) {
+    data->set_resource_load_changed(true);
   }
 }
 

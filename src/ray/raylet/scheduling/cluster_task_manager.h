@@ -65,7 +65,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      size_t max_pinned_task_arguments_bytes);
+      size_t max_pinned_task_arguments_bytes, std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
