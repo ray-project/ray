@@ -48,6 +48,7 @@ struct GcsServerConfig {
   std::string node_ip_address;
   bool pull_based_resource_reporting;
   bool grpc_based_resource_broadcast;
+  bool grpc_pubsub_enabled;
 };
 
 class GcsNodeManager;
