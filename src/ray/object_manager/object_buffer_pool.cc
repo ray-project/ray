@@ -120,7 +120,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
       RAY_LOG(DEBUG) << "Retrying create chunk for object " << object_id
                      << " with request ID " << retry_with_request_id;
       s = store_client_.RetryCreate(object_id, retry_with_request_id, nullptr,
-                                    &retry_with_request_id, data);
+                                    &retry_with_request_id, &data);
     }
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
