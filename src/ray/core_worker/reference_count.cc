@@ -1098,7 +1098,9 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   total_location_updates_++;
-  RAY_LOG(INFO) << "Total location updates: " << total_location_updates_;
+  if (total_location_updates_ % 10000 == 0) {
+    RAY_LOG(INFO) << "Total location updates: " << total_location_updates_;
+  }
   PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
                          it->second.spilled_url, it->second.spilled_node_id,
                          it->second.pinned_at_raylet_id);
