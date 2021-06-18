@@ -335,6 +335,20 @@ bool Publisher::CheckNoLeaks() const {
   return true;
 }
 
+std::string Publisher::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream result;
+  result << "\nPublisher:";
+  for (const auto &it : cum_pub_message_cnt_) {
+    auto channel_type = it.first;
+    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+    std::string channel_name = descriptor->FindValueByNumber(channel_type)->name();
+    result << channel_name;
+    result << "\n- cumulative published messages: " << it.second;
+  }
+  return result.str();
+}
+
 }  // namespace pubsub
 
 }  // namespace ray

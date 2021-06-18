@@ -313,6 +313,8 @@ class Publisher : public PublisherInterface {
   /// having a timer per subscriber.
   void CheckDeadSubscribers();
 
+  std::string DebugString() const;
+
  private:
   ///
   /// Testing fields
