@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import random
 import sys
 import socket
 
@@ -84,7 +85,11 @@ def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+    head_node = cluster.add_node(
+        node_ip_address="127.0.0.1",
+        num_cpus=6,
+        # Otherwise the test will be flaky on macOS.
+        metrics_export_port=random.randint(60000, 65000))
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace="serve")
