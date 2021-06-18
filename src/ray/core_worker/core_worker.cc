@@ -713,7 +713,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
         event_stats_print_interval_ms);
-        object_info_publisher_->DebugString();
+    object_info_publisher_->DebugString();
   }
 }
 

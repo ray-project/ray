@@ -147,7 +147,7 @@ const std::string SubscriberChannel<KeyIdType>::DebugString() const {
   result << "\n- active subscribed publishers: " << subscription_map_.size();
   result << "\n- cumulative published messages: " << cum_published_messages_;
   result << "\n- cumulative processed messages: " << cum_processed_messages_;
-  
+
   uint64_t active_subscribed_entries = 0;
   for (const auto &subscription_info_it : subscription_map_) {
     active_subscribed_entries +=
