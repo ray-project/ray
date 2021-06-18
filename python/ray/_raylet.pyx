@@ -1832,6 +1832,8 @@ cdef class CoreWorker:
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to
         # check if a runtime env is empty without deserializing it.
+        if result_dict["env_vars"] == {}:
+            result_dict["env_vars"] = None
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 
