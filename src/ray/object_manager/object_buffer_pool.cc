@@ -109,21 +109,14 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    uint64_t retry_with_request_id;
-    // TODO(ekl) clean up if this works prior to merge
-    Status s =
-        store_client_.Create(object_id, owner_address, object_size, NULL, metadata_size,
-                             &retry_with_request_id, &data,
-                             plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
-    while (retry_with_request_id > 0) {
-      lock.unlock();
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      lock.lock();
-      RAY_LOG(DEBUG) << "Retrying create chunk for object " << object_id
-                     << " with request ID " << retry_with_request_id;
-      s = store_client_.RetryCreate(object_id, retry_with_request_id, nullptr,
-                                    &retry_with_request_id, &data);
-    }
+
+    // Release the buffer pool lock during the blocking create call.
+    lock.unlock();
+    Status s = store_client_.CreateAndSpillIfNeeded(
+        object_id, owner_address, object_size, NULL, metadata_size, &data,
+        plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
+    lock.lock();
+
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
       // Create failed. The object may already exist locally. If something else went
