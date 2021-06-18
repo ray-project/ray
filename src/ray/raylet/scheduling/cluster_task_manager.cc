@@ -232,11 +232,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // double-acquiring when the next invocation of this function tries to schedule
           // this task.
           cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-          // No worker available, we won't be able to schedule any kind of task.
-          // Worker processes spin up pretty quickly, so it's not worth trying to spill
-          // this task.
           ReleaseTaskArgs(task_id);
-          return;
+          // It may be that no worker was available with the correct runtime env or
+          // correct job ID.  However, another task with a different env or job ID
+          // might have a worker available, so continue iterating through the queue.
+          work_it++;
+          continue;
         }
 
         RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
