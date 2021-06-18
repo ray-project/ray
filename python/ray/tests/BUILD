@@ -30,6 +30,7 @@ py_test_module_list(
     "test_client_builder.py",
     "test_client_init.py",
     "test_client_proxy.py",
+    "test_client_warnings.py",
     "test_client_library_integration.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
