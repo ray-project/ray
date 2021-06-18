@@ -80,7 +80,8 @@ def tune_transformer(num_samples=8,
         warmup_steps=0,
         weight_decay=0.1,  # config
         logging_dir="./logs",
-        skip_memory_metrics=True)
+        skip_memory_metrics=True,
+        report_to="none")
 
     trainer = Trainer(
         model_init=get_model,
