@@ -38,13 +38,13 @@ GRPC_OPTIONS = [
     ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
-    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS), # TODO(ilr) try bumping this
     ("grpc.keepalive_permit_without_calls", 1),
     # Send an infinite number of pings
-    ("grpc.max_pings_without_data", 0),
-    ("grpc.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    ("grpc.http2.max_pings_without_data", 0),
+    ("grpc.http2.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
-    ("grpc.max_ping_strikes", 0)
+    ("grpc.http2.max_ping_strikes", 0)
 ]
 
 CLIENT_SERVER_MAX_THREADS = float(
