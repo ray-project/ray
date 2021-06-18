@@ -34,9 +34,8 @@ namespace gcs {
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
-    const ray::JobID &job_id, bool is_dead,
-    const std::string &driver_ip_address, int64_t driver_pid,
-    const ray::rpc::JobConfig &job_config = {}) {
+    const ray::JobID &job_id, bool is_dead, const std::string &driver_ip_address,
+    int64_t driver_pid, const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
