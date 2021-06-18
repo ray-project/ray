@@ -104,7 +104,7 @@ void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
     const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  std::unique_lock<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
@@ -116,7 +116,9 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
                              &retry_with_request_id, &data,
                              plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
     while (retry_with_request_id > 0) {
+      lock.unlock();
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      lock.lock();
       RAY_LOG(DEBUG) << "Retrying create chunk for object " << object_id
                      << " with request ID " << retry_with_request_id;
       s = store_client_.RetryCreate(object_id, retry_with_request_id, nullptr,
