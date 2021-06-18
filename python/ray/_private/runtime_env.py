@@ -43,14 +43,10 @@ class RuntimeEnvDict:
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
         pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.  If a relative
-            path is specified and working_dir is specified, the path is
-            interpreted relative to working_dir.
+            containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
-            environment.yaml file. If a relative path is specified and
-            working_dir is specified, the path is interpreted relative to
-            working_dir.
+            environment.yaml file.
             The Ray dependency will be automatically injected into the conda
             env to ensure compatibility with the cluster Ray. The conda name
             may be mangled automatically to avoid conflicts between runtime
@@ -77,7 +73,7 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.  However, if all values are None this is set to {}.
+        # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
@@ -123,11 +119,14 @@ class RuntimeEnvDict:
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if "conda" in runtime_env_json:
+            if ("conda" in runtime_env_json
+                    and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
-                    "runtime_env cannot both be specified.  To use "
-                    "pip with conda, please only set the 'conda' "
+                    "runtime_env cannot both be specified.\n"
+                    f"specified pip field: {runtime_env_json['pip']}\n"
+                    f"specified conda field: {runtime_env_json['conda']}\n"
+                    "To use pip with conda, please only set the 'conda' "
                     "field, and specify your pip dependencies "
                     "within the conda YAML config dict: see "
                     "https://conda.io/projects/conda/en/latest/"
@@ -204,6 +203,9 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
+
+    def set_uris(self, uris):
+        self._dict["uris"] = uris
 
 
 class Protocol(Enum):
@@ -519,9 +521,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env["uris"] = [
-            Protocol.GCS.value + "://" + pkg_name
-        ]
+        job_config.set_runtime_env_uris(
+            [Protocol.GCS.value + "://" + pkg_name])
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

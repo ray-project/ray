@@ -14,6 +14,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CPlacementGroupID,
+    CNodeID,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -279,6 +280,14 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached
         )
+
+    cdef cppclass CObjectLocation "ray::ObjectLocation":
+        const CNodeID &GetPrimaryNodeID() const
+        const uint64_t GetObjectSize() const
+        const c_vector[CNodeID] &GetNodeIDs() const
+        c_bool IsSpilled() const
+        const c_string &GetSpilledURL() const
+        const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

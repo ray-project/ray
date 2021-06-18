@@ -5,6 +5,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 
+import ray
 import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
@@ -21,6 +22,23 @@ class TrainableUtilTest(unittest.TestCase):
 
     def tearDown(self):
         self.addCleanup(shutil.rmtree, self.checkpoint_dir)
+        ray.shutdown()
+
+    def testFindMetadata(self):
+        def tune_one(config=None, checkpoint_dir=None):
+            with ray.tune.checkpoint_dir(step=1):
+                pass
+            ray.tune.report(score=1)
+
+        name = "AnalysisTest"
+        ray.init(local_mode=True)
+        ray.tune.run(tune_one, local_dir=self.checkpoint_dir, name=name)
+
+        a = ray.tune.Analysis(
+            os.path.join(self.checkpoint_dir, name), "score", "max")
+        df = a.dataframe()
+        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])
+        assert checkpoint_dir.endswith("/checkpoint_000001/")
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir,
