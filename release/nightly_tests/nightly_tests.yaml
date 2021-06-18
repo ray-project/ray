@@ -244,10 +244,6 @@
 
 # Stress tests with dead actors
 - name: stress_test_dead_actors
-  owner:
-    mail: "chenshen@anyscale.com"
-    slack: "@proj-data-processing"
-
   cluster:
     app_config: stress_tests/stress_tests_app_config.yaml
     compute_template: stress_tests/stress_tests_compute.yaml
