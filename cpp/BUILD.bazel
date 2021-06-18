@@ -83,10 +83,34 @@ genrule(
         cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         TEMP_DIR="$$WORK_DIR/cpp/example" &&
         rm -rf $$TEMP_DIR/thirdparty &&
-        mkdir -p "$$TEMP_DIR/thirdparty/include/" &&
+        mkdir -p "$$TEMP_DIR/thirdparty/include/boost" &&
         mkdir -p "$$TEMP_DIR/thirdparty/lib/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$TEMP_DIR/thirdparty/include" &&
-        cp -f -r "$$WORK_DIR/external/boost/boost/" "$$TEMP_DIR/thirdparty/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/config" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container_hash" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/core" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/detail" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/dll" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/exception" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/filesystem" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/functional" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/io" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/iterator" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/lexical_cast" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/move" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/mpl" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/optional" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/parameter" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/preprocessor" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/system" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$TEMP_DIR/thirdparty/include/boost/" &&
+        cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$TEMP_DIR/thirdparty/include/boost/" &&
         cp -f $(locations libray_api.so) "$$TEMP_DIR/thirdparty/lib/" &&
         cp -f -r "$$WORK_DIR/cpp/include/ray/" "$$TEMP_DIR/thirdparty/include" &&        
         echo "$$WORK_DIR" > $@
