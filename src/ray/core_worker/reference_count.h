@@ -815,7 +815,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
 
-  uint64_t total_location_updates_;
+  uint64_t total_location_updates_ = 0;
 };
 
 }  // namespace ray
