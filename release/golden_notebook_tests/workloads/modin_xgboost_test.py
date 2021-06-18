@@ -9,7 +9,6 @@ FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
            "00280/HIGGS.csv.gz"
 
 
-@ray.remote
 def test():
     print("Loading HIGGS data.")
 
@@ -58,4 +57,4 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    ray.get(test.remote())
+    test()
