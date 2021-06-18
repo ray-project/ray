@@ -1281,7 +1281,7 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
         working_dir = runtime_env.ensure_runtime_env_setup(uris)

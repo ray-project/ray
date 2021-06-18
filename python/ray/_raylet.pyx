@@ -1734,11 +1734,15 @@ cdef class CoreWorker:
     def get_current_runtime_env_dict(self):
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
-            self.current_runtime_env_dict = json.loads(
-                CCoreWorkerProcess.GetCoreWorker()
-                .GetWorkerContext()
-                .GetCurrentSerializedRuntimeEnv()
-            )
+            if self.is_driver:
+                self.current_runtime_env_dict = \
+                    json.loads(self.get_job_config().serialized_runtime_env)
+            else:
+                self.current_runtime_env_dict = json.loads(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .GetWorkerContext()
+                    .GetCurrentSerializedRuntimeEnv()
+                )
         return self.current_runtime_env_dict
 
     def is_exiting(self):
@@ -1798,30 +1802,28 @@ cdef class CoreWorker:
         return self.job_config
 
     def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
-        """Update parent's runtime env with new env via a simple dict update.
+        """Merge the given new runtime env with the current runtime env.
 
-        If the resulting runtime env is empty, fall back to the runtime env
-        set in the JobConfig.  Returns the JSON-serialized runtime env.
+        If running in a driver, the current runtime env comes from the
+        JobConfig.  Otherwise, we are running in a worker for an actor or
+        task, and the current runtime env comes from the current TaskSpec.
+
+        Args:
+            runtime_env_dict (dict): A runtime env for a child actor or task.
+        Returns:
+            The resulting merged JSON-serialized runtime env.
         """
-
-        # Short-circuit in the common case.
-        if (runtime_env_dict == {}
-                and self.get_current_runtime_env_dict() == {}):
-            return self.get_job_config().serialized_runtime_env
-
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
         result_dict.update(runtime_env_dict)
 
-        # TODO(architkulkarni): remove once workers are cached by runtime env.
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 
-        if result_dict == {}:
-            return self.get_job_config().serialized_runtime_env
-        else:
-            # TODO(architkulkarni): We should just use RuntimeEnvDict here
-            # so all the serialization and validation is done in one place
-            return json.dumps(result_dict, sort_keys=True)
+        # TODO(architkulkarni): We should just use RuntimeEnvDict here
+        # so all the serialization and validation is done in one place
+        return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

@@ -464,6 +464,7 @@ ray::Status NodeManager::RegisterGcs() {
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << DebugString() << "\n\n";
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -1131,7 +1132,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
+          gcs::CreateJobTableData(job_id, /*is_dead*/ false, current_sys_time_ms(),
                                   worker_ip_address, pid, job_config);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
