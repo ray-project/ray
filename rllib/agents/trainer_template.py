@@ -212,10 +212,11 @@ def build_trainer(
         @override(Trainer)
         def _validate_config(config: PartialTrainerConfigDict,
                              trainer_obj_or_none: Optional["Trainer"] = None):
+            # Call super (Trainer) validation method first.
+            Trainer._validate_config(config, trainer_obj_or_none)
+            # Then call user defined one, if any.
             if validate_config is not None:
                 validate_config(config)
-            else:
-                Trainer._validate_config(config, trainer_obj_or_none)
 
         @override(Trainer)
         def _before_evaluate(self):
