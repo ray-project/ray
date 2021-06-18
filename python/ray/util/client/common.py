@@ -31,7 +31,7 @@ GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 # 30 seconds because ELB timeout is 60 seconds
 GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 
-# 20 seconds (gRPC) default
+# Long timeout because we do not want gRPC ending a connection.
 GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
 GRPC_OPTIONS = [
