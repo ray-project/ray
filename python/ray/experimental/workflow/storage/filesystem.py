@@ -6,7 +6,7 @@ import uuid
 
 from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (Storage, ArgsType,
-                                                    StepChecklist)
+                                                    StepStatus)
 
 import ray.cloudpickle
 
@@ -196,22 +196,12 @@ class FilesystemStorageImpl(Storage):
         with _open_atomic(objects_dir / rref.hex(), "wb") as f:
             ray.cloudpickle.dump(obj, f)
 
-    def step_field_exists(self, workflow_id: str,
-                          step_id: StepID) -> StepChecklist:
+    def get_step_status(self, workflow_id: str, step_id: StepID) -> StepStatus:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        return StepChecklist(
+        return StepStatus(
             output_object_exists=(step_dir / STEP_OUTPUT).exists(),
             output_metadata_exists=(step_dir / STEP_OUTPUTS_METADATA).exists(),
             input_metadata_exists=(step_dir / STEP_INPUTS_METADATA).exists(),
             args_exists=(step_dir / STEP_ARGS).exists(),
             func_body_exists=(step_dir / STEP_FUNC_BODY).exists(),
         )
-
-    def validate_workflow(self, workflow_id: str) -> None:
-        workflow_dir = self._workflow_root_dir / workflow_id
-        if not workflow_dir.exists():
-            raise ValueError(f"Cannot find the workflow job '{workflow_dir}'")
-        steps_dir = workflow_dir / STEPS_DIR
-        if not (workflow_dir / STEPS_DIR).exists():
-            raise ValueError(f"The workflow job record is invalid: {steps_dir}"
-                             " not found.")

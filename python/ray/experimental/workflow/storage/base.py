@@ -10,9 +10,8 @@ from typing import Any, Callable, List, Dict, Tuple
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
 
-# TODO(suquark): I did not come up with a better name :(
 @dataclass
-class StepChecklist:
+class StepStatus:
     # does the step output checkpoint exists?
     output_object_exists: bool
     # does the step output metadata exists?
@@ -167,9 +166,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def step_field_exists(self, workflow_id: str,
-                          step_id: StepID) -> StepChecklist:
-        """Check the existence of step fields in the storage.
+    def get_step_status(self, workflow_id: str, step_id: StepID) -> StepStatus:
+        """Check the status of a step in the storage.
 
         Args:
             workflow_id: ID of the workflow job.
@@ -177,12 +175,4 @@ class Storage(metaclass=abc.ABCMeta):
 
         Returns:
             A dataclass of the step fields.
-        """
-
-    @abstractmethod
-    def validate_workflow(self, workflow_id: str) -> None:
-        """Check if the workflow structured correctly.
-
-        Args:
-            workflow_id: ID of the workflow job.
         """

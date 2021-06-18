@@ -8,12 +8,20 @@ from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
 
 
-class WorkflowStepNotRecoverableException(Exception):
+class WorkflowStepNotRecoverableError(Exception):
     """Raise the exception when we find a workflow step cannot be recovered
     using the checkpointed inputs."""
 
-    def __init__(self, step_id: str):
-        self.message = f"Workflow step (id={step_id}) is not recoverable"
+    def __init__(self, step_id: StepID):
+        self.message = f"Workflow step[id={step_id}] is not recoverable"
+        super().__init__(self.message)
+
+
+class WorkflowNotResumableError(Exception):
+    """Raise the exception when we cannot resume from a workflow."""
+
+    def __init__(self, workflow_id: str):
+        self.message = f"Workflow[id={workflow_id}] is not resumable."
         super().__init__(self.message)
 
 
@@ -73,7 +81,7 @@ def _construct_resume_workflow_from_step(
                                                     result.output_step_id)
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
-        raise WorkflowStepNotRecoverableException(step_id)
+        raise WorkflowStepNotRecoverableError(step_id)
     input_workflows = []
     instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
@@ -98,12 +106,18 @@ def resume_workflow_job(workflow_id: str, store: storage.Storage
             the workflow.
         store: The storage to access the workflow.
 
+    Raises:
+        WorkflowNotResumableException: fail to resume the workflow.
+
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     reader = workflow_storage.WorkflowStorage(workflow_id, store)
-    r = _construct_resume_workflow_from_step(reader,
-                                             reader.get_entrypoint_step_id())
+    try:
+        entrypoint_step_id: StepID = reader.get_entrypoint_step_id()
+        r = _construct_resume_workflow_from_step(reader, entrypoint_step_id)
+    except Exception as e:
+        raise WorkflowNotResumableError(workflow_id) from e
     if isinstance(r, Workflow):
         return r
     return ray.put(reader.load_step_output(r))

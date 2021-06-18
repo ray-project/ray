@@ -135,7 +135,11 @@ class WorkflowStorage:
             The ID of the entrypoint step.
         """
         # empty StepID represents the workflow driver
-        return self._locate_output_step_id("")
+        try:
+            return self._locate_output_step_id("")
+        except Exception as e:
+            raise ValueError("Fail to get entrypoint step ID from workflow"
+                             f"[id={self._workflow_id}]") from e
 
     def inspect_step(self, step_id: StepID) -> StepInspectResult:
         """
@@ -148,9 +152,7 @@ class WorkflowStorage:
         Returns:
             The status of the step.
         """
-
-        field_list = self._storage.step_field_exists(self._workflow_id,
-                                                     step_id)
+        field_list = self._storage.get_step_status(self._workflow_id, step_id)
         # does this step contains output checkpoint file?
         if field_list.output_object_exists:
             return StepInspectResult(output_object_valid=True)
@@ -174,10 +176,6 @@ class WorkflowStorage:
             object_refs=input_object_refs,
             workflows=input_workflows,
         )
-
-    def validate_workflow(self) -> None:
-        """Check if the workflow structured correctly."""
-        return self._storage.validate_workflow(self._workflow_id)
 
     def _write_step_inputs(self, step_id: StepID, inputs: WorkflowInputs):
         """Save workflow inputs."""
