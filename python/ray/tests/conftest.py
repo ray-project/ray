@@ -2,7 +2,6 @@
 This file defines the common pytest fixtures used in current directory.
 """
 import os
-import sys
 from contextlib import contextmanager
 import pytest
 import subprocess
@@ -13,6 +12,7 @@ from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
 if os.environ.get("CI") == "true":
+
     @pytest.hookimpl(tryfirst=True, hookwrapper=True)
     def pytest_runtest_makereport(item, call):
         from pathlib import Path
@@ -27,9 +27,11 @@ if os.environ.get("CI") == "true":
                 for f in Path(ray_log_dir).iterdir():
                     if f.is_file():
                         print(f"------- BEGIN: {rep.nodeid}:{f.name} -----")
-                        print("\n".join(
-                            f.read_text().strip().split("\n")[-100:]), )
+                        print(
+                            "\n".join(
+                                f.read_text().strip().split("\n")[-100:]), )
                         print(f"------- END: {rep.nodeid}:{f.name} -----\n")
+
 
 @pytest.fixture
 def shutdown_only():
