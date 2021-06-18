@@ -408,7 +408,7 @@ void GcsServer::InstallEventListeners() {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
     gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
+    gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (config_.pull_based_resource_reporting) {
