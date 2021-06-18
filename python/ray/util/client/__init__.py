@@ -3,6 +3,7 @@ from ray.job_config import JobConfig
 import os
 import sys
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +66,13 @@ class RayAPIStub:
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
-
-        runtime_env = job_config.runtime_env
-        if runtime_env.get("pip") or runtime_env.get("conda"):
-            logger.warning("The 'pip' or 'conda' field was specified in the "
-                           "runtime env, so it may take some time to install "
-                           "the environment before ray.connect() returns.")
+        if job_config is not None: 
+            runtime_env = json.load(job_config.get_serialized_runtime_env())
+            if runtime_env.get("pip") or runtime_env.get("conda"):
+                logger.warning("The 'pip' or 'conda' field was specified in "
+                               "the runtime env, so it may take some time to "
+                               "install the environment before ray.connect() "
+                               "returns.")
         try:
             self.client_worker = Worker(
                 conn_str,
