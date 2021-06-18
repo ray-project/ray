@@ -73,7 +73,7 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.  However, if all values are None this is set to {}.
+        # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
@@ -119,11 +119,14 @@ class RuntimeEnvDict:
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if "conda" in runtime_env_json:
+            if ("conda" in runtime_env_json
+                    and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
-                    "runtime_env cannot both be specified.  To use "
-                    "pip with conda, please only set the 'conda' "
+                    "runtime_env cannot both be specified.\n"
+                    f"specified pip field: {runtime_env_json['pip']}\n"
+                    f"specified conda field: {runtime_env_json['conda']}\n"
+                    "To use pip with conda, please only set the 'conda' "
                     "field, and specify your pip dependencies "
                     "within the conda YAML config dict: see "
                     "https://conda.io/projects/conda/en/latest/"

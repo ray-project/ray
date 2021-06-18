@@ -1,11 +1,7 @@
 # Test multi-node, multi-GPU Ray SGD example.
 - name: sgd_gpu
-  owner:
-    mail: "amog@anyscale.com"
-    slack: "@tune-team"
-
   cluster:
-    app-config: sgd_gpu/sgd_gpu_app_config.yaml
+    app_config: sgd_gpu/sgd_gpu_app_config.yaml
     compute_template: sgd_gpu/sgd_gpu_compute.yaml
 
   run:

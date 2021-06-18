@@ -51,6 +51,8 @@
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/util.h"
 
+#include "absl/container/flat_hash_set.h"
+
 namespace fb = plasma::flatbuf;
 
 namespace {
@@ -279,7 +281,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
   if (pointer != nullptr) {
     GetMallocMapinfo(pointer, fd, map_size, offset);
-    RAY_CHECK(*fd != INVALID_FD);
+    RAY_CHECK(fd->first != INVALID_FD);
+    RAY_CHECK(fd->second != INVALID_UNIQUE_FD_ID);
     *error = PlasmaError::OK;
   }
 
@@ -338,7 +341,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::ObjectExists;
   }
 
-  MEMFD_TYPE fd = INVALID_FD;
+  MEMFD_TYPE fd{INVALID_FD, INVALID_UNIQUE_FD_ID};
   int64_t map_size = 0;
   ptrdiff_t offset = 0;
   uint8_t *pointer = nullptr;
@@ -460,13 +463,13 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   }
 
   // Figure out how many file descriptors we need to send.
-  std::unordered_set<MEMFD_TYPE> fds_to_send;
+  absl::flat_hash_set<MEMFD_TYPE> fds_to_send;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   for (const auto &object_id : get_req->object_ids) {
     PlasmaObject &object = get_req->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
-    if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd != INVALID_FD) {
+    if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(GetMmapSize(fd));

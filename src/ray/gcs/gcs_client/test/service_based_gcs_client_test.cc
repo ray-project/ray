@@ -142,6 +142,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  JobID GetNextJobID() {
+    std::promise<JobID> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    return promise.get_future().get();
+  }
+
   bool SubscribeActor(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
@@ -576,6 +583,12 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(add_job_id));
   WaitForExpectedCount(job_updates, 2);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGetNextJobID) {
+  JobID job_id1 = GetNextJobID();
+  JobID job_id2 = GetNextJobID();
+  ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
