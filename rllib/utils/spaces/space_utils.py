@@ -17,16 +17,16 @@ def flatten_space(space):
             does not contain Tuples or Dicts anymore.
     """
 
-    def _helper_flatten(space_, l):
+    def _helper_flatten(space_, return_list):
         from ray.rllib.utils.spaces.flexdict import FlexDict
         if isinstance(space_, Tuple):
             for s in space_:
-                _helper_flatten(s, l)
+                _helper_flatten(s, return_list)
         elif isinstance(space_, (Dict, FlexDict)):
             for k in space_.spaces:
-                _helper_flatten(space_[k], l)
+                _helper_flatten(space_[k], return_list)
         else:
-            l.append(space_)
+            return_list.append(space_)
 
     ret = []
     _helper_flatten(space, ret)

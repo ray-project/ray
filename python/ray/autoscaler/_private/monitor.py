@@ -9,15 +9,20 @@ import signal
 import time
 import traceback
 import json
+from multiprocessing.synchronize import Event
+from typing import Optional
 
 import grpc
+import prometheus_client
 
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
@@ -89,13 +94,17 @@ class Monitor:
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 monitor_ip=None,
+                 stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
-
+        if monitor_ip:
+            self.redis.set("AutoscalerMetricsAddress",
+                           f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}")
         (ip, port) = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
@@ -112,12 +121,32 @@ class Monitor:
         worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
+        # Can be used to signal graceful exit from monitor loop.
+        self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
+
+        self.prom_metrics = AutoscalerPrometheusMetrics()
+        if monitor_ip:
+            # If monitor_ip wasn't passed in, then don't attempt to start the
+            # metric server to keep behavior identical to before metrics were
+            # introduced
+            try:
+                logger.info(
+                    "Starting autoscaler metrics server on port {}".format(
+                        AUTOSCALER_METRIC_PORT))
+                prometheus_client.start_http_server(
+                    AUTOSCALER_METRIC_PORT,
+                    registry=self.prom_metrics.registry)
+            except Exception:
+                logger.exception(
+                    "An exception occurred while starting the metrics server.")
 
         logger.info("Monitor: Started")
 
@@ -130,7 +159,8 @@ class Monitor:
                 self.autoscaling_config,
                 self.load_metrics,
                 prefix_cluster_info=self.prefix_cluster_info,
-                event_summarizer=self.event_summarizer)
+                event_summarizer=self.event_summarizer,
+                prom_metrics=self.prom_metrics)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
@@ -172,6 +202,8 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                break
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
@@ -263,7 +295,7 @@ class Monitor:
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+            self.redis_address, password=self.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
         push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
@@ -350,6 +382,12 @@ if __name__ == "__main__":
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
         f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+    parser.add_argument(
+        "--monitor-ip",
+        required=False,
+        type=str,
+        default=None,
+        help="The IP address of the machine hosting the monitor process.")
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
@@ -372,6 +410,7 @@ if __name__ == "__main__":
     monitor = Monitor(
         args.redis_address,
         autoscaling_config,
-        redis_password=args.redis_password)
+        redis_password=args.redis_password,
+        monitor_ip=args.monitor_ip)
 
     monitor.run()

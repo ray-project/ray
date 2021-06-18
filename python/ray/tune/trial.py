@@ -309,7 +309,7 @@ class Trial:
         if trial_dirname_creator:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
-                raise ValueError(f"Trial dirname must not contain '/'. "
+                raise ValueError("Trial dirname must not contain '/'. "
                                  "Got {self.custom_dirname}")
 
         self._state_json = None

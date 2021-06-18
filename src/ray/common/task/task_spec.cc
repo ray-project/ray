@@ -78,7 +78,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredResources();
+    auto sched_cls = GetRequiredPlacementResources();
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
@@ -109,6 +109,14 @@ size_t TaskSpecification::ParentCounter() const { return message_->parent_counte
 
 ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
+}
+
+std::string TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->serialized_runtime_env();
+}
+
+bool TaskSpecification::HasRuntimeEnv() const {
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {

@@ -39,10 +39,11 @@ class SampleBatchBuilder:
 
     @PublicAPI
     def __init__(self):
-        deprecation_warning(
-            old="SampleBatchBuilder",
-            new="child class of `SampleCollector`",
-            error=False)
+        if log_once("SampleBatchBuilder"):
+            deprecation_warning(
+                old="SampleBatchBuilder",
+                new="child class of `SampleCollector`",
+                error=False)
         self.buffers: Dict[str, List] = collections.defaultdict(list)
         self.count = 0
 
@@ -100,7 +101,9 @@ class MultiAgentSampleBatchBuilder:
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
-        deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
+        if log_once("MultiAgentSampleBatchBuilder"):
+            deprecation_warning(
+                old="MultiAgentSampleBatchBuilder", error=False)
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.

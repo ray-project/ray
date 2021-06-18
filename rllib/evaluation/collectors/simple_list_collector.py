@@ -241,7 +241,7 @@ class _AgentCollector:
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
-        batch = SampleBatch(batch_data, _dont_check_lens=True)
+        batch = SampleBatch(batch_data)
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
@@ -280,25 +280,8 @@ class _AgentCollector:
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                 "env_id", "t"
             ] else 0)
-            # Python primitive or dict (e.g. INFOs).
-            if isinstance(data, (int, float, bool, str, dict)):
-                self.buffers[col] = [data for _ in range(shift)]
-            # np.ndarray, torch.Tensor, or tf.Tensor.
-            else:
-                shape = data.shape
-                dtype = data.dtype
-                if torch and isinstance(data, torch.Tensor):
-                    self.buffers[col] = \
-                        [torch.zeros(shape, dtype=dtype, device=data.device)
-                         for _ in range(shift)]
-                elif tf and isinstance(data, tf.Tensor):
-                    self.buffers[col] = \
-                        [tf.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
-                else:
-                    self.buffers[col] = \
-                        [np.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
+            # Python primitive, tensor, or dict (e.g. INFOs).
+            self.buffers[col] = [data for _ in range(shift)]
 
 
 class _PolicyCollector:
@@ -366,8 +349,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(
-            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
+        batch = SampleBatch(self.buffers, seq_lens=self.seq_lens)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset agent steps to 0 and seq-lens to empty list.
@@ -645,7 +627,7 @@ class SimpleListCollector(SampleCollector):
             if is_done and check_dones and \
                     not pre_batch[SampleBatch.DONES][-1]:
                 raise ValueError(
-                    "Episode {} terminated for all agents, but we still don't "
+                    "Episode {} terminated for all agents, but we still"
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
                         episode_id, agent_id, self.agent_key_to_policy_id[(
@@ -654,9 +636,6 @@ class SimpleListCollector(SampleCollector):
                     "of all live agents when setting done[__all__] to "
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this.")
-            # If (only this?) agent is done, erase its buffer entirely.
-            if pre_batch[SampleBatch.DONES][-1]:
-                del self.agent_collectors[(episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
@@ -684,7 +663,8 @@ class SimpleListCollector(SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
+            agent_key = (episode_id, agent_id)
+            pid = self.agent_key_to_policy_id[agent_key]
             policy = self.policy_map[pid]
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
@@ -699,6 +679,10 @@ class SimpleListCollector(SampleCollector):
             policy_collector_group.policy_collectors[
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
+
+            if is_done:
+                del self.agent_key_to_policy_id[agent_key]
+                del self.agent_collectors[agent_key]
 
         if policy_collector_group:
             env_steps = self.episode_steps[episode_id]

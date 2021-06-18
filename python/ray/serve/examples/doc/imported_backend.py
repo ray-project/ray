@@ -1,11 +1,13 @@
-import requests
-
 from ray import serve
 
-client = serve.start()
+serve.start()
 
-import_path = "my_module.MyFuncOrClass"
-serve.create_backend("imported", import_path, "input_arg")
-serve.create_endpoint("imported", backend="imported", route="/imported")
 
-print(requests.get("http://127.0.0.1:8000/imported").text)
+@serve.deployment
+class MyDeployment:
+    def __call__(self, model_path):
+        from my_module import my_model
+        self.model = my_model.load(model_path)
+
+
+MyDeployment.deploy("/model_path.pkl")

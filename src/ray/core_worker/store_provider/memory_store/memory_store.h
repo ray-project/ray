@@ -74,6 +74,12 @@ class CoreWorkerMemoryStore {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
+  /// Get an object if it exists.
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \return Pointer to the object if it exists, otherwise nullptr.
+  std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
+
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
   ///
@@ -136,6 +142,12 @@ class CoreWorkerMemoryStore {
   ///
   /// \return Total size of objects in the store.
   uint64_t UsedMemory();
+
+  /// Raise any unhandled errors that have not been accessed within a timeout.
+  /// This is used to surface unhandled task errors in interactive consoles.
+  /// In those settings, errors may never be garbage collected and hence we
+  /// never trigger the deletion hook for task errors that prints them.
+  void NotifyUnhandledErrors();
 
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);

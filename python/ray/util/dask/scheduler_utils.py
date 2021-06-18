@@ -186,7 +186,7 @@ def nested_get(ind, coll):
     (('b', 'a'), ('a', 'b'))
     """
     if isinstance(ind, list):
-        return tuple([nested_get(i, coll) for i in ind])
+        return tuple(nested_get(i, coll) for i in ind)
     else:
         return coll[ind]
 

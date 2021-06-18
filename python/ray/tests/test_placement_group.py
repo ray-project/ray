@@ -1,5 +1,4 @@
 import pytest
-import platform
 import os
 import sys
 import time
@@ -70,7 +69,7 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -125,7 +124,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -173,7 +172,7 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -229,7 +228,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         ray.get(actor_3.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -252,7 +251,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster,
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
-            return ray.get_resource_ids()
+            return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -273,7 +272,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
                                            connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -305,7 +304,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -527,7 +526,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
     cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, namespace="")
 
     # Make sure both head and worker node are alive.
     nodes = ray.nodes()
@@ -957,9 +956,10 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # Make sure all the actors are scheduled on the same node.
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
-        for actor_info in ray.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+        for actor_info in ray.state.actors().values():
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         # Since all node id should be identical, set should be equal to 1.
         assert len(node_id_set) == 1
@@ -981,9 +981,10 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+        for actor_info in ray.state.actors().values():
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         assert len(node_id_set) == 2
 
@@ -1003,9 +1004,10 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.actors().values():
-            node_id = actor_info["Address"]["NodeID"]
-            node_id_set.add(node_id)
+        for actor_info in ray.state.actors().values():
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                node_id = actor_info["Address"]["NodeID"]
+                node_id_set.add(node_id)
 
         assert len(node_id_set) == 2
 
@@ -1040,12 +1042,15 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             return get_current_placement_group()
 
         @ray.remote
-        def create_nested_task(child_cpu, child_gpu):
+        def create_nested_task(child_cpu, child_gpu, set_none=False):
             assert get_current_placement_group() is not None
-            return ray.get([
-                task.options(num_cpus=child_cpu, num_gpus=child_gpu).remote()
-                for _ in range(3)
-            ])
+            kwargs = {
+                "num_cpus": child_cpu,
+                "num_gpus": child_gpu,
+            }
+            if set_none:
+                kwargs["placement_group"] = None
+            return ray.get([task.options(**kwargs).remote() for _ in range(3)])
 
         t = create_nested_task.options(
             num_cpus=1, num_gpus=0, placement_group=pg).remote(1, 0)
@@ -1053,6 +1058,13 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
         # Every task should have current placement group because they
         # should be implicitly captured by default.
         assert None not in pgs
+
+        t1 = create_nested_task.options(
+            num_cpus=1, num_gpus=0, placement_group=pg).remote(1, 0, True)
+        pgs = ray.get(t1)
+        # Every task should have no placement group since it's set to None.
+        # should be implicitly captured by default.
+        assert set(pgs) == {None}
 
         # Test if tasks don't capture child tasks when the option is off.
         t2 = create_nested_task.options(
@@ -1129,9 +1141,9 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1156,14 +1168,14 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
         cluster.add_node(num_cpus=num_cpu_per_node)
     cluster.wait_for_nodes()
 
-    info = ray.init(address=cluster.address)
+    info = ray.init(address=cluster.address, namespace="")
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
 
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["redis_address"]}", namespace="")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -1205,9 +1217,9 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1241,12 +1253,10 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -1281,12 +1291,10 @@ def test_create_placement_group_after_gcs_server_restart(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -1307,12 +1315,10 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -1334,12 +1340,10 @@ def test_create_placement_group_during_gcs_server_restart(
         ray.get(placement_groups[i].ready())
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
@@ -1428,9 +1432,9 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1444,7 +1448,7 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray.actors().values():
+        for actor_info in ray.state.actors().values():
             if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
@@ -1509,14 +1513,14 @@ def test_named_placement_group(ray_start_cluster):
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
-    info = ray.init(address=cluster.address)
+    info = ray.init(address=cluster.address, namespace="")
     global_placement_group_name = "named_placement_group"
 
     # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["redis_address"]}", namespace="")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
@@ -1532,9 +1536,9 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1722,6 +1726,57 @@ def test_placement_group_client_option_serialization():
 
     pg_dict_no_bundles = {"id": id_string, "bundle_cache": None}
     dict_to_pg_to_dict(pg_dict_no_bundles)
+
+
+def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
+    """Tests the scheduling of lots of actors will not be blocked
+       when using placement groups.
+
+       For more detailed information please refer to:
+       https://github.com/ray-project/ray/issues/15801.
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    actor_num = 1000
+    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
+    actors = [A.options(placement_group=pg).remote() for pg in pgs]
+    refs = [actor.ready.remote() for actor in actors]
+
+    expected_created_num = 1
+
+    def is_actor_created_number_correct():
+        ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
+        return len(ready) == expected_created_num
+
+    def is_pg_created_number_correct():
+        created_pgs = [
+            pg for _, pg in ray.util.placement_group_table().items()
+            if pg["state"] == "CREATED"
+        ]
+        return len(created_pgs) == expected_created_num
+
+    wait_for_condition(is_pg_created_number_correct, timeout=3)
+    wait_for_condition(
+        is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
+
+    # NOTE: we don't need to test all the actors create successfully.
+    for _ in range(20):
+        expected_created_num += 1
+        cluster.add_node(num_cpus=1)
+
+        wait_for_condition(is_pg_created_number_correct, timeout=10)
+        # Make sure the node add event will cause a waiting actor
+        # to create successfully in time.
+        wait_for_condition(
+            is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
 
 
 if __name__ == "__main__":

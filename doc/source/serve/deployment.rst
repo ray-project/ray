@@ -21,8 +21,7 @@ When running on a long-lived Ray cluster (e.g., one started using ``ray start`` 
 to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance as a long-running
 service using ``serve.start(detached=True)``. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
-to update the Serve instance, you can run another script that connects to the Ray cluster and then
-calls :mod:`serve.connect <ray.serve.connect>`. Note that there can only be one detached Serve instance on each Ray cluster.
+to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
 Deploying on a Single Node
 ==========================
@@ -41,15 +40,16 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   # This will start Ray locally and start Serve on top of it.
   serve.start()
 
-  def my_backend_func(request):
+  @serve.deployment
+  def my_func(request):
     return "hello"
 
-  serve.create_backend("my_backend", my_backend_func)
+  my_func.deploy()
 
   # Serve will be shut down once the script exits, so keep it alive manually.
   while True:
       time.sleep(5)
-      print(serve.list_backends())
+      print(serve.list_deployments())
 
 2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto")`` in your Serve script(s). You can run multiple scripts to update your backends over time.
 
@@ -66,10 +66,11 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   # This will connect to the running Ray cluster.
   ray.init(address="auto")
 
-  def my_backend_func(request):
+  @serve.deployment
+  def my_func(request):
     return "hello"
 
-  serve.create_backend("my_backend", my_backend_func)
+  my_func.deploy()
 
 Deploying on Kubernetes
 =======================
@@ -168,11 +169,12 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
     serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
+
+    @serve.deployment(route_prefix="/hello")
     def hello(request):
         return "hello world"
 
-    serve.create_backend("hello_backend", hello)
-    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
+    hello.deploy()
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -219,12 +221,12 @@ Below is an example of what the Ray Dashboard might look like for a Serve deploy
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
 To learn about the function of the controller and proxy actors, see the `Serve Architecture page <architecture.html>`__.
-In this example pictured above, we have a single-node cluster with a backend class called Counter with ``num_replicas=2`` in its :class:`~ray.serve.BackendConfig`.
+In this example pictured above, we have a single-node cluster with a deployment named Counter with ``num_replicas=2``.
 
 Logging
 -------
 
-Logging in Ray Serve is simple and uses Python's standard logging facility.
+Logging in Ray Serve uses Python's standard logging facility.
 
 .. note::
 
@@ -244,7 +246,7 @@ Querying a Serve endpoint with the above backend will produce a log line like th
 
 .. code-block:: bash
 
-  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=my_backend replica=my_backend#jZlnUI
+  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=f replica=f#jZlnUI
 
 To write your own custom logger using Python's ``logging`` package, use the following method:
 
@@ -330,7 +332,7 @@ To filter all these Ray logs for the ones relevant to our backend, use the follo
 
 .. code-block:: shell 
 
-  {job="ray"} |= "backend=my_backend"
+  {job="ray"} |= "backend=Counter"
 
 You should see something similar to the following:
 

@@ -112,6 +112,12 @@ parser.add_argument(
     default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
     help="Specify the backup count of rotated log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+parser.add_argument(
+    "--runtime-env-hash",
+    required=False,
+    type=int,
+    default=0,
+    help="The computed hash of the runtime env for this worker.")
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
@@ -168,7 +174,7 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=mode)
+    ray.worker.connect(node, mode=mode, runtime_env_hash=args.runtime_env_hash)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker

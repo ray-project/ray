@@ -4,8 +4,8 @@ import ray
 import ray.rllib.agents.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import check, \
+    check_compute_single_action, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -48,22 +48,32 @@ class TestIMPALA(unittest.TestCase):
 
     def test_impala_lr_schedule(self):
         config = impala.DEFAULT_CONFIG.copy()
+        # Test whether we correctly ignore the "lr" setting.
+        # The first lr should be 0.0005.
+        config["lr"] = 0.1
         config["lr_schedule"] = [
             [0, 0.0005],
             [10000, 0.000001],
         ]
-        local_cfg = config.copy()
-        trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
+        config["env"] = "CartPole-v0"
 
         def get_lr(result):
             return result["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
 
-        try:
-            r1 = trainer.train()
-            r2 = trainer.train()
-            assert get_lr(r2) < get_lr(r1), (r1, r2)
-        finally:
-            trainer.stop()
+        for fw in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = impala.ImpalaTrainer(config=config)
+            policy = trainer.get_policy()
+
+            try:
+                if fw == "tf":
+                    check(policy._sess.run(policy.cur_lr), 0.0005)
+                else:
+                    check(policy.cur_lr, 0.0005)
+                r1 = trainer.train()
+                r2 = trainer.train()
+                assert get_lr(r2) < get_lr(r1), (r1, r2)
+            finally:
+                trainer.stop()
 
 
 if __name__ == "__main__":

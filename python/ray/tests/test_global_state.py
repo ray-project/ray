@@ -87,19 +87,19 @@ def test_global_state_actor_table(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.actors()) == 0
+    assert len(ray.state.actors()) == 0
 
     # actor table should contain only one entry
     a = Actor.remote()
     ray.get(a.ready.remote())
-    assert len(ray.actors()) == 1
+    assert len(ray.state.actors()) == 1
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
     def get_state():
-        return list(ray.actors().values())[0]["State"]
+        return list(ray.state.actors().values())[0]["State"]
 
     dead_state = ray.gcs_utils.ActorTableData.DEAD
     for _ in range(10):
@@ -125,20 +125,20 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.actors()) == 0
+    assert len(ray.state.actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray.actors()) == 2
+    assert len(ray.state.actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
-    assert ray.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray.actors(
+    assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
+    assert ray.state.actors(
         actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
-    assert ray.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray.actors(
+    assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
+    assert ray.state.actors(
         actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
 
 

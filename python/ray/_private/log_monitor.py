@@ -102,7 +102,7 @@ class LogMonitor:
                         and file_info.worker_pid != "autoscaler"
                         and file_info.worker_pid is not None):
                     assert not isinstance(file_info.worker_pid, str), (
-                        f"PID should be an int type. "
+                        "PID should be an int type. "
                         "Given PID: {file_info.worker_pid}.")
                     os.kill(file_info.worker_pid, 0)
             except OSError:

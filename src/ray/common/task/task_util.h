@@ -88,6 +88,7 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint,
+      const std::string &serialized_runtime_env = "{}",
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {}) {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -110,6 +111,7 @@ class TaskSpecBuilder {
     message_->set_placement_group_capture_child_tasks(
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
+    message_->set_serialized_runtime_env(serialized_runtime_env);
     for (const auto &env : override_environment_variables) {
       (*message_->mutable_override_environment_variables())[env.first] = env.second;
     }

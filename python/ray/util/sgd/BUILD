@@ -3,6 +3,14 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    tags = ["exclusive", "client"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_ptl",
     size = "large",
     srcs = ["tests/test_ptl.py"],
@@ -19,11 +27,52 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_client_mode",
+    size = "small",
+    main = "test_tensorflow.py",
+    srcs = ["tests/test_tensorflow.py"],
+    tags = ["exclusive", "tf", "client_unit_tests", "client"]
+)
+
+py_test(
     name = "test_torch",
     size = "large",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_2",
+    size = "large",
+    srcs = ["tests/test_torch_2.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_3",
+    size = "large",
+    srcs = ["tests/test_torch_3.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_basic",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
+    name = "test_torch_basic_client_mode",
+    main = "test_torch_basic.py",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch", "client", "client_unit_tests"],
+    deps = [":sgd_lib"]
 )
 
 py_test(
@@ -41,7 +90,6 @@ py_test(
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.

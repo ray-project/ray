@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray.serve.utils import ServeEncoder, import_attr
+from ray.serve.utils import ServeEncoder
+from ray._private.utils import import_attr
 
 
 def test_bytes_encoder():
@@ -41,7 +42,7 @@ def test_import_attr():
     print(repr(policy))
 
     # Very meta...
-    import_attr_2 = import_attr("ray.serve.utils.import_attr")
+    import_attr_2 = import_attr("ray._private.utils.import_attr")
     assert import_attr_2 == import_attr
 
 

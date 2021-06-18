@@ -9,22 +9,20 @@ Acceptance criteria: Should run through and report final results, as well
 as the Ray Tune results table. No trials should error. All trials should
 run in parallel.
 """
+from collections import Counter
+import json
+import os
+import time
+
 import ray
 from ray import tune
 
 from xgboost_ray import RayParams
 
-from _train import train_ray
+from ray.util.xgboost.release_test_util import train_ray
 
 
-def train_wrapper(config):
-    ray_params = RayParams(
-        elastic_training=False,
-        max_actor_restarts=2,
-        num_actors=32,
-        cpus_per_actor=1,
-        gpus_per_actor=0)
-
+def train_wrapper(config, ray_params):
     train_ray(
         path="/data/classification.parquet",
         num_workers=32,
@@ -46,13 +44,29 @@ if __name__ == "__main__":
 
     ray.init(address="auto")
 
+    ray_params = RayParams(
+        elastic_training=False,
+        max_actor_restarts=2,
+        num_actors=32,
+        cpus_per_actor=1,
+        gpus_per_actor=0)
+
+    start = time.time()
     analysis = tune.run(
-        train_wrapper,
+        tune.with_parameters(train_wrapper, ray_params=ray_params),
         config=search_space,
         num_samples=4,
-        resources_per_trial={
-            "cpu": 1,
-            "extra_cpu": 31
-        })
+        resources_per_trial=ray_params.get_tune_resources())
+    taken = time.time() - start
+
+    result = {
+        "time_taken": taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials]))
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/tune_4x32.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
     print("PASSED.")

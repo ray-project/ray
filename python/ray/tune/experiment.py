@@ -295,7 +295,7 @@ class Experiment:
             try:
                 register_trainable(name, run_object)
             except (TypeError, PicklingError) as e:
-                extra_msg = (f"Other options: "
+                extra_msg = ("Other options: "
                              "\n-Try reproducing the issue by calling "
                              "`pickle.dumps(trainable)`. "
                              "\n-If the error is typing-related, try removing "

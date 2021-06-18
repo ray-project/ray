@@ -1,10 +1,10 @@
 import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-from ray.rllib.env.meta_env import MetaEnv
+from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 
 
-class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, MetaEnv):
+class AntRandGoalEnv(gym.utils.EzPickle, MujocoEnv, TaskSettableEnv):
     """Ant Environment that randomizes goals as tasks
 
     Goals are randomly sampled 2D positions

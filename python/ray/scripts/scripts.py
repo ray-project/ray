@@ -436,6 +436,21 @@ def debug(address):
     default=False,
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
+@click.option(
+    "--tracing-startup-hook",
+    type=str,
+    hidden=True,
+    default=None,
+    help="The function that sets up tracing with a tracing provider, remote "
+    "span processor, and additional instruments. See docs.ray.io/tracing.html "
+    "for more info.")
+@click.option(
+    "--worker-setup-hook",
+    hidden=True,
+    default=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "environment for the worker process.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -446,7 +461,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, log_style, log_color, verbose):
+          metrics_export_port, no_monitor, tracing_startup_hook,
+          worker_setup_hook, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -468,7 +484,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                          cf.bold("--resources"))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold("--resources='\"CustomResource3\": 1, "
+            cf.bold("--resources='{\"CustomResource3\": 1, "
                     "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "
@@ -507,7 +523,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        no_monitor=no_monitor,
+        tracing_startup_hook=tracing_startup_hook,
+        worker_setup_hook=worker_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -561,7 +579,18 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
+
         redis_address = node.redis_address
+        if temp_dir is None:
+            # Default temp directory.
+            temp_dir = ray._private.utils.get_user_temp_dir()
+        # Using the user-supplied temp dir unblocks on-prem
+        # users who can't write to the default temp.
+        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
+        # TODO: Consider using the custom temp_dir for this file across the
+        # code base. (https://github.com/ray-project/ray/issues/16458)
+        with open(current_cluster_path, "w") as f:
+            print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -782,6 +811,13 @@ def stop(force, verbose, log_style, log_color):
             cli_logger.warning("Try running the command again, or use `{}`.",
                                cf.bold("--force"))
 
+    try:
+        os.remove(
+            os.path.join(ray._private.utils.get_user_temp_dir(),
+                         "ray_current_cluster"))
+    except OSError:
+        # This just means the file doesn't exist.
+        pass
     # Wait for the processes to actually stop.
     psutil.wait_procs(stopped, timeout=2)
 

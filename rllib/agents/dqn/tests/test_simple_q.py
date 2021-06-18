@@ -81,7 +81,7 @@ class TestSimpleQ(unittest.TestCase):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.
-            input_ = {
+            input_ = SampleBatch({
                 SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
                 SampleBatch.ACTIONS: np.array([0, 1]),
                 SampleBatch.REWARDS: np.array([0.4, -1.23]),
@@ -94,7 +94,7 @@ class TestSimpleQ(unittest.TestCase):
                                                           [-0.1, -0.2]]),
                 SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
                 "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
-            }
+            })
             # Get model vars for computing expected model outs (q-vals).
             # 0=layer-kernel; 1=layer-bias; 2=q-val-kernel; 3=q-val-bias
             vars = policy.get_weights()

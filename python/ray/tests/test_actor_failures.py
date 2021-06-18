@@ -49,7 +49,7 @@ def test_actor_spilled(ray_start_regular):
     # Submit enough methods on the actor so that they exceed the size of the
     # object store.
     objects = []
-    num_objects = 20
+    num_objects = 40
     for _ in range(num_objects):
         obj = a.create_object.remote(object_store_memory // num_objects)
         objects.append(obj)

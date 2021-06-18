@@ -23,7 +23,7 @@ docker:
     container_name: ""
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
-    pull_before_run: True
+    pull_before_run: False
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
@@ -43,7 +43,7 @@ provider:
     # Availability zone(s), comma-separated, that nodes may be launched in.
     # Nodes are currently spread between zones by a round-robin approach,
     # however this implementation detail should not be relied upon.
-    availability_zone: us-west-2a,us-west-2b
+    availability_zone: us-west-2a
     # Whether to allow node reuse. If set to False, nodes will be terminated
     # instead of stopped.
     cache_stopped_nodes: True # If not present, the default is True.
@@ -62,13 +62,12 @@ available_node_types:
             InstanceType: r5n.16xlarge
         # For AWS instances, autoscaler will automatically add the available
         # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
-        # resources: {"CPU": 4}
         resources: {"CPU": 0}
     worker_node_t:
         node_config:
             InstanceType: r5.4xlarge
         # Autoscaler will auto fill the CPU resources below.
-        resources: {"CPU": 96}
+        resources: {"CPU": 16}
         min_workers: 250
         max_workers: 250
 
@@ -120,13 +119,17 @@ rsync_filter:
 # is setup.
 initialization_commands: []
 
+file_mounts: {
+    "~/data_processing_tests": "."
+}
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # - sudo apt install -y iotop
     # - sudo apt install -y gdb
     # - sudo apt install -y linux-tools-common
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
+    - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
     - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 165536" >> /etc/security/limits.conf; echo "* hard nofile 165536" >> /etc/security/limits.conf;'
     - pip install tqdm
     - pip install -U dask
@@ -136,9 +139,9 @@ setup_commands:
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"asio_event_loop_stats_collection_enabled":true,"scheduler_loadbalance_spillback":true}'
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"event_stats":true}'
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ray start --address=$RAY_HEAD_IP:6379 --num-cpus=96 --object-manager-port=8076
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

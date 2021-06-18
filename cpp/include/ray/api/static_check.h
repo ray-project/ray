@@ -32,20 +32,38 @@ struct FilterArgType<ObjectRef<T>> {
   using type = T;
 };
 
+template <typename T>
+struct FilterArgType<ObjectRef<T> &> {
+  using type = T;
+};
+
+template <typename T>
+struct FilterArgType<ObjectRef<T> &&> {
+  using type = T;
+};
+
+template <typename T>
+struct FilterArgType<const ObjectRef<T> &> {
+  using type = T;
+};
+
+template <typename F, typename... Args>
+struct is_invocable
+    : std::is_constructible<
+          std::function<void(Args...)>,
+          std::reference_wrapper<typename std::remove_reference<F>::type>> {};
+
 template <typename Function, typename... Args>
-inline absl::enable_if_t<!std::is_member_function_pointer<Function>::value>
-StaticCheck() {
-  static_assert(std::is_same<std::tuple<typename FilterArgType<Args>::type...>,
-                             boost::callable_traits::args_t<Function>>::value,
+inline std::enable_if_t<!std::is_member_function_pointer<Function>::value> StaticCheck() {
+  static_assert(is_invocable<Function, typename FilterArgType<Args>::type...>::value,
                 "arguments not match");
 }
 
 template <typename Function, typename... Args>
-inline absl::enable_if_t<std::is_member_function_pointer<Function>::value> StaticCheck() {
+inline std::enable_if_t<std::is_member_function_pointer<Function>::value> StaticCheck() {
   using ActorType = boost::callable_traits::class_of_t<Function>;
   static_assert(
-      std::is_same<std::tuple<ActorType &, typename FilterArgType<Args>::type...>,
-                   boost::callable_traits::args_t<Function>>::value,
+      is_invocable<Function, ActorType &, typename FilterArgType<Args>::type...>::value,
       "arguments not match");
 }
 

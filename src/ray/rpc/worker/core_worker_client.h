@@ -140,15 +140,15 @@ class CoreWorkerClientInterface {
       const WaitForActorOutOfScopeRequest &request,
       const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
-  /// Notify the owner of an object that the object has been pinned.
-  virtual void SubscribeForObjectEviction(
-      const SubscribeForObjectEvictionRequest &request,
-      const ClientCallback<SubscribeForObjectEvictionReply> &callback) {}
-
   /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
                                  const ClientCallback<PubsubLongPollingReply> &callback) {
   }
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const PubsubCommandBatchRequest &request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
   virtual void AddObjectLocationOwner(
       const AddObjectLocationOwnerRequest &request,
@@ -178,10 +178,6 @@ class CoreWorkerClientInterface {
 
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) {}
-
-  virtual void WaitForRefRemoved(const WaitForRefRemovedRequest &request,
-                                 const ClientCallback<WaitForRefRemovedReply> &callback) {
-  }
 
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
@@ -241,10 +237,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, SubscribeForObjectEviction, grpc_client_,
-                         override)
-
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubCommandBatch, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
                          override)
@@ -258,8 +253,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, SpillObjects, grpc_client_, override)
 

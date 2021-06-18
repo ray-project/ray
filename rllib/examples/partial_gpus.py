@@ -19,17 +19,40 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument(
-    "--framework", choices=["tf", "tf2", "tfe", "torch"], default="tf")
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--num-gpus", type=float, default=0.5)
 parser.add_argument("--num-workers", type=int, default=1)
 parser.add_argument("--num-gpus-per-worker", type=float, default=0.0)
 parser.add_argument("--num-envs-per-worker", type=int, default=1)
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=180.0)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=50,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=180.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()

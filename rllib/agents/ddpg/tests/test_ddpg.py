@@ -23,6 +23,8 @@ torch, _ = try_import_torch()
 class TestDDPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        np.random.seed(42)
+        torch.manual_seed(42)
         ray.init()
 
     @classmethod
@@ -361,7 +363,7 @@ class TestDDPG(unittest.TestCase):
             prev_fw_loss = (c, a, t)
 
             # Update weights from our batch (n times).
-            for update_iteration in range(10):
+            for update_iteration in range(6):
                 print("train iteration {}".format(update_iteration))
                 if fw == "tf":
                     in_ = self._get_batch_helper(obs_size, actions, batch_size)
@@ -414,7 +416,7 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -422,7 +424,7 @@ class TestDDPG(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.ones(shape=(batch_size, )),
-        }
+        })
 
     def _ddpg_loss_helper(self, train_batch, weights, ks, fw, gamma,
                           huber_threshold, l2_reg, sess):
@@ -544,8 +546,10 @@ class TestDDPG(unittest.TestCase):
             for k, v in weights_dict.items() if re.search(
                 "default_policy/(actor_(hidden_0|out)|sequential(_1)?)/", k)
         }
-        model_dict["low_action"] = convert_to_torch_tensor(np.array([0.0]))
-        model_dict["action_range"] = convert_to_torch_tensor(np.array([1.0]))
+        model_dict["policy_model.action_out_squashed.low_action"] = \
+            convert_to_torch_tensor(np.array([0.0]))
+        model_dict["policy_model.action_out_squashed.action_range"] = \
+            convert_to_torch_tensor(np.array([1.0]))
         return model_dict
 
 

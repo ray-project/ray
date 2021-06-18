@@ -34,6 +34,8 @@ def framework_iterator(config=None,
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session (bool): If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
+            Also sets a seed (42) on the session to make the test
+            deterministic.
 
     Yields:
         str: If enter_session is False:
@@ -77,6 +79,7 @@ def framework_iterator(config=None,
         if fw == "tf" and session is True:
             sess = tf1.Session()
             sess.__enter__()
+            tf1.set_random_seed(42)
 
         print("framework={}".format(fw))
 
@@ -288,6 +291,7 @@ def check_compute_single_action(trainer,
         pol = trainer.get_policy()
     except AttributeError:
         pol = trainer.policy
+    model = pol.model
 
     action_space = pol.action_space
 
@@ -328,7 +332,14 @@ def check_compute_single_action(trainer,
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
                 if include_state:
-                    state_in = pol.model.get_initial_state()
+                    state_in = model.get_initial_state()
+                    if not state_in:
+                        state_in = []
+                        i = 0
+                        while f"state_in_{i}" in model.view_requirements:
+                            state_in.append(model.view_requirements[
+                                f"state_in_{i}"].space.sample())
+                            i += 1
                 action_in = action_space.sample() \
                     if include_prev_action_reward else None
                 reward_in = 1.0 if include_prev_action_reward else None

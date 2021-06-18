@@ -6,7 +6,8 @@ import time
 import ray
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
-                            init_error_pubsub, get_error_message)
+                            init_error_pubsub, get_error_message,
+                            object_memory_usage)
 
 
 def test_error_isolation(call_ray_start):
@@ -164,13 +165,9 @@ print("success")
 
 
 @pytest.mark.parametrize(
-    "call_ray_start",
-    [
+    "call_ray_start", [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.objects(), which only works with the GCS-based
-        # object directory
-        "{\"ownership_based_object_directory_enabled\":false}",
+        "--max-worker-port=0 --port 0",
     ],
     indirect=True)
 def test_cleanup_on_driver_exit(call_ray_start):
@@ -185,12 +182,13 @@ def test_cleanup_on_driver_exit(call_ray_start):
 import time
 import ray
 import numpy as np
+from ray.test_utils import object_memory_usage
 ray.init(address="{}")
 object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
-    if len(ray.objects()) == 1000:
+    if object_memory_usage() > 0:
         break
 else:
     raise Exception("Objects did not appear in object table.")
@@ -202,7 +200,7 @@ print("success")
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if len(ray.objects()) == 0:
+        if object_memory_usage() == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")
@@ -213,13 +211,13 @@ def test_drivers_named_actors(call_ray_start):
     # named actor.
     address = call_ray_start
 
-    ray.init(address=address)
+    ray.init(address=address, namespace="")
 
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 @ray.remote
 class Counter:
     def __init__(self):
@@ -235,7 +233,7 @@ time.sleep(100)
     driver_script2 = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 while True:
     try:
         counter = ray.get_actor("Counter")

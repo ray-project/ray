@@ -807,7 +807,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``1000`` for random/grid search and ``1`` for any other search algorithms.
+  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1`` for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
   instead of the legacy resource requests. Setting this to 1 enables legacy placement.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
@@ -831,7 +831,8 @@ These are the environment variables Ray Tune currently considers:
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
-  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results).
+  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
+  if used with ``checkpoint_at_end``.
 * **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.

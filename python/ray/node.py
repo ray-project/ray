@@ -129,7 +129,10 @@ class Node:
             temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "workers/default_worker.py"))
+                "workers/default_worker.py"),
+            setup_worker_path=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")
@@ -229,9 +232,24 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
+            # Add tracing_startup_hook to redis / internal kv manually
+            # since internal kv is not yet initialized.
+            if ray_params.tracing_startup_hook:
+                redis_client.hset("tracing_startup_hook", "value",
+                                  ray_params.tracing_startup_hook)
 
         if not connect_only:
             self.start_ray_processes()
+            # we should update the address info after the node has been started
+            try:
+                ray._private.services.wait_for_node(
+                    self.redis_address, self._plasma_store_socket_name,
+                    self.redis_password)
+            except TimeoutError:
+                raise Exception(
+                    "The current node has not been updated within 30 "
+                    "seconds, this could happen because of some of "
+                    "the Ray processes failed to startup.")
             address_info = (ray._private.services.get_address_info_from_redis(
                 self.redis_address,
                 self._raylet_ip_address,
@@ -769,6 +787,8 @@ class Node:
             self._raylet_socket_name,
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
+            self._ray_params.setup_worker_path,
+            self._ray_params.worker_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,
@@ -820,7 +840,8 @@ class Node:
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
-            backup_count=self.backup_count)
+            backup_count=self.backup_count,
+            monitor_ip=self._node_ip_address)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 

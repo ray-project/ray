@@ -2,7 +2,7 @@ Release Process
 ===============
 
 The following documents the Ray release process. Please use the
-`Release Checklist`_ to keep track of your progress, as it is meant
+`Release Checklist <RELEASE_CHECKLIST.md>`_ to keep track of your progress, as it is meant
 to be used alongside this process document. Also, please keep the
 team up-to-date on any major regressions or changes to the timeline
 via emails to the engineering@anyscale.com Google Group.
@@ -169,11 +169,7 @@ is generally the easiest way to run release tests.
    General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
    We are in the process of introducing scalability envelopes for Ray Tune.
 
-   Of the seven existing tests, three are currently not reaching their target time.
-   These three tests (test_result_throughput_cluster, test_result_throughput_single_node, and
-   test_network_overhead) are marked in the release checklist and don't have to be run at this time.
-
-   The other release tests are expected to run through without errors and to pass within a pre-specified time.
+   Release tests are expected to run through without errors and to pass within a pre-specified time.
    The time is checked in the test function and the output will let you know if a run was fast enough and
    thus passed the test.
 
@@ -264,12 +260,8 @@ to proceed with the final stages of the release!
 
    .. code-block:: bash
 
-     # First install ray normally because installing from test.pypi.org won't
-     # be able to install some of the other dependencies.
-     pip install ray
-     pip uninstall ray
-
-     pip install --index-url https://test.pypi.org/simple/ ray
+     # Need to specify extra URL since some dependencies are not on test.pypi
+     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
 
    Then start Python, make sure you can ``import ray`` and run some simple Ray
    scripts. Make sure that it is finding the version of Ray that you just

@@ -52,6 +52,7 @@ def init_and_serve():
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)
+    cluster.wait_for_nodes(1)
     address = cluster.address
 
     def connect(job_config=None):
@@ -96,6 +97,15 @@ def test_basic_preregister(init_and_serve):
         val = ray.get(c.get.remote())
         assert val == 12
         ray.disconnect()
+
+
+def test_idempotent_disconnect(init_and_serve):
+    from ray.util.client import ray
+    ray.disconnect()
+    ray.disconnect()
+    ray.connect("localhost:50051")
+    ray.disconnect()
+    ray.disconnect()
 
 
 def test_num_clients(init_and_serve_lazy):

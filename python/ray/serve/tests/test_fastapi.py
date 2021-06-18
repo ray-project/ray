@@ -1,3 +1,4 @@
+import sys
 import time
 from typing import Any, List, Optional
 import tempfile
@@ -311,6 +312,46 @@ def test_fastapi_features(serve_instance):
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
+def test_fast_api_mounted_app(serve_instance):
+    app = FastAPI()
+    subapp = FastAPI()
+
+    @subapp.get("/hi")
+    def hi():
+        return "world"
+
+    app.mount("/mounted", subapp)
+
+    @serve.deployment(route_prefix="/api")
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+
+    assert requests.get(
+        "http://localhost:8000/api/mounted/hi").json() == "world"
+
+
+def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        1 / 0
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        def f(self):
+            return 1
+
+    A.deploy()
+    # Without a proper fix, the actor won't be initialized correctly.
+    # Because it will crash on each startup.
+    assert ray.get(A.get_handle().f.remote()) == 1
+
+
 def test_fastapi_duplicate_routes(serve_instance):
     app = FastAPI()
 
@@ -344,6 +385,65 @@ def test_fastapi_duplicate_routes(serve_instance):
     for version in ["v1", "v2"]:
         resp = requests.get(f"http://localhost:8000/api/{version}/ignored")
         assert resp.status_code == 404
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
+def test_doc_generation(serve_instance, route_prefix):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class App:
+        @app.get("/")
+        def func1(self, arg: str):
+            return "hello"
+
+    App.deploy()
+
+    if route_prefix is None:
+        prefix = "/App"
+    else:
+        prefix = route_prefix
+
+    if not prefix.endswith("/"):
+        prefix += "/"
+
+    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    assert r.status_code == 200
+    assert len(r.json()["paths"]) == 1
+    assert "/" in r.json()["paths"]
+    assert len(r.json()["paths"]["/"]) == 1
+    assert "get" in r.json()["paths"]["/"]
+
+    r = requests.get(f"http://localhost:8000{prefix}docs")
+    assert r.status_code == 200
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class App:
+        @app.get("/")
+        def func1(self, arg: str):
+            return "hello"
+
+        @app.post("/hello")
+        def func2(self, arg: int):
+            return "hello"
+
+    App.deploy()
+
+    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    assert r.status_code == 200
+    assert len(r.json()["paths"]) == 2
+    assert "/" in r.json()["paths"]
+    assert len(r.json()["paths"]["/"]) == 1
+    assert "get" in r.json()["paths"]["/"]
+    assert "/hello" in r.json()["paths"]
+    assert len(r.json()["paths"]["/hello"]) == 1
+    assert "post" in r.json()["paths"]["/hello"]
+
+    r = requests.get(f"http://localhost:8000{prefix}docs")
+    assert r.status_code == 200
 
 
 if __name__ == "__main__":

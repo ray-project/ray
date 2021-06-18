@@ -357,9 +357,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         }
 
         if not available:
-            self.skipTest(f"Warning: Ray reported no available resources, "
-                          f"but this is an error on the Ray core side. "
-                          f"Skipping this test for now.")
+            self.skipTest("Warning: Ray reported no available resources, "
+                          "but this is an error on the Ray core side. "
+                          "Skipping this test for now.")
 
         self.assertDictEqual(
             available, {

@@ -32,12 +32,28 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--mixed-torch-tf", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=20)
-parser.add_argument("--stop-reward", type=float, default=150.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=20,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 def custom_training_workflow(workers: WorkerSet, config: dict):

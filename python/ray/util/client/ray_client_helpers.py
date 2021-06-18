@@ -1,27 +1,28 @@
 from contextlib import contextmanager
 
 import ray as real_ray
-import ray.cloudpickle as pickle
 import ray.util.client.server.server as ray_client_server
 from ray.util.client import ray
 from ray._private.client_mode_hook import enable_client_mode
 
 
 @contextmanager
-def ray_start_client_server(metadata=None, ray_connect_handler=None):
+def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
     with ray_start_client_server_pair(
-            metadata=metadata,
-            ray_connect_handler=ray_connect_handler) as pair:
+            metadata=metadata, ray_connect_handler=ray_connect_handler,
+            **kwargs) as pair:
         client, server = pair
         yield client
 
 
 @contextmanager
-def ray_start_client_server_pair(metadata=None, ray_connect_handler=None):
+def ray_start_client_server_pair(metadata=None,
+                                 ray_connect_handler=None,
+                                 **kwargs):
     ray._inside_client_test = True
     server = ray_client_server.serve(
         "localhost:50051", ray_connect_handler=ray_connect_handler)
-    ray.connect("localhost:50051", metadata=metadata)
+    ray.connect("localhost:50051", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:
@@ -46,23 +47,6 @@ def ray_start_cluster_client_server_pair(address):
         ray._inside_client_test = False
         ray.disconnect()
         server.stop(0)
-
-
-class RayClientSerializationContext:
-    # NOTE(simon): Used for registering custom serializers. We cannot directly
-    # use the SerializationContext because it requires Ray workers. Please
-    # make sure to keep the API consistent.
-
-    def _unregister_cloudpickle_reducer(self, cls):
-        pickle.CloudPickler.dispatch.pop(cls, None)
-
-    def _register_cloudpickle_serializer(self, cls, custom_serializer,
-                                         custom_deserializer):
-        def _CloudPicklerReducer(obj):
-            return custom_deserializer, (custom_serializer(obj), )
-
-        # construct a reducer
-        pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
 
 @contextmanager
@@ -92,7 +76,7 @@ def connect_to_client_or_not(connect_to_client: bool):
     """
 
     if connect_to_client:
-        with ray_start_client_server(), enable_client_mode():
+        with ray_start_client_server(namespace=""), enable_client_mode():
             yield
     else:
         yield

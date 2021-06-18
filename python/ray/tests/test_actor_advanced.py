@@ -685,7 +685,7 @@ def test_detached_actor(ray_start_regular):
     create_actor_name = "DetachedActor"
     driver_script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
@@ -738,11 +738,13 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
-        actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+        actor_status = ray.state.actors(
+            actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+            actor_status = ray.state.actors(
+                actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -760,7 +762,7 @@ def test_detached_actor_cleanup(ray_start_regular):
     driver_script = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 @ray.remote
 class DetachedActor:
@@ -772,11 +774,11 @@ detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
 # Wait until actor dies.
-actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
 while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-    actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+    actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
     if wait_time >= max_wait_time:
@@ -838,11 +840,11 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     node_failure_actor_name = "node_failure_actor_name"
 
     def wait_until_actor_dead(handle):
-        actor_status = ray.actors(actor_id=handle._actor_id.hex())
+        actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=handle._actor_id.hex())
+            actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -1171,6 +1173,85 @@ def test_kill_pending_actor_with_no_restart_false():
 
     global_state_accessor.disconnect()
     ray.shutdown()
+
+
+def test_actor_timestamps(ray_start_regular):
+    @ray.remote
+    class Foo:
+        def get_id(self):
+            return ray.get_runtime_context().actor_id.hex()
+
+        def kill_self(self):
+            sys.exit(1)
+
+    def graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        del actor
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
+
+    def not_graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
+
+    def restarted():
+        actor = Foo.options(max_restarts=1).remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 1500 < lapsed < 2500, f"Start: {start_time}, End: {end_time}"
+
+    graceful_exit()
+    not_graceful_exit()
+    restarted()
 
 
 if __name__ == "__main__":

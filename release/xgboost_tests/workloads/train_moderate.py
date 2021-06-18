@@ -6,10 +6,14 @@ Test owner: krfricke
 
 Acceptance criteria: Should run through and report final results.
 """
+import json
+import os
+import time
+
 import ray
 from xgboost_ray import RayParams
 
-from _train import train_ray
+from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
     ray.init(address="auto")
@@ -21,6 +25,7 @@ if __name__ == "__main__":
         cpus_per_actor=4,
         gpus_per_actor=0)
 
+    start = time.time()
     train_ray(
         path="/data/classification.parquet",
         num_workers=32,
@@ -31,5 +36,14 @@ if __name__ == "__main__":
         ray_params=ray_params,
         xgboost_params=None,
     )
+    taken = time.time() - start
+
+    result = {
+        "time_taken": taken,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/train_moderate.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
     print("PASSED.")

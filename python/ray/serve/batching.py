@@ -189,8 +189,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
             return [s.lower() for s in batch]
 
     >>> async def handle_single(s: str):
-            # Will return s.lower().
-            return await handle_batch(s)
+            return await handle_batch(s) # Returns s.lower().
 
     Arguments:
         max_batch_size (int): the maximum batch size that will be executed in
