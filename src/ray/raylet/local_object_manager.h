@@ -169,7 +169,11 @@ class LocalObjectManager {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  /// Unpin an object with the owner.
+  /// Unpin an object with the owner. If there is no more owners for this object
+  /// it'll be delete.
+  ///
+  /// \param object_id The object id to be unpinned
+  /// \param owner_address The owner of this object id
   void UnpinObject(const ObjectID &object_id, const rpc::Address &owner_address);
 
   // A callback for unpinning spilled objects. This should be invoked after the object

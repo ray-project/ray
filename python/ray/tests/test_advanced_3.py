@@ -308,7 +308,6 @@ def test_non_ascii_comment(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
-@pytest.mark.timeout(60)
 def test_put_pins_object(ray_start_object_store_memory):
     obj = np.ones(200 * 1024, dtype=np.uint8)
     x_id = ray.put(obj)
