@@ -18,10 +18,13 @@ SerializedStepFunction = str
 
 @dataclass
 class WorkflowInputs:
-    step_id: str
+    # The workflow step function body.
     func_body: Callable
+    # The object ref of the input arguments.
     args: RRef
+    # The hex string of object refs in the arguments.
     object_refs: List[str]
+    # The ID of workflows in the arguments.
     workflows: List[str]
 
 
@@ -100,7 +103,6 @@ class Workflow:
     def get_inputs(self) -> WorkflowInputs:
         """Get the inputs of the workflow."""
         return WorkflowInputs(
-            step_id=self._step_id,
             func_body=self._original_function,
             args=self._input_placeholder,
             object_refs=[r.hex() for r in self._input_object_refs],

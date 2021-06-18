@@ -52,23 +52,6 @@ class WorkflowStorage:
         self._storage = store
         self._workflow_id = workflow_id
 
-    def update_output_shortcut(self, forward_output_to: StepID,
-                               shortcut_output_step_id: StepID) -> None:
-        """Update output shortcut. The output of 'shortcut_output_step_id'
-        should forward to the step 'forward_output_to'. When resume from
-        'forward_output_to' step, that step can directly read
-        the output of 'shortcut_output_step_id'.
-
-        Args:
-            forward_output_to: step 'forward_output_to'.
-            shortcut_output_step_id: step 'shortcut_output_step_id'.
-        """
-        metadata = self._storage.load_step_output_metadata(
-            self._workflow_id, forward_output_to)
-        metadata["output_step_id_shortcut"] = shortcut_output_step_id
-        self._storage.dump_step_output_metadata(self._workflow_id,
-                                                forward_output_to, metadata)
-
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
@@ -91,18 +74,25 @@ class WorkflowStorage:
         """
         return self._storage.load_step_func_body(self._workflow_id, step_id)
 
-    def load_step_args(self, step_id: StepID) -> Tuple[List, Dict[str, Any]]:
+    def load_step_args(
+            self, step_id: StepID, workflows: List[Any],
+            object_refs: List[ray.ObjectRef]) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
 
         Args:
             step_id: ID of the workflow step.
+            workflows: The workflows in the original arguments,
+                replaced by the actual workflow outputs.
+            object_refs: The object refs in the original arguments.
 
         Returns:
             Args and kwargs.
         """
-        return self._storage.load_step_args(self._workflow_id, step_id)
+        with serialization_context.workflow_args_resolving_context(
+                workflows, object_refs):
+            return self._storage.load_step_args(self._workflow_id, step_id)
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -114,6 +104,23 @@ class WorkflowStorage:
             The object ref.
         """
         return self._storage.load_object_ref(self._workflow_id, object_id)
+
+    def _update_output_shortcut(self, forward_output_to: StepID,
+                                shortcut_output_step_id: StepID) -> None:
+        """Update output shortcut. The output of 'shortcut_output_step_id'
+        should forward to the step 'forward_output_to'. When resume from
+        'forward_output_to' step, that step can directly read
+        the output of 'shortcut_output_step_id'.
+
+        Args:
+            forward_output_to: step 'forward_output_to'.
+            shortcut_output_step_id: step 'shortcut_output_step_id'.
+        """
+        metadata = self._storage.load_step_output_metadata(
+            self._workflow_id, forward_output_to)
+        metadata["output_step_id_shortcut"] = shortcut_output_step_id
+        self._storage.dump_step_output_metadata(self._workflow_id,
+                                                forward_output_to, metadata)
 
     def _locate_output_step_id(self, step_id: StepID):
         metadata = self._storage.load_step_output_metadata(
@@ -176,7 +183,6 @@ class WorkflowStorage:
         """Save workflow inputs."""
         f = inputs.func_body
         metadata = {
-            "step_id": inputs.step_id,
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": inputs.object_refs,
             "workflows": inputs.workflows,
@@ -214,11 +220,11 @@ class WorkflowStorage:
                 assert step_id != ret.id
                 self._storage.dump_step_output_metadata(
                     self._workflow_id, step_id, {"output_step_id": ret.id})
-            forward_src = ret.id
+            shortcut_output_id = ret.id
         else:
             # This workflow step returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
             self._storage.dump_step_output(self._workflow_id, step_id, ret)
-            forward_src = step_id
+            shortcut_output_id = step_id
         if forward_output_to is not None:
-            self.update_output_shortcut(forward_output_to, forward_src)
+            self._update_output_shortcut(forward_output_to, shortcut_output_id)

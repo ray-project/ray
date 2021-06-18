@@ -5,7 +5,6 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
 
 
@@ -44,10 +43,9 @@ def _recover_workflow_step(input_object_refs: List[str],
         input_workflows[index] = reader.load_step_output(_step_id)
     input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
     step_id = workflow_context.get_current_step_id()
-    with serialization_context.workflow_args_resolving_context(
-            input_workflows, input_object_refs):
-        args, kwargs = reader.load_step_args(step_id)
     func: Callable = reader.load_step_func_body(step_id)
+    args, kwargs = reader.load_step_args(step_id, input_workflows,
+                                         input_object_refs)
     return func(*args, **kwargs)
 
 
