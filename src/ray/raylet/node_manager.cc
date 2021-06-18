@@ -302,7 +302,17 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       },
       max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      // TODO (Alex): Ideally we could do these in a more robust way (retry
+      // them, do them with the lightweight heartbeat, etc).
+      [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
+            self_node_id_, resources, nullptr));
+      },
+      [this](const std::vector<std::string> &resource_names) {
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
+            self_node_id_, resource_names, nullptr));
+      });
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
@@ -398,9 +408,15 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    if (!job_data.is_dead()) {
-      HandleJobStarted(job_id, job_data);
-    } else {
+    // HandleJobStarted is idempotent so it's ok to call it again when the job
+    // finishes. We always need to call `HandleJobStarted` even when a job has
+    // finished, because we may have missed the started event (for example,
+    // because the node wasn't up when the job started). JobStarted +
+    // JobFinished events both need to be processed because we need to persist
+    // the job config of dead jobs in order for detached actors to function
+    // properly.
+    HandleJobStarted(job_id, job_data);
+    if (job_data.is_dead()) {
       HandleJobFinished(job_id, job_data);
     }
   };
@@ -484,9 +500,10 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
-  RAY_CHECK(!job_data.is_dead());
-
   worker_pool_.HandleJobStarted(job_id, job_data.config());
+  // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
+  // increment the ref count multiple times. This is fine because
+  // `HandleJobFinisehd` will also decrement the ref count multiple times.
   runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -516,6 +533,20 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
+void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
+  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
+  ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
+  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
+          normal_task_resources)) {
+    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
+    resources_data.set_resources_normal_task_changed(true);
+    auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
+    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                       normal_task_resources.GetResourceMap().end()};
+    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
+  }
+}
+
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
@@ -525,6 +556,9 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+    FillNormalTaskResourceUsage(resources_data);
+  }
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -1092,7 +1126,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
+          gcs::CreateJobTableData(job_id, /*is_dead*/ false, current_sys_time_ms(),
                                   worker_ip_address, pid, job_config);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
@@ -2210,6 +2244,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_object_store_bytes_primary_copy(
+        store_stats.object_store_bytes_primary_copy() +
+        cur_store.object_store_bytes_primary_copy());
     store_stats.set_object_store_bytes_fallback(
         store_stats.object_store_bytes_fallback() +
         cur_store.object_store_bytes_fallback());

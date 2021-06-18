@@ -2,6 +2,7 @@
 
 import ray
 from ray.tune import run_experiments
+from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -30,19 +31,21 @@ ray.init()
 
 # Run the workload.
 
-run_experiments({
-    "apex": {
-        "run": "APEX",
-        "env": "Pong-v0",
-        "config": {
-            "num_workers": 3,
-            "num_gpus": 0,
-            "buffer_size": 10000,
-            "learning_starts": 0,
-            "rollout_fragment_length": 1,
-            "train_batch_size": 1,
-            "min_iter_time_s": 10,
-            "timesteps_per_iteration": 10,
-        },
-    }
-})
+run_experiments(
+    {
+        "apex": {
+            "run": "APEX",
+            "env": "Pong-v0",
+            "config": {
+                "num_workers": 3,
+                "num_gpus": 0,
+                "buffer_size": 10000,
+                "learning_starts": 0,
+                "rollout_fragment_length": 1,
+                "train_batch_size": 1,
+                "min_iter_time_s": 10,
+                "timesteps_per_iteration": 10,
+            },
+        }
+    },
+    callbacks=[ProgressCallback()])

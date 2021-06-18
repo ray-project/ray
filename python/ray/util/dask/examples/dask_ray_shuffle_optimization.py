@@ -1,5 +1,5 @@
 import ray
-from ray.util.dask import dataframe_optimize
+from ray.util.dask import dataframe_optimize, ray_dask_get
 import dask
 import dask.dataframe as dd
 import numpy as np
@@ -12,7 +12,8 @@ ray.init()
 # Set the Dask DataFrame optimizer to
 # our custom optimization function, this time using the config setter as a
 # context manager.
-with dask.config.set(dataframe_optimize=dataframe_optimize):
+with dask.config.set(
+        scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize):
     npartitions = 100
     df = dd.from_pandas(
         pd.DataFrame(

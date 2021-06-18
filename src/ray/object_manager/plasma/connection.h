@@ -5,6 +5,8 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
 
+#include "absl/container/flat_hash_set.h"
+
 namespace plasma {
 
 namespace flatbuf {
@@ -37,7 +39,8 @@ class Client : public ray::ClientConnection, public ClientInterface {
  private:
   Client(ray::MessageHandler &message_handler, ray::local_stream_socket &&socket);
   /// File descriptors that are used by this client.
-  std::unordered_set<MEMFD_TYPE> used_fds_;
+  /// TODO(ekl) we should also clean up old fds that are removed.
+  absl::flat_hash_set<MEMFD_TYPE> used_fds_;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
@@ -50,7 +53,7 @@ class StoreConn : public ray::ServerConnection {
   /// Receive a file descriptor for the store.
   ///
   /// \return A file descriptor.
-  ray::Status RecvFd(MEMFD_TYPE *fd);
+  ray::Status RecvFd(MEMFD_TYPE_NON_UNIQUE *fd);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);
