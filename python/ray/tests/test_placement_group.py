@@ -1753,10 +1753,12 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     expected_created_num = 1
 
     def is_actor_created_number_correct():
+        nonlocal expected_created_num
         ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
         return len(ready) == expected_created_num
 
     def is_pg_created_number_correct():
+        nonlocal expected_created_num
         created_pgs = [
             pg for _, pg in ray.util.placement_group_table().items()
             if pg["state"] == "CREATED"
