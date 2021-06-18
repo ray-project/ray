@@ -17,14 +17,12 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
-from ray.rllib.utils.torch_ops import apply_grad_clipping, atanh, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     convert_to_torch_tensor
 
 torch, nn = try_import_torch()
@@ -130,49 +128,9 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
 
-        #def bc_log(model, obs, actions):
-            #from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
-            #distr = TorchSquashedGaussian()
-            ## Stabilize input to atanh.
-            #normed_actions = \
-            #    (actions - action_dist_t.low) / \
-            #    (action_dist_t.high - action_dist_t.low) * 2.0 - 1.0
-            #save_normed_actions = torch.clamp(
-            #    normed_actions, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            #unsquashed_values = atanh(save_normed_actions)
-
-            #logits = model.get_policy_output(obs)
-            #distr = TorchSquashedGaussian(logits, model)
-            
-            #return action_dist_t.logp(actions)
-            #mean, log_std = torch.chunk(logits, 2, dim=-1)
-
-            # Mean clamping for stability.
-            #mean = torch.clamp(mean, MEAN_MIN, MEAN_MAX)
-            #log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT,
-            #                      MAX_LOG_NN_OUTPUT)
-            #std = torch.exp(log_std)
-            #normal_dist = torch.distributions.Normal(mean, std)
-
-            # Get log prob of unsquashed values from our Normal.
-            #log_prob_gaussian = normal_dist.log_prob(unsquashed_values)
-            ## For safety reasons, clamp somehow, only then sum up.
-            #log_prob_gaussian = torch.clamp(log_prob_gaussian, -100, 100)
-            #log_prob_gaussian = torch.sum(log_prob_gaussian, dim=-1)
-            ## Get log-prob for squashed Gaussian.
-            #unsquashed_values_tanhd = torch.tanh(unsquashed_values)
-            #log_prob = log_prob_gaussian - torch.sum(
-            #    torch.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), dim=-1)
-            #return log_prob
-
-            #return torch.sum(
-            #    normal_dist.log_prob(actions) -
-            #    torch.log(1 - actions**2 + SMALL_NUMBER),
-            #    dim=-1)
-
-        bc_logp = action_dist_t.logp(actions)#bc_log(model, model_out_t, actions)
-        #actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
-        actor_loss =  - bc_logp.mean()
+        bc_logp = action_dist_t.logp(actions)
+        # actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
+        actor_loss = -bc_logp.mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
         policy.actor_optim.zero_grad()

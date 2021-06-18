@@ -16,7 +16,7 @@ torch, _ = try_import_torch()
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -33,23 +33,11 @@ class TestCQL(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
-        #TODO
-        data_file = "/Users/sven/Dropbox/Projects/ray/rllib/tests/data/pendulum/large-expert.json"
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
         config = cql.CQL_DEFAULT_CONFIG.copy()
         config["env"] = "Pendulum-v0"
-        #config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
-        #import gym
-        #import numpy as np
-        #config["env_config"] = {
-        #    "config": {
-        #        "observation_space": gym.spaces.Box(-1000.0, 1000.0, (47, ),
-        #                                            np.float32),
-        #        "action_space": gym.spaces.Box(0.0, 100.0, (4, ), np.float32),
-        #    },
-        #}
         config["input"] = [data_file]
 
         # In the files, we use here for testing, actions have already
@@ -63,12 +51,11 @@ class TestCQL(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
         config["learning_starts"] = 0
-        # TODO:uncomment:
-        #config["bc_iters"] = 0  # 2 BC iters, 2 CQL iters.
+        config["bc_iters"] = 2  # 2 BC iters, 2 CQL iters.
         config["rollout_fragment_length"] = 1
 
         # Switch on off-policy evaluation.
-        #config["input_evaluation"] = ["is"]
+        config["input_evaluation"] = ["is"]
 
         config["evaluation_interval"] = 2
         config["evaluation_num_episodes"] = 10
@@ -76,10 +63,10 @@ class TestCQL(unittest.TestCase):
         config["evaluation_parallel_to_training"] = True
         config["evaluation_num_workers"] = 2
 
-        num_iterations = 30000  #TODO4
+        num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config, frameworks="torch"):  #TODO
+        for fw in framework_iterator(config):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train().get("evaluation")

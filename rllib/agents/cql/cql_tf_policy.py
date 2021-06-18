@@ -19,8 +19,6 @@ from ray.rllib.agents.sac.sac_tf_policy import \
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.exploration.random import Random
@@ -126,33 +124,10 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = tf.reduce_mean(
             tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
-
-        def bc_log(model, obs, actions):
-            # Stabilize input to atanh.
-            normed_actions = \
-                (actions - action_dist_t.low) / \
-                (action_dist_t.high - action_dist_t.low) * 2.0 - 1.0
-            save_normed_actions = tf.clip_by_value(
-                normed_actions, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            z = tf.math.atanh(save_normed_actions)
-
-            logits = model.get_policy_output(obs)
-            mean, log_std = tf.split(logits, 2, axis=-1)
-
-            # Mean clamping for stability.
-            mean = tf.clip_by_value(mean, MEAN_MIN, MEAN_MAX)
-            log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
-                                       MAX_LOG_NN_OUTPUT)
-            std = tf.math.exp(log_std)
-            normal_dist = tfp.distributions.Normal(mean, std)
-            return tf.reduce_sum(
-                normal_dist.log_prob(z) -
-                tf.math.log(1 - save_normed_actions**2 + SMALL_NUMBER),
-                axis=-1)
-
-        bc_logp = bc_log(model, model_out_t, actions)
-        actor_loss = tf.reduce_mean(
-            tf.stop_gradient(alpha) * log_pis_t - bc_logp)
+        bc_logp = action_dist_t.logp(actions)
+        # actor_loss = tf.reduce_mean(
+        #    tf.stop_gradient(alpha) * log_pis_t - bc_logp)
+        actor_loss = -tf.reduce_mean(bc_logp)
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:

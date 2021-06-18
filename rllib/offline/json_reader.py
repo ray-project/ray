@@ -53,15 +53,18 @@ class JsonReader(InputReader):
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
-                inputs = [os.path.join(inputs, "*.json"),
-                          os.path.join(inputs, "*.zip")]
+                inputs = [
+                    os.path.join(inputs, "*.json"),
+                    os.path.join(inputs, "*.zip")
+                ]
                 logger.warning(
                     f"Treating input directory as glob patterns: {inputs}")
             else:
                 inputs = [inputs]
 
-            if any(urlparse(i).scheme not in [""] + WINDOWS_DRIVES
-                   for i in inputs):
+            if any(
+                    urlparse(i).scheme not in [""] + WINDOWS_DRIVES
+                    for i in inputs):
                 raise ValueError(
                     "Don't know how to glob over `{}`, ".format(inputs) +
                     "please specify a list of files to read instead.")
@@ -120,8 +123,8 @@ class JsonReader(InputReader):
                     "from URIs like {}".format(path))
             ctx = smart_open
         else:
-            # If path doesn't exist, try to interpret is as relative to the rllib
-            # directory (located ../../ from this very module).
+            # If path doesn't exist, try to interpret is as relative to the
+            # rllib directory (located ../../ from this very module).
             path_orig = path
             if not os.path.exists(path):
                 path = os.path.join(Path(__file__).parent.parent, path)
@@ -215,14 +218,6 @@ class JsonReader(InputReader):
         else:
             path = random.choice(self.files)
         return self._try_open_file(path)
-        #if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
-        #    if smart_open is None:
-        #        raise ValueError(
-        #            "You must install the `smart_open` module to read "
-        #            "from URIs like {}".format(path))
-        #    return smart_open(path, "r")
-        #else:
-        #    return open(path, "r")
 
 
 def _from_json(batch: str) -> SampleBatchType:
