@@ -264,12 +264,14 @@ class ServeController:
         """Return the HTTP proxy configuration."""
         return self.http_state.get_config()
 
-    async def shutdown(self) -> None:
+    async def shutdown(self) -> List[GoalId]:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            self.backend_state.shutdown()
+            goal_ids = self.backend_state.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
+
+            return goal_ids
 
     async def deploy(
             self, name: str, backend_config: BackendConfig,
