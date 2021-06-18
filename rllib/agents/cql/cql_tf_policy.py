@@ -125,9 +125,9 @@ def cql_loss(policy: Policy, model: ModelV2,
             tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
         bc_logp = action_dist_t.logp(actions)
-        # actor_loss = tf.reduce_mean(
-        #    tf.stop_gradient(alpha) * log_pis_t - bc_logp)
-        actor_loss = -tf.reduce_mean(bc_logp)
+        actor_loss = tf.reduce_mean(
+            tf.stop_gradient(alpha) * log_pis_t - bc_logp)
+        # actor_loss = -tf.reduce_mean(bc_logp)
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:

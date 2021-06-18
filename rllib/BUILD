@@ -166,7 +166,7 @@ py_test(
     # Include the zipped json data file as well.
     data = [
         "tuned_examples/cql/pendulum-cql.yaml"
-        "tests/data/pendulum/huge.zip",
+        "tests/data/pendulum/huge.zip"
     ],
     args = ["--yaml-dir=tuned_examples/cql"]
 )
@@ -180,7 +180,7 @@ py_test(
     # Include the zipped json data file as well.
     data = [
         "tuned_examples/cql/pendulum-cql.yaml"
-        "tests/data/pendulum/huge.zip",
+        "tests/data/pendulum/huge.zip"
     ],
     args = ["--yaml-dir=tuned_examples/cql", "--framework=torch"]
 )

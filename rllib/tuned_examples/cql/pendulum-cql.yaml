@@ -11,8 +11,13 @@ pendulum-cql:
     config:
         # Works for both torch and tf.
         framework: tf
+
         # Use one or more offline files or "input: sampler" for online learning.
         input: ["tests/data/pendulum/enormous.zip"]
+        # Our input file above comes from an SAC run. Actions in there
+        # are already normalized (produced by SquashedGaussian).
+        actions_in_input_normalized: true
+
         horizon: 200
         soft_horizon: true
         Q_model:
@@ -21,6 +26,7 @@ pendulum-cql:
         policy_model:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
+        train_batch_size: 2000
         bc_iters: 200
         no_done_at_end: true
         n_step: 3

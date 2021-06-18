@@ -187,9 +187,10 @@ def unsquash_action(action, action_space_struct):
 
 
 def normalize_action(action, action_space_struct):
-    """Normalizes all components in `action` to be between [-1.0 and 1.0].
+    """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
-    This only applies to Box components within the action space.
+    This only applies to Box components, whose dtype is float32 or float64,
+    within the action space.
 
     Args:
         action (Any): The action to be normalized. This could be any complex

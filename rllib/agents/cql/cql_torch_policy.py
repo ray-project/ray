@@ -129,8 +129,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     else:
 
         bc_logp = action_dist_t.logp(actions)
-        # actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
-        actor_loss = -bc_logp.mean()
+        actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
+        # actor_loss = -bc_logp.mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
         policy.actor_optim.zero_grad()
