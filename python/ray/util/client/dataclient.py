@@ -110,9 +110,10 @@ class DataClient:
                        ) -> ray_client_pb2.DataResponse:
         if self._in_shutdown:
             raise ConnectionError(
-                "Request can't be sent because the data channel terminated. "
-                "This is likely because the server disconnected from the data "
-                "channel at some point before this request was prepared.")
+                "Request can't be sent because the data channel is "
+                "terminated. This is likely because the data channel "
+                "disconnected at some point before this request was "
+                "prepared.")
         req_id = self._next_id()
         req.req_id = req_id
         self.request_queue.put(req)
@@ -134,9 +135,10 @@ class DataClient:
                     callback: Optional[ResponseCallable] = None) -> None:
         if self._in_shutdown:
             raise ConnectionError(
-                "Request can't be sent because the data channel terminated. "
-                "This is likely because the server disconnected from the data "
-                "channel at some point before this request was prepared.")
+                "Request can't be sent because the data channel is "
+                "terminated. This is likely because the data channel "
+                "disconnected at some point before this request was "
+                "prepared.")
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
