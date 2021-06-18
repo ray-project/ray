@@ -79,9 +79,6 @@ DEFAULT_CONFIG = with_common_config({
     "clip_actions": False,
 
     # === Learning ===
-    # Disable setting done=True at end of episode. This should be set to True
-    # for infinite-horizon MDPs (e.g., many continuous control problems).
-    "no_done_at_end": False,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
     # Initial value to use for the entropy weight alpha.
@@ -89,7 +86,7 @@ DEFAULT_CONFIG = with_common_config({
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
-    "target_entropy": None,
+    "target_entropy": "auto",
     # N-step target updates. If >1, sars' tuples in trajectories will be
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,

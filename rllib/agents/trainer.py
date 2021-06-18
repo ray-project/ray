@@ -115,9 +115,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # hit. This allows value estimation and RNN state to span across logical
     # episodes denoted by horizon. This only has an effect if horizon != inf.
     "soft_horizon": False,
-    # Don't set 'done' at the end of the episode. Note that you still need to
-    # set this if soft_horizon=True, unless your env is actually running
-    # forever without returning done=True.
+    # Don't set 'done' at the end of the episode.
+    # In combination with `soft_horizon`, this works as follows:
+    # - no_done_at_end=False soft_horizon=False:
+    #   Reset env and add `done=True` at end of each episode.
+    # - no_done_at_end=True soft_horizon=False:
+    #   Reset env, but do NOT add `done=True` at end of the episode.
+    # - no_done_at_end=False soft_horizon=True:
+    #   Do NOT reset env at horizon, but add `done=True` at the horizon
+    #   (pretending the episode has terminated).
+    # - no_done_at_end=True soft_horizon=True:
+    #   Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
     "no_done_at_end": False,
     # Environment name can also be passed via config.
     "env": None,

@@ -12,7 +12,7 @@ pendulum-cql:
         # Works for both torch and tf.
         framework: tf
         # Use one or more offline files or "input: sampler" for online learning.
-        input: ["/your/json/file/here"]
+        input: ["tests/data/pendulum/enormous.zip"]
         horizon: 200
         soft_horizon: true
         Q_model:
@@ -21,28 +21,15 @@ pendulum-cql:
         policy_model:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
-        tau: 0.005
-        target_entropy: auto
+        bc_iters: 200
         no_done_at_end: true
         n_step: 3
-        rollout_fragment_length: 1
         prioritized_replay: false
-        train_batch_size: 256
-        target_network_update_freq: 1
         timesteps_per_iteration: 1000
         learning_starts: 256
-        optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
-        num_workers: 0
-        num_gpus: 1
-        clip_actions: False
-        normalize_actions: true
         evaluation_num_workers: 1
         evaluation_interval: 1
         metrics_smoothing_episodes: 5
-        bc_iters: 0
         # Evaluate in an actual environment.
         evaluation_config:
             input: sampler

@@ -79,13 +79,13 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        # Add torch option to exp configs.
-        for exp in experiments.values():
-            exp["config"]["framework"] = args.framework
-            if args.torch:
-                deprecation_warning(old="--torch", new="--framework=torch")
-                exp["config"]["framework"] = "torch"
-                args.framework = "torch"
+        # Add torch option to exp config.
+        exp = list(experiments.values())[0]
+        exp["config"]["framework"] = args.framework
+        if args.torch:
+            deprecation_warning(old="--torch", new="--framework=torch")
+            exp["config"]["framework"] = "torch"
+            args.framework = "torch"
 
         # Print out the actual config.
         print("== Test config ==")
@@ -103,8 +103,13 @@ if __name__ == "__main__":
                 _register_all()
 
             for t in trials:
-                if (t.last_result["episode_reward_mean"] >=
-                        t.stopping_criterion["episode_reward_mean"]):
+                # If we have evaluation workers, use their rewards.
+                # This is useful for offline learning tests, where
+                # we evaluate against an actual environment.
+                reward_mean = t.last_result["episode_reward_mean"] if \
+                    exp["config"].get("evaluation_interval", 0) == 0 else \
+                    t.last_result["evaluation"]["episode_reward_mean"]
+                if reward_mean >= t.stopping_criterion["episode_reward_mean"]:
                     passed = True
                     break
 

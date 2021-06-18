@@ -156,6 +156,35 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ars", "--framework=torch"]
 )
 
+# CQL
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml"
+        "tests/data/pendulum/huge.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_cql_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml"
+        "tests/data/pendulum/huge.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql", "--framework=torch"]
+)
+
 # DDPG
 py_test(
     name = "run_regression_tests_pendulum_ddpg_tf",
