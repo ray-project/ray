@@ -939,8 +939,10 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
-  result << "\n- num chunks received failed / cancelled: " << num_chunks_received_cancelled_;
-  result << "\n- num chunks received failed / thrashed: " << num_chunks_received_thrashed_;
+  result << "\n- num chunks received failed / cancelled: "
+         << num_chunks_received_cancelled_;
+  result << "\n- num chunks received failed / thrashed: "
+         << num_chunks_received_thrashed_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
   result << "\nEvent stats:" << rpc_service_.StatsString();
