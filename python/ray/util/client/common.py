@@ -34,15 +34,11 @@ GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 # 20 seconds (gRPC) default
 GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
-# Used for the RayClient Proxy <-> Specific RayClient Server
-GRPC_BASE_OPTIONS = [
+GRPC_OPTIONS = [
     ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-]
-
-GRPC_OPTIONS = GRPC_BASE_OPTIONS + [
     ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
-    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS), # TODO(ilr) try bumping this
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
     ("grpc.keepalive_permit_without_calls", 1),
     # Send an infinite number of pings
     ("grpc.http2.max_pings_without_data", 0),

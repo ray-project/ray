@@ -22,7 +22,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import (ClientServerHandle, GRPC_BASE_OPTIONS,
+from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
                                     CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
@@ -578,7 +578,7 @@ def serve(connection_str, ray_connect_handler=None):
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
-        options=GRPC_BASE_OPTIONS)
+        options=GRPC_OPTIONS)
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
     logs_servicer = LogstreamServicer()

@@ -19,7 +19,7 @@ from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
-                                    CLIENT_SERVER_MAX_THREADS, GRPC_BASE_OPTIONS, GRPC_OPTIONS)
+                                    CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -176,7 +176,7 @@ class ProxyManager():
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=grpc.insecure_channel(
-                    f"localhost:{port}", options=GRPC_BASE_OPTIONS))
+                    f"localhost:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = server
             return server
 
