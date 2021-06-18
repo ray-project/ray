@@ -79,7 +79,7 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 
 template <typename KeyIdType>
 SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
-    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
+    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -94,7 +94,9 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
                  << publisher_id;
 
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
+  cum_published_messages_++;
   if (maybe_subscription_callback.has_value()) {
+    cum_processed_messages_++;
     // If the object id is still subscribed, return a subscribe callback.
     return std::move(maybe_subscription_callback.value());
   } else {
@@ -140,9 +142,12 @@ const std::string SubscriberChannel<KeyIdType>::DebugString() const {
   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
   std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
   result << "Channel " << channel_name;
-  result << "\n\tcumulative subscribe requests: " << cum_subscribe_requests_;
-  result << "\n\tcumulative unsubscribe requests: " << cum_unsubscribe_requests_;
-  result << "\n\tactive subscribed publishers: " << subscription_map_.size();
+  result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
+  result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
+  result << "\n- active subscribed publishers: " << subscription_map_.size();
+  result << "\n- cumulative published messages: " << cum_published_messages_;
+  result << "\n- cumulative processed messages: " << cum_processed_messages_;
+  
   uint64_t active_subscribed_entries = 0;
   for (const auto &subscription_info_it : subscription_map_) {
     active_subscribed_entries +=
@@ -257,6 +262,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // unsubscribe the publisher because there are other entries that subscribe from the
       // publisher.
       if (msg.has_failure_message()) {
+        // SANG-TODO Remove debug only
+        RAY_LOG(INFO) << "Failure message has published from a channel " << channel_type;
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
         subscription_callbacks.emplace_back(nullptr);
         continue;

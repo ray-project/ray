@@ -247,6 +247,9 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     return;
   }
 
+  // SANG-TODO Debug only remove it.
+  cum_pub_message_cnt_[channel_type]++;
+
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
