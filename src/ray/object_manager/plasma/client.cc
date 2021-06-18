@@ -37,6 +37,8 @@
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
 
+#include "absl/container/flat_hash_map.h"
+
 namespace fb = plasma::flatbuf;
 
 namespace plasma {
@@ -186,10 +188,14 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   /// Table of dlmalloc buffer files that have been memory mapped so far. This
   /// is a hash table mapping a file descriptor to a struct containing the
   /// address of the corresponding memory-mapped file.
-  std::unordered_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  absl::flat_hash_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  /// Used to clean up old fd entries in mmap_table_ that are no longer needed,
+  /// since their fd has been reused. TODO(ekl) we should be more proactive about
+  /// unmapping unused segments.
+  absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, MEMFD_TYPE> dedup_fd_table_;
   /// A hash table of the object IDs that are currently being used by this
   /// client.
-  std::unordered_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
   /// The amount of memory available to the Plasma store. The client needs this
   /// information to make sure that it does not delay in releasing so much
   /// memory that the store is unable to evict enough objects to free up space.
@@ -216,7 +222,14 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
     return entry->second->pointer();
   } else {
     MEMFD_TYPE fd;
-    RAY_CHECK_OK(store_conn_->RecvFd(&fd));
+    RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
+    fd.second = store_fd_val.second;
+    // Close and erase the old duplicated fd entry that is no longer needed.
+    if (dedup_fd_table_.find(store_fd_val.first) != dedup_fd_table_.end()) {
+      RAY_LOG(INFO) << "Erasing re-used mmap entry for fd " << store_fd_val.first;
+      mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
+    }
+    dedup_fd_table_[store_fd_val.first] = store_fd_val;
     mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
   }

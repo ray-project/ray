@@ -3,6 +3,8 @@ import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
 from ray.util.placement_group import placement_group, remove_placement_group
 
+import json
+import os
 from time import sleep, perf_counter
 from tqdm import tqdm, trange
 
@@ -202,3 +204,18 @@ print(f"Actor time: {actor_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 print(f"Task time: {task_time} ({MAX_RUNNING_TASKS_IN_CLUSTER} tasks)")
 print(f"PG time: {pg_time} ({MAX_PLACEMENT_GROUPS} placement groups)")
 print(f"Node launch time: {launch_time} ({MAX_NUM_NODES} nodes)")
+
+if "TEST_OUTPUT_JSON" in os.environ:
+    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+    results = {
+        "actor_time": actor_time,
+        "num_actors": MAX_ACTORS_IN_CLUSTER,
+        "task_time": task_time,
+        "num_tasks": MAX_RUNNING_TASKS_IN_CLUSTER,
+        "pg_time": pg_time,
+        "num_pgs": MAX_PLACEMENT_GROUPS,
+        "launch_time": launch_time,
+        "num_nodes": MAX_NUM_NODES,
+        "success": "1"
+    }
+    json.dump(results, out_file)

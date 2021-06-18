@@ -102,19 +102,19 @@ RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You
 
 GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
 
-Seldon Alibi |seldon|
----------------------
-
-Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
-
-GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
-
 Scikit Learn |scikit|
 ---------------------
 
 Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
 
 [`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
+
+Seldon Alibi |seldon|
+---------------------
+
+Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
+
+GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 Spacy |spacy|
 -------------

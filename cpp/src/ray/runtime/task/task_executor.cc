@@ -46,6 +46,14 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
 
   return result;
 }
+
+auto &init_func_manager = FunctionManager::Instance();
+
+FunctionManager &GetFunctionManager() { return init_func_manager; }
+
+std::vector<std::string> GetRemoteFunctionNames() {
+  return init_func_manager.GetRemoteFunctionNames();
+}
 }  // namespace internal
 
 namespace api {
