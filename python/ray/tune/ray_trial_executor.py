@@ -393,7 +393,7 @@ class RayTrialExecutor(TrialExecutor):
             # If buffer length has not been explicitly set, we determine
             # it automatically
             if buffer_length is None:
-                if trial.checkpoint_at_end or trial.checkpoint_freq:
+                if trial.checkpoint_at_end:
                     # If a trial checkpoint can be triggered externally,
                     # it is not safe to buffer results.
                     buffer_length = 1
