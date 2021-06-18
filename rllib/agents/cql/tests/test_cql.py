@@ -34,7 +34,7 @@ class TestCQL(unittest.TestCase):
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
         #TODO
-        data_file = "/Users/sven/Dropbox/Projects/ray/rllib/tests/data/pendulum/large-expert-full-episodes.json"
+        data_file = "/Users/sven/Dropbox/Projects/ray/rllib/tests/data/pendulum/large-expert.json"
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
@@ -58,12 +58,13 @@ class TestCQL(unittest.TestCase):
         # RLlib algorithm (e.g. PPO or SAC).
         config["actions_in_input_normalized"] = False
         config["clip_actions"] = True
+        config["train_batch_size"] = 2000
 
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
         config["learning_starts"] = 0
         # TODO:uncomment:
-        #config["bc_iters"] = 2  # 2 BC iters, 2 CQL iters.
+        #config["bc_iters"] = 0  # 2 BC iters, 2 CQL iters.
         config["rollout_fragment_length"] = 1
 
         # Switch on off-policy evaluation.
