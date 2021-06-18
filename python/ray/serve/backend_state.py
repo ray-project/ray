@@ -516,7 +516,7 @@ class BackendState:
     def shutdown(self) -> List[Optional[GoalId]]:
         """
         Shutdown all running replicas by notifying the controller, and leave 
-        it to  the controller event loop to take actions afterwards.
+        it to the controller event loop to take actions afterwards.
 
         Once shutdown signal is received, it will also prevent any new 
         deployments or replicas from being created.
@@ -530,8 +530,13 @@ class BackendState:
             shutdown_goals.append(
                 self.delete_backend(backend_tag, force_kill=True))
 
-        # self._kv_store.delete(CHECKPOINT_KEY)
+        # TODO(jiaodong): This might not be 100% safe since we deleted 
+        # everything without ensuring all shutdown goals are completed
+        # yet. Need to address in follow-up PRs.
+        self._kv_store.delete(CHECKPOINT_KEY)
 
+        # TODO(jiaodong): Need to add some logic to prevent new replicas
+        # from being created once shutdown signal is sent.
         return shutdown_goals
 
     def _checkpoint(self) -> None:
@@ -669,7 +674,6 @@ class BackendState:
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, None)
-        print(f"---- {new_goal_id}, {existing_goal_id}")
         if force_kill:
             self._backend_metadata[
                 backend_tag].backend_config.\
