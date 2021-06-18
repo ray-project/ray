@@ -5,6 +5,9 @@ SRCS = [] + select({
         # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
         "**/conftest.py",
     ]),
+    "@bazel_tools//src/conditions:linux_x86_64": glob([
+        "**/conftest.py",
+    ]),
     "//conditions:default": [],
 })
 
