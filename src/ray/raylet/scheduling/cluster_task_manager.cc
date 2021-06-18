@@ -729,11 +729,11 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
 
   // Check whether resources have changed.
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  std::unordered_map<std::string, double> local_resource_map(
-      data->resource_load().begin(), data->resource_load().end());
+  std::unordered_map<std::string, double> local_resource_map(data.resource_load().begin(),
+                                                             data.resource_load().end());
   ResourceSet local_resource(local_resource_map);
   if (!last_heartbeat_resources->GetLoadResources().IsEqual(local_resource)) {
-    data->set_resource_load_changed(true);
+    data.set_resource_load_changed(true);
   }
 }
 
