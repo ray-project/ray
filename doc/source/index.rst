@@ -254,6 +254,7 @@ Papers
    cluster/quickstart.rst
    cluster/reference.rst
    cluster/cloud.rst
+   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -336,7 +337,6 @@ Papers
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   ray-client.rst
    ray-collective.rst
 
 .. toctree::
