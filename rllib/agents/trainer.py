@@ -23,9 +23,9 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
@@ -1214,6 +1214,52 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
+        # Loop through all policy definitions in multi-agent policies.
+        multiagent_config = config["multiagent"]
+        policies = multiagent_config.get("policies", {DEFAULT_POLICY_ID})
+        if isinstance(policies, set):
+            policies = multiagent_config["policies"] = {
+                pid: PolicySpec()
+                for pid in policies
+            }
+        is_multiagent = len(policies) == 1 and DEFAULT_POLICY_ID in policies
+
+        for pid, policy_spec in policies.copy().items():
+            # Policy IDs must be strings.
+            if not isinstance(pid, str):
+                raise ValueError("Policy keys must be strs, got {}".format(
+                    type(pid)))
+
+            # Convert to PolicySpec if plain list/tuple.
+            if not isinstance(policy_spec, PolicySpec):
+                # Values must be lists/tuples of len 4.
+                if not isinstance(policy_spec, (list, tuple)) or \
+                        len(policy_spec) != 4:
+                    raise ValueError(
+                        "Policy specs must be tuples/lists of "
+                        "(cls or None, obs_space, action_space, config), "
+                        f"got {policy_spec}")
+                policies[pid] = PolicySpec(*policy_spec)
+
+            # Class is None -> Use Trainer's `_policy_class` property.
+            if policy_spec.policy_class is None:
+                if trainer_obj_or_none is not None and \
+                        (not hasattr(trainer_obj_or_none, "_policy_class") or
+                         trainer_obj_or_none._policy_class is None):
+                    raise ValueError(
+                        f"Multiagent policy class for {pid} was not provided "
+                        f"and Trainer does not have a default policy class!")
+                policies[pid] = policies[pid]._replace(
+                    policy_class=trainer_obj_or_none._policy_class)
+            # Config is None -> Set to {}.
+            if policy_spec.config is None:
+                policies[pid] = policies[pid]._replace(config={})
+            # Config not a dict.
+            elif not isinstance(policy_spec.config, dict):
+                raise ValueError(
+                    f"Multiagent policy config for {pid} must be a dict, "
+                    f"but got {type(policy_spec[3])}!")
+
         framework = config.get("framework")
         # Multi-GPU setting: Must use TFMultiGPU if tf.
         if config.get("num_gpus", 0) > 1:
@@ -1233,7 +1279,7 @@ class Trainer(Trainable):
                 config["simple_optimizer"] = True
             # TF + Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies).
-            elif len(config["multiagent"]["policies"]) > 0:
+            elif is_multiagent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)

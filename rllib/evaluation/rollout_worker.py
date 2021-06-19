@@ -27,7 +27,7 @@ from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
@@ -40,8 +40,8 @@ from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
-    MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, TrainerConfigDict
+    MultiAgentPolicyConfigDict, PolicyID, SampleBatchType, \
+    TrainerConfigDict
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -136,11 +136,10 @@ class RolloutWorker(ParallelIteratorWorker):
             self,
             *,
             env_creator: Callable[[EnvContext], EnvType],
+            policy_spec: Optional[Union[Type[Policy],
+                                        MultiAgentPolicyConfigDict]] = None,
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
-            policy_spec: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
@@ -180,9 +179,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-            policy: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
+            policy=None,
             monitor_path=None,
     ):
         """Initialize a rollout worker.
@@ -193,13 +190,10 @@ class RolloutWorker(ParallelIteratorWorker):
             validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
                 Optional callable to validate the generated environment (only
                 on worker=0).
-            policy_spec (Union[type, Dict[str, Tuple[Type[Policy], gym.Space,
-                gym.Space, PartialTrainerConfigDict]]]): Either a Policy class
-                or a dict of policy id strings to
-                (Policy class, obs_space, action_space, config)-tuples. If a
-                dict is specified, then we are in multi-agent mode and a
-                policy_mapping_fn can also be set (if not, will map all agents
-                to DEFAULT_POLICY_ID).
+            policy_spec (Optional[Union[Type[Policy],
+                MultiAgentPolicyConfigDict]]): The MultiAgentPolicyConfigDict
+                mapping policy IDs (str) to PolicySpec's or a single policy
+                class to use.
             policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): A
                 callable that maps agent ids to policy ids in multi-agent mode.
                 This function will be called each time a new agent appears in
@@ -304,15 +298,24 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
-            policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
+
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
             policy_spec = policy
-        assert policy_spec is not None, "Must provide `policy_spec` when " \
-                                        "creating RolloutWorker!"
+        assert policy_spec is not None, \
+            "Must provide `policy_spec` when creating RolloutWorker!"
+
+        # Do quick translation into MultiAgentPolicyConfigDict.
+        if not isinstance(policy_spec, dict):
+            policy_spec = {DEFAULT_POLICY_ID: PolicySpec()}
+        policy_spec = {
+            pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
+            for pid, spec in policy_spec.copy().items()
+        }
+
         if monitor_path is not None:
             deprecation_warning("monitor_path", "record_env", error=False)
             record_env = monitor_path
@@ -475,7 +478,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_env_fn = make_env
 
         self.tf_sess = None
-        policy_dict = _validate_and_canonicalize(
+        policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec, self.env, spaces=spaces)
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
@@ -1233,62 +1236,52 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler.shutdown = True
 
 
-def _validate_and_canonicalize(
-        policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
+def _determine_spaces_for_multi_agent_dict(
+        multi_agent_dict: MultiAgentPolicyConfigDict,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[
             gym.spaces.Space, gym.spaces.Space]]] = None) -> \
         MultiAgentPolicyConfigDict:
-    if isinstance(policy, dict):
-        _validate_multiagent_config(policy)
-        return policy
-    elif not issubclass(policy, Policy):
-        raise ValueError("policy must be a rllib.Policy class")
-    else:
-        if (isinstance(env, MultiAgentEnv)
-                and not hasattr(env, "observation_space")):
-            raise ValueError(
-                "MultiAgentEnv must have observation_space defined if run "
-                "in a single-agent configuration.")
-        if env is not None:
-            return {
-                DEFAULT_POLICY_ID: (policy, env.observation_space,
-                                    env.action_space, {})
-            }
-        else:
-            return {
-                DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
-                                    spaces[DEFAULT_POLICY_ID][1], {})
-            }
 
+    # Try extracting spaces from env.
+    env_obs_space = None
+    env_act_space = None
+    if env is not None and hasattr(env, "observation_space") and isinstance(
+            env.observation_space, gym.Space):
+        env_obs_space = env.observation_space
+    if env is not None and hasattr(env, "action_space") and isinstance(
+            env.action_space, gym.Space):
+        env_act_space = env.action_space
 
-def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
-                                allow_none_graph: bool = False) -> None:
-    # Loop through all policy definitions in multi-agent policie
-    for k, v in policy.items():
-        if not isinstance(k, str):
-            raise ValueError("policy keys must be strs, got {}".format(
-                type(k)))
-        if not isinstance(v, (tuple, list)) or len(v) != 4:
-            raise ValueError(
-                "policy values must be tuples/lists of "
-                "(cls or None, obs_space, action_space, config), got {}".
-                format(v))
-        if allow_none_graph and v[0] is None:
-            pass
-        elif not issubclass(v[0], Policy):
-            raise ValueError("policy tuple value 0 must be a rllib.Policy "
-                             "class or None, got {}".format(v[0]))
-        if not isinstance(v[1], gym.Space):
-            raise ValueError(
-                "policy tuple value 1 (observation_space) must be a "
-                "gym.Space, got {}".format(type(v[1])))
-        if not isinstance(v[2], gym.Space):
-            raise ValueError("policy tuple value 2 (action_space) must be a "
-                             "gym.Space, got {}".format(type(v[2])))
-        if not isinstance(v[3], dict):
-            raise ValueError("policy tuple value 3 (config) must be a dict, "
-                             "got {}".format(type(v[3])))
+    for pid, policy_spec in multi_agent_dict.copy().items():
+        if policy_spec.observation_space is None:
+            if spaces is not None:
+                obs_space = spaces[pid][0]
+            elif env_obs_space is not None:
+                obs_space = env_obs_space
+            else:
+                raise ValueError(
+                    "`observation_space` not provided in PolicySpec for "
+                    f"{pid} and env does not have an observation space OR "
+                    "no spaces received from other workers' env(s) OR no "
+                    "`observation_space` specified in config!")
+            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+                observation_space=obs_space)
+
+        if policy_spec.action_space is None:
+            if spaces is not None:
+                act_space = spaces[pid][1]
+            elif env_act_space is not None:
+                act_space = env_act_space
+            else:
+                raise ValueError(
+                    "`action_space` not provided in PolicySpec for "
+                    f"{pid} and env does not have an action space OR "
+                    "no spaces received from other workers' env(s) OR no "
+                    "`action_space` specified in config!")
+            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+                action_space=act_space)
+    return multi_agent_dict
 
 
 def _validate_env(env: Any) -> EnvType:

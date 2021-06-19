@@ -5,13 +5,12 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
-    _validate_multiagent_config
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput, D4RLReader
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -342,20 +341,16 @@ class WorkerSet:
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy_cls if 'None' is specified in multiagent.
+        # Assert everything is correct in "multiagent" config dict (if given).
         if config["multiagent"]["policies"]:
-            tmp = config["multiagent"]["policies"]
-            _validate_multiagent_config(tmp, allow_none_graph=True)
-            # TODO: (sven) Allow for setting observation and action spaces to
-            #  None as well, in which case, spaces are taken from env.
-            #  It's tedious to have to provide these in a multi-agent config.
-            for k, v in tmp.items():
-                if v[0] is None:
-                    tmp[k] = (policy_cls, v[1], v[2], v[3])
-            policy_spec = tmp
-        # Otherwise, policy spec is simply the policy class itself.
+            for v in config["multiagent"]["policies"].values():
+                assert isinstance(v, (PolicySpec, list, tuple))
+            policies = config["multiagent"]["policies"]
+
+        # Create a policy_spec (MultiAgentPolicyConfigDict),
+        # even if no "multiagent" setup given by user.
         else:
-            policy_spec = policy_cls
+            policies = policy_cls
 
         if worker_index == 0:
             extra_python_environs = config.get(
@@ -367,7 +362,7 @@ class WorkerSet:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policy_spec,
+            policy_spec=policies,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator

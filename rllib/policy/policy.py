@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
@@ -24,12 +25,37 @@ torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.utils.typing import PartialTrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# A policy spec used in the "config.multiagent.policies" specification dict
+# as values (keys are the policy IDs (str)).
+# Example:
+# config:
+#     multiagent:
+#         policies: {"pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.01})}
+PolicySpec = namedtuple(
+    "PolicySpec",
+    [
+        # If None, use the Trainer's default policy class stored under
+        # `Trainer._policy_class`.
+        "policy_class",  # type: Union[type, None]
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "observation_space",  # type: Union[gym.Space, None]
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "action_space",  # type: Union[gym.Space, None]
+        # Overrides defined keys in the main Trainer config.
+        # If None, use {}.
+        "config",  # type: Union[PartialTrainerConfigDict, None]
+    ],
+    defaults=(None, None, None, None))
 
 
 @DeveloperAPI
