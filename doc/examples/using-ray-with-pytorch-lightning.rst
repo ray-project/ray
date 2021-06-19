@@ -92,6 +92,7 @@ you can use the ready-to-use Pytorch Lightning callbacks that Ray Tune provides.
 To report metrics back to Tune after each validation epoch, we can use the ``TuneReportCallback``:
 
 .. code-block:: python
+
     from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
     def train_mnist(config):
