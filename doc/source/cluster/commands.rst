@@ -180,13 +180,13 @@ also use the built-in ``ray dashboard`` to do this automatically.
 
     $ ray dashboard cluster.yaml
 
-You can monitor cluster usage and auto-scaling status by running (on the head node)
+You can monitor cluster usage and auto-scaling status by running (on the head node):
 
 .. code-block:: shell
 
     $ ray status
 
-To see live updates to the status
+To see live updates to the status:
 
 .. code-block:: shell
 

@@ -61,7 +61,7 @@ It does this by taking into consideration:
   homogenous).
 * Information from the Ray core's scheduling layer about the current resource
   usage/demands of the cluster.
-* Programatic autoscaling hints.
+* Programmatic autoscaling hints.
 
 Take a look at :ref:`the cluster reference <cluster-config>` to learn more
 about configuring the autoscaler.
@@ -144,7 +144,7 @@ node, or use `kubectl to portforward
 Observing the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-The autoscaler makes decisions by scheduling information, and programatic
+The autoscaler makes decisions by scheduling information, and programmatic
 information from the cluster. This information, along with the status of
 starting nodes, can be accessed via the ``ray status`` command.
 
@@ -191,13 +191,14 @@ cluster. In particular, there are 2 services which should be exposed to users:
 
   See :ref:`Ray port configuration <Ray-ports>` for a comprehensive list.
 
-  Applications (such as :ref:`Ray Serve <Rayserve>`) may also require additional ports to work
-  properly.
+  Applications (such as :ref:`Ray Serve <Rayserve>`) may also require
+  additional ports to work properly.
 
 System configuration
 ^^^^^^^^^^^^^^^^^^^^
 
-There are a few system level configurations that should be set when using Ray at a large scale.
+There are a few system level configurations that should be set when using Ray
+at a large scale.
 
 * Make sure ``ulimit -n`` is set to at least 65535. Ray opens many direct
   connections between worker processes to avoid bottlenecks, so it can quickly
@@ -207,9 +208,10 @@ There are a few system level configurations that should be set when using Ray at
   the object store, but if it is not large enough (i.e. ``--object-store-memory``
   > size of ``/dev/shm``), Ray will write the plasma store to disk instead, which
   may cause significant performance problems.
-* Use NVMe SSDs (or other high perforfmance storage) if possible. If :ref:`object
-  spilling <object-spilling>` is enabled Ray will spill objects to disk if necessary. This is
-  most commonly needed for data processing workloads.
+* Use NVMe SSDs (or other high perforfmance storage) if possible. If
+  :ref:`object spilling <object-spilling>` is enabled Ray will spill objects to
+  disk if necessary. This is most commonly needed for data processing
+  workloads.
 
 Configuring the head node
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -224,6 +226,19 @@ architecture means that the head node will have extra stress due to GCS.
 * Set ``resources: {"CPU": 0}`` on the head node. Due to the heavy networking
   load (and the GCS and redis processes), we recommend setting the number of
   CPUs to 0 ohn the head node to avoid scheduling additional tasks on it.
+
+Configuring the autoscaler
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For large, long running clusters, there are a few parameters that can be tuned.
+
+* Ensure your quotas for node types are set correctly.
+* For long running clusters, set the ``AUTOSCALER_MAX_RETRIES`` environment
+  variable to a large number (or ``inf``) to avoid unexpected autoscaler
+  crashes. (Note: you may want a separate mechanism to detect if the autoscaler
+  errors too often).
+* For large clusters, consider tuning ``upscaling_speed`` for faster
+  autoscaling.
 
 Picking nodes
 ^^^^^^^^^^^^^
@@ -271,5 +286,10 @@ General recommendations with AWS instance types:
 * Once you find a good ratio, you should be able to scale up and and keep the
   same ratio.
 * You can’t infinitely scale forever. Eventually, as you add more machines your
-  performance improvements will become sub-linear/not worth it. I don’t think
-  there’s a good one-size fits all strategy at this point.
+  performance improvements will become sub-linear/not worth it. There may not
+  be a good one-size fits all strategy at this point.
+
+.. note::
+
+   If you're using RLlib, check out :ref:`the RLlib scaling guide
+   <rllib-scaling-guide>` for RLlib specific recommendations.
