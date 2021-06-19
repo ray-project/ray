@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 
@@ -50,31 +51,12 @@ struct ObjectTableEntry {
   ObjectTableEntry();
 
   ~ObjectTableEntry();
-
-  /// Memory mapped file containing the object.
-  MEMFD_TYPE fd;
-  /// Device number.
-  int device_num;
-  /// Size of the underlying map.
-  int64_t map_size;
-  /// Offset from the base of the mmap.
-  ptrdiff_t offset;
   /// Pointer to the object data. Needed to free the object.
   uint8_t *pointer;
-  /// Size of the object in bytes.
-  int64_t data_size;
-  /// Size of the object metadata in bytes.
-  int64_t metadata_size;
+  /// Ray object info;
+  ray::ObjectInfo object_info;
   /// Number of clients currently using this object.
-  int ref_count;
-  /// Owner's raylet ID.
-  NodeID owner_raylet_id;
-  /// Owner's IP address.
-  std::string owner_ip_address;
-  /// Owner's port.
-  int owner_port;
-  /// Owner's worker ID.
-  WorkerID owner_worker_id;
+  mutable int ref_count;
   /// Unix epoch of when this object was created.
   int64_t create_time;
   /// How long creation of this object took.

@@ -74,13 +74,7 @@ class PlasmaStore {
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
   ///
-  /// \param object_id Object ID of the object to be created.
-  /// \param owner_raylet_id Raylet ID of the object's owner.
-  /// \param owner_ip_address IP address of the object's owner.
-  /// \param owner_port Port of the object's owner.
-  /// \param owner_worker_id Worker ID of the object's owner.
-  /// \param data_size Size in bytes of the object to be created.
-  /// \param metadata_size Size in bytes of the object metadata.
+  /// \param object_info Ray object info.
   /// \param device_num The number of the device where the object is being
   ///        created.
   ///        device_num = 0 corresponds to the host,
@@ -97,12 +91,10 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
-                           const std::string &owner_ip_address, int owner_port,
-                           const WorkerID &owner_worker_id, int64_t data_size,
-                           int64_t metadata_size, plasma::flatbuf::ObjectSource source,
-                           int device_num, const std::shared_ptr<Client> &client,
-                           bool fallback_allocator, PlasmaObject *result);
+  PlasmaError CreateObject(const ray::ObjectInfo &object_info,
+                           plasma::flatbuf::ObjectSource source, int device_num,
+                           const std::shared_ptr<Client> &client, bool fallback_allocator,
+                           PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -226,7 +218,7 @@ class PlasmaStore {
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
 
-  void AddToClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
+  void AddToClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
                             const std::shared_ptr<Client> &client);
 
   /// Remove a GetRequest and clean up the relevant data structures.
@@ -243,13 +235,12 @@ class PlasmaStore {
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
+  int RemoveFromClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
                                 const std::shared_ptr<Client> &client);
 
   void EraseFromObjectTable(const ObjectID &object_id);
 
-  uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
-                          ptrdiff_t *offset, const std::shared_ptr<Client> &client,
+  uint8_t *AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
                           bool is_create, bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.

@@ -161,7 +161,7 @@ PlasmaAllocatorAccessor::PlasmaAllocatorAccessor(const ObjectTable &object_table
 
 int64_t PlasmaAllocatorAccessor::GetObjectSize(const ObjectID &object_id) const {
   auto entry = GetObjectTableEntry(object_table_, object_id);
-  return entry->data_size + entry->metadata_size;
+  return entry->object_info.data_size + entry->object_info.metadata_size;
 }
 
 int64_t PlasmaAllocatorAccessor::GetAllocated() const {

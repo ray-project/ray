@@ -201,21 +201,18 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
-void ReadCreateRequest(uint8_t *data, size_t size, ObjectID *object_id,
-                       NodeID *owner_raylet_id, std::string *owner_ip_address,
-                       int *owner_port, WorkerID *owner_worker_id, int64_t *data_size,
-                       int64_t *metadata_size, flatbuf::ObjectSource *source,
-                       int *device_num) {
+void ReadCreateRequest(uint8_t *data, size_t size, ray::ObjectInfo *object_info,
+                       flatbuf::ObjectSource *source, int *device_num) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  *data_size = message->data_size();
-  *metadata_size = message->metadata_size();
-  *object_id = ObjectID::FromBinary(message->object_id()->str());
-  *owner_raylet_id = NodeID::FromBinary(message->owner_raylet_id()->str());
-  *owner_ip_address = message->owner_ip_address()->str();
-  *owner_port = message->owner_port();
-  *owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
+  object_info->data_size = message->data_size();
+  object_info->metadata_size = message->metadata_size();
+  object_info->object_id = ObjectID::FromBinary(message->object_id()->str());
+  object_info->owner_raylet_id = NodeID::FromBinary(message->owner_raylet_id()->str());
+  object_info->owner_ip_address = message->owner_ip_address()->str();
+  object_info->owner_port = message->owner_port();
+  object_info->owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
   *source = message->source();
   *device_num = message->device_num();
   return;

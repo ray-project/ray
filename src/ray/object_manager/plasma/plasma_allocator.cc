@@ -38,6 +38,25 @@ const int M_MMAP_THRESHOLD = -3;
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
 int64_t PlasmaAllocator::fallback_allocated_ = 0;
+absl::flat_hash_map<void *, PlasmaAllocator::AllocationInfo>
+    PlasmaAllocator::cached_allocation_info_{};
+
+namespace {
+/// The invalid allocation info.
+const PlasmaAllocator::AllocationInfo invalid_info{
+    .fd = std::make_pair(INVALID_FD, INVALID_UNIQUE_FD_ID),
+    .offset = 0,
+    .device_num = 0,
+    .mmap_size = 0};
+
+PlasmaAllocator::AllocationInfo BuildAllocationInfo(void *addr) {
+  PlasmaAllocator::AllocationInfo info{};
+  if (detail::GetMallocMapinfo(addr, &info.fd, &info.mmap_size, &info.offset)) {
+    return info;
+  }
+  return invalid_info;
+}
+}  // namespace
 
 void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (!RayConfig::instance().plasma_unlimited()) {
@@ -56,6 +75,7 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
     return nullptr;
   }
   allocated_ += bytes;
+  cached_allocation_info_.emplace(mem, BuildAllocationInfo(mem));
   return mem;
 }
 
@@ -83,6 +103,7 @@ void PlasmaAllocator::Free(void *mem, size_t bytes) {
   if (RayConfig::instance().plasma_unlimited() && IsOutsideInitialAllocation(mem)) {
     fallback_allocated_ -= bytes;
   }
+  cached_allocation_info_.erase(mem);
 }
 
 void PlasmaAllocator::SetFootprintLimit(size_t bytes) {
@@ -94,5 +115,13 @@ int64_t PlasmaAllocator::GetFootprintLimit() { return footprint_limit_; }
 int64_t PlasmaAllocator::Allocated() { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() { return fallback_allocated_; }
+
+const PlasmaAllocator::AllocationInfo &PlasmaAllocator::GetAllocationInfo(void *address) {
+  auto it = cached_allocation_info_.find(address);
+  if (it != cached_allocation_info_.end()) {
+    return it->second;
+  }
+  return invalid_info;
+}
 
 }  // namespace plasma

@@ -20,10 +20,14 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/container/flat_hash_map.h"
+
 namespace plasma {
 
 class PlasmaAllocator {
  public:
+  struct AllocationInfo;
+
   /// Allocates size bytes and returns a pointer to the allocated memory. The
   /// memory address will be a multiple of alignment, which must be a power of two.
   ///
@@ -62,10 +66,28 @@ class PlasmaAllocator {
   /// \return Number of bytes fallback allocated by Plasma so far.
   static int64_t FallbackAllocated();
 
+  /// Get the AllocationInfo of an allocated address returned by
+  /// Memalign/DiskMemalignUnlimited call. Returns an invaid
+  /// AllocationInfo if no such allocation found
+  static const AllocationInfo &GetAllocationInfo(void *address);
+
+ public:
+  struct AllocationInfo {
+    /// The file descriptor of the memory mapped file where the memory allocated.
+    MEMFD_TYPE fd;
+    /// The offset in bytes in the memory mapped file of the allocated memory.
+    ptrdiff_t offset;
+    /// Device number of the allocated memory.
+    int device_num;
+    /// the total size of this mapped memory.
+    int64_t mmap_size;
+  };
+
  private:
   static int64_t allocated_;
   static int64_t fallback_allocated_;
   static int64_t footprint_limit_;
+  static absl::flat_hash_map<void *, AllocationInfo> cached_allocation_info_;
 };
 
 }  // namespace plasma

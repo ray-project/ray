@@ -5,6 +5,7 @@
 #include <functional>
 
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
