@@ -192,6 +192,6 @@ def make_multi_agent(env_name_or_creator):
 
         @override(MultiAgentEnv)
         def render(self, mode=None):
-            return [a.render(mode) for a in self.agents]
+            return self.agents[0].render(mode)
 
     return MultiEnv

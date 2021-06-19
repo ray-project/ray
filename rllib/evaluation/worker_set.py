@@ -109,7 +109,7 @@ class WorkerSet:
         return self._remote_workers
 
     def sync_weights(self) -> None:
-        """Syncs weights from the local worker to all remote workers."""
+        """Syncs weights of remote workers with the local worker."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights())
             for e in self.remote_workers():

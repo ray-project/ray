@@ -102,7 +102,8 @@ def cql_loss(policy: Policy, model: ModelV2,
         "is_training": True,
     }, [], None)
 
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
     action_dist_t = action_dist_class(
         model.get_policy_output(model_out_t), policy.model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
