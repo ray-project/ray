@@ -337,7 +337,7 @@ bool Publisher::CheckNoLeaks() const {
 std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
-  result << "\nPublisher:";
+  result << "Publisher:";
   for (const auto &it : cum_pub_message_cnt_) {
     auto channel_type = it.first;
     const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();

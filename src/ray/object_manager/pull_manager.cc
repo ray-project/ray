@@ -532,6 +532,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
   const auto time = get_time_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
+  max_timeout_ = std::max<int64_t>(retry_timeout_len, max_timeout_);
 
   if (request.num_retries > 0) {
     // We've tried this object before.
@@ -610,6 +611,7 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
   result << "\n- num pull retries: " << num_retries_total_;
+  result << "\n- max timeout seconds: " << max_timeout_;
   return result.str();
 }
 

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
@@ -300,6 +301,7 @@ class PullManager {
   std::mt19937_64 gen_;
 
   size_t num_retries_total_ = 0;
+  int64_t max_timeout_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;
