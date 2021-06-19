@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+import time
 import pytest
 
 import ray
@@ -5,6 +9,7 @@ from ray.exceptions import RayTaskError, ObjectLostError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
 from ray.experimental.workflow.recovery import WorkflowNotResumableError
+from ray.experimental.workflow import workflow_storage
 
 
 @workflow.step
@@ -96,4 +101,38 @@ def test_recovery_non_exists_workflow():
     ray.init()
     with pytest.raises(WorkflowNotResumableError):
         workflow.resume("this_workflow_id_does_not_exist")
+    ray.shutdown()
+
+
+def test_recovery_cluster_failure():
+    subprocess.run(["ray start --head"], shell=True)
+    time.sleep(1)
+    script = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), "workflows_to_fail.py")
+    proc = subprocess.Popen([sys.executable, script])
+    time.sleep(10)
+    subprocess.run(["ray stop"], shell=True)
+    proc.kill()
+    time.sleep(1)
+    ray.init()
+    assert ray.get(workflow.resume("cluster_failure")) == 20
+    ray.shutdown()
+
+
+@workflow.step
+def recursive_chain(x):
+    if x < 100:
+        return recursive_chain.step(x + 1)
+    else:
+        return 100
+
+
+def test_shortcut():
+    ray.init()
+    output = workflow.run(recursive_chain.step(0), workflow_id="shortcut")
+    assert ray.get(output) == 100
+    # the shortcut points to the step with output checkpoint
+    store = workflow_storage.WorkflowStorage("shortcut")
+    step_id = store.get_entrypoint_step_id()
+    assert store.inspect_step(step_id).output_object_valid
     ray.shutdown()

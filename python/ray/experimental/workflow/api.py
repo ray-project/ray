@@ -48,6 +48,7 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
+    assert ray.is_initialized()
     if workflow_id is None:
         # TODO(suquark): include the name of the workflow in the default ID,
         # this makes the ID more readable.
@@ -85,6 +86,7 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
+    assert ray.is_initialized()
     if workflow_root_dir is not None:
         store = storage.create_storage(workflow_root_dir)
     else:
