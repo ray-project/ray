@@ -39,5 +39,4 @@ def test_fork_process_in_runtime_env(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
