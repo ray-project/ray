@@ -16,12 +16,7 @@ from xgboost_ray import RayParams
 from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
-    addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "train_small")
-    if addr.startswith("anyscale://"):
-        ray.client(address=addr).job_name(job_name).connect()
-    else:
-        ray.init(address="auto")
+    ray.init(address="auto")
 
     ray_params = RayParams(
         elastic_training=False,
@@ -30,21 +25,17 @@ if __name__ == "__main__":
         cpus_per_actor=4,
         gpus_per_actor=0)
 
-    @ray.remote
-    def train():
-        train_ray(
-            path="/data/classification.parquet",
-            num_workers=4,
-            num_boost_rounds=100,
-            num_files=25,
-            regression=False,
-            use_gpu=False,
-            ray_params=ray_params,
-            xgboost_params=None,
-        )
-
     start = time.time()
-    ray.get(train.remote())
+    train_ray(
+        path="/data/classification.parquet",
+        num_workers=4,
+        num_boost_rounds=100,
+        num_files=25,
+        regression=False,
+        use_gpu=False,
+        ray_params=ray_params,
+        xgboost_params=None,
+    )
     taken = time.time() - start
 
     result = {

@@ -96,6 +96,8 @@ struct PlasmaObjectSpec {
   // Index of the memory segment (= memory mapped file) that
   // this object is allocated in.
   segment_index: int;
+  // The unique id of the segment fd in case of fd reuse.
+  unique_fd_id: long;
   // The offset in bytes in the memory mapped file of the data.
   data_offset: ulong;
   // The size in bytes of the data.
@@ -177,6 +179,8 @@ table PlasmaCreateReply {
   // The file descriptor in the store that corresponds to the file descriptor
   // being sent to the client right after this message.
   store_fd: int;
+  // The unique id of the store file descriptor in case of fd reuse.
+  unique_fd_id: long;
   // The size in bytes of the segment for the store file descriptor (needed to
   // call mmap).
   mmap_size: long;
@@ -229,6 +233,8 @@ table PlasmaGetReply {
   // of file descriptors that the store will send to the client after this
   // message.
   store_fds: [int];
+  // List of the unique ids for store_fds above.
+  unique_fd_ids: [long];
   // Size in bytes of the segment for each store file descriptor (needed to call
   // mmap). This list must have the same length as store_fds.
   mmap_sizes: [long];
