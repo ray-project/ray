@@ -187,7 +187,8 @@ class PullManager {
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
   ///
   /// \param request The request to update the retry time of.
-  void UpdateRetryTimer(ObjectPullRequest &request);
+  /// \param object_id The object id for the request.
+  void UpdateRetryTimer(ObjectPullRequest &request, const ObjectID &object_id);
 
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
@@ -302,6 +303,7 @@ class PullManager {
 
   size_t num_retries_total_ = 0;
   int64_t max_timeout_ = 0;
+  ObjectID max_timeout_object_id_;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

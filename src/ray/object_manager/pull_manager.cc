@@ -441,7 +441,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
     RAY_LOG(INFO) << "Object is pulled from a remote node." << object_id;
-    UpdateRetryTimer(request);
+    UpdateRetryTimer(request, object_id);
     return;
   }
 
@@ -451,7 +451,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
     RAY_LOG(INFO) << "Object is restored from a local node." << object_id;
-    UpdateRetryTimer(request);
+    UpdateRetryTimer(request, object_id);
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
@@ -534,11 +534,15 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   }
 }
 
-void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
+void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
+                                   const ObjectID &object_id) {
   const auto time = get_time_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
-  max_timeout_ = std::max<int64_t>(retry_timeout_len, max_timeout_);
+  if (retry_timeout_len > max_timeout_) {
+    max_timeout_ = retry_timeout_len;
+    max_timeout_object_id_ = object_id;
+  }
 
   if (request.num_retries > 0) {
     // We've tried this object before.
@@ -618,6 +622,26 @@ std::string PullManager::DebugString() const {
          << active_object_pull_requests_.size();
   result << "\n- num pull retries: " << num_retries_total_;
   result << "\n- max timeout seconds: " << max_timeout_;
+  auto it = object_pull_requests_.find(max_timeout_object_id_);
+  if (it != object_pull_requests_.end()) {
+    result << "\n- max timeout object id: " << max_timeout_object_id_;
+    result << "\n- max timeout request location size: "
+           << it->second.client_locations.size();
+    result << "\n- max timeout request spilled url: " << it->second.spilled_url;
+    result << "\n- max timeout request object size set: " << it->second.object_size_set;
+    result << "\n- max timeout request object size: " << it->second.object_size;
+  } else {
+    result << "\n- max timeout request is already processed. No entry.";
+  }
+  // SANG-TODO Remove it
+  uint64_t long_retry_requests = 0;
+  for (const auto &pr : object_pull_requests_) {
+    if (pr.second.num_retries > 2) {
+      long_retry_requests++;
+    }
+  }
+  result << "\n- Active pull requests having more than 40 seconds timeout: "
+         << long_retry_requests;
   return result.str();
 }
 
