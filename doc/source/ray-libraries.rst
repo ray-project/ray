@@ -144,7 +144,7 @@ XGBoost is a popular gradient boosting library for classification and regression
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
 
 
-.. |dask| image:: images/airflow.png
+.. |airflow| image:: images/airflow.png
     :class: inline-figure
     :height: 30
 
@@ -172,7 +172,7 @@ XGBoost is a popular gradient boosting library for classification and regression
     :class: inline-figure
     :height: 30
 
-.. |horovod| image:: images/ludwig.png
+.. |ludwig| image:: images/ludwig.png
     :class: inline-figure
     :height: 30
 
