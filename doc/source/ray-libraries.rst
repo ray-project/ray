@@ -12,6 +12,13 @@ Ray also comes packaged with several built-in machine learning libraries:
 - :ref:`sgd-index`
 - :ref:`rayserve`
 
+Airflow |airflow|
+-----------------
+
+Airflow is a platform created by the community to programmatically author, schedule and monitor workflows. The Airflow/Ray integration allows Airflow users to keep all of their Ray code in Python functions and define task dependencies by moving data through python functions.
+
+[`Link to integration <https://registry.astronomer.io/providers/ray>`__] [`Link to announcement <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__]
+
 ClassyVision |classyvision|
 ---------------------------
 
@@ -66,6 +73,14 @@ John Snow Labs' NLU |NLU|
 The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
 
 [`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
+
+Ludwig AI |ludwig|
+------------------
+
+Ludwig is a toolbox that allows users to train and test deep learning models without the need to write code. With Ludwig, you can train a deep learning model on Ray in zero lines of code, automatically leveraging Dask on Ray for data preprocessing, Horovod on Ray for distributed training, and Ray Tune for hyperparameter optimization.
+
+[`Link to integration <https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e>`__]
+
 
 MARS |mars|
 -----------
@@ -128,6 +143,11 @@ XGBoost is a popular gradient boosting library for classification and regression
 
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
 
+
+.. |airflow| image:: images/airflow.png
+    :class: inline-figure
+    :height: 30
+
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
     :height: 30
@@ -149,6 +169,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |horovod| image:: images/horovod.png
+    :class: inline-figure
+    :height: 30
+
+.. |ludwig| image:: images/ludwig.png
     :class: inline-figure
     :height: 30
 
