@@ -75,7 +75,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     beat_last heuristics.
     """
 
-    def select_policy(agent_id, episode, **kwargs):
+    def select_policy(agent_id):
         if agent_id == "player1":
             return "learned"
         else:
