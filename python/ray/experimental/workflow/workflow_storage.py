@@ -33,8 +33,9 @@ class StepInspectResult:
     workflows: Optional[List[str]] = None
 
     def is_recoverable(self) -> bool:
-        return (self.args_valid and self.object_refs is not None
-                and self.workflows is not None and self.func_body_valid)
+        return (self.output_object_valid or self.output_step_id
+                or (self.args_valid and self.object_refs is not None
+                    and self.workflows is not None and self.func_body_valid))
 
 
 class WorkflowStorage:
