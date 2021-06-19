@@ -240,6 +240,8 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second) << "Local object was already local " << object_id;
+  // SANG-TODO Remove it.
+  RAY_LOG(INFO) << "Object is local " << object_id;
 
   // Find all tasks and workers that depend on the newly available object.
   std::vector<TaskID> ready_task_ids;
@@ -272,8 +274,8 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     // `ray.wait` calls can now return the object as ready.
     object_entry->second.dependent_wait_requests.clear();
     if (object_entry->second.wait_request_id > 0) {
-      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
-                     << " request: " << object_entry->second.wait_request_id;
+      RAY_LOG(INFO) << "Canceling pull for wait request of object " << object_id
+                    << " request: " << object_entry->second.wait_request_id;
       object_manager_.CancelPull(object_entry->second.wait_request_id);
       object_entry->second.wait_request_id = 0;
     }

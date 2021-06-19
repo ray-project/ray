@@ -346,8 +346,8 @@ void LocalObjectManager::AddSpilledUrls(
     request.set_size(it->second.first->GetSize());
 
     auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
-    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
-                   << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
+    RAY_LOG(INFO) << "Sending spilled URL " << object_url << " for object " << object_id
+                  << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
     // Send spilled URL, spilled node ID, and object size to owner.
     owner_client->AddSpilledUrl(
         request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
@@ -516,6 +516,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
+  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
 }
 

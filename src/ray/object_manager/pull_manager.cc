@@ -408,8 +408,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
-                 << client_ids.size();
+  RAY_LOG(INFO) << "OnLocationChange " << spilled_url << " num clients "
+                << client_ids.size();
 
   {
     absl::MutexLock lock(&active_objects_mu_);
@@ -634,14 +634,16 @@ std::string PullManager::DebugString() const {
     result << "\n- max timeout request is already processed. No entry.";
   }
   // SANG-TODO Remove it
-  uint64_t long_retry_requests = 0;
-  for (const auto &pr : object_pull_requests_) {
-    if (pr.second.num_retries > 2) {
-      long_retry_requests++;
-    }
+  result << "\n- active pull requests";
+  for (const auto &pair : active_object_pull_requests_) {
+    const auto &oid = pair.first;
+    const auto it = object_pull_requests_.find(oid);
+    RAY_CHECK(it != object_pull_requests_.end());
+    result << "\n\tObjectID: " << oid;
+    result << "\n\t\tlocation size: " << it->second.client_locations.size();
+    result << "\n\t\tspilled url: " << it->second.spilled_url;
+    result << "\n\t\tnum_retries: " << it->second.num_retries;
   }
-  result << "\n- Active pull requests having more than 40 seconds timeout: "
-         << long_retry_requests;
   return result.str();
 }
 
