@@ -31,9 +31,12 @@ By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to 
 How do you use the Ray client?
 ------------------------------
 
-1. **Start a Ray cluster**: First, you'll want to create a remote Ray cluster. Follow the directions in :ref:`ref-cluster-quick-start` to do this.
+Step 1: set up your Ray cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-2. If using the `Ray cluster launcher <cluster-cloud>`_, the remote cluster will be listening on port ``10001`` of the head node. If necessary, you can modify this port by setting ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
+First, you'll want to create a remote Ray cluster. Follow the directions in :ref:`ref-cluster-quick-start` to do this.
+
+If using the `Ray cluster launcher <cluster-cloud>`_, the remote cluster will be listening on port ``10001`` of the head node. If necessary, you can modify this port by setting ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
 
 If not using the `Ray cluster launcher <cluster-cloud>`_, you can start the "Ray Client Server" manually on the head node of your remote cluster by running the following:
 
@@ -41,11 +44,17 @@ If not using the `Ray cluster launcher <cluster-cloud>`_, you can start the "Ray
 
     python -m ray.util.client.server [--host host_ip] [--port port] [--redis-address address] [--redis-password password]
 
-3. Ensure that the Ray Client port on the head node is reachable from your local machine.
+Step 2: Check ports
+~~~~~~~~~~~~~~~~~~~
+
+Ensure that the Ray Client port on the head node is reachable from your local machine.
 This means opening that port up (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
-4. Connect to the Ray Cluster with the following and then use Ray like you normally would:
+Step 3: Run Ray code
+~~~~~~~~~~~~~~~~~~~
+
+Now, connect to the Ray Cluster with the following and then use Ray like you normally would:
 
 ..
 .. code-block:: python
