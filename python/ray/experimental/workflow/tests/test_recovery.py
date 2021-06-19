@@ -4,6 +4,7 @@ import ray
 from ray.exceptions import RayTaskError, ObjectLostError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
+from ray.experimental.workflow.recovery import WorkflowNotResumableError
 
 
 @workflow.step
@@ -88,4 +89,11 @@ def test_recovery_complex():
     output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
+    ray.shutdown()
+
+
+def test_recovery_non_exists_workflow():
+    ray.init()
+    with pytest.raises(WorkflowNotResumableError):
+        workflow.resume("this_workflow_id_does_not_exist")
     ray.shutdown()
