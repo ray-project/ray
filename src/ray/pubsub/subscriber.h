@@ -253,14 +253,14 @@ class Subscriber : public SubscriberInterface {
   explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
                       const int64_t max_command_batch_size,
-                      rpc::CoreWorkerClientPool &publisher_client_pool,
+                      std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(const rpc::Address &)> get_client,
                       instrumented_io_context *callback_service)
       : callback_service_(callback_service),
         subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
-        publisher_client_pool_(publisher_client_pool),
+    get_client_(get_client),
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
         wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
@@ -376,8 +376,8 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<rpc::Command>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
-  /// Cache of gRPC clients to publishers.
-  rpc::CoreWorkerClientPool &publisher_client_pool_;
+  /// Gets an rpc client for connecting to the publisher.
+  std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(const rpc::Address &)> get_client_;
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.

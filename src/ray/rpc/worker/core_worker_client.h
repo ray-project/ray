@@ -54,7 +54,7 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }
 
 // Shared between direct actor and task submitters.
-class CoreWorkerClientInterface;
+/* class CoreWorkerClientInterface; */
 
 // TODO(swang): Remove and replace with rpc::Address.
 class WorkerAddress {
@@ -93,11 +93,19 @@ class WorkerAddress {
   const NodeID raylet_id;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-    ClientFactoryFn;
+class SubscriberClientInterface {
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
+                                const ClientCallback<PubsubLongPollingReply> &callback) = 0;
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+                                  const PubsubCommandBatchRequest &request,
+                                  const ClientCallback<PubsubCommandBatchReply> &callback) = 0;
+};
 
 /// Abstract client interface for testing.
-class CoreWorkerClientInterface {
+class CoreWorkerClientInterface : SubscriberClientInterface {
  public:
   virtual const rpc::Address &Addr() const {
     static const rpc::Address empty_addr_;
@@ -355,6 +363,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 };
+
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
+  ClientFactoryFn;
 
 }  // namespace rpc
 }  // namespace ray
