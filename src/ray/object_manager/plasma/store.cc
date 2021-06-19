@@ -199,8 +199,12 @@ const PlasmaStoreConfig *PlasmaStore::GetPlasmaStoreConfig() const {
 
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
+<<<<<<< HEAD
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
                                        const ObjectTableEntry *entry,
+=======
+void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
+>>>>>>> ea9e2c089 (simplify store)
                                        const std::shared_ptr<Client> &client) {
   // Check if this client is already using the object.
   if (client->object_ids.find(object_id) != client->object_ids.end()) {
