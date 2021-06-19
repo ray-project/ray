@@ -7,7 +7,6 @@ loops all over again when building a new model.
 
 .. image:: /images/pytorch_lightning_full.png
   :align: center
-  :scale: 50 %
 
 Using Ray with Pytorch Lightning allows you to easily distribute training and also run
 distributed hyperparameter tuning experiments all from a single Python script. You can use the same code to run
@@ -15,23 +14,38 @@ Pytorch Lightning in a single process on your laptop, parallelize across the cor
 a large multi-node cluster.
 
 Ray provides 2 integration points with Pytorch Lightning.
-1) `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_ for distributed Pytorch Lightning training with Ray
-2) :ref:`Ray Tune with Pytorch Lightning<tune-pytorch-lightning>` for distributed hyperparameter tuning of your PTL models.
+
+1. `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_ for distributed Pytorch Lightning training with Ray
+
+2. :ref:`Ray Tune with Pytorch Lightning <tune-pytorch-lightning>` for distributed hyperparameter tuning of your PTL models.
 
 
-Distributed Pytorch Lightning Training with Ray Lightning
----------------------------------------------------------
-The `Ray Lightning Library <https://github.com/ray-project/ray_lightning>` adds new PyTorch Lightning plugins for distributed training using the Ray distributed computing framework.
-These PyTorch Lightning Plugins on Ray enable quick and easy parallel training while still leveraging all the benefits of PyTorch Lightning and using your desired training protocol, either PyTorch Distributed Data Parallel or Horovod, or Fairscale for model parallel training.
+Distributed Training with ``Ray Lightning``
+-------------------------------------------
+
+The `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`__ provides plugins for distributed training with Ray.
+
+These PyTorch Lightning Plugins on Ray enable quick and easy parallel training while still leveraging all the benefits of PyTorch Lightning. It offers the following plugins:
+
+* `PyTorch Distributed Data Parallel <https://github.com/ray-project/ray_lightning#pytorch-distributed-data-parallel-plugin-on-ray>`__
+* `Horovod <https://github.com/ray-project/ray_lightning#horovod-plugin-on-ray>`__
+* `Fairscale <https://github.com/ray-project/ray_lightning#model-parallel-sharded-training-on-ray>`__ for model parallel training.
+
 Once you add your plugin to the PyTorch Lightning Trainer, you can parallelize training to all the cores in your laptop, or across a massive multi-node, multi-GPU cluster with no additional code changes.
 
-You can install the master branch of ray_lightning like so: `pip install git+https://github.com/ray-project/ray_lightning#ray_lightning`
+Install the Ray Lightning Library with the following commands:
 
-And to use, you can simply pass in the plugin to your Pytorch Lightning ``Trainer``. For full details you can checkout the ``README`` of the `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`.
+.. code-block:: bash
 
-Here is a simplified example of using the ``RayPlugin`` for Distributed Data Parallel training on a Ray cluster:
+    # To install from master
+    pip install git+https://github.com/ray-project/ray_lightning#ray_lightning
+
+To use, simply pass in the plugin to your Pytorch Lightning ``Trainer``. For full details, you can checkout the `README here <https://github.com/ray-project/ray_lightning#distributed-pytorch-lightning-training-on-ray>`__
+
+Here is an example of using the ``RayPlugin`` for Distributed Data Parallel training on a Ray cluster:
 
 .. code-block:: python
+
     import pytorch_lightning as pl
     from ray_lightning import RayPlugin
 
@@ -44,20 +58,28 @@ Here is a simplified example of using the ``RayPlugin`` for Distributed Data Par
     trainer = pl.Trainer(..., gpus=1, plugins=[plugin])
     trainer.fit(ptl_model)
 
-With this plugin, Pytorch DDP is used as the distributed training protocol, but Ray is used to launch and manage the training worker processes.
-The library also provides backends for Horovod and model parallelism with Fairscale for sharded training.
+With this plugin, Pytorch DDP is used as the distributed training communication protocol, but Ray is used to launch and manage the training worker processes.
 
 Multi-node Distributed Training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Using the same examples above, you can run distributed training on a multi-node cluster with just a couple simple steps.
 
-First use Ray's :ref:`Cluster Launcher<ref-cluster-quick-start>` to start a Ray cluster- `ray up my_cluster_config.yaml`.
+First, use Ray's :ref:`Cluster Launcher <ref-cluster-quick-start>` to start a Ray cluster:
 
-And then you can either :ref:`execute your Python script on the cluster<cluster-commands>`- `ray submit my_cluster_config.yaml train.py`, which will automatically `rsync` your training script to the head node, and execute it.
-Or, you can use :ref:`Ray Client<ray-client>` and run your script on your laptop, but have access to all the resources on your cluster.
+.. code-block:: bash
+
+    ray up my_cluster_config.yaml
+
+Then, run your Ray script using one of the following options:
+
+1. on the head node of the cluster (``python train_script.py``)
+2. via ``ray submit`` (:ref:`docs <ray-submit-doc>`) from your laptop (``ray submit my_cluster_config.yaml train.py``)
+3. via the :ref:`Ray Client<ray-client>` from your laptop.
 
 Distributed Hyperparameter Optimization with Ray Tune
 -----------------------------------------------------
+
 You can also use :ref:`Ray Tune<tune-main>` with Pytorch Lightning to tune the hyperparameters of your model.
 With this integration, you can run multiple training runs in parallel, with each run having a different set of hyperparameters
 for your Pytorch Lightning model.
