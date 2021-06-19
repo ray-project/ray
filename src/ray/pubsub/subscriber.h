@@ -23,7 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -228,6 +228,19 @@ class SubscriberInterface {
                            const std::string &key_id_binary) = 0;
 
   virtual ~SubscriberInterface() {}
+};
+
+/// The grpc client that the subscriber needs.
+class SubscriberClientInterface {
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(
+                                const rpc::PubsubLongPollingRequest &request,
+                                const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+                                  const rpc::PubsubCommandBatchRequest &request,
+                                  const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
 };
 
 /// The pubsub client implementation. The class is thread-safe.

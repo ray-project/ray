@@ -30,6 +30,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "ray/common/status.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
@@ -93,20 +94,8 @@ class WorkerAddress {
   const NodeID raylet_id;
 };
 
-class SubscriberClientInterface {
-  /// Send a long polling request to a core worker for pubsub operations.
-  virtual void PubsubLongPolling(
-      const PubsubLongPollingRequest &request,
-      const ClientCallback<PubsubLongPollingReply> &callback) = 0;
-
-  /// Send a pubsub command batch request to a core worker for pubsub operations.
-  virtual void PubsubCommandBatch(
-      const PubsubCommandBatchRequest &request,
-      const ClientCallback<PubsubCommandBatchReply> &callback) = 0;
-};
-
 /// Abstract client interface for testing.
-class CoreWorkerClientInterface : SubscriberClientInterface {
+class CoreWorkerClientInterface : pubsub::SubscriberClientInterface {
  public:
   virtual const rpc::Address &Addr() const {
     static const rpc::Address empty_addr_;
