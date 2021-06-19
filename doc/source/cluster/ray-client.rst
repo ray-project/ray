@@ -81,7 +81,7 @@ Things to know
 Client disconnections
 ~~~~~~~~~~~~~~~~~~~~~
 
-* When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
+When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
 
 Versioning requirements
