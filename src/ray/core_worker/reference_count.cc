@@ -793,21 +793,19 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
-    RAY_CHECK(
-        object_info_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                             addr.ToProto(), object_id.Binary()));
+    RAY_CHECK(object_status_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
+        object_id.Binary()));
   };
 
   // If the borrower is failed, this callback will be called.
-  const auto publisher_failed_callback = [this,
-                                          addr](const std::string &object_id_binary) {
+  const auto publisher_failed_callback = [this, addr, object_id]() {
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
-    const auto object_id = ObjectID::FromBinary(object_id_binary);
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
-  object_info_subscriber_->Subscribe(
+  object_status_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
       addr.ToProto(), object_id.Binary(), message_published_callback,
       publisher_failed_callback);
@@ -896,8 +894,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
                  << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_info_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                  pub_message, object_id.Binary());
+  object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    pub_message, object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1096,36 +1094,19 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  const auto callbacks = it->second.location_subscription_callbacks;
+  it->second.location_subscription_callbacks.clear();
   it->second.location_version++;
-  const auto &object_id = it->first;
-  PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
-                         it->second.spilled_url, it->second.spilled_node_id,
-                         it->second.location_version, it->second.pinned_at_raylet_id);
+  for (const auto &callback : callbacks) {
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
+  }
 }
 
-Status ReferenceCounter::FillObjectInformation(
-    const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
-  RAY_CHECK(object_info != nullptr);
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  }
-
-  for (const auto &node_id : it->second.locations) {
-    object_info->add_node_ids(node_id.Binary());
-  }
-  object_info->set_object_size(it->second.object_size);
-  object_info->set_spilled_url(it->second.spilled_url);
-  object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
-  object_info->set_primary_node_id(primary_node_id.Binary());
-  object_info->set_current_version(it->second.location_version);
-  return Status::OK();
-}
-
-Status ReferenceCounter::SubscribeObjectLocations(const ObjectID &object_id,
-                                                  int64_t last_location_version) {
+Status ReferenceCounter::SubscribeObjectLocations(
+    const ObjectID &object_id, int64_t last_location_version,
+    const LocationSubscriptionCallback &callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1139,39 +1120,14 @@ Status ReferenceCounter::SubscribeObjectLocations(const ObjectID &object_id,
     // If the last location version is less than the current location version, we
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
-    PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
-                           it->second.spilled_url, it->second.spilled_node_id,
-                           it->second.location_version, it->second.pinned_at_raylet_id);
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version,
+             it->second.pinned_at_raylet_id);
+  } else {
+    // Otherwise, save the callback for later invocation.
+    it->second.location_subscription_callbacks.push_back(callback);
   }
   return Status::OK();
-}
-
-void ReferenceCounter::PublishObjectLocations(
-    const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
-    int64_t object_size, const std::string &spilled_url, const NodeID &spilled_node_id,
-    int64_t current_version, const absl::optional<NodeID> &optional_primary_node_id) {
-  auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-  RAY_LOG(DEBUG) << "Publish a message for " << object_id
-                 << " with location update version " << current_version << ", "
-                 << locations.size() << " locations, spilled url: " << spilled_url
-                 << ", spilled node ID: " << spilled_node_id
-                 << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id;
-  rpc::PubMessage pub_message;
-  pub_message.set_key_id(object_id.Binary());
-  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-
-  for (const auto &node_id : locations) {
-    object_locations_msg->add_node_ids(node_id.Binary());
-  }
-  object_locations_msg->set_object_size(object_size);
-  object_locations_msg->set_spilled_url(spilled_url);
-  object_locations_msg->set_spilled_node_id(spilled_node_id.Binary());
-  object_locations_msg->set_current_version(current_version);
-  object_locations_msg->set_primary_node_id(primary_node_id.Binary());
-  object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                  pub_message, object_id.Binary());
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
