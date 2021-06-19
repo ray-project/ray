@@ -37,6 +37,8 @@
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
 
+#include "absl/container/flat_hash_map.h"
+
 namespace fb = plasma::flatbuf;
 
 namespace plasma {
@@ -110,7 +112,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
                 int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
                 uint64_t *retry_with_request_id, std::shared_ptr<Buffer> *data,
-                int device_num = 0);
+                fb::ObjectSource source, int device_num = 0);
 
   Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
                      const uint8_t *metadata, uint64_t *retry_with_request_id,
@@ -119,7 +121,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status TryCreateImmediately(const ObjectID &object_id,
                               const ray::rpc::Address &owner_address, int64_t data_size,
                               const uint8_t *metadata, int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data, int device_num);
+                              std::shared_ptr<Buffer> *data, fb::ObjectSource source,
+                              int device_num);
 
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
@@ -185,10 +188,14 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   /// Table of dlmalloc buffer files that have been memory mapped so far. This
   /// is a hash table mapping a file descriptor to a struct containing the
   /// address of the corresponding memory-mapped file.
-  std::unordered_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  absl::flat_hash_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  /// Used to clean up old fd entries in mmap_table_ that are no longer needed,
+  /// since their fd has been reused. TODO(ekl) we should be more proactive about
+  /// unmapping unused segments.
+  absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, MEMFD_TYPE> dedup_fd_table_;
   /// A hash table of the object IDs that are currently being used by this
   /// client.
-  std::unordered_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
   /// The amount of memory available to the Plasma store. The client needs this
   /// information to make sure that it does not delay in releasing so much
   /// memory that the store is unable to evict enough objects to free up space.
@@ -215,7 +222,14 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
     return entry->second->pointer();
   } else {
     MEMFD_TYPE fd;
-    RAY_CHECK_OK(store_conn_->RecvFd(&fd));
+    RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
+    fd.second = store_fd_val.second;
+    // Close and erase the old duplicated fd entry that is no longer needed.
+    if (dedup_fd_table_.find(store_fd_val.first) != dedup_fd_table_.end()) {
+      RAY_LOG(INFO) << "Erasing re-used mmap entry for fd " << store_fd_val.first;
+      mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
+    }
+    dedup_fd_table_[store_fd_val.first] = store_fd_val;
     mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
   }
@@ -321,13 +335,14 @@ Status PlasmaClient::Impl::Create(const ObjectID &object_id,
                                   const ray::rpc::Address &owner_address,
                                   int64_t data_size, const uint8_t *metadata,
                                   int64_t metadata_size, uint64_t *retry_with_request_id,
-                                  std::shared_ptr<Buffer> *data, int device_num) {
+                                  std::shared_ptr<Buffer> *data, fb::ObjectSource source,
+                                  int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
-                                      metadata_size, device_num,
+                                      metadata_size, source, device_num,
                                       /*try_immediately=*/false));
   return HandleCreateReply(object_id, metadata, retry_with_request_id, data);
 }
@@ -344,13 +359,13 @@ Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id, uint64_t reque
 Status PlasmaClient::Impl::TryCreateImmediately(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
-    int device_num) {
+    fb::ObjectSource source, int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
-                                      metadata_size, device_num,
+                                      metadata_size, source, device_num,
                                       /*try_immediately=*/true));
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
@@ -724,9 +739,10 @@ Status PlasmaClient::Create(const ObjectID &object_id,
                             const ray::rpc::Address &owner_address, int64_t data_size,
                             const uint8_t *metadata, int64_t metadata_size,
                             uint64_t *retry_with_request_id,
-                            std::shared_ptr<Buffer> *data, int device_num) {
+                            std::shared_ptr<Buffer> *data, fb::ObjectSource source,
+                            int device_num) {
   return impl_->Create(object_id, owner_address, data_size, metadata, metadata_size,
-                       retry_with_request_id, data, device_num);
+                       retry_with_request_id, data, source, device_num);
 }
 
 Status PlasmaClient::RetryCreate(const ObjectID &object_id, uint64_t request_id,
@@ -739,9 +755,10 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
                                           const ray::rpc::Address &owner_address,
                                           int64_t data_size, const uint8_t *metadata,
                                           int64_t metadata_size,
-                                          std::shared_ptr<Buffer> *data, int device_num) {
+                                          std::shared_ptr<Buffer> *data,
+                                          fb::ObjectSource source, int device_num) {
   return impl_->TryCreateImmediately(object_id, owner_address, data_size, metadata,
-                                     metadata_size, data, device_num);
+                                     metadata_size, data, source, device_num);
 }
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,

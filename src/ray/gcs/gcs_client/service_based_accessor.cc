@@ -127,6 +127,20 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(
+    const ItemCallback<JobID> &callback) {
+  RAY_LOG(INFO) << "Getting next job id";
+  rpc::GetNextJobIDRequest request;
+  client_impl_->GetGcsRpcClient().GetNextJobID(
+      request, [callback](const Status &status, const rpc::GetNextJobIDReply &reply) {
+        RAY_CHECK_OK(status);
+        auto job_id = JobID::FromInt(reply.job_id());
+        callback(job_id);
+        RAY_LOG(INFO) << "Finished getting next job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -1485,11 +1499,12 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
-    const std::string &name,
+    const std::string &name, const std::string &ray_namespace,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
       request, [name, callback](const Status &status,
                                 const rpc::GetNamedPlacementGroupReply &reply) {

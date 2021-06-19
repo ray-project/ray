@@ -3,6 +3,9 @@ import json
 import random
 import platform
 import sys
+import shutil
+import zlib
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
@@ -105,8 +108,11 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100
         })
     assert "object_spilling_config" not in ray.worker._global_node._config
-    with pytest.raises(ray.exceptions.ObjectStoreFullError):
+    if ray.worker.global_worker.core_worker.plasma_unlimited():
         run_basic_workload()
+    else:
+        with pytest.raises(ray.exceptions.ObjectStoreFullError):
+            run_basic_workload()
     ray.shutdown()
 
     # Make sure when we use a different config, it is reflected.
@@ -162,8 +168,11 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
     arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
     ref = ray.get(ray.put(arr))  # noqa
     # Since the ref exists, it should raise OOM.
-    with pytest.raises(ray.exceptions.ObjectStoreFullError):
+    if ray.worker.global_worker.core_worker.plasma_unlimited():
         ref2 = ray.put(arr)  # noqa
+    else:
+        with pytest.raises(ray.exceptions.ObjectStoreFullError):
+            ref2 = ray.put(arr)  # noqa
 
     wait_for_condition(lambda: is_dir_empty(temp_folder))
     assert_no_thrashing(address["redis_address"])
@@ -391,7 +400,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
                                 is_async):
     object_spilling_config, _ = object_spilling_config
     address = ray.init(
-        num_cpus=4,
+        num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
@@ -399,18 +408,19 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "worker_register_timeout_seconds": 600,
         },
     )
 
     if is_async:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         class Actor:
             async def f(self):
                 return np.zeros(10 * 1024 * 1024)
     else:
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         def f():
             return np.zeros(10 * 1024 * 1024)
 
@@ -425,6 +435,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(i, x)
         ids.append(x)
 
+    start = datetime.now()
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
@@ -434,6 +445,10 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             obj = ray.get(x)
         print(obj.shape)
         del obj
+    duration = datetime.now() - start
+    assert duration <= timedelta(
+        seconds=30
+    ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 
 
@@ -471,8 +486,10 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_partial_retval_allocation():
-    ray.init(object_store_memory=100 * 1024 * 1024)
+def test_partial_retval_allocation(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(object_store_memory=100 * 1024 * 1024)
+    ray.init(cluster.address)
 
     @ray.remote(num_returns=4)
     def f():
@@ -482,6 +499,110 @@ def test_partial_retval_allocation():
     for obj in ret:
         obj = ray.get(obj)
         print(obj.size)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_pull_spilled_object(ray_start_cluster,
+                             multi_node_object_spilling_config, shutdown_only):
+    cluster = ray_start_cluster
+    object_spilling_config, _ = multi_node_object_spilling_config
+
+    # Head node.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 0},
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 2,
+            "min_spilling_size": 1 * 1024 * 1024,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+        })
+    ray.init(cluster.address)
+
+    # add 1 worker node
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 1},
+        object_store_memory=75 * 1024 * 1024)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, resources={"custom": 1})
+    def create_objects():
+        results = []
+        for size in range(5):
+            arr = np.random.rand(size * 1024 * 1024)
+            hash_value = zlib.crc32(arr.tobytes())
+            results.append([ray.put(arr), hash_value])
+        # ensure the objects are spilled
+        arr = np.random.rand(5 * 1024 * 1024)
+        ray.get(ray.put(arr))
+        ray.get(ray.put(arr))
+        return results
+
+    @ray.remote(num_cpus=1, resources={"custom": 0})
+    def get_object(arr):
+        return zlib.crc32(arr.tobytes())
+
+    results = ray.get(create_objects.remote())
+    for value_ref, hash_value in results:
+        hash_value1 = ray.get(get_object.remote(value_ref))
+        assert hash_value == hash_value1
+
+
+# TODO(chenshen): fix error handling when spilled file
+# missing/corrupted
+@pytest.mark.skipif(True, reason="Currently hangs.")
+def test_pull_spilled_object_failure(object_spilling_config,
+                                     ray_start_cluster):
+    object_spilling_config, temp_folder = object_spilling_config
+    cluster = ray_start_cluster
+
+    # Head node.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 0},
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 2,
+            "min_spilling_size": 1 * 1024 * 1024,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+        })
+    ray.init(cluster.address)
+
+    # add 1 worker node
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 1},
+        object_store_memory=75 * 1024 * 1024)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, resources={"custom": 1})
+    def create_objects():
+        arr = np.random.rand(5 * 1024 * 1024)
+        hash_value = zlib.crc32(arr.tobytes())
+        results = [ray.put(arr), hash_value]
+        # ensure the objects are spilled
+        arr = np.random.rand(5 * 1024 * 1024)
+        ray.get(ray.put(arr))
+        ray.get(ray.put(arr))
+        return results
+
+    @ray.remote(num_cpus=1, resources={"custom": 0})
+    def get_object(arr):
+        return zlib.crc32(arr.tobytes())
+
+    [ref, hash_value] = ray.get(create_objects.remote())
+
+    # remove spilled file
+    shutil.rmtree(temp_folder)
+
+    hash_value1 = ray.get(get_object.remote(ref))
+    assert hash_value == hash_value1
 
 
 if __name__ == "__main__":

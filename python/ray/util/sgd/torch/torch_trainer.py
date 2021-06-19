@@ -110,10 +110,15 @@ class TorchTrainer:
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
-        use_fp16 (bool): Enables mixed precision training via apex if apex
-            is installed. This is automatically done after the model and
-            optimizers are constructed and will work for multi-model training.
-            Please see https://github.com/NVIDIA/apex for more details.
+        use_fp16 (bool|string): Enables mixed precision training.
+            If set to True, will first try to use native mixed
+            precision training backend, and if it's unavailable, the Apex
+            backed, if installed. Apex backend must be installed separately
+            and can be forced over the native backend by setting `use_fp16`
+            to "apex". Torch documentation recommends the usage of the native
+            backend. Mixed precision training is automatically done after
+            the model and optimizers are constructed and will work for
+            multi-model training. Defaults to False.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -173,6 +178,10 @@ class TorchTrainer:
                 "model_creator, ...) and pass in CustomOperator into "
                 "TorchTrainer.")
 
+        if use_local and ray.util.client.ray.is_connected():
+            raise ValueError("use_local setting is not supported with Ray "
+                             "Client.")
+
         if use_local and log_once("use_local"):
             logger.warning("use_local is set to True. This could lead to "
                            "issues with Cuda devices. If you are seeing this "
@@ -180,7 +189,8 @@ class TorchTrainer:
                            "information, see "
                            "https://github.com/ray-project/ray/issues/9202.")
 
-        if num_workers > 1 and not dist.is_available():
+        if num_workers > 1 and not dist.is_available() and not \
+                ray.util.client.ray.is_connected():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
@@ -522,10 +532,17 @@ class TorchTrainer:
         self.worker_group.apply_all_operators(
             lambda op: [sched.step(metric) for sched in op._schedulers])
 
-    def get_model(self):
-        """Returns the learned model(s)."""
+    def get_model(self, to_cpu=False):
+        """Returns the learned model(s).
+
+        Arguments:
+            to_cpu (bool): Forces returned model to be on CPU. This is
+                useful if workers are trained on GPU, but the TorchTrainer
+                lives on a CPU-only machine.
+
+        """
         unwrapped = []
-        models = self.worker_group.get_model()
+        models = self.worker_group.get_model(to_cpu)
         for model in models:
             unwrapped += [model.module if hasattr(model, "module") else model]
         if len(unwrapped) == 1:

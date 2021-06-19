@@ -29,6 +29,7 @@ from ray.includes.common cimport (
     CActorCreationOptions,
     CBuffer,
     CPlacementGroupCreationOptions,
+    CObjectLocation,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -168,11 +169,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
-                              CAddress *owner_address)
+                              CAddress *owner_address,
+                              c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
-                const CAddress &owner_address)
+                const CAddress &owner_address,
+                const c_string &object_status)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
@@ -184,12 +187,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
-                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+                               CObjectID *object_id, shared_ptr[CBuffer] *data,
+                               c_bool created_by_worker)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
-                                  shared_ptr[CBuffer] *data)
+                                  shared_ptr[CBuffer] *data,
+                                  c_bool created_by_worker)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
@@ -205,6 +210,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        CRayStatus GetLocationFromOwner(
+                const c_vector[CObjectID] &object_ids,
+                int64_t timeout_ms,
+                c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 

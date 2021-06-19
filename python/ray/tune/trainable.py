@@ -93,6 +93,8 @@ class Trainable:
         self._iterations_since_restore = 0
         self._restored = False
         self._trial_info = trial_info
+        self._stdout_file = stdout_file
+        self._stderr_file = stderr_file
 
         start_time = time.time()
         self.setup(copy.deepcopy(self.config))
@@ -313,7 +315,7 @@ class Trainable:
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
-        Subclasses should override ``_save()`` instead to save state.
+        Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
         Args:
@@ -809,3 +811,22 @@ class Trainable:
 
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
+
+
+class DistributedTrainable(Trainable):
+    """Common Trainable class for distributed training."""
+
+    def build_config(self, config: Dict):
+        """Builds config for distributed training.
+
+        Builds a deep copy of the input config and populates it with
+        metadata from this Trainable.
+
+        Useful for passing this Trainable's configs to each distributed
+        Trainable instance.
+        """
+        new_config = copy.deepcopy(config)
+        new_config[TRIAL_INFO] = self._trial_info
+        new_config[STDOUT_FILE] = self._stdout_file
+        new_config[STDERR_FILE] = self._stderr_file
+        return new_config

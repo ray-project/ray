@@ -15,6 +15,8 @@ from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
 
+from ray.tune.utils.release_test_util import ProgressCallback
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
 parser.add_argument(
@@ -137,6 +139,6 @@ if __name__ == "__main__":
             "data": ray.put(dataset)
         },
         num_samples=1,
+        callbacks=[ProgressCallback()],  # FailureInjectorCallback()
         fail_fast=True)
-    # callbacks=[FailureInjectorCallback()])
     print("Best hyperparameters found were: ", analysis.best_config)

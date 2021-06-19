@@ -62,14 +62,15 @@ def conda_envs():
 
 check_remote_client_conda = """
 import ray
-ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).connect()
+context = ray.client("localhost:24001").env({{"conda" : "tf-{tf_version}"}}).\\
+connect()
 @ray.remote
 def get_tf_version():
     import tensorflow as tf
     return tf.__version__
 
 assert ray.get(get_tf_version.remote()) == "{tf_version}"
-ray.util.disconnect()
+context.disconnect()
 """
 
 
@@ -96,9 +97,8 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
 
     tf_versions = ["2.2.0", "2.3.0"]
     for i, tf_version in enumerate(tf_versions):
-        try:
-            runtime_env = {"conda": f"tf-{tf_version}"}
-            ray.client("localhost:24001").env(runtime_env).connect()
+        runtime_env = {"conda": f"tf-{tf_version}"}
+        with ray.client("localhost:24001").env(runtime_env).connect():
             assert ray.get(get_tf_version.remote()) == tf_version
             actor_handle = TfVersionActor.remote()
             assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
@@ -108,9 +108,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
             other_tf_version = tf_versions[(i + 1) % 2]
             run_string_as_driver(
                 check_remote_client_conda.format(tf_version=other_tf_version))
-        finally:
-            ray.util.disconnect()
-            ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -242,12 +239,8 @@ def test_get_conda_env_dir(tmp_path):
 
 
 """
-Note(architkulkarni): For runtime_env tests that involve conda or pip installs,
-"opentelemetry-api==1.0.0rc1" and "opentelemetry-sdk==1.0.0rc1" must be
-included as dependencies, because they are installed in the CI's conda env but
-are not included in the Ray dependencies, so they cause an unpickling issue.
-
-Also, these tests only run on Buildkite in a special job that runs
+Note(architkulkarni):
+These tests only run on Buildkite in a special job that runs
 after the wheel is built, because the tests pass in the wheel as a dependency
 in the runtime env.  Buildkite only supports Linux for now.
 """
@@ -263,14 +256,9 @@ def test_conda_create_task(shutdown_only):
     ray.init()
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
 
@@ -298,14 +286,9 @@ def test_conda_create_job_config(shutdown_only):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
@@ -377,38 +360,28 @@ def test_conda_create_ray_client(call_ray_start):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
-    try:
-        ray.client("localhost:24001").env(runtime_env).connect()
 
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa
-            return True
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
 
+    with ray.client("localhost:24001").env(runtime_env).connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed on the test machine
             import pip_install_test  # noqa
         assert ray.get(f.remote())
 
-        ray.util.disconnect()
-        ray.client("localhost:24001").connect()
+    with ray.client("localhost:24001").connect():
         with pytest.raises(ModuleNotFoundError):
             # Ensure pip-install-test is not installed in a client that doesn't
             # use the runtime_env
             ray.get(f.remote())
-    finally:
-        ray.util.disconnect()
-        ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
 @pytest.mark.skipif(
@@ -418,7 +391,7 @@ def test_conda_create_ray_client(call_ray_start):
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_task(shutdown_only, pip_as_str, tmp_path):
-    """Tests pip installs in the runtime env specified in the job config."""
+    """Tests pip installs in the runtime env specified in f.options()."""
 
     ray.init()
     if pip_as_str:
@@ -427,18 +400,35 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_pip_ray_serve(shutdown_only):
+    """Tests that ray[serve] can be included as a pip dependency."""
+    ray.init()
+    runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
 
     @ray.remote
     def f():
@@ -469,18 +459,11 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
 
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
 
@@ -497,16 +480,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_conda_input_filepath(tmp_path):
-    conda_dict = {
-        "dependencies": [
-            "pip", {
-                "pip": [
-                    "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                    "opentelemetry-sdk==1.0.0rc1"
-                ]
-            }
-        ]
-    }
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     d = tmp_path / "pip_requirements"
     d.mkdir()
     p = d / "environment.yml"

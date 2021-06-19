@@ -53,6 +53,15 @@ public class GlobalStateAccessor {
     }
   }
 
+  /** Returns next job id. */
+  public byte[] getNextJobID() {
+    // Get next job id from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetNextJobID(globalStateAccessorNativePointer);
+    }
+  }
+
   /** Returns A list of node info with GcsNodeInfo protobuf schema. */
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
@@ -132,6 +141,8 @@ public class GlobalStateAccessor {
   private native boolean nativeConnect(long nativePtr);
 
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
+
+  private native byte[] nativeGetNextJobID(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 

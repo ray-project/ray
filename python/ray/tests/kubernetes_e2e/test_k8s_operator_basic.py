@@ -52,13 +52,13 @@ def client_connect_to_k8s(port="10001"):
 
 
 def retry_until_true(f):
-    # Retry 60 times with 1 second delay between attempts.
+    # Keep retrying for 8 minutes with 10 seconds between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(240):
+        for _ in range(49):
             if f(*args, **kwargs):
                 return
             else:
-                time.sleep(1)
+                time.sleep(10)
         pytest.fail("The condition wasn't met before the timeout expired.")
 
     return f_with_retries
@@ -133,6 +133,11 @@ def wait_for_status(cluster_name, status):
     return cluster_cr["status"]["phase"] == status
 
 
+@retry_until_true
+def wait_for_services(n):
+    return num_services() == n
+
+
 def kubernetes_configs_directory():
     relative_path = "deploy"
     return os.path.join(RAY_PATH, relative_path)
@@ -169,7 +174,7 @@ def num_services():
 
 
 class KubernetesOperatorTest(unittest.TestCase):
-    def test_examples(self):
+    def test_basic(self):
         # Validate terminate_node error handling
         provider = KubernetesNodeProvider({
             "namespace": NAMESPACE
@@ -241,7 +246,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             wait_for_pods(6)
             # Check that head services are present.
             print(">>>Checking that head services are present.")
-            assert num_services() == 2
+            wait_for_services(2)
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
@@ -308,7 +313,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             wait_for_pods(4)
             # Cluster 2 service has been garbage-collected.
             print(">>>Checking that deleted cluster's service is gone.")
-            assert num_services() == 1
+            wait_for_services(1)
 
             # Check job submission
             print(">>>Submitting a job to test Ray client connection.")
@@ -344,7 +349,20 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Cluster 1 service has been garbage-collected.
             print(">>>Checking that all Ray cluster services are gone.")
-            assert num_services() == 0
+            wait_for_services(0)
+
+            # Verify that cluster deletion earlier in this test did not break
+            # the operator.
+            print(">>>Checking cluster creation again.")
+            for file in [example_cluster_file, example_cluster2_file]:
+                cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
+                subprocess.check_call(cmd, shell=True)
+            wait_for_pods(7)
+            print(">>>Checking cluster deletion again.")
+            for file in [example_cluster_file, example_cluster2_file]:
+                cmd = f"kubectl -n {NAMESPACE} delete -f {file.name}"
+                subprocess.check_call(cmd, shell=True)
+            wait_for_pods(1)
 
 
 if __name__ == "__main__":
