@@ -252,8 +252,6 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
-    // Otherwise, iterate on the reply and pass published messages to channels.
-    std::deque<SubscriptionCallback> subscription_callbacks;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
@@ -262,34 +260,24 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // unsubscribe the publisher because there are other entries that subscribe from the
       // publisher.
       if (msg.has_failure_message()) {
-        // SANG-TODO Remove debug only
-        RAY_LOG(INFO) << "Failure message has published from a channel " << channel_type;
+        RAY_LOG(DEBUG) << "Failure message has published from a channel " << channel_type;
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
-        subscription_callbacks.emplace_back(nullptr);
         continue;
       }
-      // Otherwise, register the subscription callback.
-      subscription_callbacks.emplace_back(
-          Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg));
-    }
 
-    // Post to the provided io service so that the callback is
-    // always running on the io service thread.
-    callback_service_->post(
-        [subscription_callbacks = std::move(subscription_callbacks),
-         reply = std::move(reply)]() {
-          auto pubsub_message_size = reply.pub_messages_size();
-          RAY_CHECK(static_cast<size_t>(pubsub_message_size) ==
-                    subscription_callbacks.size());
-          for (int i = 0; i < pubsub_message_size; i++) {
-            const auto &msg = reply.pub_messages(i);
-            const auto &subscription_callback = subscription_callbacks.at(i);
-            if (subscription_callback) {
-              subscription_callback(msg);
-            }
-          }
-        },
-        "Subscriber.HandleLongPollingResponse");
+      // Otherwise, register the subscription callback.
+      const auto subscription_callback =
+          Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg);
+      // Post to the provided io service so that the callback is
+      // always running on the io service thread.
+      if (!subscription_callback) {
+        continue;
+      }
+
+      callback_service_->post([subscription_callback = std::move(subscription_callback),
+                               msg = std::move(msg)]() { subscription_callback(msg); },
+                              "Subscriber.HandleLongPollingResponse");
+    }
   }
 
   if (SubscriptionExists(publisher_id)) {
