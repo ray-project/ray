@@ -440,6 +440,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // disk of the remote node, it will be restored by PushManager prior to pushing.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
+    RAY_LOG(INFO) << "Object is pulled from a remote node." << object_id;
     UpdateRetryTimer(request);
     return;
   }
@@ -449,6 +450,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
       !request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
+    RAY_LOG(INFO) << "Object is restored from a local node." << object_id;
     UpdateRetryTimer(request);
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
@@ -461,12 +463,14 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // TODO(ekl) should we more directly mark the object as lost in this case?
-  RAY_LOG(DEBUG) << "Object neither in memory nor external storage " << object_id.Hex();
+  // SANG-TODO CHANGE BACK TO INFO
+  RAY_LOG(ERROR) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
+    RAY_LOG(INFO) << "Object is not pulled now. " << object_id;
     return false;
   }
 
@@ -476,10 +480,12 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
+      RAY_LOG(INFO) << "Pull object from a remote node." << object_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
     // The timer should never fire if there are no expected client locations.
+    RAY_LOG(INFO) << "No existing locations for the object." << object_id;
     return false;
   }
 
@@ -515,8 +521,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
     RAY_CHECK(node_id != self_node_id_);
   }
 
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
-                 << " of object " << object_id;
+  RAY_LOG(INFO) << "Sending pull request from " << self_node_id_ << " to " << node_id
+                << " of object " << object_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
