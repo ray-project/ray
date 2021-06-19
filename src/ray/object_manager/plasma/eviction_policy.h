@@ -89,6 +89,27 @@ class LRUCache {
   int64_t bytes_evicted_total_;
 };
 
+/// Accessor to Allocator information for evicition policies.
+class AllocatorAccessorInterface {
+ public:
+  virtual ~AllocatorAccessorInterface() = default;
+  virtual int64_t GetObjectSize(const ObjectID &object_id) const = 0;
+  virtual int64_t GetAllocated() const = 0;
+  virtual int64_t GetCapacity() const = 0;
+};
+
+/// Access to Plasma allocation information.
+class PlasmaAllocatorAccessor : public AllocatorAccessorInterface {
+ public:
+  explicit PlasmaAllocatorAccessor(const ObjectTable &object_table);
+  int64_t GetObjectSize(const ObjectID &object_id) const override;
+  int64_t GetAllocated() const override;
+  int64_t GetCapacity() const override;
+
+ private:
+  const ObjectTable &object_table_;
+};
+
 /// The eviction policy.
 class EvictionPolicy {
  public:
@@ -163,6 +184,10 @@ class EvictionPolicy {
 
   int64_t GetPinnedMemoryBytes() const { return pinned_memory_bytes_; }
 
+ private:
+  EvictionPolicy(std::unique_ptr<AllocatorAccessorInterface> allocator_accessor,
+                 int64_t max_size);
+
  protected:
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;
@@ -170,10 +195,10 @@ class EvictionPolicy {
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
-  /// A reference to the plasma object table
-  const ObjectTable &object_table_;
   /// Datastructure for the LRU cache.
   LRUCache cache_;
+
+  std::unique_ptr<AllocatorAccessorInterface> allocator_accessor_;
 };
 
 }  // namespace plasma
