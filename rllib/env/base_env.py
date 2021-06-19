@@ -453,12 +453,10 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
-        if env_id is not None:
-            assert isinstance(env_id, int)
-            self.envs[env_id].render()
-        else:
-            for e in self.envs:
-                e.render()
+        if env_id is None:
+            env_id = 0
+        assert isinstance(env_id, int)
+        return self.envs[env_id].render()
 
 
 class _MultiAgentEnvState:
