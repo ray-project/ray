@@ -103,9 +103,9 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
-                 << " num bytes being pulled: " << num_bytes_being_pulled_
-                 << " num bytes available: " << num_bytes_available_;
+  // RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
+  //                << " num bytes being pulled: " << num_bytes_being_pulled_
+  //                << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
@@ -113,7 +113,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
     if (start_pull) {
-      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+      // RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
       auto it = object_pull_requests_.find(obj_id);
@@ -145,7 +145,7 @@ void PullManager::DeactivatePullBundleRequest(
       continue;
     }
     if (it->second.empty()) {
-      RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
+      // RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
@@ -169,9 +169,9 @@ void PullManager::DeactivateUntilWithinQuota(
     const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
     std::unordered_set<ObjectID> *object_ids_to_cancel) {
   while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
-    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
-                   << " num bytes being pulled: " << num_bytes_being_pulled_
-                   << " num bytes available: " << num_bytes_available_;
+    // RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
+    //                << " num bytes being pulled: " << num_bytes_being_pulled_
+    //                << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
