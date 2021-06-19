@@ -153,8 +153,8 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             response = {}
             # Generic commands:
             if command == PolicyClient.ACTION_SPACE:
-                logger.info("Got sample batch of size {} from client.".format(
-                    args["samples"].count))
+                logger.info(
+                    f"Got action space ({args['action_space']}) from client.")
                 report_data(args)
             # Local inference commands:
             elif command == PolicyClient.GET_WORKER_ARGS:

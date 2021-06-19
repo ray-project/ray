@@ -375,74 +375,76 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # Create an env for this worker.
         self.env = None
+
+        # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
                 and policy_config["create_env_on_driver"] is False):
-            env_ = env_creator(env_context)
-            if env_:
-                # Validate environment (general validation function).
-                self.env = _validate_env(env_)
-                # Custom validation function given.
-                if validate_env is not None:
-                    validate_env(self.env, self.env_context)
+            # Run the `env_creator` function passing the EnvContext.
+            self.env = env_creator(env_context)
+        if self.env is not None:
+            # Validate environment (general validation function).
+            self.env = _validate_env(self.env)
+            # Custom validation function given.
+            if validate_env is not None:
+                validate_env(self.env, self.env_context)
 
-                # MultiAgentEnv (a gym.Env) -> Wrap and make
-                # the wrapped Env yet another MultiAgentEnv.
-                if isinstance(self.env, MultiAgentEnv):
+            # MultiAgentEnv (a gym.Env) -> Wrap and make
+            # the wrapped Env yet another MultiAgentEnv.
+            if isinstance(self.env, MultiAgentEnv):
 
-                    def wrap(env):
-                        cls = env.__class__
-                        # Add gym.Env as mixin parent to the env's class
-                        # (so it can be wrapped).
+                def wrap(env):
+                    cls = env.__class__
+                    # Add gym.Env as mixin parent to the env's class
+                    # (so it can be wrapped).
+                    env.__class__ = \
+                        type(env.__class__.__name__, (type(env), gym.Env), {})
+                    # Wrap the (now gym.Env) env with our (multi-agent capable)
+                    # recording wrapper.
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
+                    # Make sure, we make the wrapped object a member of the
+                    # original MultiAgentEnv sub-class again.
+                    if type(env) is not cls:
                         env.__class__ = \
-                            type(env.__class__.__name__, (type(env), gym.Env), {})
-                        # Wrap the (now gym.Env) env with our (multi-agent capable)
-                        # recording wrapper.
-                        env = record_env_wrapper(env, record_env, log_dir,
-                                                 policy_config)
-                        # Make sure, we make the wrapped object a member of the
-                        # original MultiAgentEnv sub-class again.
-                        if type(env) is not cls:
-                            env.__class__ = \
-                                type(cls.__name__, (type(env), cls), {})
-                        return env
+                            type(cls.__name__, (type(env), cls), {})
+                    return env
 
-                # We can't auto-wrap a BaseEnv.
-                elif isinstance(self.env, BaseEnv):
+            # We can't auto-wrap a BaseEnv.
+            elif isinstance(self.env, BaseEnv):
 
-                    def wrap(env):
-                        return env
+                def wrap(env):
+                    return env
 
-                # Atari type env and "deepmind" preprocessor pref.
-                elif is_atari(self.env) and \
-                        not model_config.get("custom_preprocessor") and \
-                        preprocessor_pref == "deepmind":
+            # Atari type env and "deepmind" preprocessor pref.
+            elif is_atari(self.env) and \
+                    not model_config.get("custom_preprocessor") and \
+                    preprocessor_pref == "deepmind":
 
-                    # Deepmind wrappers already handle all preprocessing.
-                    self.preprocessing_enabled = False
+                # Deepmind wrappers already handle all preprocessing.
+                self.preprocessing_enabled = False
 
-                    # If clip_rewards not explicitly set to False, switch it
-                    # on here (clip between -1.0 and 1.0).
-                    if clip_rewards is None:
-                        clip_rewards = True
+                # If clip_rewards not explicitly set to False, switch it
+                # on here (clip between -1.0 and 1.0).
+                if clip_rewards is None:
+                    clip_rewards = True
 
-                    # Deprecated way of framestacking is used.
-                    framestack = model_config.get("framestack") is True
-                    # framestacking via trajectory view API is enabled.
-                    num_framestacks = model_config.get("num_framestacks", 0)
+                # Deprecated way of framestacking is used.
+                framestack = model_config.get("framestack") is True
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
 
-                    # Trajectory view API is on and num_framestacks=auto:
-                    # Only stack traj. view based if old
-                    # `framestack=[invalid value]`.
-                    if num_framestacks == "auto":
-                        if framestack == DEPRECATED_VALUE:
-                            model_config[
-                                "num_framestacks"] = num_framestacks = 4
-                        else:
-                            model_config[
-                                "num_framestacks"] = num_framestacks = 0
-                    framestack_traj_view = num_framestacks > 1
+                # Trajectory view API is on and num_framestacks=auto:
+                # Only stack traj. view based if old
+                # `framestack=[invalid value]`.
+                if num_framestacks == "auto":
+                    if framestack == DEPRECATED_VALUE:
+                        model_config[
+                            "num_framestacks"] = num_framestacks = 4
+                    else:
+                        model_config[
+                            "num_framestacks"] = num_framestacks = 0
+                framestack_traj_view = num_framestacks > 1
 
                 def wrap(env):
                     env = wrap_deepmind(
@@ -461,6 +463,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return record_env_wrapper(env, record_env, log_dir,
                                               policy_config)
 
+            # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):

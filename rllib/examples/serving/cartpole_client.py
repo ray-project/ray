@@ -77,8 +77,8 @@ if __name__ == "__main__":
         "http://localhost:9900", inference_mode=args.inference_mode)
 
     # In the following, we will use our external environment (the CartPole
-    # env ew created above) in connection with the PolicyClient to query
-    # actions (from the server if "remote", if "local" we'll compute them
+    # env we created above) in connection with the PolicyClient to query
+    # actions (from the server if "remote"; if "local" we'll compute them
     # on this client side), and send back observations and rewards.
 
     # Start a new episode.
@@ -95,9 +95,11 @@ if __name__ == "__main__":
         # No need to log it here as the action
         else:
             action = client.get_action(eid, obs)
+
         # Perform a step in the external simulator (env).
         obs, reward, done, info = env.step(action)
         rewards += reward
+
         # Log next-obs, rewards, and infos.
         client.log_returns(eid, reward, info=info)
 

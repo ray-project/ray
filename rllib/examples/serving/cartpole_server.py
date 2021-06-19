@@ -72,12 +72,13 @@ if __name__ == "__main__":
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).
     def _input(ioctx):
-        # Remote worker or (only) local worker: Create a PolicyServerInput.
+        # We are remote worker or we are local worker with num_workers=0:
+        # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
             return PolicyServerInput(
                 ioctx, SERVER_ADDRESS, SERVER_BASE_PORT + ioctx.worker_index -
                 (1 if ioctx.worker_index > 0 else 0))
-        # No InputReader needed.
+        # No InputReader (PolicyServerInput) needed.
         else:
             return None
 
