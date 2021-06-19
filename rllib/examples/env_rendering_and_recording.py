@@ -12,7 +12,9 @@ import gym
 import numpy as np
 import ray
 from gym.spaces import Box, Discrete
+
 from ray import tune
+from ray.rllib.env.multi_agent_env import make_multi_agent
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -20,6 +22,7 @@ parser.add_argument(
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
     help="The DL framework specifier.")
+parser.add_argument("--multi-agent", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=10)
 parser.add_argument("--stop-timesteps", type=int, default=10000)
 parser.add_argument("--stop-reward", type=float, default=9.0)
@@ -86,6 +89,9 @@ class CustomRenderedEnv(gym.Env):
         return np.random.randint(0, 256, size=(300, 400, 3), dtype=np.uint8)
 
 
+MultiAgentCustomRenderedEnv = make_multi_agent(
+    lambda config: CustomRenderedEnv(config))
+
 if __name__ == "__main__":
     # Note: Recording and rendering in this example
     # should work for both local_mode=True|False.
@@ -95,7 +101,8 @@ if __name__ == "__main__":
     # Example config causing
     config = {
         # Also try common gym envs like: "CartPole-v0" or "Pendulum-v0".
-        "env": CustomRenderedEnv,
+        "env": (MultiAgentCustomRenderedEnv
+                if args.multi_agent else CustomRenderedEnv),
         "env_config": {
             "corridor_length": 10,
             "max_steps": 100,
