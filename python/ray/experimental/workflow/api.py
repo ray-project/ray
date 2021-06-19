@@ -13,6 +13,11 @@ from ray.experimental.workflow import storage
 
 logger = logging.getLogger(__name__)
 
+# TODO(suauark): some readability improvements:
+# 1. Humanly readable default WorkflowID and StepID
+# 2. Better logging message during workflow.run and workflow.resume
+#    e.g. print information about storage.
+
 
 def step(func) -> WorkflowStepFunction:
     """
@@ -21,6 +26,11 @@ def step(func) -> WorkflowStepFunction:
     if not isinstance(func, types.FunctionType):
         raise TypeError("The @step decorator must wraps over a function.")
     return WorkflowStepFunction(func)
+
+
+# TODO(suquark): Raise an error when calling run() on an existing workflow.
+# Maybe we can also add a run_or_resume() call.
+# TODO(suquark): Rename "workflow_root_dir" to "storage_url".
 
 
 def run(entry_workflow: Workflow, workflow_root_dir=None,
@@ -76,7 +86,7 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     if workflow_root_dir is not None:
-        store = storage.Storage(workflow_root_dir)
+        store = storage.create_storage(workflow_root_dir)
     else:
         store = storage.get_global_storage()
     r = recovery.resume_workflow_job(workflow_id, store)
