@@ -378,7 +378,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
-    RAY_LOG(DEBUG) << "Sending restore spilled object request";
+    RAY_LOG(INFO) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     request.add_object_ids_to_restore(object_id.Binary());
@@ -394,8 +394,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           } else {
             auto now = absl::GetCurrentTimeNanos();
             auto restored_bytes = r.bytes_restored_total();
-            RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
-                           << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
+            RAY_LOG(INFO) << "Restored " << restored_bytes << " in "
+                          << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
             restored_bytes_total_ += restored_bytes;
             restored_objects_total_ += 1;
             // Adjust throughput timing to account for concurrent restore operations.

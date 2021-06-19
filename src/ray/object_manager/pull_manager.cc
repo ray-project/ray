@@ -635,15 +635,20 @@ std::string PullManager::DebugString() const {
   }
   // SANG-TODO Remove it
   result << "\n- active pull requests";
+  auto num_local = 0;
   for (const auto &pair : active_object_pull_requests_) {
     const auto &oid = pair.first;
     const auto it = object_pull_requests_.find(oid);
     RAY_CHECK(it != object_pull_requests_.end());
     result << "\n\tObjectID: " << oid;
     result << "\n\t\tlocation size: " << it->second.client_locations.size();
+    if (it->second.client_locations.size() > 0) {
+      num_local += 1;
+    }
     result << "\n\t\tspilled url: " << it->second.spilled_url;
     result << "\n\t\tnum_retries: " << it->second.num_retries;
   }
+  result << "\nNumber of local objects within active pull requests: " << num_local;
   return result.str();
 }
 
