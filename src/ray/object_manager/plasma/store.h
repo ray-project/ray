@@ -54,6 +54,7 @@ class PlasmaStore {
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
               std::string fallback_directory, bool hugepages_enabled,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
+              float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
@@ -294,6 +295,9 @@ class PlasmaStore {
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
+
+  /// The percentage of object store memory used above which spilling is triggered.
+  const float object_spilling_threshold_;
 
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;

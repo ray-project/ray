@@ -66,6 +66,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_memory_scheduling.py",
+    "test_object_spilling_threshold.py",
     "test_plasma_unlimited.py",
     "test_metrics.py",
     "test_multi_node.py",

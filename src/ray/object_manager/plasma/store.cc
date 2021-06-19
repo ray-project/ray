@@ -43,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
@@ -50,8 +51,6 @@
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/util.h"
-
-#include "absl/container/flat_hash_set.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -135,6 +134,7 @@ GetRequest::GetRequest(instrumented_io_context &io_context,
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          std::string fallback_directory, bool hugepages_enabled,
                          const std::string &socket_name, uint32_t delay_on_oom_ms,
+                         float object_spilling_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -148,6 +148,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
+      object_spilling_threshold_(object_spilling_threshold),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
       create_request_queue_(
@@ -286,10 +287,23 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     *error = PlasmaError::OK;
   }
 
+  // Trigger object spilling if current usage is above the specified threshold.
+  const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
+  if (footprint_limit != 0 && object_spilling_threshold_ < 1.0) {
+    const float allocated_percentage =
+        ((float)PlasmaAllocator::Allocated()) / footprint_limit;
+    if (allocated_percentage > object_spilling_threshold_) {
+      RAY_LOG(INFO) << "Triggering object spilling because current usage "
+                    << allocated_percentage << "% is above threshold "
+                    << object_spilling_threshold_ << "%.";
+      spill_objects_callback_();
+    }
+  }
+
   auto now = absl::GetCurrentTimeNanos();
   if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
     RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
-                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
+                  << " / " << (footprint_limit / 1e9) << " GB.";
     last_usage_log_ns_ = now;
   }
   return pointer;
@@ -959,12 +973,13 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(io_context_,
-                                  [this]() {
-                                    create_timer_ = nullptr;
-                                    ProcessCreateRequests();
-                                  },
-                                  retry_after_ms);
+    create_timer_ = execute_after(
+        io_context_,
+        [this]() {
+          create_timer_ = nullptr;
+          ProcessCreateRequests();
+        },
+        retry_after_ms);
   }
 }
 
@@ -1000,8 +1015,9 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 void PlasmaStore::PrintDebugDump() const {
   RAY_LOG(INFO) << GetDebugDump();
 
-  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
-                               RayConfig::instance().event_stats_print_interval_ms());
+  stats_timer_ = execute_after(
+      io_context_, [this]() { PrintDebugDump(); },
+      RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {
