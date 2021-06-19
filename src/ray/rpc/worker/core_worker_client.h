@@ -95,13 +95,14 @@ class WorkerAddress {
 
 class SubscriberClientInterface {
   /// Send a long polling request to a core worker for pubsub operations.
-  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
-                                const ClientCallback<PubsubLongPollingReply> &callback) = 0;
+  virtual void PubsubLongPolling(
+      const PubsubLongPollingRequest &request,
+      const ClientCallback<PubsubLongPollingReply> &callback) = 0;
 
   /// Send a pubsub command batch request to a core worker for pubsub operations.
   virtual void PubsubCommandBatch(
-                                  const PubsubCommandBatchRequest &request,
-                                  const ClientCallback<PubsubCommandBatchReply> &callback) = 0;
+      const PubsubCommandBatchRequest &request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) = 0;
 };
 
 /// Abstract client interface for testing.
@@ -365,7 +366,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-  ClientFactoryFn;
+    ClientFactoryFn;
 
 }  // namespace rpc
 }  // namespace ray
