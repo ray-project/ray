@@ -52,7 +52,7 @@ This means opening that port up (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/la
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
 Step 3: Run Ray code
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 Now, connect to the Ray Cluster with the following and then use Ray like you normally would:
 
