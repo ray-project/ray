@@ -570,7 +570,6 @@ class Trainer(Trainable):
             cls, config: PartialTrainerConfigDict) -> \
             Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 
