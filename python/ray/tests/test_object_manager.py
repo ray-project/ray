@@ -51,12 +51,8 @@ def test_object_transfer_during_oom(ray_start_cluster_head):
     local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
     remote_ref = put.remote()
 
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        ray.get(remote_ref, timeout=10)
-    else:
-        with pytest.raises(GetTimeoutError):
-            # Sadly, the test cannot work in this mode.
-            ray.get(remote_ref, timeout=1)
+    with pytest.raises(GetTimeoutError):
+        ray.get(remote_ref, timeout=1)
     del local_ref
     ray.get(remote_ref)
 
