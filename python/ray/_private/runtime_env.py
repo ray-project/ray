@@ -78,10 +78,8 @@ class RuntimeEnvDict:
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
         else:
             self._dict["working_dir"] = None
-            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -93,8 +91,6 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 yaml_file = Path(conda)
                 if yaml_file.suffix in (".yaml", ".yml"):
-                    if working_dir and not yaml_file.is_absolute():
-                        yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
@@ -136,8 +132,6 @@ class RuntimeEnvDict:
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
-                if working_dir and not pip_file.is_absolute():
-                    pip_file = working_dir / pip_file
                 if not pip_file.is_file():
                     raise ValueError(f"{pip_file} is not a valid file")
                 self._dict["pip"] = pip_file.read_text()
@@ -162,12 +156,15 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        if self._dict.get("working_dir"):
+        # Used by Ray's experimental package loading feature.
+        # TODO(architkulkarni): This should be unified with existing fields
+        if "_packaging_uri" in runtime_env_json:
+            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
             if self._dict["env_vars"] is None:
                 self._dict["env_vars"] = {}
             # TODO(ekl): env vars is probably not the right long term impl.
             self._dict["env_vars"].update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]

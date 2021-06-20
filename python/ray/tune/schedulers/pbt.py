@@ -819,7 +819,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         if reset_successful:
             trial_executor.restore(trial, checkpoint, block=True)
         else:
-            trial_executor.stop_trial(trial, stop_logger=False)
+            trial_executor.stop_trial(trial)
             trial.set_experiment_tag(new_tag)
             trial.set_config(new_config)
             trial_executor.start_trial(trial, checkpoint, train=False)
