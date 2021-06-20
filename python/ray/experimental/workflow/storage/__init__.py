@@ -1,9 +1,8 @@
 import os
 
 from ray.experimental.workflow.storage.base import Storage
+from ray.experimental.workflow.storage.base import DataLoadError, DataSaveError
 from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
-
-import ray._private.utils
 
 
 def create_storage(storage_url: str) -> Storage:
@@ -22,19 +21,18 @@ def create_storage(storage_url: str) -> Storage:
     return FilesystemStorageImpl(storage_url)
 
 
-# the default storage is a local filesystem storage
-_global_storage = create_storage(
-    os.path.join(ray._private.utils.get_ray_temp_dir(), "workflows"))
+# the default storage is a local filesystem storage with a hidden directory
+_global_storage = create_storage(os.path.join(os.path.curdir, ".rayflow"))
 
 
-def get_global_storage():
+def get_global_storage() -> Storage:
     return _global_storage
 
 
-def set_global_storage(storage_url: str):
+def set_global_storage(storage_url: str) -> None:
     global _global_storage
     _global_storage = create_storage(storage_url)
 
 
 __all__ = ("Storage", "create_storage", "get_global_storage",
-           "set_global_storage")
+           "set_global_storage", "DataLoadError", "DataSaveError")

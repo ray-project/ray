@@ -3,7 +3,6 @@ This module is higher-level abstraction of storage directly used by
 workflows.
 """
 
-import json
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 
 from dataclasses import dataclass
@@ -120,7 +119,7 @@ class WorkflowStorage:
         metadata = self._storage.load_step_output_metadata(
             self._workflow_id, forward_output_to)
         metadata["output_step_id_shortcut"] = shortcut_output_step_id
-        self._storage.dump_step_output_metadata(self._workflow_id,
+        self._storage.save_step_output_metadata(self._workflow_id,
                                                 forward_output_to, metadata)
 
     def _locate_output_step_id(self, step_id: StepID):
@@ -168,7 +167,7 @@ class WorkflowStorage:
                 self._workflow_id, step_id)
             input_object_refs = metadata["object_refs"]
             input_workflows = metadata["workflows"]
-        except (FileNotFoundError, json.JSONDecodeError):
+        except storage.DataLoadError:
             input_object_refs = None
             input_workflows = None
         return StepInspectResult(
@@ -190,10 +189,10 @@ class WorkflowStorage:
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
             args_obj = ray.get(inputs.args)
-        self._storage.dump_step_input_metadata(self._workflow_id, step_id,
+        self._storage.save_step_input_metadata(self._workflow_id, step_id,
                                                metadata)
-        self._storage.dump_step_func_body(self._workflow_id, step_id, f)
-        self._storage.dump_step_args(self._workflow_id, step_id, args_obj)
+        self._storage.save_step_func_body(self._workflow_id, step_id, f)
+        self._storage.save_step_args(self._workflow_id, step_id, args_obj)
 
     def commit_step(self, step_id: StepID, ret: Union[Workflow, Any],
                     forward_output_to: Optional[StepID]) -> None:
@@ -217,13 +216,13 @@ class WorkflowStorage:
                 for w in ret.iter_workflows_in_dag():
                     self._write_step_inputs(w.id, w.get_inputs())
                 assert step_id != ret.id
-                self._storage.dump_step_output_metadata(
+                self._storage.save_step_output_metadata(
                     self._workflow_id, step_id, {"output_step_id": ret.id})
             shortcut_output_id = ret.id
         else:
             # This workflow step returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-            self._storage.dump_step_output(self._workflow_id, step_id, ret)
+            self._storage.save_step_output(self._workflow_id, step_id, ret)
             shortcut_output_id = step_id
         if forward_output_to is not None:
             self._update_output_shortcut(forward_output_to, shortcut_output_id)

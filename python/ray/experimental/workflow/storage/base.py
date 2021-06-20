@@ -10,67 +10,92 @@ from typing import Any, Callable, List, Dict, Tuple
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
 
+class DataLoadError(Exception):
+    pass
+
+
+class DataSaveError(Exception):
+    pass
+
+
 @dataclass
 class StepStatus:
-    # does the step output checkpoint exists?
+    # does the step output checkpoint exist?
     output_object_exists: bool
-    # does the step output metadata exists?
+    # does the step output metadata exist?
     output_metadata_exists: bool
-    # does the step input metadata exists?
+    # does the step input metadata exist?
     input_metadata_exists: bool
-    # does the step input argument exists?
+    # does the step input argument exist?
     args_exists: bool
-    # does the step function body exists?
+    # does the step function body exist?
     func_body_exists: bool
 
 
 class Storage(metaclass=abc.ABCMeta):
+    """Abstract base class for the low-level workflow storage.
+    This class only provides low level primitives, e.g. save a certain
+    type of object.
+    """
+
     @abstractmethod
     def load_step_input_metadata(self, workflow_id: str,
                                  step_id: StepID) -> Dict[str, Any]:
-        """Dump the input metadata of a step.
+        """Load the input metadata of a step.
 
         Args:
             workflow_id: ID of the workflow job.
             step_id: ID of the step.
+
+        Raises:
+            DataLoadError: if we fail to load the metadata.
 
         Returns:
             A metadata dict.
         """
 
     @abstractmethod
-    def dump_step_input_metadata(self, workflow_id: str, step_id: StepID,
+    def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
                                  metadata: Dict[str, Any]) -> None:
-        """Dump the input metadata of a step.
+        """Save the input metadata of a step.
 
         Args:
             workflow_id: ID of the workflow job.
             step_id: ID of the step.
             metadata: A metadata dict.
+
+        Raises:
+            DataSaveError: if we fail to save the metadata.
         """
 
     @abstractmethod
     def load_step_output_metadata(self, workflow_id: str,
                                   step_id: StepID) -> Dict[str, Any]:
-        """Dump the output metadata of a step.
+        """Load the output metadata of a step.
 
         Args:
             workflow_id: ID of the workflow job.
             step_id: ID of the step.
+
+        Raises:
+            DataLoadError: if we fail to load the metadata.
 
         Returns:
             A metadata dict.
         """
 
     @abstractmethod
-    def dump_step_output_metadata(self, workflow_id: str, step_id: StepID,
+    def save_step_output_metadata(self, workflow_id: str, step_id: StepID,
                                   metadata: Dict[str, Any]) -> None:
-        """Dump the output metadata of a step.
+        """Save the output metadata of a step.
 
         Args:
             workflow_id: ID of the workflow job.
             step_id: ID of the step.
             metadata: A metadata dict.
+
+        Raises:
+            DataSaveError: if we fail to save the metadata.
         """
 
     @abstractmethod
@@ -81,18 +106,24 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             step_id: ID of the workflow step.
 
+        Raises:
+            DataLoadError: if we fail to load the output.
+
         Returns:
             Output of the workflow step.
         """
 
     @abstractmethod
-    def dump_step_output(self, workflow_id: str, step_id: StepID,
+    def save_step_output(self, workflow_id: str, step_id: StepID,
                          output: Any) -> None:
-        """Dump the output of a workflow step.
+        """Save the output of a workflow step.
 
         Args:
             workflow_id: ID of the workflow job.
             output: The output object.
+
+        Raises:
+            DataSaveError: if we fail to save the output.
         """
 
     @abstractmethod
@@ -104,19 +135,25 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             step_id: ID of the workflow step.
 
+        Raises:
+            DataLoadError: if we fail to load the function body.
+
         Returns:
             A callable function.
         """
 
     @abstractmethod
-    def dump_step_func_body(self, workflow_id: str, step_id: StepID,
+    def save_step_func_body(self, workflow_id: str, step_id: StepID,
                             func_body: Callable) -> None:
-        """Get the function body of the workflow step.
+        """Save the function body of the workflow step.
 
         Args:
             workflow_id: ID of the workflow job.
             step_id: ID of the workflow step.
             func_body: The step function to be written.
+
+        Raises:
+            DataSaveError: if we fail to save the function body.
         """
 
     @abstractmethod
@@ -129,12 +166,15 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             step_id: ID of the workflow step.
 
+        Raises:
+            DataLoadError: if we fail to load the arguments.
+
         Returns:
             Args and kwargs.
         """
 
     @abstractmethod
-    def dump_step_args(self, workflow_id: str, step_id: StepID,
+    def save_step_args(self, workflow_id: str, step_id: StepID,
                        args: ArgsType) -> None:
         """Get the function body of the workflow step.
 
@@ -142,6 +182,9 @@ class Storage(metaclass=abc.ABCMeta):
             workflow_id: ID of the workflow job.
             step_id: ID of the workflow step.
             args: The step input args to be written.
+
+        Raises:
+            DataSaveError: if we fail to save the arguments.
         """
 
     @abstractmethod
@@ -152,17 +195,24 @@ class Storage(metaclass=abc.ABCMeta):
         Args:
             workflow_id: ID of the workflow job.
             object_id: The hex ObjectID.
+
+        Raises:
+            DataLoadError: if we fail to load the object ref.
+
         Returns:
             The object ref.
         """
 
     @abstractmethod
-    def dump_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
-        """Dump the input object ref.
+    def save_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
+        """Save the input object ref.
 
         Args:
             workflow_id: ID of the workflow job.
             rref: The ObjectRef to be saved.
+
+        Raises:
+            DataSaveError: if we fail to save the object ref.
         """
 
     @abstractmethod

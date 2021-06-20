@@ -24,13 +24,13 @@ def test_raw_storage():
     rref = ray.put(object_resolved)
 
     # test creating normal objects
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func)
-    raw_storage.dump_step_args(workflow_id, step_id, args)
-    raw_storage.dump_object_ref(workflow_id, rref)
-    raw_storage.dump_step_output_metadata(workflow_id, step_id,
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func)
+    raw_storage.save_step_args(workflow_id, step_id, args)
+    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
-    raw_storage.dump_step_output(workflow_id, step_id, output)
+    raw_storage.save_step_output(workflow_id, step_id, output)
 
     step_status = raw_storage.get_step_status(workflow_id, step_id)
     assert step_status.args_exists
@@ -57,13 +57,13 @@ def test_raw_storage():
     object_resolved = (object_resolved, "overwrite")
     rref = ray.put(object_resolved)
 
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func2)
-    raw_storage.dump_step_args(workflow_id, step_id, args)
-    raw_storage.dump_object_ref(workflow_id, rref)
-    raw_storage.dump_step_output_metadata(workflow_id, step_id,
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func2)
+    raw_storage.save_step_args(workflow_id, step_id, args)
+    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
-    raw_storage.dump_step_output(workflow_id, step_id, output)
+    raw_storage.save_step_output(workflow_id, step_id, output)
     assert raw_storage.load_step_input_metadata(workflow_id,
                                                 step_id) == input_metadata
     assert raw_storage.load_step_func_body(workflow_id, step_id)(33) == 32
@@ -97,13 +97,13 @@ def test_workflow_storage():
     rref = ray.put(object_resolved)
 
     # test basics
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func)
-    raw_storage.dump_step_args(workflow_id, step_id, args)
-    raw_storage.dump_object_ref(workflow_id, rref)
-    raw_storage.dump_step_output_metadata(workflow_id, step_id,
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func)
+    raw_storage.save_step_args(workflow_id, step_id, args)
+    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
-    raw_storage.dump_step_output(workflow_id, step_id, output)
+    raw_storage.save_step_output(workflow_id, step_id, output)
 
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     assert wf_storage.load_step_output(step_id) == output
@@ -118,10 +118,10 @@ def test_workflow_storage():
     assert inspect_result.is_recoverable()
 
     step_id = "some_step2"
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func)
-    raw_storage.dump_step_args(workflow_id, step_id, args)
-    raw_storage.dump_step_output_metadata(workflow_id, step_id,
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func)
+    raw_storage.save_step_args(workflow_id, step_id, args)
+    raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
@@ -129,9 +129,9 @@ def test_workflow_storage():
     assert inspect_result.is_recoverable()
 
     step_id = "some_step3"
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func)
-    raw_storage.dump_step_args(workflow_id, step_id, args)
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func)
+    raw_storage.save_step_args(workflow_id, step_id, args)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
@@ -141,8 +141,8 @@ def test_workflow_storage():
     assert inspect_result.is_recoverable()
 
     step_id = "some_step4"
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
-    raw_storage.dump_step_func_body(workflow_id, step_id, some_func)
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_func_body(workflow_id, step_id, some_func)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
@@ -151,7 +151,7 @@ def test_workflow_storage():
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step5"
-    raw_storage.dump_step_input_metadata(workflow_id, step_id, input_metadata)
+    raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         object_refs=input_metadata["object_refs"],

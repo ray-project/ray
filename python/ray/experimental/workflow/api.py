@@ -13,7 +13,7 @@ from ray.experimental.workflow import storage
 
 logger = logging.getLogger(__name__)
 
-# TODO(suauark): some readability improvements:
+# TODO(suquark): some readability improvements:
 # 1. Humanly readable default WorkflowID and StepID
 # 2. Better logging message during workflow.run and workflow.resume
 #    e.g. print information about storage.

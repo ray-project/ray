@@ -5,8 +5,8 @@ from typing import Any, Dict, Callable
 import uuid
 
 from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (Storage, ArgsType,
-                                                    StepStatus)
+from ray.experimental.workflow.storage.base import (
+    Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
 
 import ray.cloudpickle
 
@@ -27,7 +27,7 @@ def _open_atomic(path: pathlib.Path, mode="r"):
     adapted to atomic file writing (for example, the backup file
     is used when an atomic write failed previously.)
 
-    TODO(suquark): race conditions like two processes writing the
+    TODO(suquark): race condition like two processes writing the
     same file is still not safe. This may not be an issue, because
     in our current implementation, we only need to guarantee the
     file is either fully written or not existing.
@@ -41,12 +41,11 @@ def _open_atomic(path: pathlib.Path, mode="r"):
     """
     if "a" in mode or "+" in mode:
         raise ValueError("Atomic open does not support appending.")
-    backup_path = path.with_suffix(path.suffix + ".backup")
+    # backup file is hidden by default
+    backup_path = path.with_name(f".{path.name}.backup")
     if "r" in mode:  # read mode
-        if path.exists():
+        if _file_exists(path):
             f = open(path, mode)
-        elif backup_path.exists():
-            f = open(backup_path, mode)
         else:
             raise FileNotFoundError(path)
         try:
@@ -56,7 +55,7 @@ def _open_atomic(path: pathlib.Path, mode="r"):
     elif "x" in mode:  # create mode
         if path.exists():
             raise FileExistsError(path)
-        tmp_new_fn = path.with_suffix(path.suffix + "." + uuid.uuid4().hex)
+        tmp_new_fn = path.with_suffix(f".{path.name}.{uuid.uuid4().hex}")
         if not tmp_new_fn.parent.exists():
             tmp_new_fn.parent.mkdir(parents=True)
         f = open(tmp_new_fn, mode)
@@ -81,7 +80,7 @@ def _open_atomic(path: pathlib.Path, mode="r"):
             if backup_path.exists():
                 backup_path.unlink()
             path.rename(backup_path)
-        tmp_new_fn = path.with_suffix(path.suffix + "." + uuid.uuid4().hex)
+        tmp_new_fn = path.with_suffix(f".{path.name}.{uuid.uuid4().hex}")
         if not tmp_new_fn.parent.exists():
             tmp_new_fn.parent.mkdir(parents=True)
         f = open(tmp_new_fn, mode)
@@ -108,7 +107,8 @@ def _open_atomic(path: pathlib.Path, mode="r"):
 def _file_exists(path: pathlib.Path) -> bool:
     """During atomic writing, we backup the original file. If the writing
     failed during the middle, then only the backup exists. We consider the
-    file exists if the file or the backup file exists.
+    file exists if the file or the backup file exists. We also automatically
+    restore the backup file to the original path if only backup file exists.
 
     Args:
         path: File path.
@@ -116,12 +116,20 @@ def _file_exists(path: pathlib.Path) -> bool:
     Returns:
         True if the file and backup exists.
     """
-    backup_path = path.with_suffix(path.suffix + ".backup")
-    return path.exists() or backup_path.exists()
+    backup_path = path.with_name(f".{path.name}.backup")
+    if path.exists():
+        return True
+    elif backup_path.exists():
+        backup_path.rename(path)
+        return True
+    return False
 
 
 class FilesystemStorageImpl(Storage):
-    """Filesystem implementation for accessing workflow storage."""
+    """Filesystem implementation for accessing workflow storage.
+
+    We do not repeat the same comments for abstract methods in the base class.
+    """
 
     def __init__(self, workflow_root_dir: str):
         self._workflow_root_dir = pathlib.Path(workflow_root_dir)
@@ -129,72 +137,108 @@ class FilesystemStorageImpl(Storage):
     def load_step_input_metadata(self, workflow_id: str,
                                  step_id: StepID) -> Dict[str, Any]:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_INPUTS_METADATA) as f:
-            return json.load(f)
+        try:
+            with _open_atomic(step_dir / STEP_INPUTS_METADATA) as f:
+                return json.load(f)
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_step_input_metadata(self, workflow_id: str, step_id: StepID,
+    def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
                                  metadata: Dict[str, Any]) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_INPUTS_METADATA, "w") as f:
-            json.dump(metadata, f)
+        try:
+            with _open_atomic(step_dir / STEP_INPUTS_METADATA, "w") as f:
+                json.dump(metadata, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def load_step_output_metadata(self, workflow_id: str,
                                   step_id: StepID) -> Dict[str, Any]:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_OUTPUTS_METADATA) as f:
-            return json.load(f)
+        try:
+            with _open_atomic(step_dir / STEP_OUTPUTS_METADATA) as f:
+                return json.load(f)
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_step_output_metadata(self, workflow_id: str, step_id: StepID,
+    def save_step_output_metadata(self, workflow_id: str, step_id: StepID,
                                   metadata: Dict[str, Any]) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_OUTPUTS_METADATA, "w") as f:
-            json.dump(metadata, f)
+        try:
+            with _open_atomic(step_dir / STEP_OUTPUTS_METADATA, "w") as f:
+                json.dump(metadata, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_OUTPUT, "rb") as f:
-            return ray.cloudpickle.load(f)
+        try:
+            with _open_atomic(step_dir / STEP_OUTPUT, "rb") as f:
+                return ray.cloudpickle.load(f)
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_step_output(self, workflow_id: str, step_id: StepID,
+    def save_step_output(self, workflow_id: str, step_id: StepID,
                          output: Any) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_OUTPUT, "wb") as f:
-            ray.cloudpickle.dump(output, f)
+        try:
+            with _open_atomic(step_dir / STEP_OUTPUT, "wb") as f:
+                ray.cloudpickle.dump(output, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def load_step_func_body(self, workflow_id: str,
                             step_id: StepID) -> Callable:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_FUNC_BODY, "rb") as f:
-            return ray.cloudpickle.load(f)
+        try:
+            with _open_atomic(step_dir / STEP_FUNC_BODY, "rb") as f:
+                return ray.cloudpickle.load(f)
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_step_func_body(self, workflow_id: str, step_id: StepID,
+    def save_step_func_body(self, workflow_id: str, step_id: StepID,
                             func_body: Callable) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_FUNC_BODY, "wb") as f:
-            ray.cloudpickle.dump(func_body, f)
+        try:
+            with _open_atomic(step_dir / STEP_FUNC_BODY, "wb") as f:
+                ray.cloudpickle.dump(func_body, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def load_step_args(self, workflow_id: str, step_id: StepID) -> ArgsType:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_ARGS, "rb") as f:
-            return ray.cloudpickle.load(f)
+        try:
+            with _open_atomic(step_dir / STEP_ARGS, "rb") as f:
+                return ray.cloudpickle.load(f)
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_step_args(self, workflow_id: str, step_id: StepID,
+    def save_step_args(self, workflow_id: str, step_id: StepID,
                        args: ArgsType) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        with _open_atomic(step_dir / STEP_ARGS, "wb") as f:
-            ray.cloudpickle.dump(args, f)
+        try:
+            with _open_atomic(step_dir / STEP_ARGS, "wb") as f:
+                ray.cloudpickle.dump(args, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def load_object_ref(self, workflow_id: str, object_id) -> ray.ObjectRef:
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
-        with _open_atomic(objects_dir / object_id, "rb") as f:
-            obj = ray.cloudpickle.load(f)
-        return ray.put(obj)  # simulate an ObjectRef
+        try:
+            with _open_atomic(objects_dir / object_id, "rb") as f:
+                obj = ray.cloudpickle.load(f)
+            return ray.put(obj)  # simulate an ObjectRef
+        except Exception as e:
+            raise DataLoadError from e
 
-    def dump_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
+    def save_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
-        obj = ray.get(rref)
-        with _open_atomic(objects_dir / rref.hex(), "wb") as f:
-            ray.cloudpickle.dump(obj, f)
+        try:
+            obj = ray.get(rref)
+            with _open_atomic(objects_dir / rref.hex(), "wb") as f:
+                ray.cloudpickle.dump(obj, f)
+        except Exception as e:
+            raise DataSaveError from e
 
     def get_step_status(self, workflow_id: str, step_id: StepID) -> StepStatus:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
