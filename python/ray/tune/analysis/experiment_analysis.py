@@ -66,17 +66,20 @@ class Analysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self.file_type = file_type or "csv"
-        if self.file_type not in ["json", "csv"]:
-            raise ValueError(
-                "`file_type` has to be None or one of [json, csv]")
-
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
                 "Analysis utilities.")
         else:
-            self.fetch_trial_dataframes()
+            self.fetch_trial_dataframes(file_type)
+
+    def _validate_filetype(self, file_type):
+        file_type = file_type or "csv"
+
+        if file_type not in {"json", "csv"}:
+            raise ValueError(
+                "`file_type` has to be None or one of [json, csv].")
+        return file_type
 
     def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
@@ -176,15 +179,26 @@ class Analysis:
                                self._experiment_dir))
             return None
 
-    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+    def fetch_trial_dataframes(
+            self, file_type: Optional[str] = None) -> Dict[str, DataFrame]:
+        """Fetches trial dataframes from files.
+
+        Args:
+            file_type: One of "json" or "csv". Determines which file type
+                to use when loading results into memory.
+
+        Returns:
+            A dictionary containing "trial dir" to Dataframe.
+        """
+        file_type = self._validate_filetype(file_type)
         fail_count = 0
-        for path in self._get_trial_paths():
+        for path in self._get_trial_paths(file_type):
             try:
-                if self.file_type == "json":
+                if file_type == "json":
                     with open(os.path.join(path, EXPR_RESULT_FILE), "r") as f:
-                        json_list = [json.loads(line) for line in f]
+                        json_list = [json.loads(line) for line in f if line]
                     df = pd.json_normalize(json_list, sep="/")
-                elif self.file_type == "csv":
+                elif file_type == "csv":
                     df = pd.read_csv(os.path.join(path, EXPR_PROGRESS_FILE))
                 self.trial_dataframes[path] = df
             except Exception:
@@ -335,12 +349,13 @@ class Analysis:
 
         return rows
 
-    def _get_trial_paths(self) -> List[str]:
+    def _get_trial_paths(self, file_type: Optional[str] = None) -> List[str]:
+        file_type = self._validate_filetype(file_type)
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
-            if (self.file_type == "json"
+            if (file_type == "json"
                 and EXPR_RESULT_FILE in files) \
-                    or (self.file_type == "csv"
+                    or (file_type == "csv"
                         and EXPR_PROGRESS_FILE in files):
                 _trial_paths += [trial_path]
 
