@@ -153,7 +153,8 @@ class JsonReader(InputReader):
             return None
 
         # Clip actions (from any values into env's bounds), if necessary.
-        if self.ioctx.config.get("clip_actions"):
+        cfg = self.ioctx.config
+        if cfg.get("clip_actions"):
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = clip_action(
                     batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
@@ -165,7 +166,8 @@ class JsonReader(InputReader):
                         self.ioctx.worker.policy_map[pid].action_space_struct)
         # Re-normalize actions (from env's bounds to 0.0 centered), if
         # necessary.
-        if not self.ioctx.config.get("actions_in_input_normalized"):
+        if "actions_in_input_normalized" in cfg and \
+                cfg["actions_in_input_normalized"] is False:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = normalize_action(
                     batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
