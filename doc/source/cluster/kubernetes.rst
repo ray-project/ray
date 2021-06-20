@@ -221,6 +221,13 @@ then fetch its logs:
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
 
+.. tip::
+
+  Code dependencies for a given Ray task or actor must be installed on each Ray node that might run that task or actor.
+  Typically, this means that all Ray nodes need to have the same dependencies installed.
+  To achieve this, you can build a custom container image, using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
+  Alternatively, try out the experimental :ref:`Runtime Environments<runtime-environments>` API (latest Ray release version recommended.)
+
 .. _k8s-cleanup-basic:
 
 Cleanup
@@ -279,3 +286,5 @@ Questions or Issues?
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
 .. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/job_example.py
 .. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
+.. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
+.. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray
