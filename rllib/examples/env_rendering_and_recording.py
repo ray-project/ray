@@ -12,7 +12,9 @@ import gym
 import numpy as np
 import ray
 from gym.spaces import Box, Discrete
+
 from ray import tune
+from ray.rllib.env.multi_agent_env import make_multi_agent
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -20,6 +22,7 @@ parser.add_argument(
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
     help="The DL framework specifier.")
+parser.add_argument("--multi-agent", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=10)
 parser.add_argument("--stop-timesteps", type=int, default=10000)
 parser.add_argument("--stop-reward", type=float, default=9.0)
