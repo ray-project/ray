@@ -11,6 +11,8 @@ from ray.experimental.workflow.common import (
     RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
 from ray.experimental.workflow import workflow_storage
 
+StepInputTupleToResolve = Tuple[RRef, List[RRef], List[RRef]]
+
 
 def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
     """
@@ -50,8 +52,8 @@ def _deref_arguments(args: List, kwargs: Dict) -> Tuple[List, Dict]:
     return _args, _kwargs
 
 
-def _resolve_step_inputs(step_inputs: Tuple[RRef, List[RRef], List[RRef]]
-                         ) -> Tuple[List, Dict, List[RRef]]:
+def _resolve_step_inputs(
+        step_inputs: StepInputTupleToResolve) -> Tuple[List, Dict]:
     """
     This function resolves the inputs for the code inside
     a workflow step (works on the callee side). For outputs from other
@@ -68,46 +70,55 @@ def _resolve_step_inputs(step_inputs: Tuple[RRef, List[RRef], List[RRef]]
     Args:
         step_inputs: Workflow step inputs.
     Returns:
-        Instances of arguments and resolved object refs.
+        Instances of arguments.
     """
 
-    resolved_object_refs = []
     objects_mapping = []
     input_placeholder, input_workflows, input_object_refs = step_inputs
     for rref in input_workflows:
         obj, ref = resolve_object_ref(rref)
         objects_mapping.append(obj)
-        resolved_object_refs.append(ref)
     with serialization_context.workflow_args_resolving_context(
             objects_mapping, input_object_refs):
         # reconstruct input arguments under correct serialization context
         args, kwargs = ray.get(input_placeholder)
     _args, _kwargs = _deref_arguments(args, kwargs)
-    return _args, _kwargs, resolved_object_refs
+    return _args, _kwargs
 
 
 @ray.remote
-def remote_step_executor(func, context, step_id, step_inputs,
-                         forward_output_to):
+def workflow_step_executor(
+        func: Callable, context: workflow_context.WorkflowStepContext,
+        step_id: StepID, step_inputs: StepInputTupleToResolve,
+        outer_most_step_id: StepID) -> Any:
+    """Executor function for workflow step.
+
+    Args:
+        func: The workflow step function.
+        context: Workflow step context. Used to access correct storage etc.
+        step_id: The ID of the step.
+        step_inputs: The inputs tuple of the step.
+        outer_most_step_id: See "postprocess_workflow_step" for
+            explanation.
+
+    Returns:
+        Workflow step output.
+    """
     # Before running the actual function, we
     # 1. Setup the workflow context, so we have proper access to
     #    workflow storage.
     # 2. Decode step inputs to arguments and keyword-arguments.
     workflow_context.update_workflow_step_context(context, step_id)
-    args, kwargs, resolved_object_refs = _resolve_step_inputs(step_inputs)
-    # free references to potentially save memory
-    del resolved_object_refs
-
+    args, kwargs = _resolve_step_inputs(step_inputs)
     # Running the actual step function
     ret = func(*args, **kwargs)
-    # After running the actual step function, we checkpoint the
-    # output. If "forward_output_to" is not None, we forward the
-    # output to the target step, so when resuming the workflow
-    # we can access the output faster.
-    return postprocess_workflow_step(ret, forward_output_to)
+    # See "postprocess_workflow_step" for explanation of "outer_most_step_id".
+    return postprocess_workflow_step(ret, outer_most_step_id)
 
 
 class WorkflowStepFunction:
+    """This class represents a workflow step."""
+
     def __init__(self, func: Callable):
         self._func = func
         self._func_signature = list(
@@ -146,10 +157,10 @@ class WorkflowStepFunction:
             self,
             step_id: StepID,
             step_inputs: WorkflowInputTuple,
-            forward_output_to: Optional[StepID] = None) -> WorkflowOutputType:
-        ref = remote_step_executor.remote(
+            outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
+        ref = workflow_step_executor.remote(
             self._func, workflow_context.get_workflow_step_context(), step_id,
-            step_inputs, forward_output_to)
+            step_inputs, outer_most_step_id)
         return ref
 
     def __call__(self, *args, **kwargs):
@@ -159,27 +170,40 @@ class WorkflowStepFunction:
 
 
 def postprocess_workflow_step(ret: Union[Workflow, Any],
-                              forward_output_to: Optional[StepID] = None):
+                              outer_most_step_id: Optional[StepID] = None):
     """Execute workflow and checkpoint outputs.
+
+    To fully explain what we are doing, we need to introduce some syntax first.
+    The syntax for dependencies between workflow steps
+    "A.step(B.step())" is "A - B"; the syntax for nested workflow steps
+    "def A(): return B.step()" is "A / B".
+
+    In a chain/DAG of step dependencies, the "output step" is the step of last
+    (topological) order. For example, in "A - B - C", C is the output step.
+
+    In a chain of nested workflow steps, the initial "output step" is
+    called the "outer most step" for other "output steps". For example, in
+    "A / B / C / D", "A" is the outer most step for "B", "C", "D";
+    in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
+    "B" is the outer most step for "C", "D"; "E" is the outer most step
+    for "G", "H".
 
     Args:
         ret: The returned object of the workflow step.
-        forward_output_to: The output should also forward to the step
-            referred by 'forward_output_to'. When resume from that step,
-            that step can directly read this output.
+        outer_most_step_id: The ID of the outer most workflow. None if it
+            does not exists.
     """
     store = workflow_storage.WorkflowStorage()
     step_id = workflow_context.get_current_step_id()
-    store.commit_step(step_id, ret, forward_output_to)
+    store.commit_step(step_id, ret, outer_most_step_id)
     if isinstance(ret, Workflow):
-        if forward_output_to is None:
-            # The current workflow step returns a nested workflow, but there is
-            # no target to forward the nested workflow to. This means
-            # the current step is the target. The target also includes the
-            # workflow job driver (when the current step ID is ""),
-            # so our workflow entrypoint are also handled.
-            forward_output_to = step_id
-        # Passing down "forward_output_to" so deeper nested steps would
-        # forward their results to the same "outer most" step.
-        return ret.execute(forward_output_to)
+        if outer_most_step_id is None:
+            # The current workflow step returns a nested workflow, and
+            # there is no outer step for the current step. So the current
+            # step is the outer most step for the inner nested workflow
+            # steps.
+            outer_most_step_id = step_id
+        # Passing down outer most step so inner nested steps would
+        # access the same outer most step.
+        return ret.execute(outer_most_step_id)
     return ret

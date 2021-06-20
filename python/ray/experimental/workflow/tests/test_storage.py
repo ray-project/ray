@@ -89,7 +89,7 @@ def test_workflow_storage():
     }
     output_metadata = {
         "output_step_id": "a12423",
-        "output_step_id_shortcut": "b1234"
+        "dynamic_output_step_id": "b1234"
     }
     args = ([1, "2"], {"k": b"543"})
     output = ["the_answer"]
@@ -125,7 +125,7 @@ def test_workflow_storage():
                                           output_metadata)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
-        output_step_id=output_metadata["output_step_id_shortcut"])
+        output_step_id=output_metadata["dynamic_output_step_id"])
     assert inspect_result.is_recoverable()
 
     step_id = "some_step3"

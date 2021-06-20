@@ -62,9 +62,12 @@ class Workflow:
     def id(self) -> StepID:
         return self._step_id
 
-    def execute(self, forward_output_to: Optional[StepID] = None) -> RRef:
-        """
-        Trigger workflow execution recursively.
+    def execute(self, outer_most_step_id: Optional[StepID] = None) -> RRef:
+        """Trigger workflow execution recursively.
+
+        Args:
+            outer_most_step_id: See
+                "workflow_manager.postprocess_workflow_step" for explanation.
         """
         if self.executed:
             return self._output
@@ -78,7 +81,7 @@ class Workflow:
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
         output = self._step_execution_function(self._step_id, step_inputs,
-                                               forward_output_to)
+                                               outer_most_step_id)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
         self._output = output

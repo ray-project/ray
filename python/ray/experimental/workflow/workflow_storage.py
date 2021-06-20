@@ -105,27 +105,42 @@ class WorkflowStorage:
         """
         return self._storage.load_object_ref(self._workflow_id, object_id)
 
-    def _update_output_shortcut(self, forward_output_to: StepID,
-                                shortcut_output_step_id: StepID) -> None:
-        """Update output shortcut. The output of 'shortcut_output_step_id'
-        should forward to the step 'forward_output_to'. When resume from
-        'forward_output_to' step, that step can directly read
-        the output of 'shortcut_output_step_id'.
+    def _update_dynamic_output(self, outer_most_step_id: StepID,
+                               dynamic_output_step_id: StepID) -> None:
+        """Update dynamic output.
+
+        There are two steps involved:
+        1. outer_most_step[id=outer_most_step_id]
+        2. dynamic_step[id=dynamic_output_step_id]
+
+        Initially, the output of outer_most_step comes from its *direct*
+        nested step. However, the nested step could also have a nested
+        step inside it (unknown currently and could be generated
+        dynamically in the future). We call such steps "dynamic_step".
+
+        When the dynamic_step produces its output, the output of
+        outer_most_step can be updated and point to the dynamic_step. This
+        creates a "shortcut" and accelerate workflow resuming. This is
+        critical for scalability of virtual actors.
 
         Args:
-            forward_output_to: step 'forward_output_to'.
-            shortcut_output_step_id: step 'shortcut_output_step_id'.
+            outer_most_step_id: ID of outer_most_step. See
+                "workflow_manager.postprocess_workflow_step" for explanation.
+            dynamic_output_step_id: ID of dynamic_step.
         """
         metadata = self._storage.load_step_output_metadata(
-            self._workflow_id, forward_output_to)
-        metadata["output_step_id_shortcut"] = shortcut_output_step_id
-        self._storage.save_step_output_metadata(self._workflow_id,
-                                                forward_output_to, metadata)
+            self._workflow_id, outer_most_step_id)
+        if (dynamic_output_step_id != metadata["output_step_id"]
+                and dynamic_output_step_id !=
+                metadata.get("dynamic_output_step_id")):
+            metadata["dynamic_output_step_id"] = dynamic_output_step_id
+            self._storage.save_step_output_metadata(
+                self._workflow_id, outer_most_step_id, metadata)
 
     def _locate_output_step_id(self, step_id: StepID):
         metadata = self._storage.load_step_output_metadata(
             self._workflow_id, step_id)
-        return (metadata.get("output_step_id_shortcut")
+        return (metadata.get("dynamic_output_step_id")
                 or metadata["output_step_id"])
 
     def get_entrypoint_step_id(self) -> StepID:
@@ -195,19 +210,18 @@ class WorkflowStorage:
         self._storage.save_step_args(self._workflow_id, step_id, args_obj)
 
     def commit_step(self, step_id: StepID, ret: Union[Workflow, Any],
-                    forward_output_to: Optional[StepID]) -> None:
+                    outer_most_step_id: Optional[StepID]) -> None:
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the DAG of the nested workflow.
-        2. Otherwise, checkpoint the
+        2. Otherwise, checkpoint the output.
 
         Args:
             step_id: The ID of the workflow step. If it is an empty string,
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow step.
-            forward_output_to: The output should also forward to the step
-                referred by 'forward_output_to'. When resume from that step,
-                that step can directly read this output.
+            outer_most_step_id: See
+                "workflow_manager.postprocess_workflow_step" for explanation.
         """
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
@@ -218,11 +232,11 @@ class WorkflowStorage:
                 assert step_id != ret.id
                 self._storage.save_step_output_metadata(
                     self._workflow_id, step_id, {"output_step_id": ret.id})
-            shortcut_output_id = ret.id
+            dynamic_output_id = ret.id
         else:
             # This workflow step returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
             self._storage.save_step_output(self._workflow_id, step_id, ret)
-            shortcut_output_id = step_id
-        if forward_output_to is not None:
-            self._update_output_shortcut(forward_output_to, shortcut_output_id)
+            dynamic_output_id = step_id
+        if outer_most_step_id is not None:
+            self._update_dynamic_output(outer_most_step_id, dynamic_output_id)
