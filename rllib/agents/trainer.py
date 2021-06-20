@@ -907,7 +907,7 @@ class Trainer(Trainable):
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to workers.")
+        logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 

@@ -33,7 +33,9 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::SendReplyCallback send_reply_callback) {
   rpc::JobTableData mutable_job_table_data;
   mutable_job_table_data.CopyFrom(request.data());
-  mutable_job_table_data.set_start_time(current_sys_time_ms());
+  auto time = current_sys_time_ms();
+  mutable_job_table_data.set_start_time(time);
+  mutable_job_table_data.set_timestamp(time);
   JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
