@@ -176,7 +176,7 @@ class Storage(metaclass=abc.ABCMeta):
     @abstractmethod
     def save_step_args(self, workflow_id: str, step_id: StepID,
                        args: ArgsType) -> None:
-        """Get the function body of the workflow step.
+        """Save the function body of the workflow step.
 
         Args:
             workflow_id: ID of the workflow job.
