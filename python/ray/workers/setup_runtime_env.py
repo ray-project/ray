@@ -84,6 +84,7 @@ def setup_worker(input_args):
 
     result = runtime_env.get("result")
     if result:
+        py_executable = "python"
         conda_env_name = result.get("conda_env_name")
         conda_activate_commands = get_conda_activate_commands(conda_env_name)
         if (conda_activate_commands):
