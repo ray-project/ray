@@ -32,12 +32,10 @@
 #include <iostream>
 #include <sstream>
 
-#ifdef RAY_USE_SPDLOG
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
-#endif
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
@@ -72,7 +70,6 @@ std::string GetCallTrace() {
   return output;
 }
 
-#ifdef RAY_USE_SPDLOG
 inline const char *ConstBasename(const char *filepath) {
   const char *base = strrchr(filepath, '/');
 #ifdef OS_WINDOWS  // Look for either path separator in Windows
@@ -140,58 +137,9 @@ class SpdLogMessage final {
   std::ostringstream str_;
   int loglevel_;
 };
-#endif
 
-// This is the default implementation of ray log,
-// which is independent of any libs.
-class CerrLog {
- public:
-  CerrLog(RayLogLevel severity) : severity_(severity), has_logged_(false) {}
-
-  virtual ~CerrLog() {
-    if (has_logged_) {
-      std::cerr << std::endl;
-    }
-    if (severity_ == RayLogLevel::FATAL) {
-      PrintBackTrace();
-      std::_Exit(EXIT_FAILURE);
-    }
-  }
-
-  std::ostream &Stream() {
-    has_logged_ = true;
-    return std::cerr;
-  }
-
-  template <class T>
-  CerrLog &operator<<(const T &t) {
-    if (severity_ != RayLogLevel::DEBUG) {
-      has_logged_ = true;
-      std::cerr << t;
-    }
-    return *this;
-  }
-
- protected:
-  const RayLogLevel severity_;
-  bool has_logged_;
-
-  void PrintBackTrace() {
-#if defined(_EXECINFO_H) || !defined(_WIN32)
-    void *buffer[255];
-    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
-    backtrace_symbols_fd(buffer, calls, 1);
-#endif
-  }
-};
-
-#ifdef RAY_USE_SPDLOG
 typedef ray::SpdLogMessage LoggingProvider;
-#else
-typedef ray::CerrLog LoggingProvider;
-#endif
 
-#ifdef RAY_USE_SPDLOG
 // Spdlog's severity map.
 static int GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
@@ -213,7 +161,6 @@ static int GetMappedSeverity(RayLogLevel severity) {
     return spdlog::level::off;
   }
 }
-#endif
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
@@ -242,7 +189,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
   log_dir_ = log_dir;
-#ifdef RAY_USE_SPDLOG
+
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -310,7 +257,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     logger->set_level(level);
     spdlog::set_default_logger(logger);
   }
-#endif
 }
 
 void RayLog::UninstallSignalAction() {
@@ -336,7 +282,6 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
-#ifdef RAY_USE_SPDLOG
   UninstallSignalAction();
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
@@ -344,7 +289,6 @@ void RayLog::ShutDownRayLog() {
   // NOTE(lingxuan.zlx) All loggers will be closed in shutdown but we don't need drop
   // console logger out because of some console logging might be used after shutdown ray
   // log. spdlog::shutdown();
-#endif
 }
 
 void WriteFailureMessage(const char *data) {
@@ -354,14 +298,13 @@ void WriteFailureMessage(const char *data) {
   if (nullptr != data) {
     RAY_LOG(ERROR) << std::string(data, strlen(data) - 1);
   }
-#ifdef RAY_USE_SPDLOG
+
   // If logger writes logs to files, logs are fully-buffered, which is different from
   // stdout (line-buffered) and stderr (unbuffered). So always flush here in case logs are
   // lost when logger writes logs to files.
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
   }
-#endif
 }
 
 bool RayLog::IsFailureSignalHandlerEnabled() {
@@ -394,16 +337,10 @@ std::string RayLog::GetLoggerName() { return logger_name_; }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
-#ifdef RAY_USE_SPDLOG
   if (is_enabled_) {
     logging_provider_ =
         new LoggingProvider(file_name, line_number, GetMappedSeverity(severity));
   }
-#else
-  auto logging_provider = new CerrLog(severity);
-  *logging_provider << file_name << ":" << line_number << ": ";
-  logging_provider_ = logging_provider;
-#endif
 }
 
 std::ostream &RayLog::Stream() {
