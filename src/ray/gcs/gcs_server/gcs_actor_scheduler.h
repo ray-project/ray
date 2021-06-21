@@ -345,8 +345,7 @@ class RayletBasedActorScheduler : public GcsActorScheduler {
   std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
 };
 
-/// RayletBasedActorScheduler implements a random node selection, while relying on Raylets
-/// for spillback scheduling.
+/// GcsBasedActorScheduler implements a resource-based node selection.
 class GcsBasedActorScheduler : public GcsActorScheduler {
  public:
   /// Create a GcsActorScheduler
@@ -382,15 +381,15 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   virtual ~GcsBasedActorScheduler() = default;
 
  protected:
-  /// Randomly select a node from the node pool to schedule the actor.
+  /// Select a node for the actor based on cluster resources.
   ///
   /// \param actor The actor to be scheduled.
   /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
   NodeID SelectNode(std::shared_ptr<GcsActor> actor) override;
 
   /// Handler to process a worker lease reply.
-  /// If the worker leasing fails at the selected node, the corresponding Raylet tries to
-  /// reply a spillback node.
+  /// If a rejection is received, it means resources were accidentally preempted by normal
+  /// tasks. Then update the the cluster resource view and reschedule immediately.
   ///
   /// \param actor The actor to be scheduled.
   /// \param node The selected node at which a worker is to be leased.
@@ -417,14 +416,11 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       const ResourceSet &required_resources, bool is_shared,
       const TaskSpecification &task_spec);
 
-  /// Allocate resources for the specified job.
+  /// Allocate resources for the actor.
   ///
   /// \param required_resources The resources to be allocated.
   /// \return ID of the node from which the resources are allocated.
   NodeID AllocateResources(const ResourceSet &required_resources);
-
-  /// Notify that the cluster resources are changed.
-  void NotifyClusterResourcesChanged();
 
   NodeID GetHighestScoreNodeResource(const ResourceSet &required_resources) const;
 
@@ -432,6 +428,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::shared_ptr<GcsJobSchedulingContext> job_scheduling_context,
       const TaskSpecification &task_spec, const ResourceSet &required_resources) const;
 
+  /// A rejected rely means resources were accidentally preempted by normal tasks. Then
+  /// update the the cluster resource view and reschedule immediately.
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
@@ -443,7 +441,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// Gcs resource scheduler
   std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
 
-  /// Instance of the `GcsJobDistribution` which records scheduling information of jobs
+  /// Instance of the `GcsJobDistribution`, which records scheduling information of jobs
   /// running on each node.
   std::shared_ptr<GcsJobDistribution> gcs_job_distribution_;
 };
