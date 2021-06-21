@@ -138,6 +138,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     num_bytes_being_pulled_ += bytes_to_pull;
     for (const auto &obj_id : to_pull) {
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
+      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       TryPinObject(obj_id);
       objects_to_pull->push_back(obj_id);
       ResetRetryTimer(obj_id);
@@ -540,6 +541,7 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it != object_pull_requests_.end()) {
     it->second.next_pull_time = get_time_();
+    it->second.num_retries = 0;
   }
 }
 
@@ -567,6 +569,7 @@ void PullManager::Tick() {
 
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   if (active_object_pull_requests_.count(object_id) > 0) {
+    RAY_LOG(DEBUG) << "Pinning newly created object " << object_id;
     TryPinObject(object_id);
   }
 }
@@ -579,6 +582,8 @@ void PullManager::TryPinObject(const ObjectID &object_id) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
       pinned_objects_[object_id] = std::move(ref);
+    } else {
+      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
     }
   }
   RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
