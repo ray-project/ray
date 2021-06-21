@@ -53,6 +53,7 @@ class RayRuntime {
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
   virtual std::string GetActorId(const std::string &actor_name) = 0;
+  virtual void KillActor(const std::string &str_actor_id, bool no_restart) = 0;
 };
 }  // namespace api
 }  // namespace ray

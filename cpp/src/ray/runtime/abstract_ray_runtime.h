@@ -51,6 +51,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::string GetActorId(const std::string &actor_name);
 
+  void KillActor(const std::string &str_actor_id, bool no_restart);
+
   const TaskID &GetCurrentTaskId();
 
   const JobID &GetCurrentJobID();

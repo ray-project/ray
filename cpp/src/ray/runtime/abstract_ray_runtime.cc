@@ -196,5 +196,14 @@ std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
   return actor_id;
 }
 
+void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_restart) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  ray::ActorID actor_id = ray::ActorID::FromBinary(str_actor_id);
+  Status status = core_worker.KillActor(actor_id, true, no_restart);
+  if (!status.ok()) {
+    throw RayException(status.message());
+  }
+}
+
 }  // namespace api
 }  // namespace ray
