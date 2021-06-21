@@ -13,7 +13,6 @@ import ray.cloudpickle as pickle
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
@@ -344,6 +343,8 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # Generate a dummy ExternalEnv here using RandomEnv and the
     # given observation/action spaces.
     if kwargs["policy_config"].get("env") is None:
+        from ray.rllib.examples.env.random_env import RandomEnv, \
+            RandomMultiAgentEnv
         config = {
             "action_space": kwargs["policy_config"]["action_space"],
             "observation_space": kwargs["policy_config"]["observation_space"],
