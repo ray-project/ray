@@ -47,6 +47,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode import MultiAgentEpisode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
@@ -106,7 +107,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
-        ...   policy_mapping_fn=lambda agent_id:
+        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(worker.sample())
@@ -141,7 +142,8 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_spec: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
@@ -200,12 +202,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn can also be set (if not, will map all agents
                 to DEFAULT_POLICY_ID).
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): A
-                callable that maps agent ids to policy ids in multi-agent mode.
-                This function will be called each time a new agent appears in
-                an episode, to bind that agent to a policy for the duration of
-                the episode. If not provided, will map all agents to
-                DEFAULT_POLICY_ID.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): A callable that maps agent ids to policy ids in
+                multi-agent mode. This function will be called each time a new
+                agent appears in an episode, to bind that agent to a policy
+                for the duration of the episode. If not provided, will map all
+                agents to DEFAULT_POLICY_ID.
             policies_to_train (Optional[List[PolicyID]]): Optional list of
                 policies to train, or None for all policies.
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
@@ -361,16 +363,19 @@ class RolloutWorker(ParallelIteratorWorker):
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
-        policy_mapping_fn = (policy_mapping_fn
-                             or (lambda agent_id: DEFAULT_POLICY_ID))
-        if not callable(policy_mapping_fn):
-            raise ValueError("Policy mapping function not callable?")
+
+        # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
+        # independent on the agent ID and the episode passed in.
+        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        self.set_policy_mapping_fn(policy_mapping_fn)
+
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
+        self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
@@ -472,8 +477,11 @@ class RolloutWorker(ParallelIteratorWorker):
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
             policy_spec, self.env, spaces=spaces)
-        self.policies_to_train: List[PolicyID] = policies_to_train or list(
-            policy_dict.keys())
+        # List of IDs of those policies, which should be trained.
+        # By default, these are all policies found in the policy_dict.
+        self.policies_to_train: List[PolicyID] = list(policy_dict.keys())
+        self.set_policies_to_train(policies_to_train)
+
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
@@ -570,7 +578,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "ExternalMultiAgentEnv?".format(self.env))
 
         self.filters: Dict[PolicyID, Filter] = {
-            policy_id: get_filter(observation_filter,
+            policy_id: get_filter(self.observation_filter,
                                   policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
@@ -641,10 +649,6 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = AsyncSampler(
                 worker=self,
                 env=self.async_env,
-                policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
-                preprocessors=self.preprocessors,
-                obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
@@ -667,10 +671,6 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = SyncSampler(
                 worker=self,
                 env=self.async_env,
-                policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
-                preprocessors=self.preprocessors,
-                obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
@@ -1010,6 +1010,124 @@ class RolloutWorker(ParallelIteratorWorker):
         return self.policy_map.get(policy_id)
 
     @DeveloperAPI
+    def add_policy(
+            self,
+            *,
+            policy_id: PolicyID,
+            policy_cls: Type[Policy],
+            observation_space: Optional[gym.spaces.Space] = None,
+            action_space: Optional[gym.spaces.Space] = None,
+            config: Optional[PartialTrainerConfigDict] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> Policy:
+        """Adds a new policy to this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to add.
+            policy_cls (Type[Policy]): The Policy class to use for
+                constructing the new Policy.
+            observation_space (Optional[gym.spaces.Space]): The observation
+                space of the policy to add.
+            action_space (Optional[gym.spaces.Space]): The action space
+                of the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config overrides
+                for the policy to add.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): An optional (updated) policy mapping function to
+                use from here on. Note that already ongoing episodes will not
+                change their mapping but will use the old mapping till the
+                end of the episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+
+        Returns:
+            Policy: The newly added policy (the copy that got added to the
+                local worker).
+        """
+        if policy_id in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
+        policy_dict = {
+            policy_id: (policy_cls, observation_space, action_space, config)
+        }
+        add_map, add_prep = self._build_policy_map(policy_dict,
+                                                   self.policy_config)
+        new_policy = add_map[policy_id]
+
+        self.policy_map.update(add_map)
+        self.preprocessors.update(add_prep)
+        self.filters[policy_id] = get_filter(
+            self.observation_filter, new_policy.observation_space.shape)
+
+        self.set_policy_mapping_fn(policy_mapping_fn)
+        self.set_policies_to_train(policies_to_train)
+
+        return new_policy
+
+    @DeveloperAPI
+    def remove_policy(
+            self,
+            *,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ):
+        """Removes a policy from this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to be removed.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+        """
+        if policy_id not in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' not in policy map!")
+        del self.policy_map[policy_id]
+        del self.preprocessors[policy_id]
+        self.set_policy_mapping_fn(policy_mapping_fn)
+        self.set_policies_to_train(policies_to_train)
+
+    @DeveloperAPI
+    def set_policy_mapping_fn(
+            self,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+    ):
+        """Sets `self.policy_mapping_fn` to a new callable (if provided).
+
+        Args:
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): The
+                new mapping function to use. If None, will keep the existing
+                mapping function in place.
+        """
+        if policy_mapping_fn is not None:
+            self.policy_mapping_fn = policy_mapping_fn
+            if not callable(self.policy_mapping_fn):
+                raise ValueError("`policy_mapping_fn` must be a callable!")
+
+    @DeveloperAPI
+    def set_policies_to_train(
+            self, policies_to_train: Optional[List[PolicyID]] = None):
+        """Sets `self.policies_to_train` to a new list of PolicyIDs.
+
+        Args:
+            policies_to_train (Optional[List[PolicyID]]): The new
+                list of policy IDs to train with. If None, will keep the
+                existing list in place.
+        """
+        if policies_to_train is not None:
+            self.policies_to_train = policies_to_train
+
+    @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
                    policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
@@ -1091,6 +1209,12 @@ class RolloutWorker(ParallelIteratorWorker):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
+            if pid not in self.policy_map:
+                logger.warning(
+                    f"pid={pid} not found in policy_map! It was probably added"
+                    " on-the-fly and is not part of the static `config."
+                    "multiagent.policies` dict. Ignoring it for now.")
+                continue
             self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
@@ -1184,7 +1308,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     else:
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
-                with tf1.variable_scope(name):
+                scope = name + (("_wk" + str(self.worker_index))
+                                if self.worker_index else "")
+                with tf1.variable_scope(scope):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             # non-tf.
             else:
@@ -1238,7 +1364,7 @@ def _validate_and_canonicalize(
         _validate_multiagent_config(policy)
         return policy
     elif not issubclass(policy, Policy):
-        raise ValueError("policy must be a rllib.Policy class")
+        raise ValueError(f"`policy` ({policy}) must be a rllib.Policy class!")
     else:
         if (isinstance(env, MultiAgentEnv)
                 and not hasattr(env, "observation_space")):
