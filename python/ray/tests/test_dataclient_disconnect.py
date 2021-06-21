@@ -51,3 +51,8 @@ def test_dataclient_disconnect_before_request():
         connection_data = ray.connect("localhost:50051")
         assert connection_data["num_clients"] == 1
         assert ray.get(f.remote()) == 42
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
