@@ -21,13 +21,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-# Ideally, we could include these files by putting them in a
-# MANIFEST.in or using the package_data argument to setup, but the
-# MANIFEST.in gets applied at the very beginning when setup.py runs
-# before these files have been created, so we have to move the files
-# manually.
-
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -46,6 +40,12 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
                "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+
+# Ideally, we could include these files by putting them in a
+# MANIFEST.in or using the package_data argument to setup, but the
+# MANIFEST.in gets applied at the very beginning when setup.py runs
+# before these files have been created, so we have to move the files
+# manually.
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
@@ -103,6 +103,8 @@ extras = {
         "opentelemetry-exporter-otlp==1.1.0"
     ]
 }
+if sys.version_info >= (3, 7, 0):
+    extras["k8s"].append("kopf")
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",
@@ -133,7 +135,8 @@ install_requires = [
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16",
+    "numpy >= 1.16; python_version < '3.9'",
+    "numpy >= 1.19.3; python_version >= '3.9'",
     "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
     "pydantic >= 1.8",
@@ -266,7 +269,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.1.10"]
+        pip_packages = ["psutil", "setproctitle==1.2.2"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -302,12 +305,13 @@ def walk_directory(directory):
     return file_list
 
 
-def move_file(target_dir, filename):
+def copy_file(target_dir, filename, rootdir):
     # TODO(rkn): This feels very brittle. It may not handle all cases. See
     # https://github.com/apache/arrow/blob/master/python/setup.py for an
     # example.
-    source = filename
-    destination = os.path.join(target_dir, filename)
+    # File names can be absolute paths, e.g. from walk_directory().
+    source = os.path.relpath(filename, rootdir)
+    destination = os.path.join(target_dir, source)
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
@@ -317,6 +321,8 @@ def move_file(target_dir, filename):
         else:
             # Preserves file mode (needed to copy executable bit)
             shutil.copy(source, destination, follow_symlinks=True)
+        return 1
+    return 0
 
 
 def find_version(*filepath):
@@ -348,8 +354,11 @@ def pip_run(build_ext):
             if filename[-3:] == ".py":
                 files_to_include.append(os.path.join(directory, filename))
 
+    copied_files = 0
     for filename in files_to_include:
-        move_file(build_ext.build_lib, filename)
+        copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
+    print("# of files copied to {}: {}".format(build_ext.build_lib,
+                                               copied_files))
 
 
 def api_main(program, *args):
@@ -434,12 +443,18 @@ setuptools.setup(
     url="https://github.com/ray-project/ray",
     keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
               "reinforcement-learning deep-learning serving python"),
+    classifiers=[
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=install_requires,
-    setup_requires=["cython >= 0.29.14", "wheel"],
+    setup_requires=["cython >= 0.29.15", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

@@ -3,10 +3,10 @@ import logging
 
 import ray
 import os
-from ray import tune
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
+from ray.tune.trainable import DistributedTrainable
 from ray.util.placement_group import remove_placement_group
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function, find_free_port
@@ -40,7 +40,7 @@ def setup_address():
     return f"{ip}:{port}"
 
 
-class _TensorFlowTrainable(tune.Trainable):
+class _TensorFlowTrainable(DistributedTrainable):
     """Base class for distributed training on Tune."""
     _function = None
     _num_workers = None
@@ -70,8 +70,9 @@ class _TensorFlowTrainable(tune.Trainable):
                 self._num_workers_per_host, self._timeout_s)
         remote_trainable = \
             remote_trainable.options(**remote_option)
+        new_config = DistributedTrainable.build_config(self, config)
         self.workers = [
-            remote_trainable.remote(config=config, )
+            remote_trainable.remote(config=new_config, )
             for _ in range(num_workers)
         ]
 

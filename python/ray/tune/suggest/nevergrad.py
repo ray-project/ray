@@ -320,11 +320,12 @@ class NevergradSearch(Searcher):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
                         lower=domain.lower,
-                        upper=domain.upper,
+                        upper=domain.upper - 1,  # Upper bound exclusive
                         exponent=sampler.base).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
-                    upper=domain.upper).set_integer_casting()
+                    upper=domain.upper - 1,  # Upper bound exclusive
+                ).set_integer_casting()
 
             elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)

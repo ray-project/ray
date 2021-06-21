@@ -14,14 +14,17 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
+        self._dashboard_head = dashboard_head
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
         job_data = await self.get_job_info()
         actor_data = await self.get_actor_info()
+        session_name = await self.get_session_name()
         snapshot = {
             "jobs": job_data,
             "actors": actor_data,
+            "session_name": session_name,
         }
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
@@ -80,6 +83,11 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             }
             actors[actor_id] = entry
         return actors
+
+    async def get_session_name(self):
+        encoded_name = await self._dashboard_head.aioredis_client.get(
+            "session_name")
+        return encoded_name.decode()
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(

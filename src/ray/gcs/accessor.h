@@ -183,6 +183,12 @@ class JobInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
+  /// Increment and get next job id. This is not idempotent.
+  ///
+  /// \param done Callback that will be called when request successfully.
+  /// \return Status
+  virtual Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) = 0;
+
  protected:
   JobInfoAccessor() = default;
 };
@@ -741,7 +747,7 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_name The name of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name,
+      const std::string &placement_group_name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

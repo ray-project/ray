@@ -19,7 +19,7 @@ from ray import tune
 
 from xgboost_ray import RayParams
 
-from _train import train_ray
+from ray.util.xgboost.release_test_util import train_ray
 
 
 def train_wrapper(config, ray_params):

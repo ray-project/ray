@@ -7,6 +7,8 @@ import logging
 from typing import Callable, Any, Union
 
 import ray
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.util.client as client
 
 logger = logging.getLogger(__name__)
 
@@ -133,3 +135,59 @@ cdef class ObjectRef(BaseID):
         core_worker = ray.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self
+
+
+cdef class ClientObjectRef(ObjectRef):
+
+    def __init__(self, id: bytes):
+        check_id(id)
+        self.data = CObjectID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+        self.in_core_worker = False
+
+    def __dealloc__(self):
+        if client.ray.is_connected() and not self.data.IsNil():
+            client.ray.call_release(self.id)
+
+    @property
+    def id(self):
+        return self.binary()
+
+    def future(self) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
+
+        def set_value(data: Any) -> None:
+            """Schedules a callback to set the exception or result
+            in the Future."""
+
+            if isinstance(data, Exception):
+                fut.set_exception(data)
+            else:
+                fut.set_result(data)
+
+        self._on_completed(set_value)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
+        return fut
+
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
+        """
+        from ray.util.client.client_pickler import loads_from_server
+
+        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
+            """Converts from a GetResponse proto to a python object."""
+            obj = resp.get
+            data = None
+            if not obj.valid:
+                data = loads_from_server(resp.get.error)
+            else:
+                data = loads_from_server(resp.get.data)
+
+            py_callback(data)
+
+        client.ray._register_callback(self, deserialize_obj)

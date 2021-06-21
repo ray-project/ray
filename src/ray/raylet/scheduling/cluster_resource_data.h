@@ -53,34 +53,13 @@ struct ResourceInstanceCapacities {
   std::vector<FixedPoint> available;
 };
 
-struct ResourceRequest {
-  /// Amount of resource being requested.
-  FixedPoint demand;
-  /// Specify whether the request is soft or hard.
-  /// If hard, the entire request is denied if the demand exceeds the resource
-  /// availability. Otherwise, the request can be still be granted.
-  /// Prefernces are given to the nodes with the lowest number of violations.
-  bool soft;
-};
-
-/// Resource request, including resource ID. This is used for custom resources.
-struct ResourceRequestWithId : ResourceRequest {
-  /// Resource ID.
-  int64_t id;
-};
-
 // Data structure specifying the capacity of each resource requested by a task.
 class TaskRequest {
  public:
   /// List of predefined resources required by the task.
-  std::vector<ResourceRequest> predefined_resources;
+  std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::vector<ResourceRequestWithId> custom_resources;
-  /// List of placement hints. A placement hint is a node on which
-  /// we desire to run this task. This is a soft constraint in that
-  /// the task will run on a different node in the cluster, if none of the
-  /// nodes in this list can schedule this task.
-  absl::flat_hash_set<int64_t> placement_hints;
+  std::unordered_map<int64_t, FixedPoint> custom_resources;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.

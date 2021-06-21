@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import collections
 import inspect
+import logging
 import os
 import re
 import sys
@@ -29,7 +30,7 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger)
+                             logger, LoggingContext)
 
 import ray
 
@@ -134,7 +135,9 @@ class Client:
         instance.
         """
         if (not self._shutdown) and ray.is_initialized():
-            ray.get(self._controller.shutdown.remote())
+            for goal_id in ray.get(self._controller.shutdown.remote()):
+                self._wait_for_goal(goal_id)
+
             ray.kill(self._controller, no_restart=True)
 
             # Wait for the named actor entry gets removed as well.
@@ -646,10 +649,10 @@ def start(
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init()
+        ray.init(namespace="serve")
 
+    current_namespace = ray.get_runtime_context().namespace
     if detached:
-        current_namespace = ray.get_runtime_context().namespace
         if _UUID_RE.fullmatch(current_namespace) is not None:
             raise RuntimeError(
                 "serve.start(detached=True) should not be called in anonymous "
@@ -662,7 +665,8 @@ def start(
 
     try:
         _get_global_client()
-        logger.info("Connecting to existing Serve instance.")
+        logger.info("Connecting to existing Serve instance in namespace "
+                    f"'{current_namespace}'.")
         return
     except RayServeException:
         pass
@@ -709,6 +713,8 @@ def start(
 
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
+    logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
+                f"namespace '{current_namespace}'.")
     return client
 
 
@@ -727,7 +733,7 @@ def connect() -> Client:
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init()
+        ray.init(namespace="serve")
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -1058,7 +1064,11 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 self.lifespan = LifespanOn(Config(self.app, lifespan="on"))
                 # Replace uvicorn logger with our own.
                 self.lifespan.logger = logger
-                await self.lifespan.startup()
+                # LifespanOn's logger logs in INFO level thus becomes spammy
+                # Within this block we temporarily uplevel for cleaner logging
+                with LoggingContext(
+                        self.lifespan.logger, level=logging.WARNING):
+                    await self.lifespan.startup()
 
                 # TODO(edoakes): should the startup_hook run before or after
                 # the constructor?
@@ -1074,8 +1084,12 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 return sender.build_starlette_response()
 
             def __del__(self):
-                asyncio.get_event_loop().run_until_complete(
-                    self.lifespan.shutdown())
+                # LifespanOn's logger logs in INFO level thus becomes spammy
+                # Within this block we temporarily uplevel for cleaner logging
+                with LoggingContext(
+                        self.lifespan.logger, level=logging.WARNING):
+                    asyncio.get_event_loop().run_until_complete(
+                        self.lifespan.shutdown())
 
         FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper
