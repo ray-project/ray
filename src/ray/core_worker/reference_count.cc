@@ -429,6 +429,8 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
+    RAY_LOG(INFO) << "[Unpin] The object id " << object_id
+                  << " is deleted because the object is explicitly deleted.";
     ReleasePlasmaObject(it);
   }
 }
@@ -474,6 +476,9 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
+    // SANG-TODO Revert it
+    RAY_LOG(INFO) << "[Unpin] The object id " << id
+                  << " is deleted because the reference goes out of scope.";
     ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
@@ -542,6 +547,8 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id) {
       lost_objects.push_back(object_id);
+      RAY_LOG(INFO) << "[Unpin] The object id " << object_id
+                    << " is deleted because the containing node is dead.";
       ReleasePlasmaObject(it);
     }
   }
@@ -1032,6 +1039,9 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   PushToLocationSubscribers(it);
   if (release) {
     // Release the primary plasma copy, if any.
+    // SANG-TODO Revert it
+    RAY_LOG(INFO) << "[Unpin] The object id " << object_id
+                  << " is unpinned because the object is spilled.";
     ReleasePlasmaObject(it);
   }
   return true;
