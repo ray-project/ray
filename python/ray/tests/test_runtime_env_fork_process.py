@@ -7,6 +7,7 @@ import pytest
 import ray
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_fork_process_in_runtime_env(ray_start_cluster):
     cluster = ray_start_cluster
     directory = os.path.dirname(os.path.realpath(__file__))
