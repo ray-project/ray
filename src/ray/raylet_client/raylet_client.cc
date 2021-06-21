@@ -91,6 +91,11 @@ raylet::RayletClient::RayletClient(
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
+  // When the "shim process" which is used for setuping runtime_env is not needed,
+  // the worker_shim_pid will be 0.
+  if (worker_shim_pid == 0) {
+    worker_shim_pid = getpid();
+  }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   // TODO(architkulkarni) this creates the message

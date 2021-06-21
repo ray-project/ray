@@ -452,10 +452,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   RAY_CHECK(worker);
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  // When the "shim process" setup worker is not needed, the worker_shim_pid will be 0.
-  if (worker_shim_pid == 0) {
-    worker_shim_pid = pid;
-  }
   auto shim_process = Process::FromPid(worker_shim_pid);
   worker->SetShimProcess(shim_process);
   if (state.starting_worker_processes.count(shim_process) == 0) {
