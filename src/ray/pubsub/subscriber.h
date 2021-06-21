@@ -235,13 +235,13 @@ class SubscriberClientInterface {
  public:
   /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(
-                                const rpc::PubsubLongPollingRequest &request,
-                                const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
 
   /// Send a pubsub command batch request to a core worker for pubsub operations.
   virtual void PubsubCommandBatch(
-                                  const rpc::PubsubCommandBatchRequest &request,
-                                  const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
 };
 
 /// The pubsub client implementation. The class is thread-safe.
