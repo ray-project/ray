@@ -51,6 +51,11 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
+  /// Get next job id from GCS Service.
+  ///
+  /// \return Next job id.
+  JobID GetNextJobID();
+
   /// Get all node information from GCS.
   ///
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
@@ -161,7 +166,7 @@ class GlobalStateAccessor {
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
-      const std::string &placement_group_name);
+      const std::string &placement_group_name, const std::string &ray_namespace);
 
  private:
   /// MultiItem transformation helper in template style.

@@ -79,6 +79,13 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   return job_table_data;
 }
 
+JobID GlobalStateAccessor::GetNextJobID() {
+  std::promise<JobID> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+      [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+  return promise.get_future().get();
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
@@ -241,11 +248,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
-    const std::string &placement_group_name) {
+    const std::string &placement_group_name, const std::string &ray_namespace) {
   std::unique_ptr<std::string> placement_group_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetByName(
-      placement_group_name,
+      placement_group_name, ray_namespace,
+
       TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
           placement_group_table_data, promise)));
   promise.get_future().get();

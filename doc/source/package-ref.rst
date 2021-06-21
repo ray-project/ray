@@ -223,6 +223,14 @@ Experimental APIs
 .. automodule:: ray.experimental
    :members:
 
+ClientBuilder API
+~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.client
+
+.. autoclass:: ray.ClientBuilder
+   :members:
+
 .. _ray-cli:
 
 The Ray Command Line API

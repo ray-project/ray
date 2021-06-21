@@ -404,7 +404,7 @@ If overriding ``train_epoch`` or ``validate`` you may find ``ray.util.sgd.utils.
 Mixed Precision (FP16) Training
 -------------------------------
 
-You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
+You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision.
 
 .. code-block:: python
     :emphasize-lines: 4
@@ -414,10 +414,23 @@ You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. 
         num_workers=4,
         use_fp16=True)
 
-``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When ``use_fp16=True``,
-you should not manually cast your model or data to ``.half()``. The flag informs the Trainer to call ``amp.initialize`` on the created models and optimizers and optimize using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
+By default, `native mixed precision training <https://pytorch.org/docs/stable/amp.html>`_ will be used. This requires PyTorch>=1.6. If you are using an older version of PyTorch, you can alternatively use the ``Apex`` library. ``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. It can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_.
 
-To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field when calling `self.register` in your `TrainingOperator`. Valid arguments can be found on the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
+When ``use_fp16=True`` and native mixed precision is not available, ``Apex`` will be used instead. If neither native support nor ``Apex`` are available, an exception will be raised.
+
+``Apex`` can be forced to be used with ``use_fp16="apex"``.
+
+When ``use_fp16=True``, you should not manually cast your model or data to ``.half()``.
+
+**Native**:
+
+The flag informs the Trainer to wrap model forward calls in ``torch.cuda.amp.autocast()`` and to scale the loss with ``torch.cuda.amp.GradScaler()``.
+
+**Apex**:
+
+The flag informs the Trainer to call ``amp.initialize`` on the created models and optimizers and optimize using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
+
+To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field when calling `self.register` in your `TrainingOperator`. Valid arguments can be found in the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
 
 .. code-block:: python
     :emphasize-lines: 8-12
@@ -439,7 +452,7 @@ To specify particular parameters for ``amp.initialize``, you can use the ``apex_
     trainer = TorchTrainer(
         training_operator_cls=MyTrainingOperator,
         num_workers=4,
-        use_fp16=True
+        use_fp16="apex"
     )
 
 Note that if implementing custom training (:ref:`raysgd-custom-training`), you will need to manage loss scaling manually.
@@ -730,3 +743,6 @@ to contribute an example, feel free to create a `pull request here <https://gith
 
 - `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__
    Training a Deep Convolutional GAN on MNIST. It constructs two models and two optimizers and uses a custom training operator.
+
+- `Deep Graph Library (DGL) example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/deep_graph/README.md>`__
+   Training a graph attention network on a Reddit Dataset. It implements a custom graph learning model and uses a custom training operator.

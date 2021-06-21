@@ -1,13 +1,14 @@
 import os
 import pytest
 import sys
-import unittest
 import random
 import tempfile
+import requests
 from pathlib import Path
 import ray
-from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, get_wheel_filename,
+    get_master_wheel_url, get_release_wheel_url)
 import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
@@ -33,7 +34,7 @@ if not job_config.runtime_env:
 
 try:
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.util.connect("{address}", job_config=job_config, namespace="")
+        ray.client("{address}").env({runtime_env}).namespace("").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
@@ -121,7 +122,7 @@ def start_client_server(cluster, client_mode):
     return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_travel():
     import uuid
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -193,7 +194,7 @@ The following test cases are related with runtime env. It following these steps
 """
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_empty_working_dir(ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
@@ -211,7 +212,7 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
         assert out != "ERROR"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -247,7 +248,7 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     assert out == "ValueError"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -263,7 +264,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
@@ -279,7 +280,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_module(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
@@ -294,7 +295,7 @@ def test_two_node_module(two_node_cluster, working_dir, client_mode):
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_local_file(two_node_cluster, working_dir, client_mode):
     with open(os.path.join(working_dir, "test_file"), "w") as f:
@@ -315,7 +316,7 @@ print(sum([int(v) for v in vals]))
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -371,7 +372,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
         "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -435,7 +436,22 @@ cache/
         "FAILED,Test,Test,FAILED,FAILED,Test,Test,FAILED,FAILED,FAILED,FAILED"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = """
+print(ray.get_runtime_context().runtime_env["working_dir"])
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == working_dir
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
@@ -459,7 +475,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     assert len(kv._internal_kv_list("pingcs://")) == 1
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_regular_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -477,7 +493,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
@@ -506,7 +522,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
     # start job_config=None
     # start job_config=something
@@ -532,7 +548,7 @@ sleep(600)
     proc.wait()
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
     # start job_config=something
     # start job_config=None
@@ -557,7 +573,7 @@ sleep(600)
     proc.wait()
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
     # start job_config=something
     # start job_config=something else
@@ -583,7 +599,7 @@ sleep(600)
     assert out.strip().split()[-1] == "OK"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_util_without_job_config(shutdown_only):
     from ray.cluster_utils import Cluster
 
@@ -619,7 +635,7 @@ print(ray.get([run.remote()])[0])
         os.chdir(old_dir)
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_init(shutdown_only):
     with tempfile.TemporaryDirectory() as tmp_dir:
         old_dir = os.getcwd()
@@ -638,6 +654,41 @@ def test_init(shutdown_only):
         t = Test.remote()
         assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
+
+
+def test_get_wheel_filename():
+    ray_version = "2.0.0.dev0"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            filename = get_wheel_filename(sys_platform, ray_version,
+                                          py_version)
+            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+            url = f"{prefix}{filename}"
+            assert requests.head(url).status_code == 200
+
+
+def test_get_master_wheel_url():
+    ray_version = "2.0.0.dev0"
+    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            url = get_master_wheel_url(test_commit, sys_platform, ray_version,
+                                       py_version)
+            assert requests.head(url).status_code == 200, url
+
+
+def test_get_release_wheel_url():
+    test_commits = {
+        "1.4.0rc1": "e7c7f6371a69eb727fa469e4cd6f4fbefd143b4c",
+        "1.3.0": "0b4b444fadcdc23226e11fef066b982175804232",
+        "1.2.0": "1b1a2496ca51b745c07c79fb859946d3350d471b"
+    }
+    for sys_platform in ["darwin", "linux", "win32"]:
+        for py_version in ["36", "37", "38"]:
+            for version, commit in test_commits.items():
+                url = get_release_wheel_url(commit, sys_platform, version,
+                                            py_version)
+                assert requests.head(url).status_code == 200, url
 
 
 if __name__ == "__main__":

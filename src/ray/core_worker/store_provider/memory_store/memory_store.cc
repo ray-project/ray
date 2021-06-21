@@ -146,12 +146,29 @@ void CoreWorkerMemoryStore::GetAsync(
     } else {
       object_async_get_requests_[object_id].push_back(callback);
     }
+    if (ptr != nullptr) {
+      ptr->SetAccessed();
+    }
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
-    ptr->SetAccessed();
     callback(ptr);
   }
+}
+
+std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
+  std::shared_ptr<RayObject> ptr;
+  {
+    absl::MutexLock lock(&mu_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      ptr = iter->second;
+    }
+    if (ptr != nullptr) {
+      ptr->SetAccessed();
+    }
+  }
+  return ptr;
 }
 
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
@@ -230,6 +247,10 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       // store.
       OnDelete(object_entry);
     }
+
+    if (!async_callbacks.empty()) {
+      object_entry->SetAccessed();
+    }
   }
 
   // Must be called without holding the lock because store_in_plasma_ goes
@@ -242,7 +263,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
-    object_entry->SetAccessed();
     cb(object_entry);
   }
 

@@ -23,19 +23,27 @@
 #include "ray/util/logging.h"
 
 class RayConfig {
+  // Needed for the RAY_CONFIG macro below to work properly for strings.
+  typedef std::string string_type;
+#define TOSTRING0(x) #x
+#define TOSTRING(x) TOSTRING0(x)
+
 /// -----------Include ray_config_def.h to define config items.----------------
 /// A helper macro that defines a config item.
 /// In particular, this generates a private field called `name_` and a public getter
 /// method called `name()` for a given config item.
 ///
+/// Configs defined in this way can be overriden by setting the env variable
+/// RAY_{name}=value where {name} is the variable name.
+///
 /// \param type Type of the config item.
 /// \param name Name of the config item.
 /// \param default_value Default value of the config item.
-#define RAY_CONFIG(type, name, default_value) \
- private:                                     \
-  type name##_ = default_value;               \
-                                              \
- public:                                      \
+#define RAY_CONFIG(type, name, default_value)                      \
+ private:                                                          \
+  type name##_ = env_##type("RAY_" TOSTRING(name), default_value); \
+                                                                   \
+ public:                                                           \
   inline type name() { return name##_; }
 
 #include "ray/common/ray_config_def.h"
@@ -85,6 +93,97 @@ class RayConfig {
       // switch statements on strings.
 #include "ray/common/ray_config_def.h"
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
+    }
+  }
+
+ private:
+  bool env_bool(const std::string &name, bool default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return value != std::string("0");
+    }
+  }
+
+  float env_float(const std::string &name, float default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stof(value);
+    }
+  }
+
+  double env_double(const std::string &name, double default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stod(value);
+    }
+  }
+
+  int env_int(const std::string &name, int default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoi(value);
+    }
+  }
+
+  std::string env_string_type(const std::string &name, std::string default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return value;
+    }
+  }
+
+  size_t env_size_t(const std::string &name, size_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoull(value);
+    }
+  }
+
+  int64_t env_int64_t(const std::string &name, int64_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoll(value);
+    }
+  }
+
+  uint64_t env_uint64_t(const std::string &name, uint64_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoull(value);
+    }
+  }
+
+  int32_t env_int32_t(const std::string &name, int32_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stol(value);
+    }
+  }
+
+  uint32_t env_uint32_t(const std::string &name, uint32_t default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return std::stoul(value);
     }
   }
 /// ---------------------------------------------------------------------
