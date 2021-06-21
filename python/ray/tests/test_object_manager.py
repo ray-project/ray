@@ -370,7 +370,7 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     allocated = [allocate.remote(i) for i in range(num_objects)]
     ray.get(allocated)
 
-    # TODO(ekl) this sometimes hangs forever
+    # TODO(ekl) this sometimes hangs (sometimes for 30+s, sometimes forever)
     tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     ray.get(tasks)
     del allocated
