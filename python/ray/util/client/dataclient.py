@@ -19,8 +19,6 @@ INT32_MAX = (2**31) - 1
 
 ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 
-i = 0
-
 
 class DataClient:
     def __init__(self, channel: "grpc._channel.Channel", client_id: str,
