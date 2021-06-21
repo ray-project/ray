@@ -56,7 +56,8 @@ ObjectManager::ObjectManager(
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback,
-    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback)
+    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -129,7 +130,8 @@ ObjectManager::ObjectManager(
         // CreateRequestQueue. It would be nice to unify these.
         object_store_full_callback();
         static_cast<void>(spill_objects_callback());
-      }));
+      },
+      pin_object));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -174,8 +176,8 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
-  // TODO Give the pull manager a chance to pin task args as soon as they appear.
-  // pull_manager->HandleObjectAdded(object_id, ray_object);
+  // Give the pull manager a chance to pin actively pulled objects.
+  pull_manager->PinNewObjectIfNeeded(object_id);
 
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.

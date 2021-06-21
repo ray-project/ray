@@ -44,6 +44,7 @@ class PullManagerTestWithCapacity {
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
+    ASSERT_TRUE(pull_manager_.pinned_objects_.empty());
   }
 
   NodeID self_node_id_;

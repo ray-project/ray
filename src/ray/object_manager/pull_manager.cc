@@ -10,7 +10,8 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &)> cancel_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
-    size_t num_bytes_available, std::function<void()> object_store_full_callback)
+    size_t num_bytes_available, std::function<void()> object_store_full_callback,
+    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -20,6 +21,7 @@ PullManager::PullManager(
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       object_store_full_callback_(object_store_full_callback),
+      pin_object_(pin_object),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -79,8 +81,6 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return bundle_it->first;
 }
 
-// TODO(ekl) we should pin objects as they arrive and unpin on CancelPull, to avoid
-// race conditions where the object is evicted or spilled during active pulling.
 bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
                                                 uint64_t *highest_req_id_being_pulled,
                                                 std::vector<ObjectID> *objects_to_pull) {
@@ -114,6 +114,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     auto obj_id = ObjectRefToId(ref);
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
+    TryPinObject(next_request_it->first);
     if (start_pull) {
       RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
@@ -154,6 +155,7 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(it->first);
+      UnpinObject(it->first);
       objects_to_cancel->insert(obj_id);
     }
   }
@@ -558,6 +560,27 @@ void PullManager::Tick() {
   }
 }
 
+void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
+  if (active_object_pull_requests_.count(object_id) > 0) {
+    TryPinObject(object_id);
+  }
+}
+
+void PullManager::TryPinObject(const ObjectID &object_id) {
+  if (pinned_objects_.count(object_id) == 0) {
+    auto ref = pin_object_(object_id);
+    if (ref != nullptr) {
+      pinned_objects_[object_id] = std::move(ref);
+    }
+  }
+  RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
+}
+
+void PullManager::UnpinObject(const ObjectID &object_id) {
+  pinned_objects_.erase(object_id);
+  RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
+}
+
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
 
 bool PullManager::IsObjectActive(const ObjectID &object_id, bool *object_required) const {
@@ -617,6 +640,7 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
   result << "\n- num objects actively being pulled: "
          << active_object_pull_requests_.size();
+  result << "\n- num objects pinned: " << pinned_objects_.size();
   result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
   return result.str();

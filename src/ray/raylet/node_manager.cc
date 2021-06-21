@@ -176,14 +176,17 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       io_service_(io_service),
       object_manager_(
           io_service, self_node_id, object_manager_config, object_directory,
+          /*restore_spilled_object=*/
           [this](const ObjectID &object_id, const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(object_id, object_url,
                                                               callback);
           },
+          /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
             return GetLocalObjectManager().GetSpilledObjectURL(object_id);
           },
+          /*spill_objects_callback=*/
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
@@ -192,6 +195,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                 "NodeManager.SpillObjects");
             return GetLocalObjectManager().IsSpillingInProgress();
           },
+          /*object_store_full_callback=*/
           [this]() {
             // Post on the node manager's event loop since this
             // callback is called from the plasma store thread.
@@ -201,7 +205,17 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*add_object_callback=*/
           [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
           /*delete_object_callback=*/
-          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }),
+          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); },
+          /*pin_objects=*/
+          [this](const std::vector<ObjectID> &object_ids,
+                 std::vector<std::unique_ptr<RayObject>> *results) {
+            std::vector<ObjectID> object_ids = {object_id};
+            std::vector<std::unique_ptr<RayObject>> results;
+            if (GetObjectsFromPlasma(object_ids, results) && results.size() > 0) {
+              return results[0];
+            }
+            return nullptr;
+          }),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
       periodical_runner_(io_service),

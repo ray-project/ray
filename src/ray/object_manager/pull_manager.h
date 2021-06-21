@@ -50,7 +50,8 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available, std::function<void()> object_store_full_callback);
+      size_t num_bytes_available, std::function<void()> object_store_full_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -102,6 +103,10 @@ class PullManager {
   /// Called when the retry timer fires. If this fires, the pull manager may try to pull
   /// existing objects from other nodes if necessary.
   void Tick();
+
+  /// Called when a new object appears locally. This gives a chance for the pull manager
+  /// to pin the object as soon as it is available.
+  void PinNewObjectIfNeeded(const ObjectID &object_id);
 
   /// Call to reset the retry timer for an object that is actively being
   /// pulled. This should be called for objects that were evicted but that may
@@ -179,6 +184,12 @@ class PullManager {
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
   /// e.g., for get requests and to ensure at least one active request.
   bool OverQuota();
+
+  /// Pin the object if possible. Only actively pulled objects should be pinned.
+  void TryPinObject(const ObjectID &object_id);
+
+  /// Unpin the given object if pinned.
+  void UnpinObject(const ObjectID &object_id);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -277,6 +288,9 @@ class PullManager {
   /// out-of-memory. This callback should try to make more bytes available.
   std::function<void()> object_store_full_callback_;
 
+  /// Callback to pin plasma objects.
+  std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
+
   /// The last time OOM was reported. Track this so we don't spam warnings when
   /// the object store is full.
   uint64_t last_oom_reported_ms_ = 0;
@@ -306,6 +320,9 @@ class PullManager {
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
+
+  /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
