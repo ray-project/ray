@@ -473,8 +473,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
+    std::vector<ObjectID> return_contained_ids;
     auto status = task_handler_(task_spec, resource_ids, &return_objects,
-                                reply->mutable_borrowed_refs());
+                                reply->mutable_borrowed_refs(), &return_contained_ids);
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
@@ -482,7 +483,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
-
         // The object is nullptr if it already existed in the object store.
         const auto &result = return_objects[i];
         return_object->set_size(result->GetSize());

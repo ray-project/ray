@@ -108,7 +108,8 @@ cdef class CoreWorker:
                             owner_address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns)
+            c_vector[shared_ptr[CRayObject]] *returns,
+            c_vector[CObjectID]* contained_ids)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
 

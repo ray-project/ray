@@ -266,6 +266,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns,
+            c_vector[CObjectID] *return_contained_ids,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes) nogil
          ) task_execution_callback

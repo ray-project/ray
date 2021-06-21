@@ -102,6 +102,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<ray::RayObject>> *results,
+         std::vector<ObjectID> *return_contained_ids,
          std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb) {
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
@@ -169,6 +170,9 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
                 return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
             auto &metadata = return_objects[i]->GetMetadata();
             auto &contained_object_id = return_objects[i]->GetNestedIds();
+            if(return_contained_ids != nullptr) {
+              return_contained_ids->insert(return_contained_ids->end(), contained_object_id.begin(), contained_object_id.end());
+            }
             auto result_ptr = &(*results)[0];
 
             RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(

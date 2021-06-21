@@ -394,7 +394,8 @@ cdef execute_task(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns):
+        c_vector[shared_ptr[CRayObject]] *returns,
+        c_vector[CObjectID] *contained_id):
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
@@ -563,7 +564,7 @@ cdef execute_task(
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
-                    worker, outputs, c_return_ids, returns)
+                    worker, outputs, c_return_ids, returns, contained_id)
         except Exception as error:
             # If the debugger is enabled, drop into the remote pdb here.
             if "RAY_PDB" in os.environ:
@@ -582,7 +583,7 @@ cdef execute_task(
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
             core_worker.store_task_outputs(
-                worker, errors, c_return_ids, returns)
+                worker, errors, c_return_ids, returns, contained_id)
             ray._private.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -619,6 +620,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
+        c_vector[CObjectID] *contained_id,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
     with gil:
         try:
@@ -628,7 +630,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
-                             debugger_breakpoint, returns)
+                             debugger_breakpoint, returns, contained_id)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -1633,17 +1635,22 @@ cdef class CoreWorker:
 
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns):
+            c_vector[shared_ptr[CRayObject]] *returns,
+            c_vector[CObjectID]* contained_id_out):
         cdef:
             CObjectID return_id
             size_t data_size
             shared_ptr[CBuffer] metadata
+            c_vector[CObjectID]* contained_id_ptr
             c_vector[CObjectID] contained_id
             c_vector[CObjectID] return_ids_vector
 
         if return_ids.size() == 0:
             return
-
+        if contained_id_out == NULL:
+            contained_id_ptr = &contained_id
+        else:
+            contained_id_ptr = contained_id_out
         n_returns = len(outputs)
         returns.resize(n_returns)
         for i in range(n_returns):
@@ -1661,13 +1668,13 @@ cdef class CoreWorker:
                 # Reset debugging context of this worker.
                 ray.worker.global_worker.debugger_get_breakpoint = b""
             metadata = string_to_buffer(metadata_str)
-            contained_id = ObjectRefsToVector(
+            contained_id_ptr[0] = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
             with nogil:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
-                        return_id, data_size, metadata, contained_id,
+                        return_id, data_size, metadata, contained_id_ptr[0],
                         &returns[0][i]))
 
             if returns[0][i].get() != NULL:
@@ -1688,6 +1695,7 @@ cdef class CoreWorker:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                         return_id, returns[0][i]))
+
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
