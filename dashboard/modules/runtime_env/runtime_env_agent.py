@@ -6,6 +6,8 @@ from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 import ray.new_dashboard.utils as dashboard_utils
+import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
+    as runtime_env_consts
 import ray._private.runtime_env as runtime_env
 from ray._private.utils import import_attr
 
@@ -36,13 +38,30 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
         uris = runtime_env_dict.get("uris")
-        if uris:
-            # TODO(guyang.sgy): Try `ensure_runtime_env_setup(uris)`
-            # to download packages.
-            # But we don't initailize internal kv in agent now.
-            pass
-        result = await _setup_runtime_env(request.serialized_runtime_env,
-                                          self._runtime_env_dir)
+        result = None
+        error_message = ""
+        for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
+            try:
+                if uris:
+                    # TODO(guyang.sgy): Try `ensure_runtime_env_setup(uris)`
+                    # to download packages.
+                    # But we don't initailize internal kv in agent now.
+                    pass
+                result = await _setup_runtime_env(
+                    request.serialized_runtime_env, self._runtime_env_dir)
+                break
+            except Exception as ex:
+                logger.exception("Runtime env creation failed.")
+                error_message = str(ex)
+                await asyncio.sleep(
+                    runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000)
+        if not result:
+            logger.error("Runtime env creation failed for %d times, "
+                         "don't retry any more.",
+                         runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
+            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=error_message)
         runtime_env_dict["result"] = result
         new_serialized_runtime_env = json.dumps(runtime_env_dict)
         logger.info("Successfully created runtime env: %s.",
