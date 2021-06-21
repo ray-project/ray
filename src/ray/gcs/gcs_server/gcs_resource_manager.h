@@ -135,6 +135,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
 
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(const std::function<void()> &listener);
+
   // Update node normal task resources.
   void UpdateNodeNormalTaskResources(const NodeID &node_id,
                                      const rpc::ResourcesData &heartbeat);
@@ -207,6 +210,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
 
   /// Debug info.
   enum CountType {

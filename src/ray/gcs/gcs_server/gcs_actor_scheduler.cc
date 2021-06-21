@@ -673,7 +673,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
   /// Get the highest score node
   LeastResourceScorer scorer;
 
-  double highest_score = -1;
+  double highest_score = -10;
   auto highest_score_node = NodeID::Nil();
   for (const auto &pair : cluster_map) {
     double least_resource_val = scorer.Score(required_resources, pair.second);

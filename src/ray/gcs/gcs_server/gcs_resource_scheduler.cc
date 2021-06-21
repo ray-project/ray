@@ -19,8 +19,15 @@ namespace gcs {
 
 double LeastResourceScorer::Score(const ResourceSet &required_resources,
                                   const SchedulingResources &node_resources) {
-  const auto &available_resources = node_resources.GetAvailableResources();
-  const auto &available_resource_amount_map = available_resources.GetResourceAmountMap();
+  ResourceSet new_available_resource_set;
+  const ResourceSet *available_resource_set = &node_resources.GetAvailableResources();
+  if (!node_resources.GetNormalTaskResources().IsEmpty()) {
+    new_available_resource_set = node_resources.GetAvailableResources();
+    new_available_resource_set.SubtractResources(node_resources.GetNormalTaskResources());
+    available_resource_set = &new_available_resource_set;
+  }
+  const auto &available_resource_amount_map =
+      available_resource_set->GetResourceAmountMap();
 
   double node_score = 0.0;
   for (const auto &entry : required_resources.GetResourceAmountMap()) {

@@ -218,7 +218,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
     gcs_job_distribution_ = std::make_shared<GcsJobDistribution>(
         /*gcs_job_scheduling_factory=*/
         [this](const JobID &job_id) {
-          //TODO(Chong-Li): Get job config from gcs_job_manager_.
+          // TODO(Chong-Li): Get job config from gcs_job_manager_.
           GcsJobConfig gcs_job_config(job_id);
           return std::make_shared<GcsJobSchedulingContext>(gcs_job_config);
         });
@@ -493,6 +493,17 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
+
+  // Install scheduling policy event listeners.
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+    gcs_resource_manager_->AddResourcesChangedListener([this] {
+      main_service_.post([this] {
+        // Because resources have been changed, we need to try to schedule the pending
+        // actors.
+        gcs_actor_manager_->SchedulePendingActors();
+      });
+    });
+  }
 }
 
 void GcsServer::CollectStats() {

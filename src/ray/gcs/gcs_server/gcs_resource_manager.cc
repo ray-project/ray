@@ -436,6 +436,12 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
+void GcsResourceManager::AddResourcesChangedListener(
+    const std::function<void()> &listener) {
+  RAY_CHECK(listener != nullptr);
+  resources_changed_listeners_.emplace_back(listener);
+}
+
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -452,6 +458,9 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
     scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
     latest_resources_normal_task_timestamp_[node_id] =
         heartbeat.resources_normal_task_timestamp();
+    for (const auto &listener : resources_changed_listeners_) {
+      listener();
+    }
   }
 }
 

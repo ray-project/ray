@@ -1642,7 +1642,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
 
-  // If resources are not enough due to normal tasks' preemption, return a rejection with normal task resource usages.
+  // If resources are not enough due to normal tasks' preemption, return a rejection with
+  // normal task resource usages.
   if (!cluster_task_manager_->IsLocallySchedulable(task)) {
     reply->set_rejected(true);
     send_reply_callback_wrapper(Status::OK(), nullptr, nullptr);
