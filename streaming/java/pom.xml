@@ -63,7 +63,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>1.4.0</projetct.version>
+    <projetct.version>1.4.1</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
     <testng.version>7.3.0</testng.version>

@@ -62,8 +62,8 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>1.4.0</projetct.version>
-    <projetct.version>1.4.0</projetct.version>
+    <projetct.version>1.4.1</projetct.version>
+    <projetct.version>1.4.1</projetct.version>
   </properties>
 
   <profiles>
