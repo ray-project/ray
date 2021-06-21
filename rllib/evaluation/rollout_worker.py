@@ -1099,7 +1099,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def set_policy_mapping_fn(
             self,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
     ):
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 
