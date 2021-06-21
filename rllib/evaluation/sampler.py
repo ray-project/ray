@@ -219,9 +219,10 @@ class SyncSampler(SamplerInput):
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put,
-            self.rollout_fragment_length, self.horizon, clip_rewards,
-            normalize_actions, clip_actions, multiple_episodes_in_batch,
-            callbacks, tf_sess, self.perf_stats, soft_horizon, no_done_at_end,
+            self.rollout_fragment_length, self.horizon,
+            clip_rewards, normalize_actions, clip_actions,
+            multiple_episodes_in_batch, callbacks, tf_sess,
+            self.perf_stats, soft_horizon, no_done_at_end,
             observation_fn, self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
@@ -398,11 +399,12 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
             self.worker, self.base_env, extra_batches_putter,
-            self.rollout_fragment_length, self.horizon, self.clip_rewards,
-            self.normalize_actions, self.clip_actions,
-            self.multiple_episodes_in_batch, self.callbacks, self.tf_sess,
-            self.perf_stats, self.soft_horizon, self.no_done_at_end,
-            self.observation_fn, self.sample_collector, self.render)
+            self.rollout_fragment_length, self.horizon,
+            self.clip_rewards, self.normalize_actions, self.clip_actions,
+            self.multiple_episodes_in_batch, self.callbacks,
+            self.tf_sess, self.perf_stats, self.soft_horizon,
+            self.no_done_at_end, self.observation_fn, self.sample_collector,
+            self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -624,6 +626,7 @@ def _env_runner(
         eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=worker.policy_map,
+            policy_mapping_fn=worker.policy_mapping_fn,
             sample_collector=sample_collector,
             active_episodes=active_episodes,
             tf_sess=tf_sess,
@@ -982,6 +985,7 @@ def _do_policy_eval(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: Dict[PolicyID, Policy],
+        policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"], PolicyID],
         sample_collector,
         active_episodes: Dict[str, MultiAgentEpisode],
         tf_sess: Optional["tf.Session"] = None,
@@ -1015,7 +1019,15 @@ def _do_policy_eval(
             summarize(to_eval)))
 
     for policy_id, eval_data in to_eval.items():
-        policy: Policy = _get_or_raise(policies, policy_id)
+        # In case the policyID has been removed from this worker, we need to
+        # re-assign policy_id and re-lookup the Policy object to use.
+        try:
+            policy: Policy = _get_or_raise(policies, policy_id)
+        except ValueError:
+            policy_id = policy_mapping_fn(eval_data[0].agent_id,
+                                          active_episodes[eval_data[0].env_id])
+            policy: Policy = _get_or_raise(policies, policy_id)
+
         input_dict = sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
             policy.compute_actions_from_input_dict(
@@ -1174,6 +1186,7 @@ def _get_or_raise(mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]],
     """
     if policy_id not in mapping:
         raise ValueError(
-            "Could not find policy for agent: agent policy id `{}` not "
-            "in policy map keys {}.".format(policy_id, mapping.keys()))
+            "Could not find policy for agent: PolicyID `{}` not found "
+            "in policy map, whose keys are `{}`.".format(
+                policy_id, mapping.keys()))
     return mapping[policy_id]
