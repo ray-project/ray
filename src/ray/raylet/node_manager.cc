@@ -206,15 +206,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
           /*delete_object_callback=*/
           [this](const ObjectID &object_id) { HandleObjectMissing(object_id); },
-          /*pin_objects=*/
-          [this](const std::vector<ObjectID> &object_ids,
-                 std::vector<std::unique_ptr<RayObject>> *results) {
+          /*pin_object=*/
+          [this](const ObjectID &object_id) {
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
-            if (GetObjectsFromPlasma(object_ids, results) && results.size() > 0) {
-              return results[0];
+            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+              return std::move(results[0]);
             }
-            return nullptr;
+            return std::unique_ptr<RayObject>(nullptr);
           }),
       gcs_client_(gcs_client),
       object_directory_(object_directory),

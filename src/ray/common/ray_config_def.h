@@ -106,6 +106,9 @@ RAY_CONFIG(bool, plasma_unlimited, true)
 /// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
 RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
 
+/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
+RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
+
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
