@@ -1,7 +1,9 @@
-import ray
-import signal
 import os
 import psutil
+import pytest
+import signal
+import ray
+import sys
 import time
 
 def get_pid(name):
@@ -13,13 +15,13 @@ def get_pid(name):
 
 def test_kill_raylet_signal_log(ray_start_shared_local_modes):
     session_dir = ray.worker._global_node.get_session_dir_path()
-    raylet_out_path = "{}/logs/raylet.out".format(session_dir)
+    raylet_out_path = "{}/logs/raylet.err".format(session_dir)
     pid = get_pid("raylet")
-    os.kill(pid, signal.SIGTERM)
+    os.kill(pid, signal.SIGABRT)
     time.sleep(1)
     with open(raylet_out_path) as f:
         s = f.read()
-        assert "Raylet received SIGTERM" in s
+        assert "SIGABRT" in s
 
 
 if __name__ == "__main__":
