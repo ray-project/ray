@@ -30,7 +30,7 @@ class TestPettingZooEnv(unittest.TestCase):
             "policies": {"av"},
             # Mapping function that always returns "av" as policy ID to use
             # (for any agent).
-            "policy_mapping_fn": lambda agent_id: "av"
+            "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
         }
 
         config["log_level"] = "DEBUG"

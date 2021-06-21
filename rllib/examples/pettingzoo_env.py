@@ -48,7 +48,7 @@ if __name__ == "__main__":
         # Setup a single, shared policy for all agents.
         "policies": {"av"},
         # Map all agents to that policy.
-        "policy_mapping_fn": lambda agent_id: "av"
+        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
     }
 
     # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

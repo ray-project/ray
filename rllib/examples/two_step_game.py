@@ -91,7 +91,8 @@ if __name__ == "__main__":
                     "pol1": PolicySpec(config={"agent_id": 0}),
                     "pol2": PolicySpec(config={"agent_id": 1}),
                 },
-                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+                "policy_mapping_fn": (
+                    lambda aid, **kwargs: "pol2" if aid else "pol1"),
             },
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

@@ -43,7 +43,8 @@ if __name__ == "__main__":
                 # automatically.
                 "policies": {"shared_policy"},
                 # Always use "shared" policy.
-                "policy_mapping_fn": lambda agent_id: "shared_policy",
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, **kwargs: "shared_policy"),
             },
         },
     )
