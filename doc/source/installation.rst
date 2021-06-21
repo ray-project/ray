@@ -303,7 +303,7 @@ Replace ``<shm-size>`` with a limit appropriate for your system, for example
 what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
 
-If you use GPU version Docker image, remember add ``--gpus all`` option. Replace ``<ray-version>`` for your target ray version in the following command.
+If you use a GPU version Docker image, remember to add ``--gpus all`` option. Replace ``<ray-version>`` with your target ray version in the following command:
 
 .. code-block:: bash
 
