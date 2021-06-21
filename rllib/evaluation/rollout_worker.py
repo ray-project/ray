@@ -40,8 +40,8 @@ from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
-    MultiAgentPolicyConfigDict, PolicyID, SampleBatchType, \
-    TrainerConfigDict
+    MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
+    SampleBatchType, TrainerConfigDict
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
