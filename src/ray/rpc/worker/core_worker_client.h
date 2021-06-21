@@ -187,6 +187,10 @@ class CoreWorkerClientInterface {
       const DeleteSpilledObjectsRequest &request,
       const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
 
+  virtual void ShareOwnership(
+      const ShareOwnershipRequest &request,
+      const ClientCallback<ShareOwnershipReply> &callback) {}
+
   virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
                              const ClientCallback<AddSpilledUrlReply> &callback) {}
 
@@ -256,6 +260,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, RestoreSpilledObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, DeleteSpilledObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, ShareOwnership, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
 

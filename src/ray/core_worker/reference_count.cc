@@ -986,7 +986,7 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
 }
 
 absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
-    const ObjectID &object_id) {
+    const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -995,6 +995,18 @@ absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations
     return absl::nullopt;
   }
   return it->second.locations;
+}
+
+absl::optional<NodeID> ReferenceCounter::GetObjectPinnedLocation(
+    const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to get the object locations for an object " << object_id
+                     << " that doesn't exist in the reference table";
+    return absl::nullopt;
+  }
+  return it->second.pinned_at_raylet_id;
 }
 
 size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {

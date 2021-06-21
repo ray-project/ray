@@ -2824,6 +2824,49 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
   }
 }
 
+
+void CoreWorker::HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
+                                      rpc::ShareOwnershipReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  const auto& ids = request.object_ids();
+  const auto& addr = request.new_owner_address();
+  std::vector<std::pair<NodeID, ObjectID>> node_id_mapping;
+  for(auto id_binary : ids) {
+    auto id = ObjectID::FromBinary(id_binary);
+    auto node_id = reference_counter_->GetObjectPinnedLocation(id);
+    if (node_id) {
+      node_id_mapping.emplace_back(*node_id, id);
+    } else {
+      // TODO (yic) Should wait until object is ready.
+      reply->add_failed_ids(id_binary);
+    }
+  }
+
+  if(node_id_mapping.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    auto in_flight = std::make_shared<size_t>(node_id_mapping.size());
+    for(auto& v : node_id_mapping) {
+      auto node_info = gcs_client_->Nodes().Get(v.first);
+      auto id = v.second;
+      auto grpc_client = rpc::NodeManagerWorkerClient::make(
+          node_info->node_manager_address(),
+          node_info->node_manager_port(),
+          *client_call_manager_);
+      auto raylet_client = std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+      raylet_client->PinObjectIDs(addr, {id}, [this, reply, send_reply_callback, in_flight, id] (
+          const Status &status, const rpc::PinObjectIDsReply&) {
+        if(!status.ok()) {
+          reply->add_failed_ids(id.Binary());
+        }
+        if(--*in_flight == 0) {
+          send_reply_callback(status, nullptr, nullptr);
+        }
+      });
+    }
+  }
+}
+
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {

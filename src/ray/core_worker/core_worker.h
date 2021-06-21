@@ -992,6 +992,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
+                            rpc::ShareOwnershipReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.

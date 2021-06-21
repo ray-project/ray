@@ -404,7 +404,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return The nodes that have the object if the reference exists, empty optional
   ///         otherwise.
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
-      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) const;
+
+
+  absl::optional<NodeID> GetObjectPinnedLocation(
+      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) const;
 
   /// Subscribe to object location changes that are more recent than the given version.
   /// The provided callback will be invoked when new locations become available.
