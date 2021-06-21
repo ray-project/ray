@@ -7,7 +7,12 @@ import ray
 
 from dask.base import quote
 from dask.core import get as get_sync
-from dask.utils import apply
+
+try:
+    from dask.utils import apply
+except ImportError:
+    # Dask < 2021.6.1
+    from dask.compatibility import apply
 
 try:
     from dataclasses import is_dataclass, fields as dataclass_fields
