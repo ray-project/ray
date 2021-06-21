@@ -187,9 +187,8 @@ class CoreWorkerClientInterface {
       const DeleteSpilledObjectsRequest &request,
       const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
 
-  virtual void ShareOwnership(
-      const ShareOwnershipRequest &request,
-      const ClientCallback<ShareOwnershipReply> &callback) {}
+  virtual void ShareOwnership(const ShareOwnershipRequest &request,
+                              const ClientCallback<ShareOwnershipReply> &callback) {}
 
   virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
                              const ClientCallback<AddSpilledUrlReply> &callback) {}

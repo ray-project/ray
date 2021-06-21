@@ -374,9 +374,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task =
-        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5);
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                                  std::placeholders::_2, std::placeholders::_3,
+                                  std::placeholders::_4, std::placeholders::_5);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task,
         [this] { return local_raylet_client_->TaskDone(); });
@@ -2127,8 +2127,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
-      contained_ids,
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects, contained_ids,
       creation_task_exception_pb_bytes);
 
   // Get the reference counts for any IDs that we borrowed during this task and
@@ -2219,7 +2218,8 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, nullptr, &borrowed_refs));
+  RAY_UNUSED(
+      ExecuteTask(task_spec, resource_ids, &return_objects, nullptr, &borrowed_refs));
   SetActorId(old_id);
 }
 
@@ -2826,14 +2826,13 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
   }
 }
 
-
 void CoreWorker::HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
                                       rpc::ShareOwnershipReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
-  const auto& ids = request.object_ids();
-  const auto& addr = request.new_owner_address();
+  const auto &ids = request.object_ids();
+  const auto &addr = request.new_owner_address();
   std::vector<std::pair<NodeID, ObjectID>> node_id_mapping;
-  for(auto id_binary : ids) {
+  for (auto id_binary : ids) {
     auto id = ObjectID::FromBinary(id_binary);
     auto node_id = reference_counter_->GetObjectPinnedLocation(id);
     if (node_id) {
@@ -2844,27 +2843,28 @@ void CoreWorker::HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
     }
   }
 
-  if(node_id_mapping.empty()) {
+  if (node_id_mapping.empty()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     auto in_flight = std::make_shared<size_t>(node_id_mapping.size());
-    for(auto& v : node_id_mapping) {
+    for (auto &v : node_id_mapping) {
       auto node_info = gcs_client_->Nodes().Get(v.first);
       auto id = v.second;
       auto grpc_client = rpc::NodeManagerWorkerClient::make(
-          node_info->node_manager_address(),
-          node_info->node_manager_port(),
+          node_info->node_manager_address(), node_info->node_manager_port(),
           *client_call_manager_);
       auto raylet_client = std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-      raylet_client->PinObjectIDs(addr, {id}, [this, reply, send_reply_callback, in_flight, id] (
-          const Status &status, const rpc::PinObjectIDsReply&) {
-        if(!status.ok()) {
-          reply->add_failed_ids(id.Binary());
-        }
-        if(--*in_flight == 0) {
-          send_reply_callback(status, nullptr, nullptr);
-        }
-      });
+      raylet_client->PinObjectIDs(
+          addr, {id},
+          [this, reply, send_reply_callback, in_flight, id](
+              const Status &status, const rpc::PinObjectIDsReply &) {
+            if (!status.ok()) {
+              reply->add_failed_ids(id.Binary());
+            }
+            if (--*in_flight == 0) {
+              send_reply_callback(status, nullptr, nullptr);
+            }
+          });
     }
   }
 }

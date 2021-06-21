@@ -1696,7 +1696,6 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                         return_id, returns[0][i]))
 
-
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
             self.async_event_loop = get_new_event_loop()

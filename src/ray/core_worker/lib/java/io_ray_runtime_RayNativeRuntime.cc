@@ -170,8 +170,10 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
                 return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
             auto &metadata = return_objects[i]->GetMetadata();
             auto &contained_object_id = return_objects[i]->GetNestedIds();
-            if(return_contained_ids != nullptr) {
-              return_contained_ids->insert(return_contained_ids->end(), contained_object_id.begin(), contained_object_id.end());
+            if (return_contained_ids != nullptr) {
+              return_contained_ids->insert(return_contained_ids->end(),
+                                           contained_object_id.begin(),
+                                           contained_object_id.end());
             }
             auto result_ptr = &(*results)[0];
 
