@@ -615,15 +615,17 @@ class CoreWorkerDirectTaskReceiver {
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
   using OnTaskDone = std::function<ray::Status()>;
-
+  using ObjectTransfer = std::function<void(const rpc::Address&, const std::vector<ObjectID>&, std::function<void(std::vector<ObjectID>)>)>;
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const OnTaskDone &task_done,
+                               const ObjectTransfer &transfer_handler)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done) {}
+        task_done_(task_done),
+        transfer_handler_(transfer_handler) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
@@ -672,7 +674,7 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
-
+  ObjectTransfer transfer_handler_;
   /// Set the max concurrency of an actor.
   /// This should be called once for the actor creation task.
   void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
