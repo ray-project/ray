@@ -83,6 +83,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 
 bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
                                                 uint64_t *highest_req_id_being_pulled,
+                                                bool respect_quota,
                                                 std::vector<ObjectID> *objects_to_pull) {
   // Get the next pull request in the queue.
   const auto last_request_it = bundles.find(*highest_req_id_being_pulled);
@@ -105,25 +106,40 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
-                 << " num bytes being pulled: " << num_bytes_being_pulled_
-                 << " num bytes available: " << num_bytes_available_;
-  // Activate the pull bundle request.
-  for (const auto &ref : next_request_it->second.objects) {
+  // Activate the pull bundle request if possible.
+  {
     absl::MutexLock lock(&active_objects_mu_);
-    auto obj_id = ObjectRefToId(ref);
-    bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
-    active_object_pull_requests_[obj_id].insert(next_request_it->first);
-    TryPinObject(obj_id);
-    if (start_pull) {
-      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
-      // This is the first bundle request in the queue to require this object.
-      // Add the size to the number of bytes being pulled.
-      auto it = object_pull_requests_.find(obj_id);
-      RAY_CHECK(it != object_pull_requests_.end());
-      num_bytes_being_pulled_ += it->second.object_size;
-      objects_to_pull->push_back(obj_id);
 
+    // First calculate the bytes we need.
+    std::vector<ObjectID> to_pull;
+    size_t bytes_to_pull = 0;
+    for (const auto &ref : next_request_it->second.objects) {
+      auto obj_id = ObjectRefToId(ref);
+      bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
+      if (needs_pull) {
+        // This is the first bundle request in the queue to require this object.
+        // Add the size to the number of bytes being pulled.
+        auto it = object_pull_requests_.find(obj_id);
+        RAY_CHECK(it != object_pull_requests_.end());
+        bytes_to_pull += it->second.object_size;
+        to_pull.push_back(obj_id);
+      }
+    }
+
+    // Quota check.
+    if (respect_quota &&
+        (num_bytes_being_pulled_ + bytes_to_pull > num_bytes_available_)) {
+      return false;
+    }
+
+    RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
+                   << " num bytes being pulled: " << num_bytes_being_pulled_
+                   << " num bytes available: " << num_bytes_available_;
+    num_bytes_being_pulled_ += bytes_to_pull;
+    for (const auto &obj_id : to_pull) {
+      active_object_pull_requests_[obj_id].insert(next_request_it->first);
+      TryPinObject(obj_id);
+      objects_to_pull->push_back(obj_id);
       ResetRetryTimer(obj_id);
     }
   }
@@ -214,12 +230,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
     // Activate the next get request if we have space, or are in unlimited allocation
     // mode.
-    if (!OverQuota() || RayConfig::instance().plasma_unlimited()) {
-      get_requests_remaining = ActivateNextPullBundleRequest(
-          get_request_bundles_, &highest_get_req_id_being_pulled_, &objects_to_pull);
-    } else {
-      break;
-    }
+    get_requests_remaining = ActivateNextPullBundleRequest(
+        get_request_bundles_, &highest_get_req_id_being_pulled_,
+        /*respect_quota=*/!RayConfig::instance().plasma_unlimited(), &objects_to_pull);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -230,22 +243,16 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                                &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
-    if (!OverQuota()) {
-      wait_requests_remaining = ActivateNextPullBundleRequest(
-          wait_request_bundles_, &highest_wait_req_id_being_pulled_, &objects_to_pull);
-    } else {
-      break;
-    }
+    wait_requests_remaining = ActivateNextPullBundleRequest(
+        wait_request_bundles_, &highest_wait_req_id_being_pulled_,
+        /*respect_quota=*/true, &objects_to_pull);
   }
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
-  while (!OverQuota()) {
-    if (!ActivateNextPullBundleRequest(task_argument_bundles_,
+  while (ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
-                                       &objects_to_pull)) {
-      break;
-    }
+                                       /*respect_quota=*/true, &objects_to_pull)) {
   }
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
@@ -644,6 +651,16 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
   result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
+  // Guard this more expensive debug message under event stats.
+  if (RayConfig::instance().event_stats()) {
+    for (const auto &entry : active_object_pull_requests_) {
+      auto obj_id = entry.first;
+      if (!pinned_objects_.contains(obj_id)) {
+        result << "\n- example obj id pending pull: " << obj_id.Hex();
+        break;
+      }
+    }
+  }
   return result.str();
 }
 

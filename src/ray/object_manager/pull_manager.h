@@ -211,9 +211,10 @@ class PullManager {
   /// Returns whether the request was successfully activated. If this returns
   /// false, then there are no more requests in the queue that can be activated
   /// (because we have reached the end of the queue or because there is missing
-  /// size information).
+  /// size information), or activating the request would exceed memory quota.
   bool ActivateNextPullBundleRequest(const Queue &bundles,
                                      uint64_t *highest_req_id_being_pulled,
+                                     bool respect_quota,
                                      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
