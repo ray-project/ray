@@ -526,7 +526,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
-    resources_data->set_resources_normal_task_timestamp(current_sys_time_ns());
+    resources_data.set_resources_normal_task_timestamp(current_sys_time_ns());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
@@ -1598,7 +1598,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   auto actor_id = task.GetTaskSpecification().ActorCreationId();
 
   auto send_reply_callback_wrapper =
-      [this, actor_id, task_id, assignment_id, reply, send_reply_callback](
+      [this, actor_id, task_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
         if (!reply->rejected()) {
           send_reply_callback(status, success, failure);
@@ -1624,6 +1624,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
+
+  // If resources are not enough due to normal tasks' preemption, return a rejection with normal task resource usages.
+  if (!cluster_task_manager_->IsLocallySchedulable(task)) {
+    reply->set_rejected(true);
+    send_reply_callback_wrapper(Status::OK(), nullptr, nullptr);
+    return;
+  }
 
   cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
 }

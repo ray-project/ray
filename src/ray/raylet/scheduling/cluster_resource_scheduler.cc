@@ -1014,4 +1014,10 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
+bool ClusterResourceScheduler::IsLocallySchedulable(
+    const std::unordered_map<std::string, double> &shape) {
+  auto task_request = ResourceMapToTaskRequest(string_to_int_map_, shape);
+  return IsSchedulable(task_request, local_node_id_, GetLocalNodeResources()) == 0;
+}
+
 }  // namespace ray

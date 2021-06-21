@@ -446,10 +446,12 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
   auto &scheduling_resoruces = iter->second;
   ResourceSet resources_normal_task(MapFromProtobuf(heartbeat.resources_normal_task()));
   if (heartbeat.resources_normal_task_changed() &&
-      heartbeat.resources_normal_task_timestamp() > latest_resources_normal_task_timestamp_[node_id] &&
+      heartbeat.resources_normal_task_timestamp() >
+          latest_resources_normal_task_timestamp_[node_id] &&
       !resources_normal_task.IsEqual(scheduling_resoruces.GetNormalTaskResources())) {
     scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
-    latest_resources_normal_task_timestamp_[node_id] = heartbeat.resources_normal_task_timestamp();
+    latest_resources_normal_task_timestamp_[node_id] =
+        heartbeat.resources_normal_task_timestamp();
   }
 }
 

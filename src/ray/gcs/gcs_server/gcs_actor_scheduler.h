@@ -26,6 +26,7 @@
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_job_distribution.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -354,32 +355,30 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param gcs_resource_manager The resource manager that maintains cluster resources.
-  /// \param gcs_job_distribution Recording scheduling information of jobs running on each node.
-  /// \param schedule_failure_handler Invoked when there are no available nodes to
-  /// schedule actors.
-  /// \param schedule_success_handler Invoked when actors are created on the worker
-  /// successfully.
-  /// \param raylet_client_pool Raylet client pool to construct connections to raylets.
-  /// \param client_factory Factory to create remote core worker client, default factor
-  /// will be used if not set.
+  /// \param gcs_resource_scheduler The scheduler to select nodes based on cluster
+  /// resources. \param gcs_job_distribution Recording scheduling information of jobs
+  /// running on each node. \param schedule_failure_handler Invoked when there are no
+  /// available nodes to schedule actors. \param schedule_success_handler Invoked when
+  /// actors are created on the worker successfully. \param raylet_client_pool Raylet
+  /// client pool to construct connections to raylets. \param client_factory Factory to
+  /// create remote core worker client, default factor will be used if not set.
   explicit GcsBasedActorScheduler(
       instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
+      std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       std::shared_ptr<GcsJobDistribution> gcs_job_distribution,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      rpc::ClientFactoryFn client_factory = nullptr,
-      std::function<void(const NodeID &, const rpc::ResourcesData &)>
-          resources_seized_by_normal_tasks_callback)
-      gcs_resource_manager_:std::move(gcs_resource_manager),
-      gcs_job_distribution_:std::move(gcs_job_distribution),
-      resources_seized_by_normal_tasks_callback_(
-          std::move(resources_seized_by_normal_tasks_callback)),
-      GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub, schedule_failure_handler,
-      schedule_success_handler, raylet_client_pool, client_factory) {};
-  
+      rpc::ClientFactoryFn client_factory = nullptr)
+      : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub,
+                          schedule_failure_handler, schedule_success_handler,
+                          raylet_client_pool, client_factory),
+        gcs_resource_manager_(std::move(gcs_resource_manager)),
+        gcs_resource_scheduler_(std::move(gcs_resource_scheduler)),
+        gcs_job_distribution_(std::move(gcs_job_distribution)) {}
+
   virtual ~GcsBasedActorScheduler() = default;
 
  protected:
@@ -433,20 +432,20 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::shared_ptr<GcsJobSchedulingContext> job_scheduling_context,
       const TaskSpecification &task_spec, const ResourceSet &required_resources) const;
 
-  void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply);
+  void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
+                                      const rpc::RequestWorkerLeaseReply &reply);
 
-  void CancelOnActorWorkerAssignment(const ActorID &actor_id, const UniqueID &actor_worker_assignment_id);
+  void CancelOnActorWorkerAssignment(const ActorID &actor_id,
+                                     const UniqueID &actor_worker_assignment_id);
 
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+
+  /// Gcs resource scheduler
+  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
 
   /// Instance of the `GcsJobDistribution` which records scheduling information of jobs
   /// running on each node.
   std::shared_ptr<GcsJobDistribution> gcs_job_distribution_;
-
-  // Quick update normal task resources.
-  std::function<void(const NodeID &, const rpc::ResourcesData &)>
-      resources_seized_by_normal_tasks_callback_;
-
 };
 
 }  // namespace gcs

@@ -14,10 +14,9 @@
 
 #pragma once
 
-namespace ray {
+// Each memory "resource" counts as this many bytes of memory.
+const uint64_t MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024ULL;
 
-#define EVENT_LABEL_ACTOR_NODE_SCHEDULED "ACTOR_NODE_SCHEDULED"
-
-#define EVENT_LABEL_JOB_FAILED_TO_ALLOCATE_RESOURCE "JOB_FAILED_TO_ALLOCATE_RESOURCES"
-
-}  // namespace ray
+inline double FromMemoryUnitsToGiB(uint64_t memory_units) {
+  return memory_units * MEMORY_RESOURCE_UNIT_BYTES / (1024.0 * 1024 * 1024);
+}

@@ -1097,6 +1097,12 @@ void ClusterTaskManager::SpillWaitingTasks() {
   }
 }
 
+bool ClusterTaskManager::IsLocallySchedulable(const Task &task) {
+  const auto &spec = task.GetTaskSpecification();
+  return cluster_resource_scheduler_->IsLocallySchedulable(
+      spec.GetRequiredResources().GetResourceMap());
+}
+
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
   std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();

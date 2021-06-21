@@ -163,6 +163,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
+  /// Check if there are enough available resources for the given input. If tru, we will
+  /// reserve the given amount of resources from this node.
+  bool IsLocallySchedulable(const Task &task) override;
+  
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const override;
 

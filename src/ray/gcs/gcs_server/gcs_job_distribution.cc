@@ -29,6 +29,8 @@ const NodeID &GcsActorWorkerAssignment::GetNodeID() const { return node_id_; }
 
 void GcsActorWorkerAssignment::SetNodeID(const NodeID &node_id) { node_id_ = node_id; }
 
+const JobID &GcsActorWorkerAssignment::GetJobID() const { return job_id_; }
+
 const Language &GcsActorWorkerAssignment::GetLanguage() const { return language_; }
 
 size_t GcsActorWorkerAssignment::GetAvailableSlotCount() const {
@@ -49,7 +51,9 @@ bool GcsActorWorkerAssignment::RemoveActor(const ActorID &actor_id) {
   return actor_ids_.erase(actor_id) != 0;
 }
 
-const ResourceSet &GcsActorWorkerAssignment::GetResources() const { return acquired_resources_; }
+const ResourceSet &GcsActorWorkerAssignment::GetResources() const {
+  return acquired_resources_;
+}
 
 void GcsActorWorkerAssignment::SetResources(const ResourceSet &acquired_resources) {
   acquired_resources_ = acquired_resources;
@@ -61,7 +65,8 @@ std::string GcsActorWorkerAssignment::ToString(int indent /* = 0*/) const {
   std::string indent_1(indent + 1 * 2, ' ');
 
   ostr << "{\n";
-  ostr << indent_1 << "worker_process_id = " << worker_process_id_ << ",\n";
+  ostr << indent_1 << "actor_worker_assignment_id = " << actor_worker_assignment_id_
+       << ",\n";
   ostr << indent_1 << "node_id = " << node_id_ << ",\n";
   ostr << indent_1 << "job_id = " << job_id_ << ",\n";
   ostr << indent_1 << "language = " << rpc::Language_Name(language_) << ",\n";
@@ -86,119 +91,121 @@ GcsJobSchedulingContext::GcsJobSchedulingContext(const GcsJobConfig &job_config)
 }
 
 bool GcsJobSchedulingContext::AddDummySharedActorWorkerAssignment() {
-  std::unordered_map<std::string, FractionalResourceQuantity> resource_mapping;
+  std::unordered_map<std::string, FixedPoint> resource_mapping;
   resource_mapping.emplace(kMemory_ResourceLabel,
                            job_config_.java_worker_process_default_memory_units_);
   ResourceSet constraint_resources(resource_mapping);
-  auto worker_process = GcsActorWorkerAssignment::Create(
+  auto actor_worker_assignment = GcsActorWorkerAssignment::Create(
       NodeID::Nil(), job_config_.job_id_, Language::JAVA, constraint_resources,
       /*is_shared=*/true, job_config_.num_java_workers_per_process_);
-  return AddActorWorkerAssignment(std::move(worker_process));
+  return AddActorWorkerAssignment(std::move(actor_worker_assignment));
 }
 
 bool GcsJobSchedulingContext::AddActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> worker_process) {
-  RAY_CHECK(worker_process != nullptr);
+    std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment) {
+  RAY_CHECK(actor_worker_assignment != nullptr);
 
-  if (worker_process->IsShared()) {
-    shared_worker_processes_.emplace(worker_process->GetActorWorkerAssignmentID(),
-                                     worker_process);
+  if (actor_worker_assignment->IsShared()) {
+    shared_actor_worker_assignments_.emplace(
+        actor_worker_assignment->GetActorWorkerAssignmentID(), actor_worker_assignment);
   } else {
-    sole_worker_processes_.emplace(worker_process->GetActorWorkerAssignmentID(), worker_process);
+    sole_actor_worker_assignments_.emplace(
+        actor_worker_assignment->GetActorWorkerAssignmentID(), actor_worker_assignment);
   }
 
-  // Update the distribution of worker process on each node.
-  UpdateNodeToActorWorkerAssignment(worker_process);
+  // Update the distribution of actor worker assignment on each node.
+  UpdateNodeToActorWorkerAssignment(actor_worker_assignment);
 
+  // TODO(Chong-Li):
   // Acquire resources from job scheduling resources.
   // The resources should be return back to the `scheduling_resources_` when the worker
   // process is removed.
-  scheduling_resources_.Acquire(constraint_resources);
+
   return true;
 }
 
 const GcsJobConfig &GcsJobSchedulingContext::GetJobConfig() const { return job_config_; }
 
-const ActorWorkerAssignmentMap &GcsJobSchedulingContext::GetSharedActorWorkerAssignments() const {
+const ActorWorkerAssignmentMap &GcsJobSchedulingContext::GetSharedActorWorkerAssignments()
+    const {
   return shared_actor_worker_assignments_;
 }
 
-const NodeToActorWorkerAssignmentsMap &GcsJobSchedulingContext::GetNodeToActorWorkerAssignments()
-    const {
-  return node_to_worker_processes_;
+const NodeToActorWorkerAssignmentsMap &
+GcsJobSchedulingContext::GetNodeToActorWorkerAssignments() const {
+  return node_to_actor_worker_assignments_;
 }
 
 bool GcsJobSchedulingContext::UpdateNodeToActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> worker_process) {
-  if (worker_process == nullptr || worker_process->IsDummy()) {
+    std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment) {
+  if (actor_worker_assignment == nullptr || actor_worker_assignment->IsDummy()) {
     return false;
   }
 
-  if (worker_process->IsShared()) {
-    if (!shared_worker_processes_.contains(worker_process->GetActorWorkerAssignmentID())) {
+  if (actor_worker_assignment->IsShared()) {
+    if (!shared_actor_worker_assignments_.contains(
+            actor_worker_assignment->GetActorWorkerAssignmentID())) {
       return false;
     }
   } else {
-    if (!sole_worker_processes_.contains(worker_process->GetActorWorkerAssignmentID())) {
+    if (!sole_actor_worker_assignments_.contains(
+            actor_worker_assignment->GetActorWorkerAssignmentID())) {
       return false;
     }
   }
 
-  // Update the distribution of worker processes on related node.
-  return node_to_worker_processes_[worker_process->GetNodeID()]
-      .emplace(worker_process->GetActorWorkerAssignmentID(), worker_process)
+  // Update the distribution of actor worker assignments on related node.
+  return node_to_actor_worker_assignments_[actor_worker_assignment->GetNodeID()]
+      .emplace(actor_worker_assignment->GetActorWorkerAssignmentID(),
+               actor_worker_assignment)
       .second;
 }
 
 std::shared_ptr<GcsActorWorkerAssignment>
 GcsJobSchedulingContext::RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
-    const NodeID &node_id, const UniqueID &worker_process_id) {
-  std::shared_ptr<GcsActorWorkerAssignment> removed_worker_process;
-  auto iter = node_to_worker_processes_.find(node_id);
-  if (iter != node_to_worker_processes_.end()) {
-    auto &worker_processes = iter->second;
-    auto worker_process_iter = worker_processes.find(worker_process_id);
-    if (worker_process_iter != worker_processes.end()) {
-      removed_worker_process = worker_process_iter->second;
-      // Remove worker process associated with the specified node.
-      if (removed_worker_process->IsShared()) {
-        RAY_CHECK(
-            shared_worker_processes_.erase(removed_worker_process->GetActorWorkerAssignmentID()));
+    const NodeID &node_id, const UniqueID &actor_worker_assignment_id) {
+  std::shared_ptr<GcsActorWorkerAssignment> removed_actor_worker_assignment;
+  auto iter = node_to_actor_worker_assignments_.find(node_id);
+  if (iter != node_to_actor_worker_assignments_.end()) {
+    auto &actor_worker_assignments = iter->second;
+    auto actor_worker_assignment_iter =
+        actor_worker_assignments.find(actor_worker_assignment_id);
+    if (actor_worker_assignment_iter != actor_worker_assignments.end()) {
+      removed_actor_worker_assignment = actor_worker_assignment_iter->second;
+      // Remove actor worker assignment associated with the specified node.
+      if (removed_actor_worker_assignment->IsShared()) {
+        RAY_CHECK(shared_actor_worker_assignments_.erase(
+            removed_actor_worker_assignment->GetActorWorkerAssignmentID()));
       } else {
-        RAY_CHECK(
-            sole_worker_processes_.erase(removed_worker_process->GetActorWorkerAssignmentID()));
+        RAY_CHECK(sole_actor_worker_assignments_.erase(
+            removed_actor_worker_assignment->GetActorWorkerAssignmentID()));
       }
-      // Remove worker process from `worker_processes` to update the worker process
-      // distribution on the specified node.
-      worker_processes.erase(worker_process_iter);
-      if (worker_processes.empty()) {
-        // Remove entry from `node_to_worker_processes_` as `worker_processes` is
-        // empty.
-        node_to_worker_processes_.erase(iter);
+      // Remove actor worker assignment from `actor_worker_assignments` to update the
+      // actor worker assignment distribution on the specified node.
+      actor_worker_assignments.erase(actor_worker_assignment_iter);
+      if (actor_worker_assignments.empty()) {
+        // Remove entry from `node_to_actor_worker_assignments_` as
+        // `actor_worker_assignments` is empty.
+        node_to_actor_worker_assignments_.erase(iter);
       }
-      // Return the resources of the removed worker process back to the job scheduling
-      // resources.
-      auto constraint_resources = removed_worker_process->GetConstraintResources();
-      scheduling_resources_.Release(constraint_resources);
-      RAY_LOG(DEBUG) << "Removed worker process "
-                     << removed_worker_process->GetActorWorkerAssignmentID()
-                     << ", Worker constraint resources: "
-                     << constraint_resources.ToString() << ", Job constraint resources: "
-                     << scheduling_resources_.GetAvailableResources().ToString();
+      // TODO(Chong-Li):
+      // Return the resources of the removed actor worker assignment back to the job
+      // scheduling resources.
     }
   }
-  return removed_worker_process;
+  return removed_actor_worker_assignment;
 }
 
-std::shared_ptr<GcsActorWorkerAssignment> GcsJobSchedulingContext::GetActorWorkerAssignmentById(
-    const UniqueID &worker_process_id) const {
-  auto iter = shared_worker_processes_.find(worker_process_id);
-  if (iter != shared_worker_processes_.end()) {
+std::shared_ptr<GcsActorWorkerAssignment>
+GcsJobSchedulingContext::GetActorWorkerAssignmentById(
+    const UniqueID &actor_worker_assignment_id) const {
+  auto iter = shared_actor_worker_assignments_.find(actor_worker_assignment_id);
+  if (iter != shared_actor_worker_assignments_.end()) {
     return iter->second;
   }
 
-  iter = sole_worker_processes_.find(worker_process_id);
-  if (iter != sole_worker_processes_.end()) {
+  iter = sole_actor_worker_assignments_.find(actor_worker_assignment_id);
+  if (iter != sole_actor_worker_assignments_.end()) {
     return iter->second;
   }
 
@@ -214,39 +221,42 @@ GcsJobDistribution::GcsJobDistribution(
 }
 
 bool GcsJobDistribution::AddActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> worker_process) {
-  RAY_CHECK(worker_process != nullptr);
+    std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment) {
+  RAY_CHECK(actor_worker_assignment != nullptr);
 
-  if (worker_process->IsDummy()) {
+  if (actor_worker_assignment->IsDummy()) {
     return false;
   }
 
-  auto job_id = worker_process->GetJobID();
+  auto job_id = actor_worker_assignment->GetJobID();
   auto job_scheduling_context = GetJobSchedulingContext(job_id);
   if (job_scheduling_context == nullptr ||
-      !job_scheduling_context->AddActorWorkerAssignment(worker_process)) {
+      !job_scheduling_context->AddActorWorkerAssignment(actor_worker_assignment)) {
     return false;
   }
 
   // Update the worker distribution on the related node.
-  node_to_jobs_[worker_process->GetNodeID()].emplace(job_id);
+  node_to_jobs_[actor_worker_assignment->GetNodeID()].emplace(job_id);
   return true;
 }
 
 bool GcsJobDistribution::UpdateNodeToJob(
-    std::shared_ptr<GcsActorWorkerAssignment> worker_process) {
-  if (worker_process == nullptr) {
+    std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment) {
+  if (actor_worker_assignment == nullptr) {
     return false;
   }
 
-  auto job_scheduling_context = GetJobSchedulingContext(worker_process->GetJobID());
+  auto job_scheduling_context =
+      GetJobSchedulingContext(actor_worker_assignment->GetJobID());
   if (job_scheduling_context == nullptr ||
-      !job_scheduling_context->UpdateNodeToActorWorkerAssignment(worker_process)) {
+      !job_scheduling_context->UpdateNodeToActorWorkerAssignment(
+          actor_worker_assignment)) {
     return false;
   }
 
   // Update the worker distribution on the related node.
-  node_to_jobs_[worker_process->GetNodeID()].emplace(worker_process->GetJobID());
+  node_to_jobs_[actor_worker_assignment->GetNodeID()].emplace(
+      actor_worker_assignment->GetJobID());
   return true;
 }
 
@@ -270,26 +280,30 @@ GcsJobDistribution::FindOrCreateJobSchedulingContext(const JobID &job_id) {
 
 std::shared_ptr<GcsActorWorkerAssignment>
 GcsJobDistribution::RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
-    const NodeID &node_id, const UniqueID &worker_process_id, const JobID &job_id) {
-  std::shared_ptr<GcsActorWorkerAssignment> removed_worker_process = nullptr;
+    const NodeID &node_id, const UniqueID &actor_worker_assignment_id,
+    const JobID &job_id) {
+  std::shared_ptr<GcsActorWorkerAssignment> removed_actor_worker_assignment = nullptr;
   if (auto job_scheduling_context = GetJobSchedulingContext(job_id)) {
-    // Remove worker process associated with this node id and worker process id.
-    removed_worker_process = job_scheduling_context->RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
-        node_id, worker_process_id);
-    if (removed_worker_process != nullptr) {
-      if (removed_worker_process->IsShared()) {
+    // Remove actor worker assignment associated with this node id and actor worker
+    // assignment id.
+    removed_actor_worker_assignment =
+        job_scheduling_context->RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
+            node_id, actor_worker_assignment_id);
+    if (removed_actor_worker_assignment != nullptr) {
+      if (removed_actor_worker_assignment->IsShared()) {
         // Add new dummy shared worker prcess to replace the removed one.
         // This way can make scheduling more balanced.
         RAY_CHECK(job_scheduling_context->AddDummySharedActorWorkerAssignment());
       }
       // Update the job distribution on each node.
-      auto &node_to_worker_processes = job_scheduling_context->GetNodeToActorWorkerAssignments();
-      if (!node_to_worker_processes.contains(node_id)) {
+      auto &node_to_actor_worker_assignments =
+          job_scheduling_context->GetNodeToActorWorkerAssignments();
+      if (!node_to_actor_worker_assignments.contains(node_id)) {
         RemoveJobFromNode(job_id, node_id);
       }
     }
   }
-  return removed_worker_process;
+  return removed_actor_worker_assignment;
 }
 
 void GcsJobDistribution::RemoveJobFromNode(const JobID &job_id, const NodeID &node_id) {
@@ -301,13 +315,15 @@ void GcsJobDistribution::RemoveJobFromNode(const JobID &job_id, const NodeID &no
   }
 }
 
-std::shared_ptr<GcsActorWorkerAssignment> GcsJobDistribution::GetActorWorkerAssignmentById(
-    const JobID &job_id, const UniqueID &worker_process_id) const {
-  std::shared_ptr<GcsActorWorkerAssignment> worker_process = nullptr;
+std::shared_ptr<GcsActorWorkerAssignment>
+GcsJobDistribution::GetActorWorkerAssignmentById(
+    const JobID &job_id, const UniqueID &actor_worker_assignment_id) const {
+  std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment = nullptr;
   if (auto job_scheduling_context = GetJobSchedulingContext(job_id)) {
-    worker_process = job_scheduling_context->GetActorWorkerAssignmentById(worker_process_id);
+    actor_worker_assignment =
+        job_scheduling_context->GetActorWorkerAssignmentById(actor_worker_assignment_id);
   }
-  return worker_process;
+  return actor_worker_assignment;
 }
 
 }  // namespace gcs

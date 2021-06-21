@@ -419,6 +419,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
+  /// Check whether a task request is schedulable on a the local node. A node is
+  /// schedulable if it has the available resources needed to execute the task.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallySchedulable(const std::unordered_map<std::string, double> &shape);
+
  private:
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.

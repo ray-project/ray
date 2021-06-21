@@ -24,6 +24,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/util/resource_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -31,8 +32,7 @@ using rpc::Language;
 namespace gcs {
 
 struct GcsJobConfig {
-  explicit GcsJobConfig(const JobID &job_id,
-                        uint32_t num_java_workers_per_process,
+  explicit GcsJobConfig(const JobID &job_id, uint32_t num_java_workers_per_process,
                         uint32_t num_initial_java_worker_processes,
                         uint64_t java_worker_process_default_memory_units,
                         uint64_t total_memory_units)
@@ -81,9 +81,10 @@ struct GcsJobConfig {
   uint64_t total_memory_units_ = 80;
 };
 
-/// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a worker process.
-/// It contains multiple slots, and each of them can bind to an actor.
-class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWorkerAssignment> {
+/// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
+/// worker process. It contains multiple slots, and each of them can bind to an actor.
+class GcsActorWorkerAssignment
+    : public std::enable_shared_from_this<GcsActorWorkerAssignment> {
   enum ActorWorkerAssignmentStatus {
     IN_MEMORY,
     FLUSHING,
@@ -97,14 +98,14 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
   /// \param node_id ID of node on which this actor worker assignment is allocated.
   /// \param job_id ID of job that this actor worker assignment belongs to.
   /// \param acquired_resources Resources owned by this actor worker assignment.
-  /// \param is_shared A flag to represent that whether this worker process is a shared
-  /// worker process.
+  /// \param is_shared A flag to represent that whether the worker process can be shared.
   /// \param slot_capacity The capacity of slots inside this worker
   /// process.
-  explicit GcsActorWorkerAssignment(const UniqueID &actor_worker_assignment_id, const NodeID &node_id,
-                            const JobID &job_id, Language language,
-                            const ResourceSet &acquired_resources, bool is_shared,
-                            size_t slot_capacity = 1, bool is_flushed = false)
+  explicit GcsActorWorkerAssignment(const UniqueID &actor_worker_assignment_id,
+                                    const NodeID &node_id, const JobID &job_id,
+                                    Language language,
+                                    const ResourceSet &acquired_resources, bool is_shared,
+                                    size_t slot_capacity = 1, bool is_flushed = false)
       : actor_worker_assignment_id_(actor_worker_assignment_id),
         node_id_(node_id),
         job_id_(job_id),
@@ -112,8 +113,9 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
         acquired_resources_(acquired_resources),
         is_shared_(is_shared),
         slot_capacity_(slot_capacity),
-        actor_worker_assignment_status_(is_flushed ? ActorWorkerAssignmentStatus::FLUSHED
-                                          : ActorWorkerAssignmentStatus::IN_MEMORY) {
+        actor_worker_assignment_status_(is_flushed
+                                            ? ActorWorkerAssignmentStatus::FLUSHED
+                                            : ActorWorkerAssignmentStatus::IN_MEMORY) {
     if (!is_shared) {
       RAY_CHECK(slot_capacity == 1);
     }
@@ -125,17 +127,32 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
   /// \param node_id ID of node on which this actor worker assignment is allocated.
   /// \param job_id ID of job that this actor worker assignment belongs to.
   /// \param acquired_resources Resources owned by this actor worker assignment.
-  /// \param is_shared A flag to represent that whether this worker process is a shared
-  /// worker process.
+  /// \param is_shared A flag to represent that whether the worker process can be shared.
   /// \param slot_capacity The capacity of slots inside this worker
   /// process.
   static std::shared_ptr<GcsActorWorkerAssignment> Create(
-      const UniqueID &actor_worker_assignment_id, const NodeID &node_id, const JobID &job_id,
-      Language language, const ResourceSet &acquired_resources, bool is_shared,
-      size_t slot_capacity = 1, bool is_flushed = false) {
-    return std::make_shared<GcsActorWorkerAssignment>(actor_worker_assignment_id, node_id, job_id,
-                                              language, acquired_resources, is_shared,
-                                              slot_capacity, is_flushed);
+      const UniqueID &actor_worker_assignment_id, const NodeID &node_id,
+      const JobID &job_id, Language language, const ResourceSet &acquired_resources,
+      bool is_shared, size_t slot_capacity = 1, bool is_flushed = false) {
+    return std::make_shared<GcsActorWorkerAssignment>(
+        actor_worker_assignment_id, node_id, job_id, language, acquired_resources,
+        is_shared, slot_capacity, is_flushed);
+  }
+
+  /// Create a GcsActorWorkerAssignment with a random actor worker assignment id.
+  ///
+  /// \param node_id ID of node on which this gcs actor worker assignment is allocated.
+  /// \param job_id ID of job that this gcs actor worker assignment belongs to.
+  /// \param acquired_resources Resources owned by this gcs actor worker assignment.
+  /// \param is_shared A flag to represent that whether the worker process can be shared.
+  /// \param slot_capacity The capacity of slots inside this worker
+  /// process.
+  static std::shared_ptr<GcsActorWorkerAssignment> Create(
+      const NodeID &node_id, const JobID &job_id, Language language,
+      const ResourceSet &acquired_resources, bool is_shared, size_t slot_capacity = 1,
+      bool is_flushed = false) {
+    return Create(UniqueID::FromRandom(), node_id, job_id, language, acquired_resources,
+                  is_shared, slot_capacity, is_flushed);
   }
 
   const UniqueID &GetActorWorkerAssignmentID() const;
@@ -143,6 +160,8 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
   const NodeID &GetNodeID() const;
 
   void SetNodeID(const NodeID &node_id);
+
+  const JobID &GetJobID() const;
 
   const Language &GetLanguage() const;
 
@@ -159,6 +178,8 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
   bool RemoveActor(const ActorID &actor_id);
 
   void SetResources(const ResourceSet &acquired_resources);
+
+  ResourceSet GetConstraintResources();
 
   const ResourceSet &GetResources() const;
 
@@ -177,25 +198,28 @@ class GcsActorWorkerAssignment : public std::enable_shared_from_this<GcsActorWor
   Language language_;
   /// Resources owned by this actor worker assignment.
   ResourceSet acquired_resources_;
-  /// A flag to represent that whether the worker process is a shared worker process.
+  /// A flag to represent that whether the worker process can be shared.
   bool is_shared_ = true;
   /// The capacity of slots inside the worker process.
   size_t slot_capacity_ = 1;
   // A flag to identify whether the assignment is flushed to the storage.
-  ActorWorkerAssignmentStatus actor_worker_assignment_status_ = ActorWorkerAssignmentStatus::IN_MEMORY;
+  ActorWorkerAssignmentStatus actor_worker_assignment_status_ =
+      ActorWorkerAssignmentStatus::IN_MEMORY;
   std::vector<std::function<void(const ray::Status &)>> flush_callbacks_;
 
   /// IDs of actors that the actor worker assignment acceptted.
   absl::flat_hash_set<ActorID> actor_ids_;
 };
 
-using ActorWorkerAssignmentMap = absl::flat_hash_map<UniqueID, std::shared_ptr<GcsActorWorkerAssignment>>;
-using NodeToActorWorkerAssignmentsMap = absl::flat_hash_map<NodeID, ActorWorkerAssignmentMap>;
+using ActorWorkerAssignmentMap =
+    absl::flat_hash_map<UniqueID, std::shared_ptr<GcsActorWorkerAssignment>>;
+using NodeToActorWorkerAssignmentsMap =
+    absl::flat_hash_map<NodeID, ActorWorkerAssignmentMap>;
 
 /// `GcsJobSchedulingContext` represents scheduling status of a job.
 /// It contains the job configuration, resources claimed when submiting, shared or sole
-/// worker process of the job as well as the worker process distribution on the cluster
-/// nodes.
+/// actor worker assignment of the job as well as the actor worker assignment distribution
+/// on the cluster nodes.
 class GcsJobSchedulingContext {
  public:
   /// Create a `GcsJobSchedulingContext`
@@ -203,11 +227,12 @@ class GcsJobSchedulingContext {
   /// \param job_config Configuration of the job.
   explicit GcsJobSchedulingContext(const GcsJobConfig &job_config);
 
-  /// Add a worker process.
+  /// Add a actor worker assignment.
   ///
-  /// \param worker_process to be added.
+  /// \param actor_worker_assignment to be added.
   /// \return true if the job available resources are enough, else false.
-  bool AddActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
+  bool AddActorWorkerAssignment(
+      std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
 
   /// Get available resources of the job.
   const ResourceSet &GetAvailableResources() const;
@@ -221,27 +246,31 @@ class GcsJobSchedulingContext {
   /// Get shared actor worker assignments.
   const ActorWorkerAssignmentMap &GetSharedActorWorkerAssignments() const;
 
-  /// Get node to worker processes distribution.
+  /// Get node to actor worker assignments distribution.
   const NodeToActorWorkerAssignmentsMap &GetNodeToActorWorkerAssignments() const;
 
-  /// Update the node to worker processes distribution.
+  /// Update the node to actor worker assignments distribution.
   ///
-  /// \param worker_process Worker process which node id is updated.
-  bool UpdateNodeToActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
+  /// \param actor_worker_assignment actor worker assignment which node id is updated.
+  bool UpdateNodeToActorWorkerAssignment(
+      std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
 
-  /// Remove worker process by the specified node id and worker process id.
+  /// Remove actor worker assignment by the specified node id and actor worker assignment
+  /// id.
   ///
-  /// The resources of removed worker process will be released to the job scheduling
-  /// resources.
+  /// The resources of removed actor worker assignment will be released to the job
+  /// scheduling resources.
   ///
   /// \param node_id ID of the specified node.
-  /// \param worker_process_id ID of the gcs worker process to be removed.
-  /// \return Worker process associated with the specified node id and worker process id.
-  std::shared_ptr<GcsActorWorkerAssignment> RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
+  /// \param actor_worker_assignment_id ID of the gcs actor worker assignment to be
+  /// removed. \return actor worker assignment associated with the specified node id and
+  /// actor worker assignment id.
+  std::shared_ptr<GcsActorWorkerAssignment>
+  RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
       const NodeID &node_id, const UniqueID &actor_worker_assignment_id);
 
-  /// Add dummy shared worker process which does not actually allocate resources from the
-  /// cluster, but only subtracts from the resources declared by the job.
+  /// Add dummy shared actor worker assignment which does not actually allocate resources
+  /// from the cluster, but only subtracts from the resources declared by the job.
   bool AddDummySharedActorWorkerAssignment();
 
   std::shared_ptr<GcsActorWorkerAssignment> GetActorWorkerAssignmentById(
@@ -250,9 +279,9 @@ class GcsJobSchedulingContext {
  private:
   /// Configuration of the job.
   GcsJobConfig job_config_;
-  /// Shared worker processes.
+  /// Shared actor worker assignments.
   ActorWorkerAssignmentMap shared_actor_worker_assignments_;
-  /// Sole worker processes.
+  /// Sole actor worker assignments.
   ActorWorkerAssignmentMap sole_actor_worker_assignments_;
   /// Node to worker distribution.
   NodeToActorWorkerAssignmentsMap node_to_actor_worker_assignments_;
@@ -273,14 +302,15 @@ class GcsJobDistribution {
       std::function<std::shared_ptr<GcsJobSchedulingContext>(const JobID &)>
           gcs_job_scheduling_factory);
 
-  /// Add a worker process.
+  /// Add a actor worker assignment.
   ///
-  /// \param worker_process to be added.
-  bool AddActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
+  /// \param actor_worker_assignment to be added.
+  bool AddActorWorkerAssignment(
+      std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
 
   /// Update the distribution of job on each node.
   ///
-  /// \param worker_process Worker process which node id is updated.
+  /// \param actor_worker_assignment actor worker assignment which node id is updated.
   bool UpdateNodeToJob(std::shared_ptr<GcsActorWorkerAssignment> actor_worker_assignment);
 
   /// Get job scheduling context by the specified job id.
@@ -294,16 +324,18 @@ class GcsJobDistribution {
   std::shared_ptr<GcsJobSchedulingContext> FindOrCreateJobSchedulingContext(
       const JobID &job_id);
 
-  /// Remove worker processes by the tuple(node_id, worker_process_id, job_id) and update
-  /// the distribution of jobs on the node if needed.
+  /// Remove actor worker assignments by the tuple(node_id, actor_worker_assignment_id,
+  /// job_id) and update the distribution of jobs on the node if needed.
   ///
   /// \param node_id ID of the specified node.
-  /// \param worker_process_id ID of the gcs worker process to be removed.
-  /// \param job_id ID of the job related with the worker process to be removed.
-  /// \return Worker process associated with the specified tuple(node_id,
-  /// worker_process_id,job_id).
-  std::shared_ptr<GcsActorWorkerAssignment> RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
-      const NodeID &node_id, const UniqueID &actor_worker_assignment_id, const JobID &job_id);
+  /// \param actor_worker_assignment_id ID of the gcs actor worker assignment to be
+  /// removed. \param job_id ID of the job related with the actor worker assignment to be
+  /// removed. \return actor worker assignment associated with the specified
+  /// tuple(node_id, actor_worker_assignment_id,job_id).
+  std::shared_ptr<GcsActorWorkerAssignment>
+  RemoveActorWorkerAssignmentByActorWorkerAssignmentID(
+      const NodeID &node_id, const UniqueID &actor_worker_assignment_id,
+      const JobID &job_id);
 
   std::shared_ptr<GcsActorWorkerAssignment> GetActorWorkerAssignmentById(
       const JobID &job_id, const UniqueID &actor_worker_assignment_id) const;
