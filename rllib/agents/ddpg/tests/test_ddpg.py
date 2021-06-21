@@ -23,8 +23,6 @@ torch, _ = try_import_torch()
 class TestDDPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        np.random.seed(42)
-        torch.manual_seed(42)
         ray.init()
 
     @classmethod
@@ -34,6 +32,7 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
         config["learning_starts"] = 0

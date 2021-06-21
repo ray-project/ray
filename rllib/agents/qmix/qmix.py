@@ -95,6 +95,8 @@ DEFAULT_CONFIG = with_common_config({
         "lstm_cell_size": 64,
         "max_seq_len": 999999,
     },
+    # Only torch supported so far.
+    "framework": "torch",
 })
 # __sphinx_doc_end__
 # yapf: enable
