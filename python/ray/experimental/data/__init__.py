@@ -13,7 +13,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-class Block:
+class Block(Generic[T]):
     def __init__(self, items: List[Any]):
         raise NotImplementedError
 
@@ -42,21 +42,93 @@ class ListBlock(Block):
         return sys.getsizeof(self._items)
 
 
+class ComputePool:
+    def apply(self, fn: Any, blocks: List[Block[T]]) -> List[BlockRef]:
+        raise NotImplementedError
+
+
+class TaskPool(ComputePool):
+    def apply(self, fn: Any, remote_args: dict,
+              blocks: List[Block[T]]) -> List[BlockRef]:
+        fn = ray.remote(**remote_args)(fn)
+        return [fn.remote(b) for b in blocks]
+
+
+class ActorPool(ComputePool):
+    def apply(self, fn: Any, remote_args: dict,
+              blocks: List[Block[T]]) -> List[BlockRef]:
+        @ray.remote(**remote_args)
+        class Worker:
+            def ready(self):
+                print("Worker created")
+                return "ok"
+
+            def process_block(self, block: Block[T]) -> Block[U]:
+                return fn(block)
+
+        workers = [Worker.remote()]
+        tasks = {w.ready.remote(): w for w in workers}
+        ready_workers = set()
+        blocks_in = [b for b in blocks]
+        blocks_out = []
+
+        while len(blocks_out) < len(blocks):
+            ready, _ = ray.wait(list(tasks), timeout=0.01, num_returns=1)
+            if not ready:
+                if len(ready_workers) / len(workers) > 0.75:
+                    w = Worker.remote()
+                    workers.append(w)
+                    tasks[w.ready.remote()] = w
+                    print("Creating new worker, {} pending, {} total".format(
+                        len(workers) - len(ready_workers), len(workers)))
+                continue
+
+            [obj_id] = ready
+            worker = tasks[obj_id]
+            del tasks[obj_id]
+
+            # Process task result.
+            if worker in ready_workers:
+                blocks_out.append(obj_id)
+            else:
+                ready_workers.add(worker)
+
+            # Schedule a new task.
+            if blocks_in:
+                tasks[worker.process_block.remote(blocks_in.pop())] = worker
+
+        return blocks_out
+
+
+def get_compute(compute_spec: str) -> ComputePool:
+    if compute_spec == "tasks":
+        return TaskPool()
+    elif compute_spec == "actors":
+        return ActorPool()
+    else:
+        raise ValueError("compute must be one of [`tasks`, `actors`]")
+
+
 class Dataset(Generic[T]):
     def __init__(self, blocks: List[BlockRef], block_cls: Any):
         self._blocks: List[BlockRef] = blocks
         self._block_cls = block_cls
 
-    def map(self, fn: Callable[[T], U]) -> "Dataset[U]":
-        @ray.remote
+    def map(self, fn: Callable[[T], U], compute="tasks",
+            **remote_args) -> "Dataset[U]":
         def transform(block):
             return self._block_cls([fn(row) for row in block])
 
-        return Dataset([transform.remote(b) for b in self._blocks],
-                       self._block_cls)
+        compute = get_compute(compute)
 
-    def flat_map(self, fn: Callable[[T], Iterable[U]]) -> "Dataset[U]":
-        @ray.remote
+        return Dataset(
+            compute.apply(transform, remote_args, self._blocks),
+            self._block_cls)
+
+    def flat_map(self,
+                 fn: Callable[[T], Iterable[U]],
+                 compute="tasks",
+                 **remote_args) -> "Dataset[U]":
         def transform(block):
             output = []
             for row in block:
@@ -64,22 +136,26 @@ class Dataset(Generic[T]):
                     output.append(r2)
             return self._block_cls(output)
 
-        return Dataset([transform.remote(b) for b in self._blocks],
-                       self._block_cls)
+        return Dataset(
+            compute.apply(transform, remote_args, self._blocks),
+            self._block_cls)
 
-    def filter(self, fn: Callable[[T], bool]) -> "Dataset[T]":
-        @ray.remote
+    def filter(self, fn: Callable[[T], bool], compute="tasks",
+               **remote_args) -> "Dataset[T]":
         def transform(block):
             return self._block_cls([row for row in block if fn(row)])
 
-        return Dataset([transform.remote(b) for b in self._blocks],
-                       self._block_cls)
+        return Dataset(
+            compute.apply(transform, remote_args, self._blocks),
+            self._block_cls)
 
     def take(self, limit: int = 20) -> List[T]:
         output = []
         for b in self._blocks:
             for row in ray.get(b):
                 output.append(row)
+                if len(output) >= limit:
+                    break
             if len(output) >= limit:
                 break
         return output
@@ -88,18 +164,32 @@ class Dataset(Generic[T]):
         for row in self.take(limit):
             print(row)
 
+    def count(self) -> int:
+        @ray.remote
+        def count(block):
+            return len(block)
+
+        return sum(ray.get([count.remote(block) for block in self._blocks]))
+
+    def sum(self) -> int:
+        @ray.remote
+        def _sum(block):
+            return sum(block)
+
+        return sum(ray.get([_sum.remote(block) for block in self._blocks]))
+
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     block_size = max(1, n // parallelism)
     blocks: List[BlockRef] = []
-    i = 0
 
     @ray.remote
     def gen_block(start: int, count: int) -> Block:
         return ListBlock(list(builtins.range(start, start + count)))
 
+    i = 0
     while i < n:
-        blocks.append(gen_block.remote(block_size * i, min(block_size, n - i)))
+        blocks.append(gen_block.remote(i, min(block_size, n - i)))
         i += block_size
 
     return Dataset(blocks, ListBlock)
