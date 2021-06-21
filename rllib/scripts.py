@@ -10,13 +10,13 @@ Example usage for training:
     rllib train --run DQN --env CartPole-v0
 
 Example usage for rollout:
-    rllib rollout /trial_dir/checkpoint_1/checkpoint-1 --run DQN
+    rllib rollout /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
 """
 
 
 def cli():
     parser = argparse.ArgumentParser(
-        description="Train or Run an RLlib Agent.",
+        description="Train or Run an RLlib Trainer.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=EXAMPLE_USAGE)
     subcommand_group = parser.add_subparsers(

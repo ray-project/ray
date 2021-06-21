@@ -15,7 +15,7 @@ def test_infeasible_tasks(ray_start_cluster):
     ray.init(address=cluster.address)
 
     # Submit an infeasible task.
-    x_id = f._submit(args=[], kwargs={}, resources={str(1): 1})
+    x_id = f._remote(args=[], kwargs={}, resources={str(1): 1})
 
     # Add a node that makes the task feasible and make sure we can get the
     # result.
@@ -42,7 +42,7 @@ f.remote()
 
     # Make sure we can still run tasks on all nodes.
     ray.get([
-        f._submit(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
+        f._remote(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
     ])
 
 

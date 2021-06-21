@@ -4,10 +4,7 @@ cluster_name: sgd-pytorch-imagenet
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 1
-initial_workers: 1
 max_workers: 1
-
-target_utilization_fraction: 0.9
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 10
@@ -62,7 +59,7 @@ worker_nodes:
 
 setup_commands:
     # This replaces the standard anaconda Ray installation
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     # Uncomment this and the filemount to update the Ray installation with your local Ray code
     # - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/util/sgd/
     # - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/util/

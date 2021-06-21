@@ -1,8 +1,8 @@
-=========
-Tutorials
-=========
+==================
+Advanced Tutorials
+==================
 
-Below are a list of tutorials that you can use to learn more about the different pieces of
+Below is a list of tutorials that you can use to learn more about the different pieces of
 Ray Serve functionality and how to integrate different modeling frameworks.
 
 .. toctree::
@@ -14,7 +14,10 @@ Ray Serve functionality and how to integrate different modeling frameworks.
    pytorch.rst
    sklearn.rst
    batch.rst
+   web-server-integration.rst
+   rllib.rst
 
 
 Other Topics:
+
 - :doc:`../deployment`

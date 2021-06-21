@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
+import argparse
 import json
+import time
 import os
 
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run
+from ray import tune
+from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
 
@@ -25,7 +28,7 @@ class MyTrainableClass(Trainable):
         self.timestep += 1
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)
-
+        time.sleep(0.1)
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
         return {"episode_reward_mean": v}
@@ -42,28 +45,59 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
-    import ConfigSpace as CS
-    ray.init(num_cpus=8)
+    import ConfigSpace as CS  # noqa: F401
 
-    # BOHB uses ConfigSpace for their hyperparameter search space
-    config_space = CS.ConfigurationSpace()
-    config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter("height", lower=10, upper=100))
-    config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter("width", lower=0, upper=100))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
 
-    experiment_metrics = dict(metric="episode_reward_mean", mode="max")
+    if args.server_address:
+        ray.util.connect(args.server_address)
+    else:
+        ray.init(num_cpus=8)
+
+    config = {
+        "iterations": 100,
+        "width": tune.uniform(0, 20),
+        "height": tune.uniform(-100, 100),
+        "activation": tune.choice(["relu", "tanh"])
+    }
+
+    # Optional: Pass the parameter space yourself
+    # config_space = CS.ConfigurationSpace()
+    # config_space.add_hyperparameter(
+    #     CS.UniformFloatHyperparameter("width", lower=0, upper=20))
+    # config_space.add_hyperparameter(
+    #     CS.UniformFloatHyperparameter("height", lower=-100, upper=100))
+    # config_space.add_hyperparameter(
+    #     CS.CategoricalHyperparameter(
+    #         "activation", choices=["relu", "tanh"]))
+
     bohb_hyperband = HyperBandForBOHB(
         time_attr="training_iteration",
         max_t=100,
         reduction_factor=4,
-        **experiment_metrics)
-    bohb_search = TuneBOHB(
-        config_space, max_concurrent=4, **experiment_metrics)
+        stop_last_trials=False)
 
-    run(MyTrainableClass,
+    bohb_search = TuneBOHB(
+        # space=config_space,  # If you want to set the space manually
+        max_concurrent=4)
+
+    analysis = tune.run(
+        MyTrainableClass,
         name="bohb_test",
+        config=config,
         scheduler=bohb_hyperband,
         search_alg=bohb_search,
         num_samples=10,
-        stop={"training_iteration": 100})
+        stop={"training_iteration": 100},
+        metric="episode_reward_mean",
+        mode="max")
+
+    print("Best hyperparameters found were: ", analysis.best_config)

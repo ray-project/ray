@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import shutil
 import tempfile
 import unittest
@@ -9,9 +10,10 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.trainable import TrainableUtil
-from ray.tune.function_runner import wrap_function, FuncCheckpointUtil
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.function_runner import with_parameters, wrap_function, \
+    FuncCheckpointUtil
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 
 
 def creator_generator(logdir):
@@ -227,7 +229,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
         new_trainable2.restore(checkpoint)
         result = new_trainable2.train()
-        self.assertEquals(result[TRAINING_ITERATION], 1)
+        self.assertEqual(result[TRAINING_ITERATION], 1)
         checkpoint = new_trainable2.save()
         new_trainable2.stop()
 
@@ -399,6 +401,19 @@ class FunctionApiTest(unittest.TestCase):
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
 
+    def testEnabled(self):
+        def train(config, checkpoint_dir=None):
+            is_active = tune.is_session_enabled()
+            result = {"active": is_active}
+            if is_active:
+                tune.report(**result)
+            return result
+
+        assert train({})["active"] is False
+        analysis = tune.run(train)
+        t = analysis.trials[0]
+        assert t.last_result["active"], t.last_result
+
     def testBlankCheckpoint(self):
         def train(config, checkpoint_dir=None):
             restored = bool(checkpoint_dir)
@@ -419,3 +434,110 @@ class FunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, max_failures=3)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
+
+    def testWithParameters(self):
+        class Data:
+            def __init__(self):
+                self.data = [0] * 500_000
+
+        data = Data()
+        data.data[100] = 1
+
+        def train(config, data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), hundred=data.data[100])
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["hundred"], 1)
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["hundred"], 1)
+        self.assertTrue(str(trial_1).startswith("train_"))
+
+        # With checkpoint dir parameter
+        def train(config, checkpoint_dir="DIR", data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), cp=checkpoint_dir)
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["cp"], "DIR")
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["cp"], "DIR")
+        self.assertTrue(str(trial_1).startswith("train_"))
+
+    def testWithParameters2(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        def train(config, data=None):
+            tune.report(metric=len(data.data))
+
+        trainable = tune.with_parameters(train, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testReturnAnonymous(self):
+        def train(config):
+            return config["a"]
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
+
+    def testReturnSpecific(self):
+        def train(config):
+            return {"m": config["a"]}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEqual(trial_1.last_result["m"], 4)
+        self.assertEqual(trial_2.last_result["m"], 8)
+
+    def testYieldAnonymous(self):
+        def train(config):
+            for i in range(10):
+                yield config["a"] + i
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
+
+    def testYieldSpecific(self):
+        def train(config):
+            for i in range(10):
+                yield {"m": config["a"] + i}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEqual(trial_1.last_result["m"], 4 + 9)
+        self.assertEqual(trial_2.last_result["m"], 8 + 9)
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

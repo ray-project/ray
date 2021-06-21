@@ -14,8 +14,6 @@ atari-sac-tf-and-torch:
         framework:
             grid_search: [tf, torch]
         gamma: 0.99
-        # state-preprocessor=Our default Atari Conv2D-net.
-        use_state_preprocessor: true
         Q_model:
             hidden_activation: relu
             hidden_layer_sizes: [512]

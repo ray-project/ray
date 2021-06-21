@@ -28,9 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-/**
- * This class define the multi-version store strategy, which leverages external storage's mvcc.
- */
+/** This class define the multi-version store strategy, which leverages external storage's mvcc. */
 public class MVStateStoreManager<V> extends AbstractStateStoreManager<V> {
 
   public MVStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> kvStore) {
@@ -153,5 +151,4 @@ public class MVStateStoreManager<V> extends AbstractStateStoreManager<V> {
       this.middleStore.remove(commitBatchId);
     }
   }
-
 }

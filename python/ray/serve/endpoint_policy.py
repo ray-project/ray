@@ -1,15 +1,32 @@
 from abc import ABCMeta, abstractmethod
-import copy
+import random
 from hashlib import sha256
+from functools import lru_cache
+from typing import List
 
 import numpy as np
 
+import ray
 from ray.serve.utils import logger
+
+
+@lru_cache(maxsize=128)
+def deterministic_hash(key: bytes) -> float:
+    """Given an arbitrary bytes, return a deterministic value between 0 and 1.
+
+    Note:
+        This function uses stdlib random number generator because it's faster
+        than numpy's. On a cache miss, the runtime of this function is about
+        ~10us.
+    """
+    bytes_hash = sha256(key).digest()  # should return 32 bytes value
+    int_seed = int.from_bytes(bytes_hash, "little", signed=False)
+    random_state = random.Random(int_seed)
+    return random_state.random()
 
 
 class EndpointPolicy:
     """Defines the interface for a routing policy for a single endpoint.
-
     To add a new routing policy, a class should be defined that provides this
     interface. The class may be stateful, in which case it may also want to
     provide a non-default constructor. However, this state will be lost when
@@ -18,37 +35,29 @@ class EndpointPolicy:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def flush(self, endpoint_queue, backend_queues):
-        """Flush the endpoint queue into the given backend queues.
-
-        This method should assign each query in the endpoint_queue to a
-        backend in the backend_queues. Queries are assigned by popping them
-        from the endpoint queue and pushing them onto a backend queue. The
-        method must also return a set of all backend tags so that the caller
-        knows which backend_queues to flush.
+    def assign(self, query) -> List[str]:
+        """Assign a query to a list of backends.
 
         Arguments:
-            endpoint_queue: deque containing queries to assign.
-            backend_queues: Dict(str, deque) mapping backend tags to
-            their corresponding query queues.
-
+            query (ray.serve.router.Query): the incoming query object.
         Returns:
-            Set of backend tags that had queries added to their queues.
+            A list with length >= 1. It should contains the list of backend
+            tags that had queries added to their queues. Ordered by importance.
+            The first value should be the backend to assign and rest values
+            correspond to shadow backends.
         """
-        assigned_backends = set()
-        return assigned_backends
+        raise NotImplementedError()
 
 
 class RandomEndpointPolicy(EndpointPolicy):
     """
     A stateless policy that makes a weighted random decision to map each query
-    to a backend using the specified weights.
-
-    If a shard key is provided in a query, the weighted random selection will
-    be made deterministically based on the hash of the shard key.
+    to a backend using the specified weights. If a shard key is provided in a
+    query, the weighted random selection will be made deterministically based
+    on the hash of the shard key.
     """
 
-    def __init__(self, traffic_policy):
+    def __init__(self, traffic_policy: "ray.serve.controller.TrafficPolicy"):
         self.backends = sorted(traffic_policy.traffic_dict.items())
         self.shadow_backends = list(traffic_policy.shadow_dict.items())
 
@@ -69,33 +78,17 @@ class RandomEndpointPolicy(EndpointPolicy):
 
         return chosen_backend, shadow_backends
 
-    def flush(self, endpoint_queue, backend_queues):
+    def assign(self, query):
         if len(self.backends) == 0:
-            logger.info("No backends to assign traffic to.")
-            return set()
+            raise ValueError("No backends to assign traffic to.")
 
-        assigned_backends = set()
-        while len(endpoint_queue) > 0:
-            query = endpoint_queue.pop()
-            if query.metadata.shard_key is None:
-                rstate = np.random
-            else:
-                sha256_seed = sha256(query.metadata.shard_key.encode("utf-8"))
-                seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
-                # Note(simon): This constructor takes 100+us, maybe cache this?
-                rstate = np.random.RandomState(seed)
+        if query.metadata.shard_key is None:
+            value = np.random.random()
+        else:
+            value = deterministic_hash(
+                query.metadata.shard_key.encode("utf-8"))
 
-            chosen_backend, shadow_backends = self._select_backends(
-                rstate.random())
-
-            assigned_backends.add(chosen_backend)
-            backend_queues[chosen_backend].appendleft(query)
-            if len(shadow_backends) > 0:
-                shadow_query = copy.copy(query)
-                shadow_query.async_future = None
-                shadow_query.metadata.is_shadow_query = True
-                for shadow_backend in shadow_backends:
-                    assigned_backends.add(shadow_backend)
-                    backend_queues[shadow_backend].appendleft(shadow_query)
-
-        return assigned_backends
+        chosen_backend, shadow_backends = self._select_backends(value)
+        logger.debug(f"Assigning query {query.metadata.request_id} "
+                     f"to backend {chosen_backend}.")
+        return [chosen_backend] + shadow_backends

@@ -8,11 +8,11 @@ from ray.rllib.contrib.bandits.models.linear_regression import \
     DiscreteLinearModelUCB, DiscreteLinearModel, \
     ParametricLinearModelThompsonSampling, ParametricLinearModelUCB
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.annotations import override
 from ray.util.debug import log_once
 
@@ -109,8 +109,9 @@ def init_cum_regret(policy, *args):
     policy.regrets = []
 
 
-BanditPolicy = build_torch_policy(
+BanditPolicy = build_policy_class(
     name="BanditPolicy",
+    framework="torch",
     get_default_config=lambda: DEFAULT_CONFIG,
     loss_fn=None,
     after_init=init_cum_regret,

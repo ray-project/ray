@@ -28,7 +28,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 };
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
-/// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
+/// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
@@ -36,10 +36,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskSpecification() {}
 
   /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
+  /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
     ComputeResources();
   }
 
@@ -69,6 +74,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t ParentCounter() const;
 
   ray::FunctionDescriptor FunctionDescriptor() const;
+
+  std::string SerializedRuntimeEnv() const;
+
+  bool HasRuntimeEnv() const;
 
   size_t NumArgs() const;
 
@@ -127,9 +136,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  ///
+  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies(
+      bool add_dummy_dependency = true) const;
+
+  std::string GetDebuggerBreakpoint() const;
+
+  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
 
   bool IsDriverTask() const;
 
@@ -171,8 +185,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID PreviousActorTaskDummyObjectId() const;
 
-  bool IsDirectCall() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;
@@ -192,8 +204,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Compute a static key that represents the given resource shape.
   static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
 
-  // Placement Group ID that this task or actor creation is associated with.
-  const PlacementGroupID PlacementGroupId() const;
+  // Placement Group bundle that this task or actor creation is associated with.
+  const BundleID PlacementGroupBundleId() const;
+
+  // Whether or not we should capture parent's placement group implicitly.
+  bool PlacementGroupCaptureChildTasks() const;
 
  private:
   void ComputeResources();

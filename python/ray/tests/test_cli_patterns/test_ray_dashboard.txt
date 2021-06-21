@@ -1,0 +1,6 @@
+Attempting to establish dashboard locally at localhost:8265 connected to remote port 8265
+Checking AWS environment settings
+Fetched IP: .+
+Forwarding ports
+ubuntu@ip-.+:~\$ exit
+Successfully established connection.

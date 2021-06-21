@@ -1,6 +1,6 @@
 import pytest
 
-from ray.autoscaler.aws.config import _resource_cache
+from ray.autoscaler._private.aws.config import _resource_cache
 
 from botocore.stub import Stubber
 

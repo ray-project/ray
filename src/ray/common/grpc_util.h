@@ -35,7 +35,10 @@ class MessageWrapper {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit MessageWrapper(const Message message)
+  explicit MessageWrapper(const Message &message)
+      : message_(std::make_shared<Message>(message)) {}
+
+  explicit MessageWrapper(Message &&message)
       : message_(std::make_shared<Message>(std::move(message))) {}
 
   /// Construct from a protobuf message shared_ptr.
@@ -115,7 +118,8 @@ inline std::vector<ID> IdVectorFromProtobuf(
 
 /// Converts a Protobuf map to a `unordered_map`.
 template <class K, class V>
-inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb_map) {
+inline std::unordered_map<K, V> MapFromProtobuf(
+    const ::google::protobuf::Map<K, V> &pb_map) {
   return std::unordered_map<K, V>(pb_map.begin(), pb_map.end());
 }
 

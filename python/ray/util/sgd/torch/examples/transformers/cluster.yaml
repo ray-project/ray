@@ -4,10 +4,8 @@ cluster_name: transformer-cluster
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 3
-initial_workers: 3
 max_workers: 3
 
-target_utilization_fraction: 0.9
 # Cloud-provider specific configuration.
 provider:
     type: aws
@@ -47,7 +45,7 @@ worker_nodes:
 
 setup_commands:
     # This replaces the standard anaconda Ray installation
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -q tqdm
 
     # Installing this without -U to make sure we don't replace the existing Ray installation

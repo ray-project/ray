@@ -1,10 +1,7 @@
 package io.ray.runtime.metric;
 
-/**
- * Types of the metric.
- */
+/** Types of the metric. */
 public enum MetricType {
-
   COUNT,
 
   GAUGE,
@@ -12,5 +9,4 @@ public enum MetricType {
   SUM,
 
   HISTOGRAM
-
 }

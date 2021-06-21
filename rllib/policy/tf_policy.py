@@ -3,7 +3,7 @@ import gym
 import logging
 import numpy as np
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 import ray.experimental.tf_utils
@@ -14,11 +14,15 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -137,7 +141,33 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        # Log device and worker index.
+        if tfv == 2:
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info("TFPolicy (worker={}) running on GPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info("TFPolicy (worker={}) running on CPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            self.view_requirements[
+                SampleBatch.INFOS].used_for_compute_actions = False
+
+        assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), \
+            "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` " \
+            "not allowed! You passed in {}.".format(model)
         self.model = model
+        # Auto-update model's inference view requirements, if recurrent.
+        if self.model is not None:
+            self._update_model_view_requirements_from_init_state()
+
         self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
@@ -163,11 +193,6 @@ class TFPolicy(Policy):
             raise ValueError(
                 "Number of state input and output tensors must match, got: "
                 "{} vs {}".format(self._state_inputs, self._state_outputs))
-        if len(self.get_initial_state()) != len(self._state_inputs):
-            raise ValueError(
-                "Length of initial state must match number of state inputs, "
-                "got: {} vs {}".format(self.get_initial_state(),
-                                       self._state_inputs))
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
@@ -177,7 +202,8 @@ class TFPolicy(Policy):
         self._apply_op = None
         self._stats_fetches = {}
         self._timestep = timestep if timestep is not None else \
-            tf1.placeholder(tf.int32, (), name="timestep")
+            tf1.placeholder_with_default(
+                tf.zeros((), dtype=tf.int64), (), name="timestep")
 
         self._optimizer = None
         self._grads_and_vars = None
@@ -192,7 +218,7 @@ class TFPolicy(Policy):
         # The loss tf-op.
         self._loss = None
         # A batch dict passed into loss function as input.
-        self._loss_input_dict = None
+        self._loss_input_dict = {}
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
 
@@ -205,7 +231,10 @@ class TFPolicy(Policy):
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
-        return self.model.variables()
+        if isinstance(self.model, tf.keras.Model):
+            return self.model.variables
+        else:
+            return self.model.variables()
 
     def get_placeholder(self, name) -> "tf1.placeholder":
         """Returns the given action or loss input placeholder by name.
@@ -228,8 +257,9 @@ class TFPolicy(Policy):
         elif name == SampleBatch.PREV_REWARDS:
             return self._prev_reward_input
 
-        assert self._loss_input_dict is not None, \
-            "Should have set this before get_placeholder can be called"
+        assert self._loss_input_dict, \
+            "You need to populate `self._loss_input_dict` before " \
+            "`get_placeholder()` can be called"
         return self._loss_input_dict[name]
 
     def get_session(self) -> "tf1.Session":
@@ -249,12 +279,16 @@ class TFPolicy(Policy):
             loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
-        self._loss_inputs = loss_inputs
-        self._loss_input_dict = dict(self._loss_inputs)
+        self._loss_input_dict = dict(loss_inputs)
+        self._loss_input_dict_no_rnn = {
+            k: v
+            for k, v in self._loss_input_dict.items()
+            if (v not in self._state_inputs and v != self._seq_lens)
+        }
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
-        if self.model:
+        if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
             self._stats_fetches.update({
                 "model": self.model.metrics() if isinstance(
@@ -263,20 +297,17 @@ class TFPolicy(Policy):
         else:
             self._loss = loss
 
-        self._optimizer = self.optimizer()
+        if self._optimizer is None:
+            self._optimizer = self.optimizer()
         self._grads_and_vars = [
             (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        # TODO(sven/ekl): Deprecate support for v1 models.
-        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+        if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
-        else:
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -320,7 +351,7 @@ class TFPolicy(Policy):
         builder = TFRunBuilder(self._sess, "compute_actions")
         to_fetch = self._build_compute_actions(
             builder,
-            obs_batch,
+            obs_batch=obs_batch,
             state_batches=state_batches,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
@@ -329,6 +360,37 @@ class TFPolicy(Policy):
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
+
+        return fetched
+
+    @override(Policy)
+    def compute_actions_from_input_dict(
+            self,
+            input_dict: Dict[str, TensorType],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
+        explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
+
+        builder = TFRunBuilder(self._sess, "compute_actions_from_input_dict")
+        obs_batch = input_dict[SampleBatch.OBS]
+        to_fetch = self._build_compute_actions(
+            builder, input_dict=input_dict, explore=explore, timestep=timestep)
+
+        # Execute session run to get action (and other fetches).
+        fetched = builder.get(to_fetch)
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
 
         return fetched
 
@@ -383,9 +445,18 @@ class TFPolicy(Policy):
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
+
         builder = TFRunBuilder(self._sess, "learn_on_batch")
+
+        # Callback handling.
+        learn_stats = {}
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
-        return builder.get(fetches)
+        stats = builder.get(fetches)
+        stats.update({"custom_metrics": learn_stats})
+        return stats
 
     @override(Policy)
     @DeveloperAPI
@@ -408,8 +479,13 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
+    def get_exploration_state(self) -> Dict[str, TensorType]:
+        return self.exploration.get_state(sess=self.get_session())
+
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.exploration.get_info(sess=self.get_session())
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @override(Policy)
     @DeveloperAPI
@@ -430,17 +506,24 @@ class TFPolicy(Policy):
                 len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self._sess.run(self._optimizer_variables.variables)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state(self.get_session())
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             self._optimizer_variables.set_weights(optimizer_vars)
-        # Then the Policy's (NN) weights.
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(
+                state=state["_exploration_state"], sess=self.get_session())
+
+        # Set the Policy's (NN) weights.
         super().set_state(state)
 
     @override(Policy)
@@ -457,12 +540,14 @@ class TFPolicy(Policy):
                     graph=self._sess.graph))
             builder.save()
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
+        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:
@@ -660,8 +745,13 @@ class TFPolicy(Policy):
             input_signature["prev_reward"] = \
                 tf1.saved_model.utils.build_tensor_info(
                     self._prev_reward_input)
+
         input_signature["is_training"] = \
             tf1.saved_model.utils.build_tensor_info(self._is_training)
+
+        if self._timestep is not None:
+            input_signature["timestep"] = \
+                tf1.saved_model.utils.build_tensor_info(self._timestep)
 
         for state_input in self._state_inputs:
             input_signature[state_input.name] = \
@@ -687,15 +777,15 @@ class TFPolicy(Policy):
 
     def _build_compute_actions(self,
                                builder,
-                               obs_batch,
                                *,
+                               input_dict=None,
+                               obs_batch=None,
                                state_batches=None,
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
                                explore=None,
                                timestep=None):
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -703,27 +793,73 @@ class TFPolicy(Policy):
         self.exploration.before_compute_actions(
             timestep=timestep, explore=explore, tf_sess=self.get_session())
 
-        state_batches = state_batches or []
-        if len(self._state_inputs) != len(state_batches):
-            raise ValueError(
-                "Must pass in RNN state batches for placeholders {}, got {}".
-                format(self._state_inputs, state_batches))
-
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
-        builder.add_feed_dict({self._obs_input: obs_batch})
-        if state_batches:
-            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and \
-           prev_action_batch is not None:
-            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and \
-           prev_reward_batch is not None:
-            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+
+        # `input_dict` given: Simply build what's in that dict.
+        if input_dict is not None:
+            if hasattr(self, "_input_dict"):
+                for key, value in input_dict.items():
+                    if key in self._input_dict:
+                        builder.add_feed_dict({self._input_dict[key]: value})
+            # For policies that inherit directly from TFPolicy.
+            else:
+                builder.add_feed_dict({
+                    self._obs_input: input_dict[SampleBatch.OBS]
+                })
+                if SampleBatch.PREV_ACTIONS in input_dict:
+                    builder.add_feed_dict({
+                        self._prev_action_input: input_dict[
+                            SampleBatch.PREV_ACTIONS]
+                    })
+                if SampleBatch.PREV_REWARDS in input_dict:
+                    builder.add_feed_dict({
+                        self._prev_reward_input: input_dict[
+                            SampleBatch.PREV_REWARDS]
+                    })
+                state_batches = []
+                i = 0
+                while "state_in_{}".format(i) in input_dict:
+                    state_batches.append(input_dict["state_in_{}".format(i)])
+                    i += 1
+                builder.add_feed_dict(
+                    dict(zip(self._state_inputs, state_batches)))
+
+            if "state_in_0" in input_dict:
+                builder.add_feed_dict({
+                    self._seq_lens: np.ones(len(input_dict["state_in_0"]))
+                })
+
+        # Hardcoded old way: Build fixed fields, if provided.
+        # TODO: (sven) This can be deprecated after trajectory view API flag is
+        #  removed and always True.
+        else:
+            state_batches = state_batches or []
+            if len(self._state_inputs) != len(state_batches):
+                raise ValueError(
+                    "Must pass in RNN state batches for placeholders {}, "
+                    "got {}".format(self._state_inputs, state_batches))
+
+            builder.add_feed_dict({self._obs_input: obs_batch})
+            if state_batches:
+                builder.add_feed_dict({
+                    self._seq_lens: np.ones(len(obs_batch))
+                })
+            if self._prev_action_input is not None and \
+               prev_action_batch is not None:
+                builder.add_feed_dict({
+                    self._prev_action_input: prev_action_batch
+                })
+            if self._prev_reward_input is not None and \
+               prev_reward_batch is not None:
+                builder.add_feed_dict({
+                    self._prev_reward_input: prev_reward_batch
+                })
+            builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
+
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict({self._is_exploring: explore})
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
-        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
         # Determine, what exactly to fetch from the graph.
         to_fetch = [self._sampled_action] + self._state_outputs + \
@@ -736,7 +872,6 @@ class TFPolicy(Policy):
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         fetches = builder.add_fetches(
@@ -755,10 +890,10 @@ class TFPolicy(Policy):
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         self._debug_vars()
+
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
             self._get_grad_and_stats_fetches(),
@@ -775,39 +910,47 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, batch, shuffle):
+    def _get_loss_inputs_dict(self, train_batch: SampleBatch, shuffle: bool):
         """Return a feed dict from a batch.
 
         Args:
-            batch (SampleBatch): batch of data to derive inputs from
+            train_batch (SampleBatch): batch of data to derive inputs from.
             shuffle (bool): whether to shuffle batch sequences. Shuffle may
                 be done in-place. This only makes sense if you're further
                 applying minibatch SGD after getting the outputs.
 
         Returns:
-            feed dict of data
+            Feed dict of data.
         """
 
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            batch,
-            shuffle=shuffle,
-            max_seq_len=self._max_seq_len,
-            batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[k for k, v in self._loss_inputs])
+        if not isinstance(train_batch,
+                          SampleBatch) or not train_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                train_batch,
+                max_seq_len=self._max_seq_len,
+                shuffle=shuffle,
+                batch_divisibility_req=self._batch_divisibility_req,
+                feature_keys=list(self._loss_input_dict_no_rnn.keys()),
+                view_requirements=self.view_requirements,
+            )
+
+        # Mark the batch as "is_training" so the Model can use this
+        # information.
+        train_batch.is_training = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for k, ph in self._loss_inputs:
-            feed_dict[ph] = batch[k]
+        for key, placeholder in self._loss_input_dict.items():
+            feed_dict[placeholder] = train_batch[key]
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
-        for k in state_keys:
-            feed_dict[self._loss_input_dict[k]] = batch[k]
+        for key in state_keys:
+            feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch["seq_lens"]
 
         return feed_dict
 
@@ -818,19 +961,32 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
+        self._lr_schedule = None
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=lr, trainable=False)
         else:
-            self.lr_schedule = PiecewiseSchedule(
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=self._lr_schedule.value(0), trainable=False)
+            if self.framework == "tf":
+                self._lr_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="lr")
+                self._lr_update = self.cur_lr.assign(
+                    self._lr_placeholder, read_value=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        if self._lr_schedule is not None:
+            new_val = self._lr_schedule.value(global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
+            else:
+                self.cur_lr.assign(new_val, read_value=False)
+                self._optimizer.learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)
     def optimizer(self):
@@ -843,32 +999,47 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = get_variable(
-            entropy_coeff,
-            framework="tf",
-            tf_name="entropy_coeff",
-            trainable=False)
-
+        self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff = get_variable(
+                entropy_coeff,
+                framework="tf",
+                tf_name="entropy_coeff",
+                trainable=False)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
                     framework=None)
             else:
                 # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
                     framework=None)
 
+            self.entropy_coeff = get_variable(
+                self._entropy_coeff_schedule.value(0),
+                framework="tf",
+                tf_name="entropy_coeff",
+                trainable=False)
+            if self.framework == "tf":
+                self._entropy_coeff_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="entropy_coeff")
+                self._entropy_coeff_update = self.entropy_coeff.assign(
+                    self._entropy_coeff_placeholder, read_value=False)
+
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff.load(
-            self.entropy_coeff_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        if self._entropy_coeff_schedule is not None:
+            new_val = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._entropy_coeff_update,
+                    feed_dict={self._entropy_coeff_placeholder: new_val})
+            else:
+                self.entropy_coeff.assign(new_val, read_value=False)

@@ -1,7 +1,9 @@
 import logging
+from typing import Dict, Optional
 
+from ray.tune import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.schedulers.hyperband import HyperBandScheduler, Bracket
+from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,8 @@ class HyperBandForBOHB(HyperBandScheduler):
     See ray.tune.schedulers.HyperBandScheduler for parameter docstring.
     """
 
-    def on_trial_add(self, trial_runner, trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         """Adds new trial.
 
         On a new trial add, if current bracket is not filled, add to current
@@ -30,6 +33,13 @@ class HyperBandForBOHB(HyperBandScheduler):
         to current bracket. Else, create new iteration, create new bracket,
         add to bracket.
         """
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
 
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]
@@ -51,16 +61,15 @@ class HyperBandForBOHB(HyperBandScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
-                                          self._get_r0(s), self._max_t_attr,
-                                          self._eta, s)
+                    cur_bracket = self._create_bracket(s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         """If bracket is finished, all trials will be stopped.
 
         If a given trial finishes and bracket iteration is not done,
@@ -89,11 +98,14 @@ class HyperBandForBOHB(HyperBandScheduler):
         action = self._process_bracket(trial_runner, bracket)
         return action
 
-    def _unpause_trial(self, trial_runner, trial):
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner",
+                       trial: Trial):
         trial_runner.trial_executor.unpause_trial(trial)
         trial_runner._search_alg.searcher.on_unpause(trial.trial_id)
 
-    def choose_trial_to_run(self, trial_runner):
+    def choose_trial_to_run(self,
+                            trial_runner: "trial_runner.TrialRunner",
+                            allow_recurse: bool = True) -> Optional[Trial]:
         """Fair scheduling within iteration by completion percentage.
 
         List of trials not used since all trials are tracked as state
@@ -108,7 +120,7 @@ class HyperBandForBOHB(HyperBandScheduler):
             for bracket in scrubbed:
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources(trial.resources)):
+                            and trial_runner.has_resources_for_trial(trial)):
                         return trial
         # MAIN CHANGE HERE!
         if not any(t.status == Trial.RUNNING
@@ -117,8 +129,17 @@ class HyperBandForBOHB(HyperBandScheduler):
                 for bracket in hyperband:
                     if bracket and any(trial.status == Trial.PAUSED
                                        for trial in bracket.current_trials()):
-                        # This will change the trial state and let the
-                        # trial runner retry.
+                        # This will change the trial state
                         self._process_bracket(trial_runner, bracket)
+
+                        # If there are pending trials now, suggest one.
+                        # This is because there might be both PENDING and
+                        # PAUSED trials now, and PAUSED trials will raise
+                        # an error before the trial runner tries again.
+                        if allow_recurse and any(
+                                trial.status == Trial.PENDING
+                                for trial in bracket.current_trials()):
+                            return self.choose_trial_to_run(
+                                trial_runner, allow_recurse=False)
         # MAIN CHANGE HERE!
         return None

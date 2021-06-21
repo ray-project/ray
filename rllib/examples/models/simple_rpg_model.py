@@ -1,5 +1,5 @@
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as TFFCNet
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as TFFCNet
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -47,7 +47,6 @@ class CustomTFRPGModel(TFModelV2):
                          name)
         self.model = TFFCNet(obs_space, action_space, num_outputs,
                              model_config, name)
-        self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:

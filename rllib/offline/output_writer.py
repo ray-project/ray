@@ -11,7 +11,7 @@ class OutputWriter:
     def write(self, sample_batch: SampleBatchType):
         """Save a batch of experiences.
 
-        Arguments:
+        Args:
             sample_batch: SampleBatch or MultiAgentBatch to save.
         """
         raise NotImplementedError

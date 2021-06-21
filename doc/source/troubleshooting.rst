@@ -14,6 +14,9 @@ The most important tool is the timeline visualization tool. To visualize tasks
 in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
 timeline`` from the command line or by using the following command.
 
+To use the timeline, Ray profiling must be enabled by setting the
+``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
+
 .. code-block:: python
 
   ray.timeline(filename="/tmp/timeline.json")
@@ -80,7 +83,7 @@ interest are the ones with non-zero execution times:
   ...
       1    0.000    0.000    2.509    2.509 your_script_here.py:31(ex1)
       5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
-      5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
+      5    0.000    0.000    0.001    0.000 remote_function.py:107(_remote)
   ...
      10    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
       5    0.000    0.000    2.508    0.502 worker.py:2535(get)
@@ -105,7 +108,7 @@ on what Ray functionalities we use, let us see what cProfile's output might look
 like if our example involved Actors (for an introduction to Ray actors, see our
 `Actor documentation here`_).
 
-.. _`Actor documentation here`: http://docs.ray.io/en/latest/actors.html
+.. _`Actor documentation here`: http://docs.ray.io/en/master/actors.html
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
 let's create a new example and loop over five calls to a remote function
@@ -160,7 +163,7 @@ Running our new Actor example, cProfile's abbreviated output is as follows:
   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   ...
   1    0.000    0.000    0.015    0.015 actor.py:546(remote)
-  1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
+  1    0.000    0.000    0.015    0.015 actor.py:560(_remote)
   1    0.000    0.000    0.000    0.000 actor.py:697(__init__)
   ...
   1    0.000    0.000    2.525    2.525 your_script_here.py:63(ex4)
@@ -213,7 +216,7 @@ Our example in total now takes only 1.5 seconds to run:
   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   ...
   5    0.000    0.000    0.002    0.000 actor.py:546(remote)
-  5    0.000    0.000    0.002    0.000 actor.py:560(_submit)
+  5    0.000    0.000    0.002    0.000 actor.py:560(_remote)
   5    0.000    0.000    0.000    0.000 actor.py:697(__init__)
   ...
   1    0.000    0.000    1.566    1.566 your_script_here.py:71(ex4)

@@ -64,6 +64,8 @@ class RedisStoreClient : public StoreClient {
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
+  int GetNextJobID() override;
+
  private:
   /// \class RedisScanner
   /// This class is used to scan data from Redis.
@@ -112,9 +114,12 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
 
-  static std::unordered_map<RedisContext *, std::vector<std::string>> GenCommandsByShards(
-      const std::shared_ptr<RedisClient> &redis_client, const std::string &command,
-      const std::vector<std::string> &keys);
+  /// The return value is a map, whose key is the shard and the value is a list of batch
+  /// operations.
+  static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                      const std::string &command, const std::vector<std::string> &keys,
+                      int *count);
 
   /// The separator is used when building redis key.
   static std::string table_separator_;

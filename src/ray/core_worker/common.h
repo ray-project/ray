@@ -25,7 +25,6 @@
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
-using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -55,8 +54,15 @@ class RayFunction {
 struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name, int num_returns,
-              std::unordered_map<std::string, double> &resources)
-      : name(name), num_returns(num_returns), resources(resources) {}
+              std::unordered_map<std::string, double> &resources,
+              const std::string &serialized_runtime_env = "{}",
+              const std::unordered_map<std::string, std::string>
+                  &override_environment_variables = {})
+      : name(name),
+        num_returns(num_returns),
+        resources(resources),
+        serialized_runtime_env(serialized_runtime_env),
+        override_environment_variables(override_environment_variables) {}
 
   /// The name of this task.
   std::string name;
@@ -64,6 +70,12 @@ struct TaskOptions {
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  // Runtime Env used by this task.  Propagated to child actors and tasks.
+  std::string serialized_runtime_env;
+  /// Environment variables to update for this task.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
 /// Options for actor creation tasks.
@@ -75,7 +87,11 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
+      BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      bool placement_group_capture_child_tasks = true,
+      const std::string &serialized_runtime_env = "{}",
+      const std::unordered_map<std::string, std::string> &override_environment_variables =
+          {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -85,7 +101,10 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
-        placement_options(placement_options){};
+        placement_options(placement_options),
+        placement_group_capture_child_tasks(placement_group_capture_child_tasks),
+        serialized_runtime_env(serialized_runtime_env),
+        override_environment_variables(override_environment_variables){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -116,7 +135,16 @@ struct ActorCreationOptions {
   /// The placement_options include placement_group_id and bundle_index.
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
-  PlacementOptions placement_options;
+  BundleID placement_options;
+  /// When true, the child task will always scheduled on the same placement group
+  /// specified in the PlacementOptions.
+  bool placement_group_capture_child_tasks = true;
+  // Runtime Env used by this actor.  Propagated to child actors and tasks.
+  std::string serialized_runtime_env;
+  /// Environment variables to update for this actor.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -124,8 +152,11 @@ using PlacementStrategy = rpc::PlacementStrategy;
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
       std::string name, PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles)
-      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
+      std::vector<std::unordered_map<std::string, double>> bundles, bool is_detached)
+      : name(std::move(name)),
+        strategy(strategy),
+        bundles(std::move(bundles)),
+        is_detached(is_detached) {}
 
   /// The name of the placement group.
   const std::string name;
@@ -133,6 +164,49 @@ struct PlacementGroupCreationOptions {
   const PlacementStrategy strategy = rpc::PACK;
   /// The resource bundles in this placement group.
   const std::vector<std::unordered_map<std::string, double>> bundles;
+  /// Whether to keep the placement group persistent after its creator dead.
+  const bool is_detached = false;
+};
+
+class ObjectLocation {
+ public:
+  ObjectLocation(NodeID primary_node_id, uint64_t object_size,
+                 std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+                 NodeID spilled_node_id)
+      : primary_node_id_(primary_node_id),
+        object_size_(object_size),
+        node_ids_(std::move(node_ids)),
+        is_spilled_(is_spilled),
+        spilled_url_(std::move(spilled_url)),
+        spilled_node_id_(spilled_node_id) {}
+
+  const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
+
+  const uint64_t GetObjectSize() const { return object_size_; }
+
+  const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
+
+  bool IsSpilled() const { return is_spilled_; }
+
+  const std::string &GetSpilledURL() const { return spilled_url_; }
+
+  const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
+
+ private:
+  /// The ID of the node has the primary copy of the object.
+  /// Nil if the object is pending resolution.
+  const NodeID primary_node_id_;
+  /// The size of the object in bytes.
+  const uint64_t object_size_;
+  /// The IDs of the nodes that this object appeared on or was evicted by.
+  const std::vector<NodeID> node_ids_;
+  /// Whether this object has been spilled.
+  const bool is_spilled_;
+  /// If spilled, the URL of this object's spill location.
+  const std::string spilled_url_;
+  /// If spilled, the ID of the node that spilled the object. Nil if the object was
+  /// spilled to distributed external storage.
+  const NodeID spilled_node_id_;
 };
 
 }  // namespace ray

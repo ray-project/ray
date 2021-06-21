@@ -14,7 +14,7 @@
 
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
-int64_t StringIdMap::Get(const std::string &string_id) {
+int64_t StringIdMap::Get(const std::string &string_id) const {
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
@@ -23,7 +23,7 @@ int64_t StringIdMap::Get(const std::string &string_id) {
   }
 };
 
-std::string StringIdMap::Get(uint64_t id) {
+std::string StringIdMap::Get(uint64_t id) const {
   std::string id_string;
   auto it = int_to_string_.find(id);
   if (it == int_to_string_.end()) {

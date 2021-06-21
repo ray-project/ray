@@ -97,6 +97,12 @@ extern jclass java_ray_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
+/// RayActorCreationTaskException class
+extern jclass java_ray_actor_exception_class;
+
+/// toBytes method of RayException
+extern jmethodID java_ray_exception_to_bytes;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
@@ -106,6 +112,11 @@ extern jmethodID java_jni_exception_util_get_stack_trace;
 extern jclass java_base_id_class;
 /// getBytes method of BaseId class
 extern jmethodID java_base_id_get_bytes;
+
+/// AbstractMessageLite class
+extern jclass java_abstract_message_lite_class;
+/// toByteArray method of AbstractMessageLite class
+extern jmethodID java_abstract_message_lite_to_byte_array;
 
 /// FunctionDescriptor interface
 extern jclass java_function_descriptor_class;
@@ -123,6 +134,8 @@ extern jmethodID java_language_get_number;
 extern jclass java_function_arg_class;
 /// id field of FunctionArg class
 extern jfieldID java_function_arg_id;
+/// ownerAddress field of FunctionArg class
+extern jfieldID java_function_arg_owner_address;
 /// value field of FunctionArg class
 extern jfieldID java_function_arg_value;
 
@@ -135,6 +148,10 @@ extern jfieldID java_base_task_options_resources;
 extern jclass java_call_options_class;
 /// name field of CallOptions class
 extern jfieldID java_call_options_name;
+/// group field of CallOptions class
+extern jfieldID java_task_creation_options_group;
+/// bundleIndex field of CallOptions class
+extern jfieldID java_task_creation_options_bundle_index;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -152,6 +169,21 @@ extern jfieldID java_actor_creation_options_max_concurrency;
 extern jfieldID java_actor_creation_options_group;
 /// bundleIndex field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_bundle_index;
+
+/// PlacementGroupCreationOptions class
+extern jclass java_placement_group_creation_options_class;
+/// PlacementStrategy class
+extern jclass java_placement_group_creation_options_strategy_class;
+/// global field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_global;
+/// name field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_name;
+/// bundles field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_bundles;
+/// strategy field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_strategy;
+/// value method of PlacementStrategy class
+extern jmethodID java_placement_group_creation_options_strategy_value;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -179,6 +211,11 @@ extern jclass java_task_executor_class;
 extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// NativeTaskExecutor class
+extern jclass java_native_task_executor_class;
+/// onWorkerShutdown method of NativeTaskExecutor class
+extern jmethodID java_native_task_executor_on_worker_shutdown;
 
 /// PlacementGroup class
 extern jclass java_placement_group_class;
@@ -528,12 +565,45 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 
-// Return an actor fullname with job id prepended if this tis a global actor.
-inline std::string GetActorFullName(bool global, std::string name) {
+/// Convert a Java protobuf object to a C++ protobuf object
+template <typename NativeT>
+inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject java_obj) {
+  NativeT native_obj;
+  if (java_obj) {
+    jbyteArray bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(java_obj, java_abstract_message_lite_to_byte_array));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK(bytes != nullptr);
+    auto buffer = JavaByteArrayToNativeBuffer(env, bytes);
+    RAY_CHECK(buffer);
+    native_obj.ParseFromArray(buffer->Data(), buffer->Size());
+    // Destroy the buffer before deleting the local ref of `bytes`. We need to make sure
+    // that `bytes` is still available when invoking the destructor of
+    // `JavaByteArrayBuffer`.
+    buffer.reset();
+    env->DeleteLocalRef(bytes);
+  }
+  return native_obj;
+}
+
+// Return an actor or a placement group fullname with job id prepended if this is a global
+// actor or placement group.
+inline std::string GetFullName(bool global, std::string name) {
   if (name.empty()) {
     return "";
   }
   return global ? name
                 : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
                       "-" + name;
+}
+
+inline std::shared_ptr<ray::LocalMemoryBuffer> SerializeActorCreationException(
+    JNIEnv *env, jthrowable creation_exception) {
+  jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
+      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+  int len = env->GetArrayLength(exception_jbyte_array);
+  auto buf = std::make_shared<ray::LocalMemoryBuffer>(len);
+  env->GetByteArrayRegion(exception_jbyte_array, 0, len,
+                          reinterpret_cast<jbyte *>(buf->Data()));
+  return buf;
 }

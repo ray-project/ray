@@ -5,9 +5,7 @@ import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Hello world.
- */
+/** Hello world. */
 public class HelloWorldTest extends BaseTest {
 
   private static String hello() {
@@ -29,5 +27,4 @@ public class HelloWorldTest extends BaseTest {
     String helloWorld = Ray.task(HelloWorldTest::merge, hello, world).remote().get();
     Assert.assertEquals("hello,world!", helloWorld);
   }
-
 }

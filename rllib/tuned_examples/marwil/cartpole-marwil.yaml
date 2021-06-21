@@ -16,8 +16,6 @@ cartpole-marwil:
         evaluation_interval: 1
         evaluation_config:
             input: sampler
-        # Compare IL (beta=0) vs MARWIL.
-        beta:
-            grid_search: [0, 1]
+        beta: 1.0  # Compare to behavior cloning (beta=0.0).
         # The historic (offline) data file from the PPO run (at the top).
         input: /tmp/out

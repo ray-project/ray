@@ -21,11 +21,9 @@ package io.ray.streaming.state.serialization.impl;
 import io.ray.streaming.state.serialization.KeyMapStoreSerializer;
 import io.ray.streaming.state.serialization.Serializer;
 
-/**
- * Default Key Map Serialization and Deserialization.
- */
-public class DefaultKeyMapStoreSerializer<K, S, T> extends AbstractSerialization implements
-    KeyMapStoreSerializer<K, S, T> {
+/** Default Key Map Serialization and Deserialization. */
+public class DefaultKeyMapStoreSerializer<K, S, T> extends AbstractSerialization
+    implements KeyMapStoreSerializer<K, S, T> {
 
   @Override
   public byte[] serializeKey(K key) {

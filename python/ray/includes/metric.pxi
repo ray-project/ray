@@ -50,7 +50,8 @@ cdef class Metric:
         # Default tags will be exported if it's empty map.
         if tags:
             for tag_k, tag_v in tags.items():
-                c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
+                if tag_v is not None:
+                    c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
         c_value = value
         with nogil:
             self.metric.get().Record(c_value, c_tags)
@@ -69,20 +70,18 @@ cdef class Gauge(Metric):
         >>> gauge = Gauge(
                 "ray.worker.metric",
                 "description",
-                "unit",
                 ["tagk1", "tagk2"]).
             value = 5
             key1= "key1"
             key2 = "key2"
             gauge.record(value, {"tagk1": key1, "tagk2": key2})
     """
-    def __init__(self, name, description, unit, tag_keys):
+    def __init__(self, name, description, tag_keys):
         """Create a gauge metric
 
         Args:
             name (string): metric name.
             description (string): description of this metric.
-            unit (string): measure unit of this metric.
             tag_keys (list): a list of tay keys in string format.
         """
         super().__init__(tag_keys)
@@ -91,7 +90,7 @@ cdef class Gauge(Metric):
             new CGauge(
                 name.encode("ascii"),
                 description.encode("ascii"),
-                unit.encode("ascii"),
+                b"",  # Unit, unused.
                 self.c_tag_keys
             )
         )
@@ -105,7 +104,6 @@ cdef class Count(Metric):
         >>> count = Count(
                 "ray.worker.metric",
                 "description",
-                "unit",
                 ["tagk1", "tagk2"]).
             value = 5
             key1= "key1"
@@ -115,13 +113,12 @@ cdef class Count(Metric):
 
        Count: The count of the number of metric points.
     """
-    def __init__(self, name, description, unit, tag_keys):
+    def __init__(self, name, description, tag_keys):
         """Create a count metric
 
         Args:
             name (string): metric name.
             description (string): description of this metric.
-            unit (string): measure unit of this metric.
             tag_keys (list): a list of tay keys in string format.
         """
         super().__init__(tag_keys)
@@ -130,7 +127,7 @@ cdef class Count(Metric):
             new CCount(
                 name.encode("ascii"),
                 description.encode("ascii"),
-                unit.encode("ascii"),
+                b"",  # Unit, unused.
                 self.c_tag_keys
             )
         )
@@ -144,7 +141,6 @@ cdef class Sum(Metric):
         >>> metric_sum = Sum(
                 "ray.worker.metric",
                 "description",
-                "unit",
                 ["tagk1", "tagk2"]).
             value = 5
             key1= "key1"
@@ -154,13 +150,12 @@ cdef class Sum(Metric):
 
        Sum: A sum up of the metric points.
     """
-    def __init__(self, name, description, unit, tag_keys):
+    def __init__(self, name, description, tag_keys):
         """Create a sum metric
 
         Args:
             name (string): metric name.
             description (string): description of this metric.
-            unit (string): measure unit of this metric.
             tag_keys (list): a list of tay keys in string format.
         """
 
@@ -170,7 +165,7 @@ cdef class Sum(Metric):
             new CSum(
                 name.encode("ascii"),
                 description.encode("ascii"),
-                unit.encode("ascii"),
+                b"",  # Unit, unused.
                 self.c_tag_keys
             )
         )
@@ -183,8 +178,7 @@ cdef class Histogram(Metric):
 
         >>> histogram = Histogram(
                 "ray.worker.histogram1",
-                "desciprtion",
-                "unit",
+                "description",
                 [1.0, 2.0], # boundaries.
                 ["tagk1"])
             value = 5
@@ -194,13 +188,12 @@ cdef class Histogram(Metric):
 
        Histogram: Histogram distribution of metric points.
     """
-    def __init__(self, name, description, unit, boundaries, tag_keys):
+    def __init__(self, name, description, boundaries, tag_keys):
         """Create a sum metric
 
         Args:
             name (string): metric name.
             description (string): description of this metric.
-            unit (string): measure unit of this metric.
             boundaries (list): a double type list boundaries of histogram.
             tag_keys (list): a list of tay key in string format.
         """
@@ -215,7 +208,7 @@ cdef class Histogram(Metric):
             new CHistogram(
                 name.encode("ascii"),
                 description.encode("ascii"),
-                unit.encode("ascii"),
+                b"",  # Unit, unused.
                 c_boundaries,
                 self.c_tag_keys
             )

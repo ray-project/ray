@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 #include "message/message.h"
 #include "ray/util/logging.h"
-#include "ring_buffer.h"
+#include "ring_buffer/ring_buffer.h"
 
 using namespace ray;
 using namespace ray::streaming;
@@ -28,8 +28,8 @@ TEST(StreamingRingBufferTest, streaming_message_ring_buffer_test) {
     while (!ring_buffer.IsEmpty()) {
       StreamingMessagePtr message_ptr = ring_buffer.Front();
       ring_buffer.Pop();
-      EXPECT_EQ(message_ptr->GetDataSize(), 3);
-      EXPECT_EQ(*(message_ptr->RawData()), th++);
+      EXPECT_EQ(message_ptr->PayloadSize(), 3);
+      EXPECT_EQ(*(message_ptr->Payload()), th++);
     }
   }
 }
@@ -52,7 +52,7 @@ TEST(StreamingRingBufferTest, spsc_test) {
     while (ring_buffer.IsEmpty()) {
     }
     auto &msg = ring_buffer.Front();
-    EXPECT_EQ(std::memcmp(msg->RawData(), &count, sizeof(size_t)), 0);
+    EXPECT_EQ(std::memcmp(msg->Payload(), &count, sizeof(size_t)), 0);
     ring_buffer.Pop();
     count++;
   }
@@ -78,7 +78,7 @@ TEST(StreamingRingBufferTest, mutex_test) {
     while (ring_buffer.IsEmpty()) {
     }
     auto msg = ring_buffer.Front();
-    EXPECT_EQ(std::memcmp(msg->RawData(), &count, sizeof(size_t)), 0);
+    EXPECT_EQ(std::memcmp(msg->Payload(), &count, sizeof(size_t)), 0);
     ring_buffer.Pop();
     count++;
   }

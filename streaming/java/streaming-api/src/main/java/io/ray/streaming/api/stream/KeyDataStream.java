@@ -60,5 +60,4 @@ public class KeyDataStream<K, T> extends DataStream<T> {
   public PythonKeyDataStream asPythonStream() {
     return new PythonKeyDataStream(this);
   }
-
 }

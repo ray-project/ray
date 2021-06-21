@@ -1,10 +1,12 @@
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.utils.deprecation import deprecation_warning, \
-    DEPRECATED_VALUE
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -147,24 +149,23 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # Deprecated keys.
-    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
             "was specified.")
         config["use_state_preprocessor"] = True
-
-    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("grad_norm_clipping", "grad_clip")
-        config["grad_clip"] = config.pop("grad_norm_clipping")
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
@@ -176,8 +177,22 @@ def validate_config(config):
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
 
+    if config["simple_optimizer"] != DEPRECATED_VALUE or \
+            config["simple_optimizer"] is False:
+        logger.warning("`simple_optimizer` must be True (or unset) for DDPG!")
+        config["simple_optimizer"] = True
 
-def get_policy_class(config):
+
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy

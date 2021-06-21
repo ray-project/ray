@@ -21,13 +21,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-# Ideally, we could include these files by putting them in a
-# MANIFEST.in or using the package_data argument to setup, but the
-# MANIFEST.in gets applied at the very beginning when setup.py runs
-# before these files have been created, so we have to move the files
-# manually.
-
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -47,18 +41,24 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
                "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
 
+# Ideally, we could include these files by putting them in a
+# MANIFEST.in or using the package_data argument to setup, but the
+# MANIFEST.in gets applied at the very beginning when setup.py runs
+# before these files have been created, so we have to move the files
+# manually.
+
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
 ]
 
-if BUILD_JAVA:
+if BUILD_JAVA or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
@@ -68,69 +68,58 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = ["ray/nightly-wheels.yaml"]
+ray_files.append("ray/nightly-wheels.yaml")
 
-ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
-    "ray/autoscaler/azure/azure-vm-template.json",
-    "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
-    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/ray-schema.json"
+# Autoscaler files.
+ray_files += [
+    "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/_private/azure/azure-vm-template.json",
+    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/gcp/defaults.yaml",
+    "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
+    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/staroid/defaults.yaml",
+    "ray/autoscaler/ray-schema.json",
 ]
 
-ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
-    "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
+# Dashboard files.
+ray_files += [
+    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+    os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
-
-ray_dashboard_files = [
-    os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
-    for filename in filenames
-]
-
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-optional_ray_files += ray_dashboard_files
-
-if os.getenv("RAY_USE_NEW_GCS") == "on":
-    ray_files += [
-        "ray/core/src/credis/build/src/libmember.so",
-        "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
-    ]
 
 # If you're adding dependencies for ray extras, please
-# also update the matching section of requirements.txt
+# also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "debug": [],
-    "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "default": ["colorful"],
+    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "k8s": ["kubernetes"],
+    "observability": [
+        "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+        "opentelemetry-exporter-otlp==1.1.0"
+    ]
 }
+if sys.version_info >= (3, 7, 0):
+    extras["k8s"].append("kopf")
 
 extras["rllib"] = extras["tune"] + [
-    "atari_py",
     "dm_tree",
-    "gym[atari]",
+    "gym",
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
     "scipy",
 ]
 
-extras["streaming"] = []
-
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
-# the change in the matching section of requirements.txt
+# the change in the matching section of requirements/requirements.txt
 install_requires = [
     # TODO(alex) Pin the version once this PR is
     # included in the stable release.
@@ -140,19 +129,20 @@ install_requires = [
     "aioredis",
     "click >= 7.0",
     "colorama",
-    "colorful",
+    "dataclasses; python_version < '3.7'",
     "filelock",
-    "google",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.8.0",
+    "numpy >= 1.16; python_version < '3.9'",
+    "numpy >= 1.19.3; python_version >= '3.9'",
+    "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
+    "pydantic >= 1.8",
     "pyyaml",
     "requests",
-    "redis >= 3.3.2, < 3.5.0",
+    "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
 ]
@@ -176,7 +166,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
@@ -278,7 +269,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle"]
+        pip_packages = ["psutil", "setproctitle==1.2.2"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -314,22 +305,24 @@ def walk_directory(directory):
     return file_list
 
 
-def move_file(target_dir, filename):
+def copy_file(target_dir, filename, rootdir):
     # TODO(rkn): This feels very brittle. It may not handle all cases. See
     # https://github.com/apache/arrow/blob/master/python/setup.py for an
     # example.
-    source = filename
-    destination = os.path.join(target_dir, filename)
+    # File names can be absolute paths, e.g. from walk_directory().
+    source = os.path.relpath(filename, rootdir)
+    destination = os.path.join(target_dir, source)
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
-        print("Copying {} to {}.".format(source, destination))
         if sys.platform == "win32":
             # Does not preserve file mode (needed to avoid read-only bit)
             shutil.copyfile(source, destination, follow_symlinks=True)
         else:
             # Preserves file mode (needed to copy executable bit)
             shutil.copy(source, destination, follow_symlinks=True)
+        return 1
+    return 0
 
 
 def find_version(*filepath):
@@ -361,16 +354,11 @@ def pip_run(build_ext):
             if filename[-3:] == ".py":
                 files_to_include.append(os.path.join(directory, filename))
 
+    copied_files = 0
     for filename in files_to_include:
-        move_file(build_ext.build_lib, filename)
-
-    # Try to copy over the optional files.
-    for filename in optional_ray_files:
-        try:
-            move_file(build_ext.build_lib, filename)
-        except Exception:
-            print("Failed to copy optional file {}. This is ok."
-                  .format(filename))
+        copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
+    print("# of files copied to {}: {}".format(build_ext.build_lib,
+                                               copied_files))
 
 
 def api_main(program, *args):
@@ -446,26 +434,35 @@ setuptools.setup(
     version=find_version("ray", "__init__.py"),
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("A system for parallel and distributed Python that "
-                 "unifies the ML ecosystem."),
+    description=("Ray provides a simple, universal API for building "
+                 "distributed applications."),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
         encoding="utf-8").read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning "
-              "reinforcement-learning deep-learning python"),
+    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
+              "reinforcement-learning deep-learning serving python"),
+    classifiers=[
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=install_requires,
-    setup_requires=["cython >= 0.29.14", "wheel"],
+    setup_requires=["cython >= 0.29.15", "wheel"],
     extras_require=extras,
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.ray_operator.operator:main",
+            "serve=ray.serve.scripts:cli",
         ]
     },
     include_package_data=True,

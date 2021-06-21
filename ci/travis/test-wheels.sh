@@ -22,7 +22,8 @@ if [ -z "${BUILD_DIR}" ]; then
 fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
-UI_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_webui.py"
+DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
+
 
 function retry {
   local n=1
@@ -71,20 +72,18 @@ if [[ "$platform" == "linux" ]]; then
     "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp google grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
         retry "$PYTHON_EXE" "$SCRIPT"
     done
-
-    # Run the UI test to make sure that the packaged UI works.
-    retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
+    retry "$PYTHON_EXE" "$DASHBOARD_TEST_SCRIPT"
   done
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS="$(find "$ROOT_DIR"/../../.whl/ -mindepth 1 -maxdepth 1 -name "*.whl" | wc -l)"
-  if [[ "$NUMBER_OF_WHEELS" != "3" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l "$ROOT_DIR/../.whl/"
     exit 2
@@ -92,10 +91,11 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
   PY_MMS=("3.6"
           "3.7"
-          "3.8")
+          "3.8"
+          "3.9")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
@@ -112,18 +112,12 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp google grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
       retry "$PYTHON_EXE" "$SCRIPT"
     done
-
-    if (( $(echo "$PY_MM >= 3.0" | bc) )); then
-      # Run the UI test to make sure that the packaged UI works.
-      retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
-    fi
-
   done
 elif [ "${platform}" = windows ]; then
   echo "WARNING: Wheel testing not yet implemented for Windows."

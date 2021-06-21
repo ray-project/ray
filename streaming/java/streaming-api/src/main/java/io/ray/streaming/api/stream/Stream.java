@@ -19,8 +19,7 @@ import java.util.Map;
  * @param <S> Type of stream class
  * @param <T> Type of the data in the stream.
  */
-public abstract class Stream<S extends Stream<S, T>, T>
-    implements Serializable {
+public abstract class Stream<S extends Stream<S, T>, T> implements Serializable {
 
   private final int id;
   private final StreamingContext streamingContext;
@@ -36,14 +35,15 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   public Stream(
-      StreamingContext streamingContext,
-      StreamOperator streamOperator,
-      Partition<T> partition) {
+      StreamingContext streamingContext, StreamOperator streamOperator, Partition<T> partition) {
     this(streamingContext, null, streamOperator, partition);
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator) {
-    this(inputStream.getStreamingContext(), inputStream, streamOperator,
+    this(
+        inputStream.getStreamingContext(),
+        inputStream,
+        streamOperator,
         getForwardPartition(streamOperator));
   }
 
@@ -87,8 +87,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
       case JAVA:
         return new ForwardPartition<>();
       default:
-        throw new UnsupportedOperationException(
-            "Unsupported language " + operator.getLanguage());
+        throw new UnsupportedOperationException("Unsupported language " + operator.getLanguage());
     }
   }
 
@@ -169,18 +168,14 @@ public abstract class Stream<S extends Stream<S, T>, T>
     return originalStream;
   }
 
-  /**
-   * Set chain strategy for this stream
-   */
+  /** Set chain strategy for this stream */
   public S withChainStrategy(ChainStrategy chainStrategy) {
     Preconditions.checkArgument(!isProxyStream());
     operator.setChainStrategy(chainStrategy);
     return self();
   }
 
-  /**
-   * Disable chain for this stream
-   */
+  /** Disable chain for this stream */
   public S disableChain() {
     return withChainStrategy(ChainStrategy.NEVER);
   }

@@ -3,24 +3,21 @@ PyTorch policy class used for PPO.
 """
 import gym
 import logging
-import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
@@ -45,12 +42,13 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch, is_training=True)
+    logits, state = model(train_batch)
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = torch.max(train_batch["seq_lens"])
+        B = len(train_batch["seq_lens"])
+        max_seq_len = logits.shape[0] // B
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,
@@ -85,7 +83,8 @@ def ppo_surrogate_loss(
             1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
-    if policy.config["use_gae"]:
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
         vf_loss1 = torch.pow(
@@ -97,20 +96,21 @@ def ppo_surrogate_loss(
             vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+    # Ignore the value function.
     else:
-        mean_vf_loss = 0.0
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       policy.kl_coeff * action_kl -
-                                       policy.entropy_coeff * curr_entropy)
+        vf_loss = mean_vf_loss = 0.0
+
+    total_loss = reduce_mean_valid(-surrogate_loss +
+                                   policy.kl_coeff * action_kl +
+                                   policy.config["vf_loss_coeff"] * vf_loss -
+                                   policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
+    policy._vf_explained_var = explained_variance(
+        train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
@@ -134,9 +134,7 @@ def kl_and_loss_stats(policy: Policy,
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+        "vf_explained_var": policy._vf_explained_var,
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
@@ -168,7 +166,7 @@ def vf_preds_fetches(
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function(),
+        SampleBatch.VF_PREDS: model.value_function(),
     }
 
 
@@ -211,27 +209,21 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
 
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob]), self.device),
-                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action]), self.device),
-                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward]), self.device),
-                    "is_training": False,
-                }, [
-                    convert_to_torch_tensor(np.asarray([s]), self.device)
-                    for s in state
-                ], convert_to_torch_tensor(np.asarray([1]), self.device))
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                input_dict = self._lazy_tensor_dict(input_dict)
+                model_out, _ = self.model(input_dict)
                 # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                return self.model.value_function()[0].item()
 
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value
@@ -255,49 +247,21 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def training_view_requirements_fn(
-        policy: Policy) -> Dict[str, ViewRequirement]:
-    """Function defining the view requirements for training the policy.
-
-    These go on top of the Policy's Model's own view requirements used for
-    action computing forward passes.
-
-    Args:
-        policy (Policy): The Policy that requires the returned
-            ViewRequirements.
-
-    Returns:
-        Dict[str, ViewRequirement]: The Policy's view requirements.
-    """
-    return {
-        # Next obs are needed for PPO postprocessing.
-        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
-        # VF preds are needed for the loss.
-        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
-        # Needed for postprocessing.
-        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
-        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
-        # Created during postprocessing.
-        Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
-        Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-    }
-
-
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-PPOTorchPolicy = build_torch_policy(
+PPOTorchPolicy = build_policy_class(
     name="PPOTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    training_view_requirements_fn=training_view_requirements_fn,
 )

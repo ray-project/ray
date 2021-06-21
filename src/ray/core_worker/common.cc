@@ -22,8 +22,12 @@ std::string WorkerTypeString(WorkerType type) {
     return "driver";
   } else if (type == WorkerType::WORKER) {
     return "worker";
-  } else if (type == WorkerType::IO_WORKER) {
-    return "io_worker";
+  } else if (type == WorkerType::SPILL_WORKER) {
+    return "spill_worker";
+  } else if (type == WorkerType::RESTORE_WORKER) {
+    return "restore_worker";
+  } else if (type == WorkerType::UTIL_WORKER) {
+    return "util_worker";
   }
   RAY_CHECK(false);
   return "";

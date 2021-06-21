@@ -8,7 +8,7 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
-from ray.utils import binary_to_hex, hex_to_binary
+from ray._private.utils import binary_to_hex, hex_to_binary
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,10 @@ def RunnerHandler(runner):
             resource["trials"] = []
             trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
-            for trial in trial_generator.next_trials():
+            while not trial_generator.is_finished():
+                trial = trial_generator.next_trial()
+                if not trial:
+                    break
                 runner.add_trial(trial)
                 resource["trials"].append(self._trial_info(trial))
             return resource

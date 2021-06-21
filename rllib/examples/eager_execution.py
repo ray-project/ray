@@ -1,4 +1,5 @@
 import argparse
+import os
 import random
 
 import ray
@@ -14,10 +15,26 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=150)
-parser.add_argument("--as-test", action="store_true")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
@@ -64,10 +81,13 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {
             "custom_model": "eager_model"
         },
+        # Alternatively, use "tf2" here for enforcing TF version 2.x.
         "framework": "tfe",
     }
     stop = {
@@ -76,7 +96,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config)
+    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

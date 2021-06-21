@@ -5,13 +5,13 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp
+aiohttp==3.7
 aioredis
 click >= 7.0
+cloudpickle
 colorama
 colorful
 filelock
-google
 gpustat
 grpcio >= 1.28.1
 jsonschema
@@ -21,32 +21,35 @@ opencensus
 prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
+pydantic >= 1.8
 pyyaml
-redis >= 3.3.2, < 3.5.0
+redis >= 3.5.0
 requests
 
 ## setup.py extras
-atari_py
 dm_tree
 flask
-gym[atari]
+gym
 lz4
 opencv-python-headless==4.3.0.36
 pandas==1.0.5
 scipy==1.4.1
 tabulate
-tensorboardX
+tensorboardX >= 1.9
 uvicorn
-pydantic
-dataclasses
+dataclasses; python_version < '3.7'
+starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
+azure-common
+azure-mgmt-resource
+msrestazure
 boto3
-cython==0.29.0
-dataclasses
-dask[complete]
+cython >= 0.29.15
+dataclasses; python_version < '3.7'
 feather-format
+google-api-python-client
 gym
 gym-minigrid
 kubernetes
@@ -55,8 +58,13 @@ moto
 mypy
 networkx
 numba
+# higher version of llvmlite breaks windows
+llvmlite==0.34.0
 openpyxl
-pettingzoo
+opentelemetry-api==1.1.0
+opentelemetry-sdk==1.1.0
+opentelemetry-exporter-otlp==1.1.0
+pexpect
 Pillow; platform_system != "Windows"
 pygments
 pytest==5.4.3
@@ -70,3 +78,10 @@ testfixtures
 werkzeug
 xlrd
 starlette
+fastapi
+smart_open[s3]
+tqdm
+async-exit-stack
+async-generator
+# pyarrow v4.0.0 doesn't work in macOS
+pyarrow==3.0.0

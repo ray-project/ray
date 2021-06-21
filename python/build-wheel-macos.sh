@@ -13,21 +13,24 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("3.6.1"
+NODE_VERSION="14"
+PY_VERSIONS=("3.6.2"
              "3.7.0"
-             "3.8.2")
-PY_INSTS=("python-3.6.1-macosx10.6.pkg"
+             "3.8.2"
+             "3.9.1")
+PY_INSTS=("python-3.6.2-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
-          "python-3.8.2-macosx10.9.pkg")
+          "python-3.8.2-macosx10.9.pkg"
+          "python-3.9.1-macosx10.9.pkg")
 PY_MMS=("3.6"
         "3.7"
-        "3.8")
+        "3.8"
+        "3.9")
 
-# The minimum supported numpy version is 1.14, see
-# https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
-                "1.14.5")
+                "1.14.5"
+                "1.19.3")
 
 ./ci/travis/install-bazel.sh
 
@@ -36,10 +39,12 @@ mkdir -p .whl
 
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
+nvm install $NODE_VERSION
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
-pushd python/ray/dashboard/client
+# TODO(mfitton): switch this back when deleting old dashboard code.
+pushd python/ray/new_dashboard/client
   npm ci
   npm run build
 popd
@@ -53,7 +58,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client
+  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/new_dashboard/client -e dashboard/client
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST

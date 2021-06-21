@@ -46,12 +46,13 @@ class RandomEnv(gym.Env):
                 self.action_space, action))
 
         self.steps += 1
+        done = False
         # We are done as per our max-episode-len.
         if self.max_episode_len is not None and \
                 self.steps >= self.max_episode_len:
             done = True
         # Max not reached yet -> Sample done via p_done.
-        else:
+        elif self.p_done > 0.0:
             done = bool(
                 np.random.choice(
                     [True, False], p=[self.p_done, 1.0 - self.p_done]))

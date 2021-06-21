@@ -495,7 +495,7 @@ void Process::Kill() {
       }
 #endif
       if (error) {
-        RAY_LOG(ERROR) << "Failed to kill process " << pid << " with error " << error
+        RAY_LOG(DEBUG) << "Failed to kill process " << pid << " with error " << error
                        << ": " << error.message();
       }
     } else {

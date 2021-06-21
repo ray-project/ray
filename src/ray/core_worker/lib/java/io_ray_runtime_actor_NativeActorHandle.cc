@@ -29,7 +29,7 @@ extern "C" {
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  const ray::ActorHandle *native_actor_handle =
+  const auto native_actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   return native_actor_handle->ActorLanguage();
 }
@@ -38,7 +38,7 @@ JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  const ray::ActorHandle *native_actor_handle =
+  const auto native_actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
@@ -51,10 +51,8 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
   ObjectID actor_handle_id;
   ray::Status status = ray::CoreWorkerProcess::GetCoreWorker().SerializeActorHandle(
       actor_id, &output, &actor_handle_id);
-  jbyteArray bytes = env->NewByteArray(output.size());
-  env->SetByteArrayRegion(bytes, 0, output.size(),
-                          reinterpret_cast<const jbyte *>(output.c_str()));
-  return bytes;
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return NativeStringToJavaByteArray(env, output);
 }
 
 JNIEXPORT jbyteArray JNICALL

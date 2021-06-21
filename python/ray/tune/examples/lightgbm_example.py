@@ -5,6 +5,7 @@ import sklearn.metrics
 from sklearn.model_selection import train_test_split
 
 from ray import tune
+from ray.tune.schedulers import ASHAScheduler
 
 
 def LightGBMCallback(env):
@@ -33,6 +34,22 @@ def train_breast_cancer(config):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        import ray
+
+        ray.util.connect(args.server_address)
+
     config = {
         "objective": "binary",
         "metric": "binary_error",
@@ -41,9 +58,13 @@ if __name__ == "__main__":
         "num_leaves": tune.randint(10, 1000),
         "learning_rate": tune.loguniform(1e-8, 1e-1)
     }
-    from ray.tune.schedulers import ASHAScheduler
-    tune.run(
+
+    analysis = tune.run(
         train_breast_cancer,
+        metric="binary_error",
+        mode="min",
         config=config,
         num_samples=2,
-        scheduler=ASHAScheduler(metric="binary_error", mode="min"))
+        scheduler=ASHAScheduler())
+
+    print("Best hyperparameters found were: ", analysis.best_config)

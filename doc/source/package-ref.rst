@@ -25,6 +25,10 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. autofunction:: ray.remote_function.RemoteFunction.options
+
+.. autofunction:: ray.actor.ActorClass.options
+
 .. _ray-get-ref:
 
 ray.get
@@ -60,26 +64,20 @@ ray.cancel
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_actor-ref:
+
+
+ray.get_actor
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.get_actor
+
 .. _ray-get_gpu_ids-ref:
 
 ray.get_gpu_ids
 ~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.get_gpu_ids
-
-.. _ray-get_resource_ids-ref:
-
-ray.get_resource_ids
-~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_resource_ids
-
-.. _ray-get_dashboard_url-ref:
-
-ray.get_dashboard_url
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_dashboard_url
 
 .. _ray-shutdown-ref:
 
@@ -99,6 +97,14 @@ ray.util.ActorPool
 ~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.util.ActorPool
+   :members:
+
+ray.util.queue.Queue
+~~~~~~~~~~~~~~~~~~~~
+
+.. _ray-queue-ref:
+
+.. autoclass:: ray.util.queue.Queue
    :members:
 
 .. _ray-nodes-ref:
@@ -129,11 +135,103 @@ ray.available_resources
 
 .. autofunction:: ray.available_resources
 
+ray.cross_language
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.java_function
+
+.. autofunction:: ray.java_actor_class
+
+.. _ray-placement-group-ref:
+
+Placement Group APIs
+--------------------
+
+placement_group
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.placement_group
+
+
+PlacementGroup (class)
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.placement_group.PlacementGroup
+   :members:
+
+placement_group_table
+~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.placement_group_table
+
+
+remove_placement_group
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.remove_placement_group
+
+get_current_placement_group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.get_current_placement_group
+
+.. _custom-metric-api-ref:
+
+Custom Metrics APIs
+-------------------
+
+Counter
+~~~~~~~
+
+.. autoclass:: ray.util.metrics.Counter
+   :members:
+
+Gauge
+~~~~~
+
+.. autoclass:: ray.util.metrics.Gauge
+   :members:
+
+Histogram
+~~~~~~~~~
+
+.. autoclass:: ray.util.metrics.Histogram
+   :members:
+
+.. _runtime-context-apis:
+
+Runtime Context APIs
+--------------------
+
+.. autofunction:: ray.runtime_context.get_runtime_context
+
+.. autoclass:: ray.runtime_context.RuntimeContext
+    :members:
+
+.. _package-ref-debugging-apis:
+
+Debugging APIs
+--------------
+
+.. autofunction:: ray.util.pdb.set_trace
+
+.. autofunction:: ray.util.inspect_serializability
+
 Experimental APIs
 -----------------
 
 .. automodule:: ray.experimental
    :members:
+
+ClientBuilder API
+~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.client
+
+.. autoclass:: ray.ClientBuilder
+   :members:
+
+.. _ray-cli:
 
 The Ray Command Line API
 ------------------------
@@ -202,4 +300,8 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
+   :show-nested:
+
+.. click:: ray.scripts.scripts:debug
+   :prog: ray debug
    :show-nested:

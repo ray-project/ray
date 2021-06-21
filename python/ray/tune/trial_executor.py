@@ -3,6 +3,7 @@ import logging
 
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
+from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class TrialExecutor:
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False):
+    def __init__(self, queue_trials: bool = False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -25,6 +26,7 @@ class TrialExecutor:
         """
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
+        self._trials_to_cache = set()
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -58,21 +60,25 @@ class TrialExecutor:
             return
         try:
             logger.debug("Trial %s: Saving trial metadata.", trial)
-            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+            # Lazy cache trials
+            self._trials_to_cache.add(trial)
         except Exception:
             logger.exception("Trial %s: Error checkpointing trial metadata.",
                              trial)
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
-        return self._cached_trial_state.copy()
+        for trial in self._trials_to_cache:
+            self._cached_trial_state[trial.trial_id] = trial.get_json_state()
+        self._trials_to_cache.clear()
+        return self._cached_trial_state
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None, train=True):
+    def start_trial(self, trial, checkpoint=None, train=True) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
@@ -80,11 +86,14 @@ class TrialExecutor:
             checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
             train (bool): Whether or not to start training.
+
+        Returns:
+            True if trial started successfully, False otherwise.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+    def stop_trial(self, trial, error=False, error_msg=None):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -94,7 +103,7 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            stop_logger (bool): Whether to shut down the trial logger.
+
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
@@ -112,7 +121,7 @@ class TrialExecutor:
         assert trial.status == Trial.RUNNING, trial.status
         try:
             self.save(trial, Checkpoint.MEMORY)
-            self.stop_trial(trial, stop_logger=False)
+            self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")
@@ -160,19 +169,26 @@ class TrialExecutor:
         if self._queue_trials:
             return
         for trial in trial_runner.get_trials():
+            if trial.uses_placement_groups:
+                return
             if trial.status == Trial.PENDING:
-                if not self.has_resources(trial.resources):
+                if not self.has_resources_for_trial(trial):
+                    resource_string = trial.resources.summary_string()
+                    trial_resource_help_msg = trial.get_trainable_cls(
+                    ).resource_help(trial.config)
+                    autoscaling_msg = ""
+                    if is_ray_cluster():
+                        autoscaling_msg = (
+                            "Pass `queue_trials=True` in ray.tune.run() or "
+                            "on the command line to queue trials until the "
+                            "cluster scales up or resources become available. "
+                        )
                     raise TuneError(
-                        ("Insufficient cluster resources to launch trial: "
-                         "trial requested {} but the cluster has only {}. "
-                         "Pass `queue_trials=True` in "
-                         "ray.tune.run() or on the command "
-                         "line to queue trials until the cluster scales "
-                         "up or resources become available. {}").format(
-                             trial.resources.summary_string(),
-                             self.resource_string(),
-                             trial.get_trainable_cls().resource_help(
-                                 trial.config)))
+                        "Insufficient cluster resources to launch trial: "
+                        f"trial requested {resource_string}, but the cluster "
+                        f"has only {self.resource_string()}. "
+                        f"{autoscaling_msg}"
+                        f"{trial_resource_help_msg} ")
             elif trial.status == Trial.PAUSED:
                 raise TuneError("There are paused trials, but no more pending "
                                 "trials with sufficient resources.")
@@ -262,6 +278,14 @@ class TrialExecutor:
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self, trial):
+    def cleanup(self, trial_runner):
         """Ensures that trials are cleaned up after stopping."""
+        pass
+
+    def in_staging_grace_period(self) -> bool:
+        """Returns True if trials have recently been staged."""
+        return False
+
+    def set_max_pending_trials(self, max_pending: int):
+        """Set the maximum number of allowed pending trials."""
         pass

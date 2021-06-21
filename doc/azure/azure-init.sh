@@ -13,17 +13,21 @@ sudo -u "$USERNAME" -i /bin/bash -l -c "conda activate $CONDA_ENV; pip install $
 echo "Setting up service scripts..."
 cat > /home/"$USERNAME"/ray-head.sh << EOM
 #!/bin/bash
+
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
 NUM_GPUS=\`nvidia-smi -L | wc -l\`
 
 ray stop
 ulimit -n 65536
-ray start --head --redis-port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --webui-host 0.0.0.0
+ray start --head --port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --dashboard-host 0.0.0.0
 EOM
 
 cat > /home/"$USERNAME"/ray-worker.sh << EOM
 #!/bin/bash
+
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
 NUM_GPUS=\`nvidia-smi -L | wc -l\`
@@ -42,6 +46,7 @@ EOM
 cat > /home/"$USERNAME"/tensorboard.sh << EOM
 #!/bin/bash
 
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 mkdir -p /home/$USERNAME/ray_results
 

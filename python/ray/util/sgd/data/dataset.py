@@ -84,8 +84,8 @@ class Dataset():
         Returns a single, iterable shard.
         """
         assert i < self.iter.num_shards(), \
-            "Trying to get shard {} but there are only {} shards." + \
-            "Are you sure you called set_num_shards already?".format(
+            "Trying to get shard {} but there are only {} shards. Are you " \
+            "sure you called set_num_shards already?".format(
                 i, self.iter.num_shards()
             )
 

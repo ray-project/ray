@@ -1,0 +1,113 @@
+# an example of configuring a mixed-node-type cluster.
+cluster_name: multi-node-type # name with 'a-z' and '-'
+max_workers: 40
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# Cloud-provider specific configuration.
+provider:
+    type: staroid
+    access_token:
+    account:
+    ske: "Ray cluster"
+    ske_region: "aws us-west2"
+    project: "GITHUB/open-datastudio/ray-cluster:master"
+    image_from_project: true
+    python_version: 3.7.7
+    use_internal_ips: true
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    cpu_2_ondemand:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "false"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-2
+        resources: {"CPU": 2}
+        max_workers: 10
+    cpu_4_ondemand:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "false"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-4
+        resources: {"CPU": 4}
+        max_workers: 10
+    cpu_8_ondemand:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "false"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-8
+        resources: {"CPU": 8}
+        max_workers: 10
+    gpu_1_ondemand:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "false"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: gpu-1
+        resources: {"CPU": 8, "GPU": 1, "accelerator_type:V100": 1}
+        max_workers: 10
+    cpu_2_spot:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "true"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-2
+        resources: {"CPU": 2}
+        max_workers: 10
+    cpu_4_spot:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "true"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-4
+        resources: {"CPU": 4}
+        max_workers: 10
+    cpu_8_spot:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "true"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: standard-8
+        resources: {"CPU": 8}
+        max_workers: 10
+        # worker_setup_commands:
+        #    - pip install tensorflow-gpu  # Example command.
+    gpu_1_spot:
+        node_config:
+            metadata:
+                labels:
+                    pod.staroid.com/spot: "true"
+                    pod.staroid.com/isolation: dedicated
+                    pod.staroid.com/instance-type: gpu-1
+        resources: {"CPU": 8, "GPU": 1, "accelerator_type:V100": 1}
+        max_workers: 10
+
+# Specify the node type of the head node (as configured above).
+head_node_type: cpu_4_ondemand
+
+# The default settings for the head node. This will be merged with the per-node
+# type configs given above.
+#head_node:
+
+# The default settings for worker nodes. This will be merged with the per-node
+# type configs given above.
+#worker_nodes:
+
+idle_timeout_minutes: 5

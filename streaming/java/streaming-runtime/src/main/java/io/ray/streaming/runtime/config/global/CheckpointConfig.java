@@ -3,9 +3,7 @@ package io.ray.streaming.runtime.config.global;
 import io.ray.streaming.runtime.config.Config;
 import org.aeonbits.owner.Mutable;
 
-/**
- * Configurations for checkpointing.
- */
+/** Configurations for checkpointing. */
 public interface CheckpointConfig extends Config, Mutable {
 
   String CP_INTERVAL_SECS = "streaming.checkpoint.interval.secs";

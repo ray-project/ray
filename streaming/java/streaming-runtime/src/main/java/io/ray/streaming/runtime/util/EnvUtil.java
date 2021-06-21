@@ -1,10 +1,12 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.runtime.RayNativeRuntime;
+import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,14 +29,29 @@ public class EnvUtil {
   }
 
   public static void loadNativeLibraries() {
-    // Explicitly load `RayNativeRuntime`, to make sure `core_worker_library_java`
-    // is loaded before `streaming_java`.
-    try {
-      Class.forName(RayNativeRuntime.class.getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     JniUtils.loadLibrary("streaming_java");
   }
 
+  /**
+   * Execute an external command.
+   *
+   * @return Whether the command succeeded.
+   */
+  public static boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
+    try {
+      ProcessBuilder processBuilder =
+          new ProcessBuilder(command)
+              .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+              .redirectError(ProcessBuilder.Redirect.INHERIT);
+      Process process = processBuilder.start();
+      boolean exit = process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
+      if (!exit) {
+        process.destroyForcibly();
+      }
+      return process.exitValue() == 0;
+    } catch (Exception e) {
+      throw new RuntimeException("Error executing command " + String.join(" ", command), e);
+    }
+  }
 }

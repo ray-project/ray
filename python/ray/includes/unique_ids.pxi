@@ -9,10 +9,9 @@ See https://github.com/ray-project/ray/issues/3721.
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
     CActorClassID,
     CActorID,
-    CClientID,
+    CNodeID,
     CConfigID,
     CJobID,
     CFunctionID,
@@ -24,7 +23,7 @@ from ray.includes.unique_ids cimport (
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -32,7 +31,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -63,7 +62,7 @@ cdef class BaseID:
         return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
-        return self.binary() != other.binary()
+        return type(self) != type(other) or self.binary() != other.binary()
 
     def __bytes__(self):
         return self.binary()
@@ -152,6 +151,9 @@ cdef class TaskID(BaseID):
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
 
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
+
     cdef size_t hash(self):
         return self.data.Hash()
 
@@ -199,14 +201,14 @@ cdef class TaskID(BaseID):
             CTaskID.FromBinary(parent_task_id.binary()),
             parent_task_counter).Binary())
 
-cdef class ClientID(UniqueID):
+cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClientID.FromBinary(<c_string>id)
+        self.data = CNodeID.FromBinary(<c_string>id)
 
-    cdef CClientID native(self):
-        return <CClientID>self.data
+    cdef CNodeID native(self):
+        return <CNodeID>self.data
 
 
 cdef class JobID(BaseID):
@@ -257,6 +259,7 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
+
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
@@ -300,14 +303,20 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ActorCheckpointID(UniqueID):
+cdef class ClientActorRef(ActorID):
 
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.FromBinary(<c_string>id)
+    def __init__(self, id: bytes):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
 
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
+    def __dealloc__(self):
+        if client.ray.is_connected() and not self.data.IsNil():
+            client.ray.call_release(self.id)
+
+    @property
+    def id(self):
+        return self.binary()
 
 
 cdef class FunctionID(UniqueID):
@@ -370,10 +379,9 @@ cdef class PlacementGroupID(BaseID):
         return self.data.Hash()
 
 _ID_TYPES = [
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     JobID,
     WorkerID,
     FunctionID,

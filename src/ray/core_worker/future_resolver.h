@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -24,14 +25,19 @@
 
 namespace ray {
 
+using ReportLocalityDataCallback =
+    std::function<void(const ObjectID &, const absl::flat_hash_set<NodeID> &, uint64_t)>;
+
 // Resolve values for futures that were given to us before the value
 // was available. This class is thread-safe.
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
+                 ReportLocalityDataCallback report_locality_data_callback,
                  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
                  const rpc::Address &rpc_address)
       : in_memory_store_(store),
+        report_locality_data_callback_(std::move(report_locality_data_callback)),
         owner_clients_(core_worker_client_pool),
         rpc_address_(rpc_address) {}
 
@@ -45,10 +51,23 @@ class FutureResolver {
   /// future.
   void ResolveFutureAsync(const ObjectID &object_id, const rpc::Address &owner_address);
 
+  /// Process a resolved future. This can be used if we already have the objec
+  /// status and don't need to ask the owner for it right away.
+  ///
+  /// \param[in] object_id The ID of the future to resolve.
+  /// \param[in] status Any error code from the owner obtaining the object status.
+  /// \param[in] object_status The object status.
+  void ProcessResolvedObject(const ObjectID &object_id, const Status &status,
+                             const rpc::GetObjectStatusReply &object_status);
+
  private:
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
+  /// Used to report locality data received during future resolution.
+  const ReportLocalityDataCallback report_locality_data_callback_;
+
+  /// Pool of owner core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> owner_clients_;
 
   /// Address of our RPC server. Used to notify borrowed objects' owners of our

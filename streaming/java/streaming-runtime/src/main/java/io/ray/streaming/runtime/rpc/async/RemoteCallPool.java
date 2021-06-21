@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 public class RemoteCallPool implements Runnable {
 
   private static final Logger LOG = LoggerFactory.getLogger(RemoteCallPool.class);
@@ -30,27 +29,28 @@ public class RemoteCallPool implements Runnable {
       new ConcurrentHashMap<>();
   private Map<RemoteCallBundle, ExceptionHandler<Throwable>> bundleExceptionHandlerMap =
       new ConcurrentHashMap<>();
-  private ThreadPoolExecutor callBackPool = new ThreadPoolExecutor(
-      2, Runtime.getRuntime().availableProcessors(),
-      1, TimeUnit.MINUTES, new LinkedBlockingQueue<>(),
-      new CallbackThreadFactory());
+  private ThreadPoolExecutor callBackPool =
+      new ThreadPoolExecutor(
+          2,
+          Runtime.getRuntime().availableProcessors(),
+          1,
+          TimeUnit.MINUTES,
+          new LinkedBlockingQueue<>(),
+          new CallbackThreadFactory());
   private volatile boolean stop = false;
 
   public RemoteCallPool() {
     Thread t = new Thread(Ray.wrapRunnable(this), "remote-pool-loop");
-    t.setUncaughtExceptionHandler((thread, throwable) ->
-        LOG.error("Error in remote call pool thread.", throwable)
-    );
+    t.setUncaughtExceptionHandler(
+        (thread, throwable) -> LOG.error("Error in remote call pool thread.", throwable));
     t.start();
   }
 
   @SuppressWarnings("unchecked")
   public <T> void bindCallback(
-      ObjectRef<T> obj, Callback<T> callback,
-      ExceptionHandler<Throwable> onException) {
+      ObjectRef<T> obj, Callback<T> callback, ExceptionHandler<Throwable> onException) {
     List objectRefList = Collections.singletonList(obj);
-    RemoteCallBundle bundle = new RemoteCallBundle(objectRefList,
-        true);
+    RemoteCallBundle bundle = new RemoteCallBundle(objectRefList, true);
     singletonHandlerMap.put(bundle, (Callback<Object>) callback);
     bundleExceptionHandlerMap.put(bundle, onException);
     synchronized (pendingObjectBundles) {
@@ -59,7 +59,8 @@ public class RemoteCallPool implements Runnable {
   }
 
   public void bindCallback(
-      List<ObjectRef<Object>> objectBundle, Callback<List<Object>> callback,
+      List<ObjectRef<Object>> objectBundle,
+      Callback<List<Object>> callback,
       ExceptionHandler<Throwable> onException) {
     RemoteCallBundle bundle = new RemoteCallBundle(objectBundle, false);
     bundleHandlerMap.put(bundle, callback);
@@ -99,34 +100,40 @@ public class RemoteCallPool implements Runnable {
 
             ExceptionHandler<Throwable> exceptionHandler = bundleExceptionHandlerMap.get(bundle);
             if (bundle.isSingletonBundle) {
-              callBackPool.execute(Ray.wrapRunnable(() -> {
-                try {
-                  singletonHandlerMap.get(bundle).handle(readyObjs.get(0).get());
-                  singletonHandlerMap.remove(bundle);
-                } catch (Throwable th) {
-                  LOG.error("Error when get object, objectId = {}.", readyObjs.get(0).toString(),
-                      th);
-                  if (exceptionHandler != null) {
-                    exceptionHandler.handle(th);
-                  }
-                }
-              }));
+              callBackPool.execute(
+                  Ray.wrapRunnable(
+                      () -> {
+                        try {
+                          singletonHandlerMap.get(bundle).handle(readyObjs.get(0).get());
+                          singletonHandlerMap.remove(bundle);
+                        } catch (Throwable th) {
+                          LOG.error(
+                              "Error when get object, objectId = {}.",
+                              readyObjs.get(0).toString(),
+                              th);
+                          if (exceptionHandler != null) {
+                            exceptionHandler.handle(th);
+                          }
+                        }
+                      }));
             } else {
               List<Object> results =
                   readyObjs.stream().map(ObjectRef::get).collect(Collectors.toList());
               List<String> resultIds =
                   readyObjs.stream().map(ObjectRef::toString).collect(Collectors.toList());
-              callBackPool.execute(Ray.wrapRunnable(() -> {
-                try {
-                  bundleHandlerMap.get(bundle).handle(results);
-                  bundleHandlerMap.remove(bundle);
-                } catch (Throwable th) {
-                  LOG.error("Error when get object, objectIds = {}.", resultIds, th);
-                  if (exceptionHandler != null) {
-                    exceptionHandler.handle(th);
-                  }
-                }
-              }));
+              callBackPool.execute(
+                  Ray.wrapRunnable(
+                      () -> {
+                        try {
+                          bundleHandlerMap.get(bundle).handle(results);
+                          bundleHandlerMap.remove(bundle);
+                        } catch (Throwable th) {
+                          LOG.error("Error when get object, objectIds = {}.", resultIds, th);
+                          if (exceptionHandler != null) {
+                            exceptionHandler.handle(th);
+                          }
+                        }
+                      }));
             }
             itr.remove();
           }
@@ -185,5 +192,4 @@ public class RemoteCallPool implements Runnable {
       return t;
     }
   }
-
 }

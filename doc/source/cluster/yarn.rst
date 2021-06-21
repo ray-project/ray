@@ -16,7 +16,7 @@ runs an example script on it.
 
 Skein uses a declarative specification (either written as a yaml file or using the Python API) and allows users to launch jobs and scale applications without the need to write Java code.
 
-You will firt need to install Skein: ``pip install skein``.
+You will first need to install Skein: ``pip install skein``.
 
 The Skein ``yaml`` file and example Ray program used here are provided in the
 `Ray repository`_ to get you started. Refer to the provided ``yaml``
@@ -114,7 +114,7 @@ and heap memory to roughly 200 MB. This is conservative and should be set accord
 
 .. code-block:: bash
 
-    ray start --head --redis-port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
+    ray start --head --port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
 
 Execute the user script containing the Ray program.
 
@@ -189,15 +189,6 @@ To clean up a running job, use the following (using the application ID):
 Questions or Issues?
 --------------------
 
-You can post questions or issues or feedback through the following channels:
-
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst
 
 .. _`Skein`: https://jcrist.github.io/skein/

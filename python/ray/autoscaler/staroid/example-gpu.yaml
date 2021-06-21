@@ -1,0 +1,281 @@
+# An unique identifier for the head node and workers of this cluster.
+# A namespace will be automatically created for each cluster_name in SKE.
+cluster_name: default # name with 'a-z' and '-'
+
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+min_workers: 0
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers.
+max_workers: 5
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Kubernetes resources that need to be configured for the autoscaler to be
+# able to manage the Ray cluster. If any of the provided resources don't
+# exist, the autoscaler will attempt to create them. If this fails, you may
+# not have the required permissions and will have to request them to be
+# created by your cluster administrator.
+provider:
+    type: staroid
+
+    # Access token for Staroid from https://staroid.com/settings/accesstokens.
+    # Alternatively, you can set STAROID_ACCESS_TOKEN environment variable.
+    # https://github.com/staroids/staroid-python#configuration
+    # for more information.
+    access_token:
+
+    # Staroid account to use. e.g. GITHUB/staroids
+    # Alternatively, you can set STAROID_ACCOUNT environment variable.
+    # Leave empty to select default account for given access token.
+    # https://github.com/staroids/staroid-python#configuration
+    # for more information.
+    account:
+
+    # Name of a Staroid Kubernetes Engine (SKE) instance.
+    # Alternatively, you can set STAROID_SKE environment variable.
+    # An SKE is a virtualized Kubernetes cluster.
+    # Will create a new if not exists.
+    ske: "Ray cluster"
+
+    # Cloud and Region to create an SKE when not exists.
+    # If SKE already exists, this value will be ignored.
+    # Supported cloud region can be found
+    # https://docs.staroid.com/ske/cloudregion.html.
+    ske_region: "aws us-west2"
+
+    # To create a namespace in SKE, you need to specify a Github project.
+    # The Github project needs to have a staroid.yaml
+    # (https://docs.staroid.com/references/staroid_yaml.html).
+    # staroid.yaml defines various resources for the project, such as
+    #   - Building container images can be accessed from the namespace
+    #   - Kubernetes resources to create (like Persistent volume claim)
+    #     on namespace creation
+    # You can fork when you need to customize.
+    #   1. Fork github.com/open-datastudio/ray-cluster
+    #   2. Change contents
+    #   3. Connect forked repository (https://staroid.com/projects/settings)
+    #   4. Release your customized branch
+    #      4-1. Select project from 'My projects' menu
+    #      4-2. Select your branch in 'Release' tab
+    #      4-3. After build success, switch to 'Production'
+    #      4-4. Switch Launch permission to 'Public' if required
+    #   5. Change 'project' field to point your 
+    #      repository and branch in this file
+    project: "GITHUB/open-datastudio/ray-cluster:master"
+
+    # 'spec.containers.image' field for ray-node and ray-worker will be
+    # overrided by the image built from the 'project' field above.
+    # Set this value to 'false' to not override the image.
+    image_from_project: true
+
+    # Python version to use. One of '3.6.9', '3.7.7', '3.8.3'.
+    # 'project' field above provides docker image for each python version.
+    # Fork 'project' if you'd like to support other python versions.
+    python_version: 3.7.7
+
+    # Exposing external IP addresses for ray pods isn't currently supported.
+    use_internal_ips: true
+
+# Kubernetes pod config for the head node pod.
+head_node:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: ray-head-
+
+        # Must match the head node service selector above if a head node
+        # service is required.
+        labels:
+            component: ray-head
+
+            # Locate this Pod to spot instance or not.
+            # https://docs.staroid.com/ske/pod.html
+            pod.staroid.com/spot: "false" # use on-demand instance for head.
+
+            # Locate ray head to dedicated Kubernetes node or not.
+            # 'sandboxed' (default) or 'dedicated'.
+            pod.staroid.com/isolation: dedicated
+
+            # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
+            # See available instance type from https://docs.staroid.com/ske/pod.html.
+            pod.staroid.com/instance-type: gpu-1
+    spec:
+        automountServiceAccountToken: true
+
+        # Restarting the head node automatically is not currently supported.
+        # If the head node goes down, `ray up` must be run again.
+        restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
+        # nfs volume provides a shared volume across all ray-nodes.
+        - name: nfs-volume
+          persistentVolumeClaim:
+              claimName: nfs
+
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
+          #   - screen (used for `ray attach`)
+          #   - kubectl (used by the autoscaler to manage worker pods)
+          # Image will be overriden when 'image_from_project' is true.
+          image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
+          command: ["/bin/bash", "-c", "--"]
+          args: ["touch ~/.bashrc; trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 6379 # Redis port.
+              - containerPort: 6380 # Redis port.
+              - containerPort: 6381 # Redis port.
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
+              - mountPath: /nfs
+                name: nfs-volume
+          resources:
+              # in case of 'pod.staroid.com/isolation' is 'dedicated',
+              # cpu and memory requests/limits in resources field will be
+              # automatically configured based on
+              # 'pod.staroid.com/instance-type'
+              requests:
+                  cpu: 4000m
+                  memory: 8Gi
+              limits:
+                  cpu: 4000m
+                  # The maximum memory that this pod is allowed to use. The
+                  # limit will be detected by ray and split to use 10% for
+                  # redis, 30% for the shared memory object store, and the
+                  # rest for application memory. If this limit is not set and
+                  # the object store size is not set manually, ray will
+                  # allocate a very large object store in each pod that may
+                  # cause problems for other pods.
+                  memory: 8Gi
+          env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: limits.cpu
+              - name: RAY_ADDRESS
+                value: "auto"
+
+# Kubernetes pod config for worker node pods.
+worker_nodes:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: ray-worker-
+
+        # Must match the worker node service selector above if a worker node
+        # service is required.
+        labels:
+            component: ray-worker
+
+            # Locate this Pod to spot instance or not.
+            # https://docs.staroid.com/ske/pod.html
+            pod.staroid.com/spot: "true" # use on-demand instance for head.
+
+            # Locate ray head to dedicated Kubernetes node or not.
+            # 'sandboxed' (default) or 'dedicated'.
+            pod.staroid.com/isolation: dedicated
+
+            # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
+            # See available instance type from https://docs.staroid.com/ske/pod.html.
+            pod.staroid.com/instance-type: gpu-1
+    spec:
+        serviceAccountName: default
+
+        # Worker nodes will be managed automatically by the head node, so
+        # do not change the restart policy.
+        restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
+        - name: nfs-volume
+          persistentVolumeClaim:
+              claimName: nfs
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
+          image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
+          command: ["/bin/bash", "-c", "--"]
+          args: ["touch ~/.bashrc; trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
+              - mountPath: /nfs
+                name: nfs-volume
+          resources:
+              # in case of 'pod.staroid.com/isolation' is 'dedicated',
+              # cpu and memory requests/limits in resources field will be
+              # automatically configured based on
+              # 'pod.staroid.com/instance-type'
+              requests:
+                  cpu: 4000m
+                  memory: 8Gi
+              limits:
+                  cpu: 4000m
+                  # This memory limit will be detected by ray and split into
+                  # 30% for plasma, and 70% for workers.
+                  memory: 8Gi
+          env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: limits.cpu

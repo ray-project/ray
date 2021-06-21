@@ -28,32 +28,21 @@ public class ResourceManagerImpl implements ResourceManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerImpl.class);
 
-  //Container used tag
+  // Container used tag
   private static final String CONTAINER_ENGAGED_KEY = "CONTAINER_ENGAGED_KEY";
-  /**
-   * Resource description information.
-   */
+  /** Resource description information. */
   private final Resources resources;
-  /**
-   * Timing resource updating thread
-   */
-  private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
-      new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
-  /**
-   * Job runtime context.
-   */
+  /** Timing resource updating thread */
+  private final ScheduledExecutorService resourceUpdater =
+      new ScheduledThreadPoolExecutor(
+          1, new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
+  /** Job runtime context. */
   private JobMasterRuntimeContext runtimeContext;
-  /**
-   * Resource related configuration.
-   */
+  /** Resource related configuration. */
   private ResourceConfig resourceConfig;
-  /**
-   * Slot assign strategy.
-   */
+  /** Slot assign strategy. */
   private ResourceAssignStrategy resourceAssignStrategy;
-  /**
-   * Customized actor number for each container
-   */
+  /** Customized actor number for each container */
   private int actorNumPerContainer;
 
   public ResourceManagerImpl(JobMasterRuntimeContext runtimeContext) {
@@ -62,19 +51,19 @@ public class ResourceManagerImpl implements ResourceManager {
 
     this.resourceConfig = masterConfig.resourceConfig;
     this.resources = new Resources();
-    LOG.info("ResourceManagerImpl begin init, conf is {}, resources are {}.",
-        resourceConfig, resources);
+    LOG.info(
+        "ResourceManagerImpl begin init, conf is {}, resources are {}.", resourceConfig, resources);
 
     // Init custom resource configurations
     this.actorNumPerContainer = resourceConfig.actorNumPerContainer();
 
     ResourceAssignStrategyType resourceAssignStrategyType =
         ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
-    this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
-        resourceAssignStrategyType);
+    this.resourceAssignStrategy =
+        ResourceAssignStrategyFactory.getStrategy(resourceAssignStrategyType);
     LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
 
-    //Init resource
+    // Init resource
     initResource();
 
     checkAndUpdateResourcePeriodically();
@@ -84,8 +73,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
   @Override
   public ResourceAssignmentView assignResource(
-      List<Container> containers,
-      ExecutionGraph executionGraph) {
+      List<Container> containers, ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
 
@@ -105,17 +93,22 @@ public class ResourceManagerImpl implements ResourceManager {
    * system.
    */
   private void checkAndUpdateResource() {
-    //Get add&del nodes(node -> container)
+    // Get add&del nodes(node -> container)
     Map<UniqueId, NodeInfo> latestNodeInfos = RayUtils.getAliveNodeInfoMap();
 
-    List<UniqueId> addNodes = latestNodeInfos.keySet().stream()
-        .filter(this::isAddedNode).collect(Collectors.toList());
+    List<UniqueId> addNodes =
+        latestNodeInfos.keySet().stream().filter(this::isAddedNode).collect(Collectors.toList());
 
-    List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
-        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
-        .collect(Collectors.toList());
-    LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
-        latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
+    List<UniqueId> deleteNodes =
+        resources.getRegisteredContainerMap().keySet().stream()
+            .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
+            .collect(Collectors.toList());
+    LOG.info(
+        "Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
+        latestNodeInfos,
+        resources.getRegisteredContainers(),
+        addNodes,
+        deleteNodes);
 
     if (!addNodes.isEmpty() || !deleteNodes.isEmpty()) {
       LOG.info("Latest node infos from GCS: {}", latestNodeInfos);
@@ -126,8 +119,8 @@ public class ResourceManagerImpl implements ResourceManager {
       unregisterDeletedContainer(deleteNodes);
 
       // register containers
-      registerNewContainers(addNodes.stream().map(latestNodeInfos::get)
-          .collect(Collectors.toList()));
+      registerNewContainers(
+          addNodes.stream().map(latestNodeInfos::get).collect(Collectors.toList()));
     }
   }
 
@@ -152,14 +145,13 @@ public class ResourceManagerImpl implements ResourceManager {
     // failover case: container has already allocated actors
     double availableCapacity = actorNumPerContainer - container.getAllocatedActorNum();
 
-    //Create ray resource.
+    // Create ray resource.
     Ray.setResource(container.getNodeId(), container.getName(), availableCapacity);
-    //Mark container is already registered.
+    // Mark container is already registered.
     Ray.setResource(container.getNodeId(), CONTAINER_ENGAGED_KEY, 1);
 
     // update container's available dynamic resources
-    container.getAvailableResources()
-        .put(container.getName(), availableCapacity);
+    container.getAvailableResources().put(container.getName(), availableCapacity);
 
     // update register container list
     resources.registerContainer(container);
@@ -187,5 +179,4 @@ public class ResourceManagerImpl implements ResourceManager {
   private boolean isAddedNode(UniqueId uniqueId) {
     return !resources.getRegisteredContainerMap().containsKey(uniqueId);
   }
-
 }

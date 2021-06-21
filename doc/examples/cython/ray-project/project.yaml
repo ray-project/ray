@@ -4,7 +4,7 @@ name: ray-example-cython
 
 description: "Example of how to use Cython with ray"
 tags: ["ray-example", "cython"]
-documentation: https://docs.ray.io/en/latest/advanced.html#cython-code-in-ray
+documentation: https://docs.ray.io/en/master/advanced.html#cython-code-in-ray
 
 cluster:
   config: ray-project/cluster.yaml

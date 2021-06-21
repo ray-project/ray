@@ -14,7 +14,11 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "ray/common/buffer.h"
+#include "ray/common/constants.h"
 #include "ray/util/util.h"
+
+#include "msgpack.hpp"
 
 namespace ray {
 
@@ -59,8 +63,8 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
     for (size_t i = 0; i < num_returns; i++) {
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
-      // notify us via the WaitForRefRemoved RPC that we are now a borrower for
-      // the inner IDs. Note that this RPC can be received *before* the
+      // publish the WaitForRefRemoved message that we are now a borrower for
+      // the inner IDs. Note that this message can be received *before* the
       // PushTaskReply.
       reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
@@ -181,9 +185,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
+    RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                   << return_object.size();
 
     if (return_object.in_plasma()) {
-      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
         reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
@@ -265,8 +271,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status) {
+bool TaskManager::PendingTaskFailed(
+    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -301,8 +309,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left != 0) {
     auto retries_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
-                   << ", attempting to resubmit.";
+    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     will_retry = true;
   } else {
@@ -315,8 +323,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
            (current_time_ms() - last_log_time_ms_) >
                kTaskFailureLoggingFrequencyMillis)) {
         if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
-                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                           << kTaskFailureLoggingFrequencyMillis << " millis.";
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
@@ -330,7 +338,9 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    MarkPendingTaskFailed(task_id, spec, error_type);
+    if (immediately_mark_object_fail) {
+      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+    }
   }
 
   ShutdownIfNeeded();
@@ -435,15 +445,42 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
-                                        const TaskSpecification &spec,
-                                        rpc::ErrorType error_type) {
+void TaskManager::MarkPendingTaskFailed(
+    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    if (creation_task_exception != nullptr) {
+      // Structure of bytes stored in object store:
+      // rpc::RayException
+      // ->pb-serialized bytes
+      // ->msgpack-serialized bytes
+      // ->[offset][msgpack-serialized bytes]
+      std::string pb_serialized_exception;
+      creation_task_exception->SerializeToString(&pb_serialized_exception);
+      msgpack::sbuffer msgpack_serialized_exception;
+      msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
+      packer.pack_bin(pb_serialized_exception.size());
+      packer.pack_bin_body(pb_serialized_exception.data(),
+                           pb_serialized_exception.size());
+      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                          kMessagePackOffset);
+      // copy msgpack-serialized bytes
+      std::memcpy(final_buffer.Data() + kMessagePackOffset,
+                  msgpack_serialized_exception.data(),
+                  msgpack_serialized_exception.size());
+      // copy offset
+      msgpack::sbuffer msgpack_int;
+      msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
+      std::memcpy(final_buffer.Data(), msgpack_int.data(), msgpack_int.size());
+      RAY_UNUSED(in_memory_store_->Put(
+          RayObject(error_type, final_buffer.Data(), final_buffer.Size()), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    }
   }
 }
 
@@ -454,6 +491,18 @@ absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id
     return absl::optional<TaskSpecification>();
   }
   return it->second.spec;
+}
+
+std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+    const TaskID &parent_task_id) const {
+  std::vector<TaskID> ret_vec;
+  absl::MutexLock lock(&mu_);
+  for (auto it : submissible_tasks_) {
+    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
+      ret_vec.push_back(it.first);
+    }
+  }
+  return ret_vec;
 }
 
 }  // namespace ray

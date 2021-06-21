@@ -9,8 +9,8 @@ public class ContextBackendFactory {
 
   public static ContextBackend getContextBackend(final StreamingGlobalConfig config) {
     ContextBackend contextBackend;
-    ContextBackendType type = ContextBackendType.valueOf(
-        config.contextBackendConfig.stateBackendType().toUpperCase());
+    ContextBackendType type =
+        ContextBackendType.valueOf(config.contextBackendConfig.stateBackendType().toUpperCase());
 
     switch (type) {
       case MEMORY:

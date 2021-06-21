@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 
@@ -23,7 +22,6 @@ import ray.ray_constants as ray_constants
             "num_heartbeats_timeout": 10,
             "object_manager_pull_timeout_ms": 1000,
             "object_manager_push_timeout_ms": 1000,
-            "object_manager_repeated_push_delay_ms": 1000,
         },
     }],
     indirect=True)
@@ -124,31 +122,25 @@ def test_actor_creation_node_failure(ray_start_cluster):
         cluster.remove_node(get_other_nodes(cluster, True)[-1])
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_raylet()
-    ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
-    ray.worker._global_node.kill_monitor()
+    if not sys.platform.startswith("win"):
+        # fails on windows.
+        ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_gcs_server()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
 
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+    process_infos = (all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
                      all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
                      all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
                      all_processes[ray_constants.PROCESS_TYPE_MONITOR])
-    assert len(process_infos) == 5
+    assert len(process_infos) == 4
 
     # Kill all the components in parallel.
     for process_info in process_infos:

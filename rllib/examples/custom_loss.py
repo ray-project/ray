@@ -24,7 +24,11 @@ from ray.rllib.utils.framework import try_import_tf
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument(
     "--input-files",
@@ -46,10 +50,13 @@ if __name__ == "__main__":
         args.input_files = str(input_dir)
 
     ModelCatalog.register_custom_model(
-        "custom_loss", TorchCustomLossModel if args.torch else CustomLossModel)
+        "custom_loss", TorchCustomLossModel
+        if args.framework == "torch" else CustomLossModel)
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {
             "custom_model": "custom_loss",
@@ -57,11 +64,11 @@ if __name__ == "__main__":
                 "input_files": args.input_files,
             },
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {
         "training_iteration": args.stop_iters,
     }
 
-    tune.run("PG", config=config, stop=stop)
+    tune.run("PG", config=config, stop=stop, verbose=1)

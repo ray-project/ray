@@ -9,11 +9,12 @@
 
 from os.path import join
 
+from ray.util.sgd.torch import TrainingOperator
 from tqdm import trange
 
 import torch.nn as nn
 
-from timm.data import Dataset, create_loader
+from timm.data import create_dataset, create_loader
 from timm.data import resolve_data_config, FastCollateMixup
 from timm.models import create_model, convert_splitbn_model
 from timm.optim import create_optimizer
@@ -59,8 +60,8 @@ def data_creator(config):
 
     args = config["args"]
 
-    train_dir = join(args.data, "train")
-    val_dir = join(args.data, "val")
+    train_dir = join(args.data_dir, "train")
+    val_dir = join(args.data_dir, "val")
 
     if args.mock_data:
         util.mock_data(train_dir, val_dir)
@@ -68,8 +69,18 @@ def data_creator(config):
     # todo: verbose should depend on rank
     data_config = resolve_data_config(vars(args), verbose=True)
 
-    dataset_train = Dataset(join(args.data, "train"))
-    dataset_eval = Dataset(join(args.data, "val"))
+    dataset_train = create_dataset(
+        args.dataset,
+        root=args.data_dir,
+        split=args.train_split,
+        is_training=True,
+        batch_size=args.batch_size)
+    dataset_eval = create_dataset(
+        args.dataset,
+        root=args.data_dir,
+        split=args.val_split,
+        is_training=False,
+        batch_size=args.batch_size)
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -127,17 +138,20 @@ def main():
     setup_default_logging()
 
     args, args_text = parse_args()
+    if args.smoke_test:
+        ray.init(num_cpus=int(args.ray_num_workers))
+    else:
+        ray.init(address=args.ray_address)
 
-    ray.init(address=args.ray_address)
-
-    trainer = TorchTrainer(
+    CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator,
-        data_creator=data_creator,
         optimizer_creator=optimizer_creator,
-        loss_creator=loss_creator,
+        data_creator=data_creator,
+        loss_creator=loss_creator)
+    trainer = TorchTrainer(
+        training_operator_cls=CustomTrainingOperator,
         use_tqdm=True,
         use_fp16=args.amp,
-        apex_args={"opt_level": "O1"},
         config={
             "args": args,
             BATCH_SIZE: args.batch_size

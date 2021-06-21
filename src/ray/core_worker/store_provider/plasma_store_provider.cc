@@ -21,26 +21,56 @@
 
 namespace ray {
 
+void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
+                           const std::string &call_site) {
+  absl::MutexLock lock(&active_buffers_mutex_);
+  active_buffers_[std::make_pair(object_id, buffer)] = call_site;
+}
+
+void BufferTracker::Release(const ObjectID &object_id, TrackedBuffer *buffer) {
+  absl::MutexLock lock(&active_buffers_mutex_);
+  auto key = std::make_pair(object_id, buffer);
+  RAY_CHECK(active_buffers_.contains(key));
+  active_buffers_.erase(key);
+}
+
+absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+BufferTracker::UsedObjects() const {
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
+  absl::MutexLock lock(&active_buffers_mutex_);
+  for (const auto &entry : active_buffers_) {
+    auto it = used.find(entry.first.first);
+    if (it != used.end()) {
+      // Prefer to keep entries that have non-empty callsites.
+      if (!it->second.second.empty()) {
+        continue;
+      }
+    }
+    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
+  }
+  return used;
+}
+
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
-    std::function<Status()> check_signals, bool evict_if_full,
-    std::function<void()> on_store_full,
+    std::function<Status()> check_signals, bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
       reference_counter_(reference_counter),
-      check_signals_(check_signals),
-      evict_if_full_(evict_if_full),
-      on_store_full_(on_store_full) {
+      check_signals_(check_signals) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
+  object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
-  RAY_CHECK_OK(WarmupStore());
+  if (warmup) {
+    RAY_CHECK_OK(WarmupStore());
+  }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -49,9 +79,7 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
 
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
-  std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
-  return Status::OK();
+  return store_client_.SetClientOptions(name, limit_bytes);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -62,7 +90,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
-                           owner_address, &data));
+                           owner_address, &data, /*created_by_worker=*/true));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
@@ -83,77 +111,48 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
-                                             std::shared_ptr<Buffer> *data) {
-  int32_t retries = 0;
-  int32_t max_retries = RayConfig::instance().object_store_full_max_retries();
-  uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
-  Status status;
-  bool should_retry = true;
-  // If we cannot retry, then always evict on the first attempt.
-  bool evict_if_full = max_retries == 0 ? true : evict_if_full_;
-  while (should_retry) {
-    should_retry = false;
-    Status plasma_status;
-    std::shared_ptr<arrow::Buffer> arrow_buffer;
-    {
-      std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(object_id, owner_address, data_size,
-                                           metadata ? metadata->Data() : nullptr,
-                                           metadata ? metadata->Size() : 0, &arrow_buffer,
-                                           /*device_num=*/0, evict_if_full);
-      // Always try to evict after the first attempt.
-      evict_if_full = true;
-    }
-    if (plasma_status.IsObjectStoreFull()) {
-      std::ostringstream message;
-      message << "Failed to put object " << object_id << " in object store because it "
-              << "is full. Object size is " << data_size << " bytes.";
-      status = Status::ObjectStoreFull(message.str());
-      if (max_retries < 0 || retries < max_retries) {
-        RAY_LOG(ERROR) << message.str() << "\nWaiting " << delay
-                       << "ms for space to free up...";
-        if (on_store_full_) {
-          on_store_full_();
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-        delay *= 2;
-        retries += 1;
-        should_retry = true;
-      } else {
-        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after "
-                       << (max_retries + 1) << " attempts. Plasma store status:\n"
-                       << MemoryUsageString() << "\n---\n"
-                       << "--- Tip: Use the `ray memory` command to list active objects "
-                          "in the cluster."
-                       << "\n---\n";
-      }
-    } else if (plasma_status.IsObjectExists()) {
-      RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
-                       << object_id << ".";
-      status = Status::OK();
-    } else {
-      RAY_RETURN_NOT_OK(plasma_status);
-      *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
-      status = Status::OK();
-    }
+                                             std::shared_ptr<Buffer> *data,
+                                             bool created_by_worker) {
+  auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  if (!created_by_worker) {
+    source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
+  }
+  Status status = store_client_.CreateAndSpillIfNeeded(
+      object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
+      metadata ? metadata->Size() : 0, data, source,
+      /*device_num=*/0);
+
+  if (status.IsObjectStoreFull()) {
+    RAY_LOG(ERROR) << "Failed to put object " << object_id
+                   << " in object store because it "
+                   << "is full. Object size is " << data_size << " bytes.\n"
+                   << "Plasma store status:\n"
+                   << MemoryUsageString() << "\n---\n"
+                   << "--- Tip: Use the `ray memory` command to list active objects "
+                      "in the cluster."
+                   << "\n---\n";
+
+    // Replace the status with a more helpful error message.
+    std::ostringstream message;
+    message << "Failed to put object " << object_id << " in object store because it "
+            << "is full. Object size is " << data_size << " bytes.";
+    status = Status::ObjectStoreFull(message.str());
+  } else if (status.IsObjectExists()) {
+    RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
+                     << object_id << ".";
+    status = Status::OK();
+  } else {
+    RAY_RETURN_NOT_OK(status);
   }
   return status;
 }
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  {
-    std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Seal(object_id));
-  }
-  return Status::OK();
+  return store_client_.Seal(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
-  {
-    std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Release(object_id));
-  }
-  return Status::OK();
+  return store_client_.Release(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
@@ -167,37 +166,25 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  {
-    std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
-  }
+  RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results,
+                                      /*is_from_worker=*/true));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
   for (size_t i = 0; i < plasma_results.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
       const auto &object_id = batch_ids[i];
-      std::shared_ptr<PlasmaBuffer> data = nullptr;
-      std::shared_ptr<PlasmaBuffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->size()) {
+      std::shared_ptr<TrackedBuffer> data = nullptr;
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
-        std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
-        data = std::make_shared<PlasmaBuffer>(
-            plasma_results[i].data, [tracker, object_id](PlasmaBuffer *this_buffer) {
-              absl::MutexLock lock(&tracker->active_buffers_mutex_);
-              auto key = std::make_pair(object_id, this_buffer);
-              RAY_CHECK(tracker->active_buffers_.contains(key));
-              tracker->active_buffers_.erase(key);
-            });
-        auto call_site = get_current_call_site_();
-        {
-          absl::MutexLock lock(&tracker->active_buffers_mutex_);
-          tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
-        }
+        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_,
+                                               object_id);
+        buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
-        metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
+        metadata = plasma_results[i].metadata;
       }
       const auto result_object =
           std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
@@ -210,6 +197,37 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     }
   }
 
+  return Status::OK();
+}
+
+Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
+    const std::vector<ObjectID> &object_ids,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  // Since this path is used only for spilling, we should set is_from_worker: false.
+  RAY_RETURN_NOT_OK(store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results,
+                                      /*is_from_worker=*/false));
+
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
+      const auto &object_id = object_ids[i];
+      std::shared_ptr<TrackedBuffer> data = nullptr;
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
+        // We track the set of active data buffers in active_buffers_. On destruction,
+        // the buffer entry will be removed from the set via callback.
+        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_,
+                                               object_id);
+        buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
+      }
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
+        metadata = plasma_results[i].metadata;
+      }
+      const auto result_object =
+          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      (*results)[object_id] = result_object;
+    }
+  }
   return Status::OK();
 }
 
@@ -251,9 +269,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                    ctx.GetCurrentTaskID(), results, got_exception));
   }
 
-  // If all objects were fetched already, return.
+  // If all objects were fetched already, return. Note that we always need to
+  // call UnblockIfNeeded() to cancel the get request.
   if (remaining.empty() || *got_exception) {
-    return Status::OK();
+    return UnblockIfNeeded(raylet_client_, ctx);
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
@@ -283,7 +302,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          /*release_resources_during_plasma_fetch=*/false));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -303,6 +323,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         return status;
       }
     }
+    if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
+        remaining.size() > 0) {
+      // Yield the plasma lock to other threads. This is a temporary workaround since we
+      // are holding the lock for a long time, so it can easily starve inbound RPC
+      // requests to Release() buffers which only require holding the lock for brief
+      // periods. See https://github.com/ray-project/ray/pull/16402 for more context.
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
   }
 
   if (!remaining.empty() && timed_out) {
@@ -317,9 +345,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
-  std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_RETURN_NOT_OK(store_client_.Contains(object_id, has_object));
-  return Status::OK();
+  return store_client_.Contains(object_id, has_object);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
@@ -340,13 +366,14 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          /*release_resources_during_plasma_fetch=*/false));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(raylet_client_->Wait(
-        id_vector, owner_addresses, num_objects, call_timeout, /*wait_local*/ true,
-        /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(), ctx.GetCurrentTaskID(),
-        &result_pair));
+    RAY_RETURN_NOT_OK(
+        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
+                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
+                             ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
@@ -365,32 +392,18 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
-    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-    bool delete_creating_tasks) {
+    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
-  return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
+  return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  std::lock_guard<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
 CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
-  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
-  absl::MutexLock lock(&buffer_tracker_->active_buffers_mutex_);
-  for (const auto &entry : buffer_tracker_->active_buffers_) {
-    auto it = used.find(entry.first.first);
-    if (it != used.end()) {
-      // Prefer to keep entries that have non-empty callsites.
-      if (!it->second.second.empty()) {
-        continue;
-      }
-    }
-    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
-  }
-  return used;
+  return buffer_tracker_->UsedObjects();
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
@@ -408,6 +421,7 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
         oss << ", ";
       }
       oss << id.Hex();
+      printed++;
     }
     if (printed < remaining.size()) {
       oss << ", etc";
@@ -425,10 +439,11 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
+  RAY_RETURN_NOT_OK(
+      Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
-  RAY_RETURN_NOT_OK(Delete({object_id}, false, false));
+  RAY_RETURN_NOT_OK(Delete({object_id}, true));
   return Status::OK();
 }
 

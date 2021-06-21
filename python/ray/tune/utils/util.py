@@ -1,10 +1,21 @@
+import socket
+from contextlib import closing
+from typing import Dict, List, Union
 import copy
+import json
+import glob
 import logging
+import numbers
+import os
 import inspect
 import threading
 import time
-from collections import defaultdict, deque, Mapping, Sequence
+import uuid
+from collections import defaultdict, deque
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from threading import Thread
+from typing import Optional
 
 import numpy as np
 import ray
@@ -12,10 +23,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
+
+def _import_gputil():
+    try:
+        import GPUtil
+    except ImportError:
+        GPUtil = None
+    return GPUtil
+
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -34,6 +49,8 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        GPUtil = _import_gputil()
+        self.GPUtil = GPUtil
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
@@ -58,10 +75,10 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None)))
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
-            if GPUtil is not None:
+            if self.GPUtil is not None:
                 gpu_list = []
                 try:
-                    gpu_list = GPUtil.getGPUs()
+                    gpu_list = self.GPUtil.getGPUs()
                 except Exception:
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
@@ -110,19 +127,27 @@ def get_pinned_object(pinned_id):
 
 
 class warn_if_slow:
-    """Prints a warning if a given operation is slower than 100ms.
+    """Prints a warning if a given operation is slower than 500ms.
 
     Example:
         >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 
-    DEFAULT_THRESHOLD = 0.5
+    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
+    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
+                      "which may be a performance bottleneck."
 
-    def __init__(self, name, threshold=None):
+    def __init__(self,
+                 name: str,
+                 threshold: Optional[float] = None,
+                 message: Optional[str] = None,
+                 disable: bool = False):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
+        self.disable = disable
 
     def __enter__(self):
         self.start = time.time()
@@ -130,12 +155,13 @@ class warn_if_slow:
 
     def __exit__(self, type, value, traceback):
         now = time.time()
+        if self.disable:
+            return
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
+            duration = now - self.start
             logger.warning(
-                "The `%s` operation took %s seconds to complete, "
-                "which may be a performance bottleneck.", self.name,
-                now - self.start)
+                self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):
@@ -150,6 +176,14 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
 
 
 def merge_dicts(d1, d2):
@@ -199,7 +233,7 @@ def deep_update(original,
         if isinstance(original.get(k), dict) and isinstance(value, dict):
             # Check old type vs old one. If different, override entire value.
             if k in override_all_if_type_changes and \
-                    "type" in value and "type" in original[k] and \
+                "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
@@ -234,7 +268,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
                             "in your specification.")
-                    add[delimiter.join([key, subkey])] = v
+                    add[delimiter.join([key, str(subkey)])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -244,14 +278,64 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
+
+
+def unflatten_list_dict(dt, delimiter="/"):
+    """Unflatten nested dict and list.
+
+    This function now has some limitations:
+    (1) The keys of dt must be str.
+    (2) If unflattened dt (the result) contains list, the index order must be
+        ascending when accessing dt. Otherwise, this function will throw
+        AssertionError.
+    (3) The unflattened dt (the result) shouldn't contain dict with number
+        keys.
+
+    Be careful to use this function. If you want to improve this function,
+    please also improve the unit test. See #14487 for more details.
+
+    Args:
+        dt (dict): Flattened dictionary that is originally nested by multiple
+            list and dict.
+        delimiter (str): Delimiter of keys.
+
+    Example:
+        >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}
+        >>> unflatten_list_dict(dt)
+        {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
+    """
+    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() \
+        else type(dt)
+    out = out_type()
+    for key, val in dt.items():
+        path = key.split(delimiter)
+
+        item = out
+        for i, k in enumerate(path[:-1]):
+            next_type = list if path[i + 1].isdigit() else dict
+            if isinstance(item, dict):
+                item = item.setdefault(k, next_type())
+            elif isinstance(item, list):
+                if int(k) >= len(item):
+                    item.append(next_type())
+                    assert int(k) == len(item) - 1
+                item = item[int(k)]
+
+        if isinstance(item, dict):
+            item[path[-1]] = val
+        elif isinstance(item, list):
+            item.append(val)
+            assert int(path[-1]) == len(item) - 1
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
@@ -259,6 +343,8 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
+    if flat_key in lookup:
+        return lookup[flat_key]
     keys = deque(flat_key.split(delimiter))
     base = lookup
     while keys:
@@ -294,18 +380,19 @@ def _from_pinnable(obj):
 
 
 def diagnose_serialization(trainable):
-    """Utility for detecting accidentally-scoped objects.
+    """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (cls | func): The trainable object passed to
-            tune.run(trainable).
+        trainable (func): The trainable object passed to
+            tune.run(trainable). Currently only supports
+            Function API.
 
     Returns:
         bool | set of unserializable objects.
 
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         import threading
         # this is not serializable
@@ -379,6 +466,148 @@ def diagnose_serialization(trainable):
         return failure_set
 
 
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
+                tmp_file_name: str):
+    """Atomically saves the state object to the checkpoint directory.
+
+    This is automatically used by tune.run during a Tune job.
+
+    Args:
+        state (dict): Object state to be serialized.
+        checkpoint_dir (str): Directory location for the checkpoint.
+        file_name (str): Final name of file.
+        tmp_file_name (str): Temporary name of file.
+    """
+    import ray.cloudpickle as cloudpickle
+    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    with open(tmp_search_ckpt_path, "wb") as f:
+        cloudpickle.dump(state, f)
+
+    os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def find_free_port():
+    """Finds a free port on the current node."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
+    """Returns the most recently modified checkpoint.
+
+    Assumes files are saved with an ordered name, most likely by
+    :obj:atomic_save.
+
+    Args:
+        dirpath (str): Directory in which to look for the checkpoint file.
+        ckpt_pattern (str): File name pattern to match to find checkpoint
+            files.
+
+    Returns:
+        (dict) Deserialized state dict.
+    """
+    import ray.cloudpickle as cloudpickle
+    full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
+    if not full_paths:
+        return
+    most_recent_checkpoint = max(full_paths)
+    with open(most_recent_checkpoint, "rb") as f:
+        checkpoint_state = cloudpickle.load(f)
+    return checkpoint_state
+
+
+def wait_for_gpu(gpu_id=None,
+                 target_util=0.01,
+                 retry=20,
+                 delay_s=5,
+                 gpu_memory_limit=None):
+    """Checks if a given GPU has freed memory.
+
+    Requires ``gputil`` to be installed: ``pip install gputil``.
+
+    Args:
+        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+            Must be found within GPUtil.getGPUs(). If none, resorts to
+            the first item returned from `ray.get_gpu_ids()`.
+        target_util (float): The utilization threshold to reach to unblock.
+            Set this to 0 to block until the GPU is completely free.
+        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
+            seconds between checks.
+        delay_s (int): Seconds to wait before check.
+        gpu_memory_limit (float): Deprecated.
+
+    Returns:
+        bool: True if free.
+
+    Raises:
+        RuntimeError: If GPUtil is not found, if no GPUs are detected
+            or if the check fails.
+
+    Example:
+
+    .. code-block:: python
+
+        def tune_func(config):
+            tune.util.wait_for_gpu()
+            train()
+
+        tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
+    """
+    GPUtil = _import_gputil()
+    if gpu_memory_limit:
+        raise ValueError("'gpu_memory_limit' is deprecated. "
+                         "Use 'target_util' instead.")
+    if GPUtil is None:
+        raise RuntimeError(
+            "GPUtil must be installed if calling `wait_for_gpu`.")
+
+    if gpu_id is None:
+        gpu_id_list = ray.get_gpu_ids()
+        if not gpu_id_list:
+            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
+                               "Did you set Tune resources correctly?")
+        gpu_id = gpu_id_list[0]
+
+    gpu_attr = "id"
+    if isinstance(gpu_id, str):
+        if gpu_id.isdigit():
+            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
+            # of the int GPU ID
+            gpu_id = int(gpu_id)
+        else:
+            # Could not coerce gpu_id to int, so assume UUID
+            # and compare against `uuid` attribute e.g.,
+            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = "uuid"
+    elif not isinstance(gpu_id, int):
+        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
+
+    def gpu_id_fn(g):
+        # Returns either `g.id` or `g.uuid` depending on
+        # the format of the input `gpu_id`
+        return getattr(g, gpu_attr)
+
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
+    if gpu_id not in gpu_ids:
+        raise ValueError(
+            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
+            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+
+    for i in range(int(retry)):
+        gpu_object = next(
+            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        if gpu_object.memoryUtil > target_util:
+            logger.info(f"Waiting for GPU util to reach {target_util}. "
+                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            time.sleep(delay_s)
+        else:
+            return True
+    raise RuntimeError("GPU memory was not freed.")
+
+
 def validate_save_restore(trainable_cls,
                           config=None,
                           num_gpus=0,
@@ -421,6 +650,177 @@ def validate_save_restore(trainable_cls,
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
+
+
+def detect_checkpoint_function(train_func, abort=False, partial=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        if partial:
+            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
+        else:
+            func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargspec(train_func).args
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use reporter if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) works."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
+
+
+def create_logdir(dirname: str, local_dir: str):
+    """Create an empty logdir with name `dirname` in `local_dir`.
+
+    If `local_dir`/`dirname` already exists, a unique string is appended
+    to the dirname.
+
+    Args:
+        dirname (str): Dirname to create in `local_dir`
+        local_dir (str): Root directory for the log dir
+
+    Returns:
+        full path to the newly created logdir.
+    """
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
+def validate_warmstart(parameter_names: List[str],
+                       points_to_evaluate: List[Union[List, Dict]],
+                       evaluated_rewards: List):
+    """Generic validation of a Searcher's warm start functionality.
+    Raises exceptions in case of type and length mismatches betwee
+    parameters.
+    """
+    if points_to_evaluate:
+        if not isinstance(points_to_evaluate, list):
+            raise TypeError(
+                "points_to_evaluate expected to be a list, got {}.".format(
+                    type(points_to_evaluate)))
+        for point in points_to_evaluate:
+            if not isinstance(point, (dict, list)):
+                raise TypeError(
+                    f"points_to_evaluate expected to include list or dict, "
+                    f"got {point}.")
+
+            if not len(point) == len(parameter_names):
+                raise ValueError("Dim of point {}".format(point) +
+                                 " and parameter_names {}".format(
+                                     parameter_names) + " do not match.")
+
+    if points_to_evaluate and evaluated_rewards:
+        if not isinstance(evaluated_rewards, list):
+            raise TypeError(
+                "evaluated_rewards expected to be a list, got {}.".format(
+                    type(evaluated_rewards)))
+        if not len(evaluated_rewards) == len(points_to_evaluate):
+            raise ValueError(
+                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
+                " and points_to_evaluate {}".format(points_to_evaluate) +
+                " do not match.")
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+    It can be used for actor placement.
+
+    If using Ray Client, this will return the resource key for the node that
+    is running the client server.
+
+    Returns:
+        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def force_on_current_node(task_or_actor):
+    """Given a task or actor, place it on the current node.
+
+    If using Ray Client, the current node is the client server node.
+
+    Args:
+        task_or_actor: A Ray remote function or class to place on the
+            current node.
+
+    Returns:
+        The provided task or actor, but with options modified to force
+            placement on the current node.
+    """
+    node_resource_key = get_current_node_resource_key()
+    options = {"resources": {node_resource_key: 0.01}}
+    return task_or_actor.options(**options)
+
+
+class SafeFallbackEncoder(json.JSONEncoder):
+    def __init__(self, nan_str="null", **kwargs):
+        super(SafeFallbackEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def default(self, value):
+        try:
+            if np.isnan(value):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
+                return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(SafeFallbackEncoder, self).default(value)
+
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

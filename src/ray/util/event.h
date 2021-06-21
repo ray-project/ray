@@ -13,7 +13,10 @@
 // limitations under the License.
 
 #pragma once
+#include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -23,6 +26,9 @@
 #include <vector>
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
 
 namespace ray {
@@ -40,6 +46,38 @@ class BaseEventReporter {
   virtual void Close() = 0;
 
   virtual std::string GetReporterKey() = 0;
+};
+// responsible for writing event to specific file
+class LogEventReporter : public BaseEventReporter {
+ public:
+  LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
+                   bool force_flush = true, int rotate_max_file_size = 100,
+                   int rotate_max_file_num = 20);
+
+  virtual ~LogEventReporter();
+
+ private:
+  virtual std::string EventToString(const rpc::Event &event);
+
+  virtual void Init() override {}
+
+  virtual void Report(const rpc::Event &event) override;
+
+  virtual void Close() override {}
+
+  virtual void Flush();
+
+  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
+
+ protected:
+  std::string log_dir_;
+  bool force_flush_;
+  int rotate_max_file_size_;  // MB
+  int rotate_max_file_num_;
+
+  std::string file_name_;
+
+  std::shared_ptr<spdlog::logger> log_sink_;
 };
 
 // store the reporters, add reporters and clean reporters
@@ -66,7 +104,7 @@ class EventManager final {
 
   const EventManager &operator=(const EventManager &manager) = delete;
 
- protected:
+ private:
   std::unordered_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
 };
 

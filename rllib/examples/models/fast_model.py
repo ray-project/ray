@@ -57,8 +57,8 @@ class TorchFastModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        self.bias = torch.tensor(
-            [0.0], dtype=torch.float32, requires_grad=True)
+        self.bias = nn.Parameter(
+            torch.tensor([0.0], dtype=torch.float32, requires_grad=True))
 
         # Only needed to give some params to the optimizer (even though,
         # they are never used anywhere).
@@ -67,8 +67,9 @@ class TorchFastModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        self._output = self.bias + \
-            torch.zeros(size=(input_dict["obs"].shape[0], self.num_outputs))
+        self._output = self.bias + torch.zeros(
+            size=(input_dict["obs"].shape[0], self.num_outputs)).to(
+                self.bias.device)
         return self._output, []
 
     @override(ModelV2)

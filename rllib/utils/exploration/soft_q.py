@@ -1,5 +1,5 @@
-from gym.spaces import Discrete
-from typing import Union
+from gym.spaces import Discrete, Space
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -16,12 +16,17 @@ class SoftQ(StochasticSampling):
     output divided by the temperature. Returns the argmax iff explore=False.
     """
 
-    def __init__(self, action_space, *, framework, temperature=1.0, **kwargs):
+    def __init__(self,
+                 action_space: Space,
+                 *,
+                 framework: Optional[str],
+                 temperature: float = 1.0,
+                 **kwargs):
         """Initializes a SoftQ Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            temperature (Schedule): The temperature to divide model outputs by
+            temperature (float): The temperature to divide model outputs by
                 before creating the Categorical distribution to sample from.
             framework (str): One of None, "tf", "torch".
         """

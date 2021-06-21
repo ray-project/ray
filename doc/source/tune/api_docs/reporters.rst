@@ -58,7 +58,7 @@ Extending ``CLIReporter`` lets you control reporting frequency. For example:
 
     tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
 
-The default reporting style can also be overriden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
+The default reporting style can also be overridden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
 
 .. code-block:: python
 

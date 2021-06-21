@@ -22,10 +22,22 @@ Summary
      - Summary
      - Website
      - Code Example
+   * - :ref:`Random search/grid search <tune-basicvariant>`
+     - Random search/grid search
+     -
+     - :doc:`/tune/examples/tune_basic_example`
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
      - :doc:`/tune/examples/ax_example`
+   * - :ref:`BlendSearch <BlendSearch>`
+     - Blended Search
+     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/blendsearch_example`
+   * - :ref:`CFO <CFO>`
+     - Cost-Frugal hyperparameter Optimization
+     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/cfo_example`
    * - :ref:`DragonflySearch <Dragonfly>`
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
@@ -62,9 +74,10 @@ Summary
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
-
-
-.. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
+   * - :ref:`HEBOSearch <tune-hebo>`
+     - Heteroscedastic Evolutionary Bayesian Optimization
+     - [`HEBO <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
+     - :doc:`/tune/examples/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
@@ -75,6 +88,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
@@ -125,6 +139,21 @@ identifier.
 
 .. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
 
+.. _tune-basicvariant:
+
+Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
+--------------------------------------------------------------------------------
+
+The default and most basic way to do hyperparameter search is via random and grid search.
+Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>`
+class that generates trial variants given a search space definition.
+
+The :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>` is used per
+default if no search algorithm is passed to
+:func:`tune.run() <ray.tune.run>`.
+
+.. autoclass:: ray.tune.suggest.basic_variant.BasicVariantGenerator
+
 .. _tune-ax:
 
 Ax (tune.suggest.ax.AxSearch)
@@ -148,7 +177,7 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 BOHB (tune.suggest.bohb.TuneBOHB)
 ---------------------------------
 
-BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is backed by the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
+BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
@@ -162,12 +191,56 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autoclass:: ray.tune.suggest.bohb.TuneBOHB
 
+.. _BlendSearch:
+
+BlendSearch (tune.suggest.flaml.BlendSearch)
+--------------------------------------------
+
+BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+It allows the users to specify a low-cost initial point as input if such point exists.
+
+In order to use this search algorithm, you will need to install ``flaml``:
+
+.. code-block:: bash
+
+    $ pip install 'flaml[blendsearch]'
+
+See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
+
+.. autoclass:: ray.tune.suggest.flaml.BlendSearch
+
+.. _CFO:
+
+CFO (tune.suggest.flaml.CFO)
+----------------------------
+
+CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+It allows the users to specify a low-cost initial point as input if such point exists.
+
+In order to use this search algorithm, you will need to install ``flaml``:
+
+.. code-block:: bash
+
+    $ pip install flaml
+
+See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
+
+.. autoclass:: ray.tune.suggest.flaml.CFO
+
 .. _Dragonfly:
 
 Dragonfly (tune.suggest.dragonfly.DragonflySearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+  :members: save, restore
+
+.. _tune-hebo:
+
+HEBO (tune.suggest.hebo.HEBOSearch)
+-----------------------------------------------
+
+.. autoclass:: ray.tune.suggest.hebo.HEBOSearch
   :members: save, restore
 
 .. _tune-hyperopt:
@@ -191,7 +264,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 .. _tune-optuna:
 
 Optuna (tune.suggest.optuna.OptunaSearch)
---------------------------------------------------
+-----------------------------------------
 
 .. autoclass:: ray.tune.suggest.optuna.OptunaSearch
 
@@ -264,3 +337,14 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+
+If contributing, make sure to add test cases and an entry in the function described below.
+
+.. _shim:
+
+Shim Instantiation (tune.create_searcher)
+-----------------------------------------
+There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+
+.. automethod:: ray.tune.create_searcher

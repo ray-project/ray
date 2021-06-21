@@ -16,10 +16,13 @@
 
 #include "opencensus/stats/internal/aggregation_window.h"
 #include "opencensus/stats/internal/set_aggregation_window.h"
+#include "opencensus/stats/measure_registry.h"
 
 namespace ray {
 
 namespace stats {
+
+absl::Mutex Metric::registration_mutex_;
 
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
@@ -78,15 +81,30 @@ bool StatsConfig::IsInitialized() const { return is_initialized_; }
 ///
 /// Metric
 ///
+using MeasureDouble = opencensus::stats::Measure<double>;
 void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
 
+  // NOTE(lingxuan.zlx): Double check for recording performance while
+  // processing in multithread and avoid race since metrics may invoke
+  // record in different threads or code pathes.
   if (measure_ == nullptr) {
-    measure_.reset(new opencensus::stats::Measure<double>(
-        opencensus::stats::Measure<double>::Register(name_, description_, unit_)));
-    RegisterView();
+    absl::MutexLock lock(&registration_mutex_);
+    if (measure_ == nullptr) {
+      // Measure could be registered before, so we try to get it first.
+      MeasureDouble registered_measure =
+          opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
+
+      if (registered_measure.IsValid()) {
+        measure_.reset(new MeasureDouble(registered_measure));
+      } else {
+        measure_.reset(
+            new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
+      }
+      RegisterView();
+    }
   }
 
   // Do record.

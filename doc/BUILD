@@ -24,6 +24,14 @@ py_test(
     tags = ["exclusive"]
 )
 
+py_test(
+    name = "progress_bar",
+    size = "small",
+    srcs = ["examples/progress_bar.py"],
+    tags = ["exclusive"]
+)
+
+
 # Directory: examples/doc_code
 py_test(
     name = "doc_code_tf_example",
@@ -39,6 +47,22 @@ py_test(
     main = "examples/doc_code/torch_example.py",
     srcs = ["examples/doc_code/torch_example.py"],
     tags = ["exclusive", "pytorch"]
+)
+
+py_test(
+    name = "doc_code_metrics_example",
+    size = "small",
+    main = "examples/doc_code/metrics_example.py",
+    srcs = ["examples/doc_code/metrics_example.py"],
+    tags = ["exclusive"]
+)
+
+py_test(
+    name = "doc_code_runtime_env_example",
+    size = "small",
+    main = "examples/doc_code/runtime_env_example.py",
+    srcs = ["examples/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build"]
 )
 
 # --------------------------------------------------------------------

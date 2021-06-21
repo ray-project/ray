@@ -11,5 +11,4 @@ public class Serializer {
   public static <T> T decode(byte[] bytes) {
     return FstSerializer.decode(bytes);
   }
-
 }

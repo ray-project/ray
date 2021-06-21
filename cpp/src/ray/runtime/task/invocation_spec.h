@@ -1,24 +1,25 @@
 
 #pragma once
 
+#include <ray/api/ray_runtime.h>
 #include <msgpack.hpp>
 
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_util.h"
 
 namespace ray {
 namespace api {
 
 class InvocationSpec {
  public:
+  TaskType task_type;
   TaskID task_id;
   std::string name;
   ActorID actor_id;
   int actor_counter;
-  /// Remote function offset from base address.
-  size_t func_offset;
-  /// Executable function offset from base address.
-  size_t exec_func_offset;
-  std::shared_ptr<msgpack::sbuffer> args;
+  std::string lib_name;
+  RemoteFunctionHolder remote_function_holder;
+  std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };
 }  // namespace api
 }  // namespace ray

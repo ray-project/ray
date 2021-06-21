@@ -12,8 +12,10 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
+                            kill_actor_and_wait_for_failure,
                             wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray._raylet import GlobalStateAccessor
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -189,9 +191,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -336,6 +335,7 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
@@ -347,9 +347,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
@@ -375,6 +372,7 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -415,6 +413,7 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -601,10 +600,6 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     def f():
         return Counter.remote()
 
-    @ray.remote
-    def g():
-        return [Counter.remote()]
-
     # Currently, calling ray.put on an actor handle is allowed, but is
     # there a good use case?
     counter = Counter.remote()
@@ -614,11 +609,7 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     assert ray.get(counter.inc.remote()) == 2
     assert ray.get(new_counter.inc.remote()) == 3
 
-    with pytest.raises(Exception):
-        ray.get(f.remote())
-
-    # The below test works, but do we want to disallow this usage?
-    ray.get(g.remote())
+    ray.get(f.remote())
 
 
 def test_named_but_not_detached(ray_start_regular):
@@ -694,15 +685,28 @@ def test_detached_actor(ray_start_regular):
     create_actor_name = "DetachedActor"
     driver_script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
+def foo():
+    return "bar"
+
+@ray.remote
+class NonDetachedActor:
+    def foo(self):
+        return "bar"
+
+@ray.remote
 class DetachedActor:
     def ping(self):
         return "pong"
+
+    def foobar(self):
+        actor = NonDetachedActor.remote()
+        return ray.get([foo.remote(), actor.foo.remote()])
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
@@ -711,6 +715,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
+    assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
 def test_detached_actor_cleanup(ray_start_regular):
@@ -731,11 +738,13 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
-        actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+        actor_status = ray.state.actors(
+            actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+            actor_status = ray.state.actors(
+                actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -753,7 +762,7 @@ def test_detached_actor_cleanup(ray_start_regular):
     driver_script = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 @ray.remote
 class DetachedActor:
@@ -765,11 +774,11 @@ detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
 # Wait until actor dies.
-actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
 while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-    actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+    actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
     if wait_time >= max_wait_time:
@@ -831,11 +840,11 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     node_failure_actor_name = "node_failure_actor_name"
 
     def wait_until_actor_dead(handle):
-        actor_status = ray.actors(actor_id=handle._actor_id.hex())
+        actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=handle._actor_id.hex())
+            actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -918,7 +927,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             return count
 
         def set_count(self, count):
-            _internal_kv_put("count", count, True)
+            _internal_kv_put("count", str(count), True)
 
     # Verify we can get the object successfully.
     ra = RestartableActor.remote()
@@ -1013,7 +1022,7 @@ def test_kill(ray_start_regular_shared):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    ray.kill(actor, no_restart=False)
+    kill_actor_and_wait_for_failure(actor)
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
@@ -1022,6 +1031,230 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
+def test_get_actor_no_input(ray_start_regular_shared):
+    for bad_name in [None, "", "    "]:
+        with pytest.raises(ValueError):
+            ray.get_actor(bad_name)
+
+
+def test_actor_resource_demand(shutdown_only):
+    ray.shutdown()
+    cluster = ray.init(num_cpus=3)
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(num_cpus=2)
+    class Actor:
+        def foo(self):
+            return "ok"
+
+    a = Actor.remote()
+    ray.get(a.foo.remote())
+    time.sleep(1)
+
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+
+    # The actor is scheduled so there should be no more demands left.
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 0
+
+    @ray.remote(num_cpus=80)
+    class Actor2:
+        pass
+
+    actors = []
+    actors.append(Actor2.remote())
+    time.sleep(1)
+
+    # This actor cannot be scheduled.
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (
+        resource_usages.resource_load_by_shape.resource_demands[0].shape == {
+            "CPU": 80.0
+        })
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
+            .num_infeasible_requests_queued == 1)
+
+    actors.append(Actor2.remote())
+    time.sleep(1)
+
+    # Two actors cannot be scheduled.
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
+            .num_infeasible_requests_queued == 2)
+
+    global_state_accessor.disconnect()
+
+
+def test_kill_pending_actor_with_no_restart_true():
+    cluster = ray.init()
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(resources={"WORKER": 1.0})
+    class PendingActor:
+        pass
+
+    # Kill actor with `no_restart=True`.
+    actor = PendingActor.remote()
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
+    # See https://github.com/ray-project/ray/issues/13545 for details.
+    time.sleep(1)
+    ray.kill(actor, no_restart=True)
+
+    def condition1():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return True
+        return False
+
+    # Actor is dead, so the infeasible task queue length is 0.
+    wait_for_condition(condition1, timeout=10)
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+
+
+def test_kill_pending_actor_with_no_restart_false():
+    cluster = ray.init()
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)
+    class PendingActor:
+        pass
+
+    # Kill actor with `no_restart=False`.
+    actor = PendingActor.remote()
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
+    # See https://github.com/ray-project/ray/issues/13545 for details.
+    time.sleep(1)
+    ray.kill(actor, no_restart=False)
+
+    def condition1():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return False
+        return True
+
+    # Actor restarts, so the infeasible task queue length is 1.
+    wait_for_condition(condition1, timeout=10)
+
+    # Kill actor again and actor is dead,
+    # so the infeasible task queue length is 0.
+    ray.kill(actor, no_restart=False)
+
+    def condition2():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return True
+        return False
+
+    wait_for_condition(condition2, timeout=10)
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+
+
+def test_actor_timestamps(ray_start_regular):
+    @ray.remote
+    class Foo:
+        def get_id(self):
+            return ray.get_runtime_context().actor_id.hex()
+
+        def kill_self(self):
+            sys.exit(1)
+
+    def graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        del actor
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
+
+    def not_graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
+
+    def restarted():
+        actor = Foo.options(max_restarts=1).remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        lapsed = end_time - start_time
+
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
+        assert 1500 < lapsed < 2500, f"Start: {start_time}, End: {end_time}"
+
+    graceful_exit()
+    not_graceful_exit()
+    restarted()
+
+
 if __name__ == "__main__":
     import pytest
+    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

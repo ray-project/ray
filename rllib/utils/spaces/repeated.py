@@ -1,4 +1,3 @@
-import numpy as np
 import gym
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -17,14 +16,9 @@ class Repeated(gym.Space):
     """
 
     def __init__(self, child_space: gym.Space, max_len: int):
-        self.np_random = np.random.RandomState()
+        super().__init__()
         self.child_space = child_space
         self.max_len = max_len
-        super().__init__()
-
-    def seed(self, seed=None):
-        self.np_random = np.random.RandomState()
-        self.np_random.seed(seed)
 
     def sample(self):
         return [

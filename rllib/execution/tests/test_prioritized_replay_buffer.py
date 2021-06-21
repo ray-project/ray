@@ -26,6 +26,24 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             "done": [np.random.choice([False, True])],
         })
 
+    def test_sequence_size(self):
+        # seq len 1
+        memory = PrioritizedReplayBuffer(size=100, alpha=0.1)
+        for _ in range(200):
+            memory.add(self._generate_data(), weight=None)
+        assert len(memory._storage) == 100, len(memory._storage)
+        assert memory.stats()["added_count"] == 200, memory.stats()
+
+        # seq len 5
+        memory = PrioritizedReplayBuffer(size=100, alpha=0.1)
+        for _ in range(40):
+            memory.add(
+                SampleBatch.concat_samples(
+                    [self._generate_data() for _ in range(5)]),
+                weight=None)
+        assert len(memory._storage) == 20, len(memory._storage)
+        assert memory.stats()["added_count"] == 200, memory.stats()
+
     def test_add(self):
         memory = PrioritizedReplayBuffer(
             size=2,

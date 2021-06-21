@@ -9,11 +9,12 @@ This demonstrates running the following policies in competition:
 
 import argparse
 from gym.spaces import Discrete
+import os
 import random
 
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
@@ -24,21 +25,41 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=150)
-parser.add_argument("--stop-reward", type=float, default=1000.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=150,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=1000.0,
+    help="Reward at which we stop training.")
 
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
         "env": RockPaperScissors,
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
-    results = tune.run("PG", config=config, stop=stop)
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.
@@ -63,6 +84,8 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     config = {
         "env": RockPaperScissors,
         "gamma": 0.9,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,
@@ -77,14 +100,14 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
                     "model": {
                         "use_lstm": use_lstm
                     },
-                    "framework": "torch" if args.torch else "tf",
+                    "framework": args.framework,
                 }),
             },
             "policy_mapping_fn": select_policy,
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
-    cls = get_agent_class(trainer) if isinstance(trainer, str) else trainer
+    cls = get_trainer_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)
     env = trainer_obj.workers.local_worker().env
     for _ in range(args.stop_iters):
@@ -112,7 +135,7 @@ def run_with_custom_entropy_loss(args, stop):
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
         logits, _ = model.from_batch(train_batch)
         action_dist = dist_class(logits, model)
-        if args.torch:
+        if args.framework == "torch":
             # required by PGTorchPolicy's stats fn.
             policy.pi_err = torch.tensor([0.0])
             return torch.mean(-0.1 * action_dist.entropy() -
@@ -123,7 +146,8 @@ def run_with_custom_entropy_loss(args, stop):
                 action_dist.logp(train_batch["actions"]) *
                 train_batch["advantages"]))
 
-    policy_cls = PGTorchPolicy if args.torch else PGTFPolicy
+    policy_cls = PGTorchPolicy if args.framework == "torch" \
+        else PGTFPolicy
     EntropyPolicy = policy_cls.with_updates(
         loss_fn=entropy_policy_gradient_loss)
 
@@ -133,7 +157,7 @@ def run_with_custom_entropy_loss(args, stop):
     run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
 
-if __name__ == "__main__":
+def main():
     args = parser.parse_args()
 
     stop = {
@@ -153,3 +177,7 @@ if __name__ == "__main__":
 
     run_with_custom_entropy_loss(args, stop=stop)
     print("run_with_custom_entropy_loss: ok.")
+
+
+if __name__ == "__main__":
+    main()

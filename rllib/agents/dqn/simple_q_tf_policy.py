@@ -1,19 +1,25 @@
-"""Basic example of a DQN policy without any optimizations."""
+"""TensorFlow policy class used for Simple Q-Learning"""
 
-from gym.spaces import Discrete
 import logging
+from typing import List, Tuple, Type
 
+import gym
 import ray
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import (Categorical,
+                                                TFActionDistribution)
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.policy import Policy
+from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -23,7 +29,14 @@ Q_TARGET_SCOPE = "target_q_func"
 
 
 class TargetNetworkMixin:
-    def __init__(self, obs_space, action_space, config):
+    """Assign the `update_target` method to the SimpleQTFPolicy
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         @make_tf_callable(self.get_session())
         def do_update():
             # update_target_fn will be called periodically to copy Q network to
@@ -44,13 +57,29 @@ class TargetNetworkMixin:
         return self.q_func_vars + self.target_q_func_vars
 
 
-def build_q_models(policy, obs_space, action_space, config):
+def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
+                   action_space: gym.spaces.Space,
+                   config: TrainerConfigDict) -> ModelV2:
+    """Build q_model and target_q_model for Simple Q learning
 
-    if not isinstance(action_space, Discrete):
+    Note that this function works for both Tensorflow and PyTorch.
+
+    Args:
+        policy (Policy): The Policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        ModelV2: The Model for the Policy to use.
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_q_model`.
+    """
+    if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=action_space.n,
@@ -66,35 +95,48 @@ def build_q_models(policy, obs_space, action_space, config):
         framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
-    policy.q_func_vars = policy.q_model.variables()
+    policy.q_func_vars = model.variables()
     policy.target_q_func_vars = policy.target_q_model.variables()
 
-    return policy.q_model
+    return model
 
 
-def get_distribution_inputs_and_class(policy,
-                                      q_model,
-                                      obs_batch,
-                                      *,
-                                      explore=True,
-                                      is_training=True,
-                                      **kwargs):
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        q_model: ModelV2,
+        obs_batch: TensorType,
+        *,
+        explore=True,
+        is_training=True,
+        **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
+    """Build the action distribution"""
     q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
+    policy.q_func_vars = q_model.variables()
     return policy.q_values, (TorchCategorical
                              if policy.config["framework"] == "torch" else
                              Categorical), []  # state-outs
 
 
-def build_q_losses(policy, model, dist_class, train_batch):
+def build_q_losses(policy: Policy, model: ModelV2,
+                   dist_class: Type[TFActionDistribution],
+                   train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for SimpleQTFPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[ActionDistribution]): The action distribution class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     # q network evaluation
     q_t = compute_q_values(
-        policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
-        explore=False)
+        policy, policy.model, train_batch[SampleBatch.CUR_OBS], explore=False)
 
     # target q network evalution
     q_tp1 = compute_q_values(
@@ -131,7 +173,11 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def compute_q_values(policy, model, obs, explore, is_training=None):
+def compute_q_values(policy: Policy,
+                     model: ModelV2,
+                     obs: TensorType,
+                     explore,
+                     is_training=None) -> TensorType:
     model_out, _ = model({
         SampleBatch.CUR_OBS: obs,
         "is_training": is_training
@@ -141,18 +187,29 @@ def compute_q_values(policy, model, obs, explore, is_training=None):
     return model_out
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-SimpleQTFPolicy = build_tf_policy(
+# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# above.
+SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
     name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,
-    extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False,
     mixins=[TargetNetworkMixin])

@@ -3,6 +3,124 @@ Advanced Usage
 
 This page will cover some more advanced examples of using Ray's flexible programming model.
 
+.. contents::
+  :local:
+
+Synchronization
+---------------
+
+Tasks or actors can often contend over the same resource or need to communicate with each other. Here are some standard ways to perform synchronization across Ray processes.
+
+Inter-process synchronization using FileLock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have several tasks or actors writing to the same file or downloading a file on a single node, you can use `FileLock <https://pypi.org/project/filelock/>`_ to synchronize.
+
+This often occurs for data loading and preprocessing.
+
+.. code-block:: python
+
+    import ray
+    from filelock import FileLock
+
+    @ray.remote
+    def write_to_file(text):
+        # Create a filelock object. Consider using an absolute path for the lock.
+        with FileLock("my_data.txt.lock"):
+            with open("my_data.txt","a") as f:
+                f.write(text)
+
+    ray.init()
+    ray.get([write_to_file.remote("hi there!\n") for i in range(3)])
+
+    with open("my_data.txt") as f:
+        print(f.read())
+
+    ## Output is:
+
+    # hi there!
+    # hi there!
+    # hi there!
+
+Multi-node synchronization using ``SignalActor``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you have multiple tasks that need to wait on some condition, you can use a ``SignalActor`` to coordinate.
+
+.. code-block:: python
+
+    # Also available via `from ray.test_utils import SignalActor`
+    import ray
+    import asyncio
+
+    @ray.remote(num_cpus=0)
+    class SignalActor:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self, clear=False):
+            self.ready_event.set()
+            if clear:
+                self.ready_event.clear()
+
+        async def wait(self, should_wait=True):
+            if should_wait:
+                await self.ready_event.wait()
+
+    @ray.remote
+    def wait_and_go(signal):
+        ray.get(signal.wait.remote())
+
+        print("go!")
+
+    ray.init()
+    signal = SignalActor.remote()
+    tasks = [wait_and_go.remote(signal) for _ in range(4)]
+    print("ready...")
+    # Tasks will all be waiting for the signals.
+    print("set..")
+    ray.get(signal.send.remote())
+
+    # Tasks are unblocked.
+    ray.get(tasks)
+
+    ##  Output is:
+    # ready...
+    # get set..
+
+    # (pid=77366) go!
+    # (pid=77372) go!
+    # (pid=77367) go!
+    # (pid=77358) go!
+
+
+Message passing using Ray Queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
+actors, you can use :ref:`ray.util.queue.Queue <ray-queue-ref>`.
+
+.. code-block:: python
+
+    import ray
+    from ray.util.queue import Queue
+
+    ray.init()
+    # You can pass this object around to different tasks/actors
+    queue = Queue(maxsize=100)
+
+    @ray.remote
+    def consumer(queue):
+        next_item = queue.get(block=True)
+        print(f"got work {next_item}")
+
+    consumers = [consumer.remote(queue) for _ in range(2)]
+
+    [queue.put(i) for i in range(10)]
+
+Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+
+
 Dynamic Remote Parameters
 -------------------------
 
@@ -72,35 +190,80 @@ appear as the task name in the logs.
 .. image:: images/task_name_dashboard.png
 
 
-Dynamic Custom Resources
-------------------------
+Accelerator Types
+------------------
 
-Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling.
-
+Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"accelerator_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
 
 .. code-block:: python
 
-    ray.init()
-    resource_name = "test_resource"
-    resource_capacity = 1.0
+    from ray.accelerators import NVIDIA_TESLA_V100
 
-    @ray.remote
-    def set_resource(resource_name, resource_capacity):
-        ray.experimental.set_resource(resource_name, resource_capacity)
+    @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+    def train(data):
+        return "This function was run on a node with a Tesla V100 GPU"
 
-    ray.get(set_resource.remote(resource_name, resource_capacity))
-
-    available_resources = ray.available_resources()
-    cluster_resources = ray.cluster_resources()
-
-    assert available_resources[resource_name] == resource_capacity
-    assert cluster_resources[resource_name] == resource_capacity
+See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
-.. autofunction:: ray.experimental.set_resource
-    :noindex:
+Overloaded Functions
+--------------------
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
 
+Overloaded normal task call:
+
+.. code:: java
+
+    public static class MyRayApp {
+
+      public static int overloadFunction() {
+        return 1;
+      }
+
+      public static int overloadFunction(int x) {
+        return x;
+      }
+    }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+
+Overloaded actor task call:
+
+.. code:: java
+
+    public static class Counter {
+      protected int value = 0;
+
+      public int increment() {
+        this.value += 1;
+        return this.value;
+      }
+    }
+
+    public static class CounterOverloaded extends Counter {
+      public int increment(int diff) {
+        super.value += diff;
+        return super.value;
+      }
+
+      public int increment(int diff1, int diff2) {
+        super.value += diff1 + diff2;
+        return super.value;
+      }
+    }
+
+.. code:: java
+
+    ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+    // Call an overloaded actor method by super class method reference.
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an overloaded actor method, cast method reference first.
+    a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+    a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+    a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
 
 
 Nested Remote Functions
@@ -259,3 +422,95 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+.. _runtime-environments:
+
+Runtime Environments (Experimental)
+-----------------------------------
+
+.. note::
+
+    Runtime environments are currently an experimental feature and under active development. The API is subject to change.
+
+On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
+
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.
+The runtime environment defines the dependencies required for your workload.
+
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __ray_init_start__
+   :end-before: __ray_init_end__
+
+..
+  TODO(architkulkarni): run Ray Client doc example in CI
+
+.. code-block:: python
+
+    ray.client("localhost:10001").env(runtime_env).connect()
+
+...or specify per-actor or per-task using ``.options()``:
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __per_task_per_actor_start__
+   :end-before: __per_task_per_actor_end__
+
+The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
+
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+  It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
+  Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
+
+  - Examples
+
+    - ``"."  # cwd``
+
+    - ``"/code/my_project"``
+
+  Note: Setting this option per-task or per-actor is currently unsupported.
+
+- ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip 
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
+  This will be dynamically installed in the ``runtime_env``.
+  To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
+
+  - Example: ``["requests==1.0.0", "aiohttp"]``
+
+  - Example: ``"./requirements.txt"``
+
+- ``conda`` (dict | str): Either a dict representing the conda environment YAML, a string containing the path to a 
+  `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
+  or the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.  
+  Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
+
+  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
+
+  - Example: ``"./environment.yml"``
+
+  - Example: ``"pytorch_p36"``
+
+- ``env_vars`` (Dict[str, str]): Environment variables to set.
+
+  - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+The runtime env is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
+
+If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
+
+Here are some examples of runtime envs combining multiple options:
+
+..
+  TODO(architkulkarni): run working_dir doc example in CI
+
+.. code-block:: python
+    
+    runtime_env = {"working_dir": "/code/my_project", "pip": ["pendulum=2.1.2"]}
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __runtime_env_conda_def_start__
+   :end-before: __runtime_env_conda_def_end__

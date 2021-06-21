@@ -1,0 +1,74 @@
+diff --git src/glog/logging.h.in src/glog/logging.h.in
+index 64bed1a..0ff073f 100644
+--- src/glog/logging.h.in
++++ src/glog/logging.h.in
+@@ -1676,6 +1676,9 @@ class GOOGLE_GLOG_DLL_DECL NullStreamFatal : public NullStream {
+ // words, stack traces of other threads won't be shown.
+ GOOGLE_GLOG_DLL_DECL void InstallFailureSignalHandler();
+ 
++// Providing stack trace function for upper level.
++GOOGLE_GLOG_DLL_DECL std::string GetStackTraceToString();
++
+ // Installs a function that is used for writing the failure dump.  "data"
+ // is the pointer to the beginning of a message to be written, and "size"
+ // is the size of the message.  You should not expect the data is
+diff --git src/logging.cc src/logging.cc
+index 733ce8c..e988eb9 100644
+--- src/logging.cc
++++ src/logging.cc
+@@ -2336,4 +2336,13 @@ void DisableLogCleaner() {
+   log_cleaner_enabled_ = false;
+ }
+ 
++std::string GetStackTraceToString() {
++  // Collect stacktrace from utilities.
++  std::string stacktrace;
++  // The second parameter stands for skip count. The top stack frames will be
++  // skipped to dump from stack if it's non-zero.
++  DumpStackTraceToString(&stacktrace, 0);
++  return stacktrace;
++}
++
+ _END_GOOGLE_NAMESPACE_
+diff --git src/utilities.cc src/utilities.cc
+index 9a1e35d..3808162 100644
+--- src/utilities.cc
++++ src/utilities.cc
+@@ -318,8 +318,8 @@ static void MyUserNameInitializer() {
+ REGISTER_MODULE_INITIALIZER(utilities, MyUserNameInitializer());
+ 
+ #ifdef HAVE_STACKTRACE
+-void DumpStackTraceToString(string* stacktrace) {
+-  DumpStackTrace(1, DebugWriteToString, stacktrace);
++void DumpStackTraceToString(string* stacktrace, int depth) {
++  DumpStackTrace(depth, DebugWriteToString, stacktrace);
+ }
+ #endif
+ 
+diff --git src/utilities.h src/utilities.h
+index c66f914..39c48e8 100644
+--- src/utilities.h
++++ src/utilities.h
+@@ -209,7 +209,7 @@ inline T sync_val_compare_and_swap(T* ptr, T oldval, T newval) {
+ #endif
+ }
+ 
+-void DumpStackTraceToString(std::string* stacktrace);
++void DumpStackTraceToString(std::string* stacktrace, int depth = 1);
+ 
+ struct CrashReason {
+   CrashReason() : filename(0), line_number(0), message(0), depth(0) {}
+diff --git src/windows/glog/logging.h src/windows/glog/logging.h
+index 2a739f9..4ff2a79 100755
+--- src/windows/glog/logging.h
++++ src/windows/glog/logging.h
+@@ -1677,6 +1677,9 @@ class GOOGLE_GLOG_DLL_DECL NullStreamFatal : public NullStream {
+ // words, stack traces of other threads won't be shown.
+ GOOGLE_GLOG_DLL_DECL void InstallFailureSignalHandler();
+
++// Providing stack trace function for upper level.
++GOOGLE_GLOG_DLL_DECL std::string GetStackTraceToString();
++
+ // Installs a function that is used for writing the failure dump.  "data"
+ // is the pointer to the beginning of a message to be written, and "size"
+ // is the size of the message.  You should not expect the data is

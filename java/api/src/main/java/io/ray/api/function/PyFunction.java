@@ -52,8 +52,7 @@ public class PyFunction<R> {
    * @param functionName The name of this function
    * @return a python function.
    */
-  public static PyFunction<Object> of(
-      String moduleName, String functionName) {
+  public static PyFunction<Object> of(String moduleName, String functionName) {
     return of(moduleName, functionName, Object.class);
   }
 
@@ -66,9 +65,7 @@ public class PyFunction<R> {
    * @param <R> Type of the return value of this function
    * @return a python function.
    */
-  public static <R> PyFunction<R> of(
-      String moduleName, String functionName, Class<R> returnType) {
+  public static <R> PyFunction<R> of(String moduleName, String functionName, Class<R> returnType) {
     return new PyFunction<>(moduleName, functionName, returnType);
   }
-
 }

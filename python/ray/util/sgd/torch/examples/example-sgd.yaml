@@ -4,10 +4,7 @@ cluster_name: sgd-pytorch
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 3
-initial_workers: 3
 max_workers: 3
-
-target_utilization_fraction: 0.9
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 20
@@ -43,7 +40,7 @@ worker_nodes:
         #     MaxPrice: "9.0"
 
 setup_commands:
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -U ipdb ray[rllib] torch torchvision
     # Install apex.
     # - rm -rf apex || true
@@ -62,7 +59,7 @@ worker_setup_commands: []
 # # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

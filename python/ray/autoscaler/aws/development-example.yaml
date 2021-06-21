@@ -9,12 +9,11 @@ min_workers: 2
 # node. This takes precedence over min_workers.
 max_workers: 2
 
-# The autoscaler will scale up the cluster to this target fraction of resource
-# usage. For example, if a cluster of 10 nodes is 100% busy and
-# target_utilization is 0.8, it would resize the cluster to 13. This fraction
-# can be decreased to increase the aggressiveness of upscaling.
-# This value must be less than 1.0 for scaling to happen.
-target_utilization_fraction: 0.8
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
@@ -111,7 +110,7 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-redis-shards=10 --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

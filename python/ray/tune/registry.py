@@ -79,11 +79,11 @@ def register_env(name, env_creator):
 
     Args:
         name (str): Name to register.
-        env_creator (obj): Function that creates an env.
+        env_creator (obj): Callable that creates an env.
     """
 
-    if not isinstance(env_creator, FunctionType):
-        raise TypeError("Second argument must be a function.", env_creator)
+    if not callable(env_creator):
+        raise TypeError("Second argument must be callable.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
@@ -119,7 +119,7 @@ class _Registry:
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._to_flush[(category, key)] = pickle.dumps(value)
+        self._to_flush[(category, key)] = pickle.dumps_debug(value)
         if _internal_kv_initialized():
             self.flush_values()
 
@@ -149,3 +149,28 @@ class _Registry:
 
 _global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
+
+
+class _ParameterRegistry:
+    def __init__(self):
+        self.to_flush = {}
+        self.references = {}
+
+    def put(self, k, v):
+        self.to_flush[k] = v
+        if ray.is_initialized():
+            self.flush()
+
+    def get(self, k):
+        if not ray.is_initialized():
+            return self.to_flush[k]
+        return ray.get(self.references[k])
+
+    def flush(self):
+        for k, v in self.to_flush.items():
+            self.references[k] = ray.put(v)
+        self.to_flush.clear()
+
+
+parameter_registry = _ParameterRegistry()
+ray.worker._post_init_hooks.append(parameter_registry.flush)

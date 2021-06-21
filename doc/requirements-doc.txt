@@ -4,6 +4,7 @@ colorful
 filelock
 flask
 flatbuffers
+fastapi
 jsonschema
 mock
 numpy
@@ -24,9 +25,12 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-sphinx_rtd_theme
+sphinx-book-theme
+sphinxcontrib.yt
+starlette
 tabulate
 uvicorn
 werkzeug
-tune-sklearn==0.0.5
+git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
+git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 scikit-optimize

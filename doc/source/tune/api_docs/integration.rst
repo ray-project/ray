@@ -7,6 +7,15 @@ External library integrations (tune.integration)
     :local:
     :depth: 1
 
+
+.. _tune-integration-docker:
+
+Docker (tune.integration.docker)
+--------------------------------
+
+.. autofunction:: ray.tune.integration.docker.DockerSyncer
+
+
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)
@@ -22,6 +31,18 @@ Kubernetes (tune.integration.kubernetes)
 ----------------------------------------
 
 .. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
+
+.. _tune-integration-mlflow:
+
+MLflow (tune.integration.mlflow)
+--------------------------------
+
+:ref:`See also here <tune-mlflow>`.
+
+.. autoclass:: ray.tune.integration.mlflow.MLflowLoggerCallback
+
+.. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
+
 
 .. _tune-integration-mxnet:
 
@@ -68,7 +89,7 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb>`.
 
-.. autoclass:: ray.tune.integration.wandb.WandbLogger
+.. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
 

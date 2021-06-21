@@ -12,12 +12,14 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
 
    starting-ray.rst
    actors.rst
+   namespaces.rst
    async_api.rst
    using-ray-with-gpus.rst
    serialization.rst
    memory-management.rst
+   placement-group.rst
    troubleshooting.rst
-   ray-dashboard.rst
    advanced.rst
+   cross-language.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst

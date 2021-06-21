@@ -5,14 +5,107 @@ py_library(
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )
 
-serve_tests_srcs = glob(["tests/*.py"],
-     exclude=["tests/test_controller_crashes.py",
-              "tests/test_serve.py",
-             ])
+serve_tests_srcs = glob(["tests/*.py"])
 
 py_test(
     name = "test_api",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_api_new",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_get_deployment",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_prefix_matching",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_routes",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_advanced",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_metrics",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_batching",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_controller",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_ray_client",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_async_goal_manager",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_backend_state",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -47,7 +140,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -74,9 +167,9 @@ py_test(
 
 py_test(
     name = "test_router",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
     deps = [":serve_lib"],
 )
 
@@ -88,10 +181,25 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_long_poll",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 py_test(
     name = "test_standalone",
-    size = "small",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_cluster",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -105,24 +213,40 @@ py_test(
     deps = [":serve_lib"],
 )
 
-
-# Runs test_api and test_failure with injected failures in the controller.
-# TODO(edoakes): reenable this once we're using GCS actor fault tolerance.
-# py_test(
-    # name = "test_controller_crashes",
-    # size = "medium",
-    # srcs = glob(["tests/test_controller_crashes.py",
-                 # "tests/test_api.py",
-                 # "tests/test_failure.py"],
-                # exclude=["tests/test_serve.py"]),
-# )
+py_test(
+    name = "test_imported_backend",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 py_test(
-    name = "echo_full",
-    size = "small",
-    srcs = glob(["examples/*.py"]),
+    name = "test_fastapi",
+    size = "medium",
+    srcs = serve_tests_srcs,
     tags = ["exclusive"],
-    deps = [":serve_lib"]
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_cli",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+# Runs test_api and test_failure with injected failures in the controller.
+py_test(
+   name = "test_controller_crashes",
+   size = "medium",
+   srcs = glob(["tests/test_controller_crashes.py",
+               "tests/test_api.py",
+               "tests/test_failure.py",
+               "**/conftest.py"]),
+   tags = ["exclusive"],
+   deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -175,6 +299,14 @@ py_test(
 )
 
 py_test(
+    name = "tutorial_rllib",
+    size = "medium",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
     name = "snippet_model_composition",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
@@ -183,7 +315,7 @@ py_test(
 )
 
 # Disable the deployment tutorial test because it requires
-# ray start --head in the background.
+# ray start --head in the background
 # py_test(
     #name = "tutorial_deploy",
     #size = "small",

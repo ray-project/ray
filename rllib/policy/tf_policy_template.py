@@ -1,5 +1,6 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -8,10 +9,17 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
+
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -32,7 +40,7 @@ def build_tf_policy(
         optimizer_fn: Optional[Callable[[
             Policy, TrainerConfigDict
         ], "tf.keras.optimizers.Optimizer"]] = None,
-        gradients_fn: Optional[Callable[[
+        compute_gradients_fn: Optional[Callable[[
             Policy, "tf.keras.optimizers.Optimizer", TensorType
         ], ModelGradients]] = None,
         apply_gradients_fn: Optional[Callable[[
@@ -40,7 +48,7 @@ def build_tf_policy(
         ], "tf.Operation"]] = None,
         grad_stats_fn: Optional[Callable[[Policy, SampleBatch, ModelGradients],
                                          Dict[str, TensorType]]] = None,
-        extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
+        extra_action_out_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
         extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
@@ -63,7 +71,11 @@ def build_tf_policy(
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward: bool = True) -> Type[TFPolicy]:
+        # Deprecated args.
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        extra_action_fetches_fn=None,  # Use `extra_action_out_fn`.
+        gradients_fn=None,  # Use `compute_gradients_fn`.
+) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:
@@ -106,7 +118,7 @@ def build_tf_policy(
             a tf.Optimizer given the policy and config. If None, will call
             the base class' `optimizer()` method instead (which returns a
             tf1.train.AdamOptimizer).
-        gradients_fn (Optional[Callable[[Policy,
+        compute_gradients_fn (Optional[Callable[[Policy,
             "tf.keras.optimizers.Optimizer", TensorType], ModelGradients]]):
             Optional callable that returns a list of gradients. If None,
             this defaults to optimizer.compute_gradients([loss]).
@@ -119,7 +131,7 @@ def build_tf_policy(
             Dict[str, TensorType]]]): Optional callable that returns a dict of
             TF fetches given the policy, batch input, and gradient tensors. If
             None, will not collect any gradient stats.
-        extra_action_fetches_fn (Optional[Callable[[Policy],
+        extra_action_out_fn (Optional[Callable[[Policy],
             Dict[str, TensorType]]]): Optional callable that returns
             a dict of TF fetches given the policy object. If None, will not
             perform any extra fetches.
@@ -168,8 +180,6 @@ def build_tf_policy(
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
-        obs_include_prev_action_reward (bool): Whether to include the
-            previous action and reward in the model input.
 
     Returns:
         Type[DynamicTFPolicy]: A child class of DynamicTFPolicy based on the
@@ -177,6 +187,21 @@ def build_tf_policy(
     """
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
+
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
+    if extra_action_fetches_fn is not None:
+        deprecation_warning(
+            old="extra_action_fetches_fn",
+            new="extra_action_out_fn",
+            error=False)
+        extra_action_out_fn = extra_action_fetches_fn
+
+    if gradients_fn is not None:
+        deprecation_warning(
+            old="gradients_fn", new="compute_gradients_fn", error=False)
+        compute_gradients_fn = gradients_fn
 
     class policy_cls(base):
         def __init__(self,
@@ -198,10 +223,16 @@ def build_tf_policy(
                                          config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
-                if extra_action_fetches_fn is None:
-                    self._extra_action_fetches = {}
+
+                if extra_action_out_fn is None:
+                    extra_action_fetches = {}
                 else:
-                    self._extra_action_fetches = extra_action_fetches_fn(self)
+                    extra_action_fetches = extra_action_out_fn(policy)
+
+                if hasattr(policy, "_extra_action_fetches"):
+                    policy._extra_action_fetches.update(extra_action_fetches)
+                else:
+                    policy._extra_action_fetches = extra_action_fetches
 
             DynamicTFPolicy.__init__(
                 self,
@@ -215,13 +246,16 @@ def build_tf_policy(
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
-                existing_model=existing_model,
                 existing_inputs=existing_inputs,
+                existing_model=existing_model,
                 get_batch_divisibility_req=get_batch_divisibility_req,
-                obs_include_prev_action_reward=obs_include_prev_action_reward)
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
+
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -238,14 +272,21 @@ def build_tf_policy(
         @override(TFPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return base.optimizer(self)
+                optimizers = base.optimizer(self)
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            return optimizers[0] if optimizers else None
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
-            if gradients_fn:
-                return gradients_fn(self, optimizer, loss)
+            if compute_gradients_fn:
+                return compute_gradients_fn(self, optimizer, loss)
             else:
                 return base.gradients(self, optimizer, loss)
 
@@ -265,6 +306,12 @@ def build_tf_policy(
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
+                # TODO: (sven) in torch, extra_learn_fetches do not exist.
+                #  Hence, things like td_error are returned by the stats_fn
+                #  and end up under the LEARNER_STATS_KEY. We should
+                #  change tf to do this as well. However, this will confilct
+                #  the handling of LEARNER_STATS_KEY inside the multi-GPU
+                #  train op.
                 # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}

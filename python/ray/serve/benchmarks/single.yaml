@@ -1,0 +1,34 @@
+cluster_name: default
+
+docker:
+    image: 'anyscale/ray-ml:latest'
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+auth:
+    ssh_user: ubuntu
+head_node:
+    InstanceType: m5.16xlarge
+    BlockDeviceMappings:
+        -
+            DeviceName: /dev/sda1
+            Ebs:
+                VolumeSize: 100
+
+initialization_commands: []
+setup_commands:
+    - sudo apt-get install build-essential libssl-dev git -y
+    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
+    - ray install-nightly
+head_setup_commands: []
+worker_setup_commands: []
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+    - ray stop
+    - 'ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076'

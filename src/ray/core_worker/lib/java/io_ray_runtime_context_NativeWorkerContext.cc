@@ -66,6 +66,12 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *
   return IdToJavaByteBuffer<ray::ActorID>(env, actor_id);
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetRpcAddress(JNIEnv *env, jclass) {
+  const auto &rpc_address = ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress();
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
+}
+
 #ifdef __cplusplus
 }
 #endif

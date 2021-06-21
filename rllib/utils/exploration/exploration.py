@@ -1,15 +1,19 @@
 from gym.spaces import Space
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+    from ray.rllib.utils import try_import_tf
+    _, tf, _ = try_import_tf()
 
 _, nn = try_import_torch()
 
@@ -69,6 +73,9 @@ class Exploration:
         """
         pass
 
+    # yapf: disable
+    # __sphinx_doc_begin_get_exploration_action__
+
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
@@ -98,13 +105,16 @@ class Exploration:
         """
         pass
 
+    # __sphinx_doc_end_get_exploration_action__
+    # yapf: enable
+
     @DeveloperAPI
     def on_episode_start(self,
-                         policy,
+                         policy: "Policy",
                          *,
-                         environment=None,
-                         episode=None,
-                         tf_sess=None):
+                         environment: BaseEnv = None,
+                         episode: int = None,
+                         tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
@@ -117,11 +127,11 @@ class Exploration:
 
     @DeveloperAPI
     def on_episode_end(self,
-                       policy,
+                       policy: "Policy",
                        *,
-                       environment=None,
-                       episode=None,
-                       tf_sess=None):
+                       environment: BaseEnv = None,
+                       episode: int = None,
+                       tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
@@ -135,8 +145,8 @@ class Exploration:
     @DeveloperAPI
     def postprocess_trajectory(self,
                                policy: "Policy",
-                               sample_batch,
-                               tf_sess=None):
+                               sample_batch: SampleBatch,
+                               tf_sess: Optional["tf.Session"] = None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
@@ -150,7 +160,8 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]):
+    def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]) -> \
+            List[LocalOptimizer]:
         """May add optimizer(s) to the Policy's own `optimizers`.
 
         The number of optimizers (Policy's plus Exploration's optimizers) must
@@ -168,36 +179,35 @@ class Exploration:
         return optimizers
 
     @DeveloperAPI
-    def get_exploration_loss(self, policy_loss: List[TensorType],
-                             train_batch: SampleBatch):
-        """May add loss term(s) to the Policy's own loss(es).
-
-        Args:
-            policy_loss (List[TensorType]): Loss(es) already calculated by the
-                Policy's own loss function and maybe the Model's custom loss.
-            train_batch (SampleBatch): The training data to calculate the
-                loss(es) for. This train data has already gone through
-                this Exploration's `preprocess_train_batch()` method.
-
-        Returns:
-            List[TensorType]: The updated list of loss terms.
-                This may be the original Policy loss(es), altered, and/or new
-                loss terms added to it.
-        """
-        return policy_loss
-
-    @DeveloperAPI
-    def get_info(self, sess=None):
-        """Returns a description of the current exploration state.
-
-        This is not necessarily the state itself (and cannot be used in
-        set_state!), but rather useful (e.g. debugging) information.
+    def get_state(self, sess: Optional["tf.Session"] = None) -> \
+            Dict[str, TensorType]:
+        """Returns the current exploration state.
 
         Args:
             sess (Optional[tf.Session]): An optional tf Session object to use.
 
         Returns:
-            dict: A description of the Exploration (not necessarily its state).
-                This may include tf.ops as values in graph mode.
+            Dict[str, TensorType]: The Exploration object's current state.
         """
         return {}
+
+    @DeveloperAPI
+    def set_state(self, state: object,
+                  sess: Optional["tf.Session"] = None) -> None:
+        """Sets the Exploration object's state to the given values.
+
+        Note that some exploration components are stateless, even though they
+        decay some values over time (e.g. EpsilonGreedy). However the decay is
+        only dependent on the current global timestep of the policy and we
+        therefore don't need to keep track of it.
+
+        Args:
+            state (object): The state to set this Exploration to.
+            sess (Optional[tf.Session]): An optional tf Session object to use.
+        """
+        pass
+
+    # TODO: (sven) Deprecate this method.
+    def get_info(self, sess: Optional["tf.Session"] = None):
+        deprecation_warning("get_info", "get_state")
+        return self.get_state(sess)

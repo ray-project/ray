@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
+HDFS_PREFIX = "hdfs://"
+ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 noop_template = ": {target}"  # noop in bash
 
@@ -53,7 +54,7 @@ def get_cloud_sync_client(remote_path):
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
-        remote_path (str): Path to remote storage (S3 or GS).
+        remote_path (str): Path to remote storage (S3, GS or HDFS).
 
     Raises:
         ValueError if malformed remote_dir.
@@ -63,19 +64,29 @@ def get_cloud_sync_client(remote_path):
             raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        template = "aws s3 sync {source} {target} --only-show-errors"
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors"
+        sync_down_template = sync_up_template
         delete_template = "aws s3 rm {target} --recursive --only-show-errors"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise ValueError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
-        template = "gsutil rsync -r {source} {target}"
+        sync_up_template = "gsutil rsync -r {source} {target}"
+        sync_down_template = sync_up_template
         delete_template = "gsutil rm -r {target}"
+    elif remote_path.startswith(HDFS_PREFIX):
+        if not distutils.spawn.find_executable("hdfs"):
+            raise ValueError("Upload uri starting with '{}' requires hdfs tool"
+                             " to be installed".format(HDFS_PREFIX))
+        sync_up_template = "hdfs dfs -put -f {source} {target}"
+        sync_down_template = "hdfs dfs -get -f {target} {source}"
+        delete_template = "hdfs dfs -rm -r {target}"
     else:
         raise ValueError("Upload uri must start with one of: {}"
                          "".format(ALLOWED_REMOTE_PREFIXES))
-    return CommandBasedClient(template, template, delete_template)
+    return CommandBasedClient(sync_up_template, sync_down_template,
+                              delete_template)
 
 
 class SyncClient:
@@ -124,6 +135,10 @@ class SyncClient:
         """Resets state."""
         pass
 
+    def close(self):
+        """Clean up hook."""
+        pass
+
 
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
@@ -168,6 +183,7 @@ class CommandBasedClient(SyncClient):
         self.sync_down_template = sync_down_template
         self.delete_template = delete_template
         self.logfile = None
+        self._closed = False
         self.cmd_process = None
 
     def set_logdir(self, logdir):
@@ -178,6 +194,16 @@ class CommandBasedClient(SyncClient):
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False)
+        self._closed = False
+
+    def _get_logfile(self):
+        if self._closed:
+            raise RuntimeError(
+                "[internalerror] The client has been closed. "
+                "Please report this stacktrace + your cluster configuration "
+                "on Github!")
+        else:
+            return self.logfile
 
     def sync_up(self, source, target):
         return self._execute(self.sync_up_template, source, target)
@@ -192,7 +218,10 @@ class CommandBasedClient(SyncClient):
         final_cmd = self.delete_template.format(target=quote(target))
         logger.debug("Running delete: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     def wait(self):
@@ -212,6 +241,13 @@ class CommandBasedClient(SyncClient):
             logger.warning("Sync process still running but resetting anyways.")
         self.cmd_process = None
 
+    def close(self):
+        if self.logfile:
+            logger.debug(f"Closing the logfile: {str(self.logfile)}")
+            self.logfile.close()
+            self.logfile = None
+            self._closed = True
+
     @property
     def is_running(self):
         """Returns whether a sync or delete process is running."""
@@ -229,7 +265,10 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     @staticmethod

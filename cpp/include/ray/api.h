@@ -1,36 +1,36 @@
 
 #pragma once
 
-#include <ray/api/generated/actor_funcs.generated.h>
-#include <ray/api/generated/create_funcs.generated.h>
-#include <ray/api/generated/funcs.generated.h>
+#include <ray/api/actor_creator.h>
+#include <ray/api/actor_handle.h>
+#include <ray/api/actor_task_caller.h>
+#include <ray/api/logging.h>
+#include <ray/api/object_ref.h>
+#include <ray/api/ray_config.h>
+#include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
+#include <ray/api/ray_runtime_holder.h>
+#include <ray/api/task_caller.h>
+#include <ray/api/wait_result.h>
 
+#include <boost/callable_traits.hpp>
 #include <memory>
 #include <msgpack.hpp>
+#include <mutex>
 
-#include "ray/core.h"
 namespace ray {
 namespace api {
-
-template <typename T>
-class ObjectRef;
-template <typename T>
-class ActorHandle;
-template <typename ReturnType>
-class TaskCaller;
-
-template <typename ReturnType>
-class ActorTaskCaller;
-
-template <typename ActorType>
-class ActorCreator;
-
-class WaitResult;
-
 class Ray {
  public:
-  /// Initialize Ray runtime.
+  /// Initialize Ray runtime with config.
+  static void Init(RayConfig &config);
+
+  /// Initialize Ray runtime with config and command-line arguments.
+  /// If a parameter is explicitly set in command-line arguments, the parameter value will
+  /// be overwritten.
+  static void Init(RayConfig &config, int *argc, char ***argv);
+
+  /// Initialize Ray runtime with default config.
   static void Init();
 
   /// Shutdown Ray runtime.
@@ -54,90 +54,62 @@ class Ray {
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
   ///
-  /// \param[in] ids The object id array which should be got.
-  /// \return shared pointer array of the result.
-  template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
-
-  /// Get a list of objects from the object store.
-  /// This method will be blocked until all the objects are ready.
-  ///
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &objects);
 
   /// Wait for a list of objects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
-  /// \param[in] ids The object id array which should be waited.
+  /// \param[in] objects The object array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return Two arrays, one containing locally available objects, one containing the
   /// rest.
-  static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                         int timeout_ms);
+  template <typename T>
+  static WaitResult<T> Wait(const std::vector<ObjectRef<T>> &objects, int num_objects,
+                            int timeout_ms);
 
-/// Include the `Call` methods for calling remote functions.
-#include "api/generated/call_funcs.generated.h"
+  /// Create a `TaskCaller` for calling remote function.
+  /// It is used for normal task, such as Ray::Task(Plus1, 1), Ray::Task(Plus, 1, 2).
+  /// \param[in] func The function to be remote executed.
+  /// \param[in] args The function arguments passed by a value or ObjectRef.
+  /// \return TaskCaller.
+  template <typename F>
+  static TaskCaller<F> Task(F func);
 
-/// Include the `Actor` methods for creating actors.
-#include "api/generated/create_actors.generated.h"
+  /// Generic version of creating an actor
+  /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
+  /// Ray::Actor(Counter::FactoryCreate<int>).Remote(1);
+  template <typename F>
+  static ActorCreator<F> Actor(F create_func);
 
  private:
-  static RayRuntime *runtime_;
-
   static std::once_flag is_inited_;
 
-  template <typename ReturnType, typename FuncType, typename ExecFuncType,
-            typename... ArgTypes>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                             ArgTypes &... args);
-
-  template <typename ActorType, typename FuncType, typename ExecFuncType,
-            typename... ArgTypes>
-  static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
-                                                     ExecFuncType &exec_func,
-                                                     ArgTypes &... args);
-
-  template <typename ReturnType, typename ActorType, typename FuncType,
-            typename ExecFuncType, typename... ArgTypes>
-  static ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
-                                                       ExecFuncType &exec_func,
-                                                       ActorHandle<ActorType> &actor,
-                                                       ArgTypes &... args);
-
-/// Include the `Call` methods for calling actor methods.
-/// Used by ActorHandle to implement .Call()
-#include "api/generated/call_actors.generated.h"
-
   template <typename T>
-  friend class ObjectRef;
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
-  template <typename ActorType>
-  friend class ActorHandle;
+  template <typename FuncType>
+  static TaskCaller<FuncType> TaskInternal(FuncType &func);
+
+  template <typename FuncType>
+  static ActorCreator<FuncType> CreateActorInternal(FuncType &func);
 };
 
 }  // namespace api
 }  // namespace ray
 
 // --------- inline implementation ------------
-#include <ray/api/actor_creator.h>
-#include <ray/api/actor_handle.h>
-#include <ray/api/actor_task_caller.h>
-#include <ray/api/arguments.h>
-#include <ray/api/object_ref.h>
-#include <ray/api/serializer.h>
-#include <ray/api/task_caller.h>
-#include <ray/api/wait_result.h>
 
 namespace ray {
 namespace api {
 
 template <typename T>
-inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
+inline static std::vector<std::string> ObjectRefsToObjectIDs(
     const std::vector<ObjectRef<T>> &object_refs) {
-  std::vector<ObjectID> object_ids;
+  std::vector<std::string> object_ids;
   for (auto it = object_refs.begin(); it != object_refs.end(); it++) {
     object_ids.push_back(it->ID());
   }
@@ -146,38 +118,24 @@ inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
 
 template <typename T>
 inline ObjectRef<T> Ray::Put(const T &obj) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, obj);
-  auto id = runtime_->Put(buffer);
+  auto buffer = std::make_shared<msgpack::sbuffer>(Serializer::Serialize(obj));
+  auto id = ray::internal::RayRuntime()->Put(buffer);
   return ObjectRef<T>(id);
 }
 
 template <typename T>
 inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
-  auto packed_object = runtime_->Get(object.ID());
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(packed_object->size());
-  memcpy(unpacker.buffer(), packed_object->data(), packed_object->size());
-  unpacker.buffer_consumed(packed_object->size());
-  std::shared_ptr<T> return_object(new T);
-  Serializer::Deserialize(unpacker, return_object.get());
-  return return_object;
+  return GetFromRuntime(object);
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
-  auto result = runtime_->Get(ids);
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<std::string> &ids) {
+  auto result = ray::internal::RayRuntime()->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
-    msgpack::unpacker unpacker;
-    unpacker.reserve_buffer((*it)->size());
-    memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
-    unpacker.buffer_consumed((*it)->size());
-    std::shared_ptr<T> obj(new T);
-    Serializer::Deserialize(unpacker, obj.get());
-    return_objects.push_back(obj);
+    auto obj = Serializer::Deserialize<std::shared_ptr<T>>((*it)->data(), (*it)->size());
+    return_objects.push_back(std::move(obj));
   }
   return return_objects;
 }
@@ -188,69 +146,48 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectRef<T>> 
   return Get<T>(object_ids);
 }
 
-inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                            int timeout_ms) {
-  return runtime_->Wait(ids, num_objects, timeout_ms);
+template <typename T>
+inline WaitResult<T> Ray::Wait(const std::vector<ObjectRef<T>> &objects, int num_objects,
+                               int timeout_ms) {
+  auto object_ids = ObjectRefsToObjectIDs<T>(objects);
+  auto results = ray::internal::RayRuntime()->Wait(object_ids, num_objects, timeout_ms);
+  std::list<ObjectRef<T>> readys;
+  std::list<ObjectRef<T>> unreadys;
+  for (size_t i = 0; i < results.size(); i++) {
+    if (results[i] == true) {
+      readys.emplace_back(objects[i]);
+    } else {
+      unreadys.emplace_back(objects[i]);
+    }
+  }
+  return WaitResult<T>(std::move(readys), std::move(unreadys));
 }
 
-template <typename ReturnType, typename FuncType, typename ExecFuncType,
-          typename... ArgTypes>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                                ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
-  RemoteFunctionPtrHolder ptr;
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return TaskCaller<ReturnType>(runtime_, ptr, buffer);
+template <typename FuncType>
+inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
+  RemoteFunctionHolder remote_func_holder(func);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
+                              std::move(remote_func_holder));
 }
 
-template <typename ActorType, typename FuncType, typename ExecFuncType,
-          typename... ArgTypes>
-inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
-                                                        ExecFuncType &exec_func,
-                                                        ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
-  RemoteFunctionPtrHolder ptr;
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorCreator<ActorType>(runtime_, ptr, buffer);
+template <typename FuncType>
+inline ActorCreator<FuncType> Ray::CreateActorInternal(FuncType &create_func) {
+  RemoteFunctionHolder remote_func_holder(create_func);
+  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
+                                std::move(remote_func_holder));
 }
 
-template <typename ReturnType, typename ActorType, typename FuncType,
-          typename ExecFuncType, typename... ArgTypes>
-inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
-                                                          ExecFuncType &exec_func,
-                                                          ActorHandle<ActorType> &actor,
-                                                          ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
-  RemoteFunctionPtrHolder ptr;
-  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);
+/// Normal task.
+template <typename F>
+TaskCaller<F> Ray::Task(F func) {
+  return TaskInternal<F>(func);
 }
 
-// TODO(barakmich): These includes are generated files that do not contain their
-// relevant headers. Since they're only used here, they must appear in this
-// particular order, which is a code smell and breaks lint.
-//
-// The generated files, and their generator, should be fixed. Until then, we can
-// force the order by way of comments
-//
-// #1
-#include <ray/api/generated/exec_funcs.generated.h>
-// #2
-#include <ray/api/generated/call_funcs_impl.generated.h>
-// #3
-#include <ray/api/generated/create_actors_impl.generated.h>
-// #4
-#include <ray/api/generated/call_actors_impl.generated.h>
+/// Creating an actor.
+template <typename F>
+ActorCreator<F> Ray::Actor(F create_func) {
+  return CreateActorInternal<F>(create_func);
+}
 
 }  // namespace api
 }  // namespace ray

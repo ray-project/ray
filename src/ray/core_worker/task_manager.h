@@ -30,14 +30,20 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                 Status *status = nullptr) = 0;
+  virtual bool PendingTaskFailed(
+      const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
+      bool immediately_mark_object_fail = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+
+  virtual void MarkPendingTaskFailed(
+      const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -58,7 +64,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               RetryTaskCallback retry_task_callback,
-              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -115,9 +121,23 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
+  /// \param[in] creation_task_exception If this arg is set, it means this task failed
+  /// because the callee actor is dead caused by an exception thrown in creation task,
+  /// only applies when error_type=ACTOR_DIED.
+  /// \param[in] immediately_mark_object_fail whether immediately mark the task
+  /// result object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         Status *status = nullptr) override;
+  bool PendingTaskFailed(
+      const TaskID &task_id, rpc::ErrorType error_type, Status *status = nullptr,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
+      bool immediately_mark_object_fail = true) override;
+
+  /// Treat a pending task as failed. The lock should not be held when calling
+  /// this method because it may trigger callbacks in this or other classes.
+  void MarkPendingTaskFailed(
+      const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception =
+          nullptr) override LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -139,6 +159,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Return the spec for a pending task.
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
+
+  /// Return specs for pending children tasks of the given parent task.
+  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -207,11 +230,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void RemoveLineageReference(const ObjectID &object_id,
                               std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
 
-  /// Treat a pending task as failed. The lock should not be held when calling
-  /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
-                             rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
-
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
@@ -238,7 +256,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// processing a worker's reply to check whether the node that the worker
   /// was on is still alive. If the node is down, the plasma objects returned by the task
   /// are marked as failed.
-  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  const std::function<bool(const NodeID &node_id)> check_node_alive_;
   /// Called when processing a worker's reply if the node that the worker was
   /// on died. This should be called to attempt to recover a plasma object
   /// returned by the task (or store an error if the object is not

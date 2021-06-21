@@ -17,6 +17,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
+import sys
 import time
 
 import ray
@@ -62,6 +63,8 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         #     shouldn't need to adjust them. ***
         # DDPPO requires PyTorch distributed.
         "framework": "torch",
+        # The communication backend for PyTorch distributed.
+        "torch_distributed_backend": "gloo",
         # Learning is no longer done on the driver process, so
         # giving GPUs to the driver does not make sense!
         "num_gpus": 0,
@@ -86,9 +89,14 @@ def validate_config(config):
     Args:
         config (TrainerConfigDict): The Trainer's config to check.
 
-    Throws:
+    Raises:
         ValueError: In case something is wrong with the config.
     """
+
+    # Error if run on Win.
+    if sys.platform in ["win32", "cygwin"]:
+        raise ValueError("DD-PPO not supported on Win yet! "
+                         "Due to usage of torch.distributed.")
 
     # Auto-train_batch_size: Calculate from rollout len and envs-per-worker.
     if config["train_batch_size"] == -1:
@@ -104,6 +112,9 @@ def validate_config(config):
     if config["framework"] != "torch":
         raise ValueError(
             "Distributed data parallel is only supported for PyTorch")
+    if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
+        raise ValueError("Only gloo, mpi, or nccl is supported for "
+                         "the backend of PyTorch distributed.")
     # `num_gpus` must be 0/None, since all optimization happens on Workers.
     if config["num_gpus"]:
         raise ValueError(
@@ -146,7 +157,10 @@ def execution_plan(workers: WorkerSet,
     # Get setup tasks in order to throw errors on failure.
     ray.get([
         worker.setup_torch_data_parallel.remote(
-            address, i, len(workers.remote_workers()), backend="gloo")
+            address,
+            i,
+            len(workers.remote_workers()),
+            backend=config["torch_distributed_backend"])
         for i, worker in enumerate(workers.remote_workers())
     ])
     logger.info("Torch process group init completed")

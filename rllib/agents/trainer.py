@@ -1,38 +1,45 @@
-from datetime import datetime
-import numpy as np
 import copy
+from datetime import datetime
+import functools
 import logging
 import math
+import numpy as np
 import os
 import pickle
-import time
 import tempfile
+import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    SimpleListCollector
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
+from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.resources import Resources
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
-from ray.tune.resources import Resources
-from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 tf1, tf, tfv = try_import_tf()
 
@@ -49,10 +56,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker. This enables
+    # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
+    # When `num_workers` > 0, the driver (local_worker; worker-idx=0) does not
+    # need an environment. This is because it doesn't have to sample (done by
+    # remote_workers; worker_indices > 0) nor evaluate (done by evaluation
+    # workers; see below).
+    "create_env_on_driver": False,
     # Divide episodes into fragments of this many steps each during rollouts.
     # Sample batches of this size are collected from rollout workers and
     # combined into a larger batch of `train_batch_size` for learning.
@@ -69,19 +81,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
-    "sample_batch_size": DEPRECATED_VALUE,
-    # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `rollout_fragment_length` length unrolls. Episode truncation guarantees
-    # evenly sized batches, but increases variance as the reward-to-go will
-    # need to be estimated at truncation boundaries.
+    # How to build per-Sampler (RolloutWorker) batches, which are then
+    # usually concat'd to form the train batch. Note that "steps" below can
+    # mean different things (either env- or agent-steps) and depends on the
+    # `count_steps_by` (multiagent) setting below.
+    # truncate_episodes: Each produced batch (when calling
+    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
+    #   steps. This mode guarantees evenly sized batches, but increases
+    #   variance as the future return must now be estimated at truncation
+    #   boundaries.
+    # complete_episodes: Each unroll happens exactly over one episode, from
+    #   beginning to end. Data collection will not stop unless the episode
+    #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
-    # Number of GPUs to allocate to the trainer process. Note that not all
-    # algorithms can take advantage of trainer GPUs. This can be fractional
-    # (e.g., 0.3 GPUs).
-    "num_gpus": 0,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -106,10 +120,30 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Arguments to pass to the env creator.
-    "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Arguments to pass to the env creator.
+    "env_config": {},
+    # A callable taking the last train results, the base env and the env
+    # context as args and returning a new task to set the env to.
+    # The env must be a `TaskSettableEnv` sub-class for this to work.
+    # See `examples/curriculum_learning.py` for an example.
+    "env_task_fn": None,
+    # If True, try to render the environment on the local worker or on worker
+    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
+    # the first sub-environment will be rendered.
+    # In order for this to work, your env will have to implement the
+    # `render()` method which either:
+    # a) handles window generation and rendering itself (returning True) or
+    # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
+    "render_env": False,
+    # If True, stores videos in this relative directory inside the default
+    # output dir (~/ray_results/...). Alternatively, you can specify an
+    # absolute path (str), in which the env recordings should be
+    # stored instead.
+    # Set to False for not recording anything.
+    # Note: This setting replaces the deprecated `monitor` key.
+    "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
     # Whether to clip rewards during Policy's postprocessing.
@@ -127,9 +161,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "lr": 0.0001,
 
     # === Debug Settings ===
-    # Whether to write episode stats and videos to the agent log dir. This is
-    # typically located in ~/ray_results.
-    "monitor": False,
     # Set the ray.rllib.* log level for the agent process and its workers.
     # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
     # periodically print out summaries of relevant internal dataflow (this is
@@ -160,9 +191,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
-    # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect if eager is enabled.
-    "no_eager_on_workers": False,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into
@@ -188,6 +216,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Whether to run evaluation in parallel to a Trainer.train() call
+    # using threading. Default=False.
+    # E.g. evaluation_interval=2 -> For every other training iteration,
+    # the Trainer.train() and Trainer.evaluate() calls run in parallel.
+    # Note: This is experimental. Possible pitfalls could be race conditions
+    # for weight synching at the beginning of the evaluation loop.
+    "evaluation_parallel_to_training": False,
     # Internal flag that is set to True for evaluation workers.
     "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator
@@ -202,13 +237,14 @@ COMMON_CONFIG: TrainerConfigDict = {
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
-    # process. If you increase this, it will increase the Ray resource usage
-    # of the trainer since evaluation workers are created separately from
-    # rollout workers.
+    # process (only if evaluation_interval is not None). If you increase this,
+    # it will increase the Ray resource usage of the trainer since evaluation
+    # workers are created separately from rollout workers (used to sample data
+    # for training).
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer._evaluate() method to see the default implementation. The
+    # Trainer.evaluate() method to see the default implementation. The
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
@@ -218,11 +254,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
 
-    # Experimental flag to speed up sampling and use "trajectory views" as
-    # generic ModelV2 `input_dicts` that can be requested by the model to
-    # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    # The SampleCollector class to be used to collect and retrieve
+    # environment-, model-, and sampler data. Override the SampleCollector base
+    # class to implement your own collection/buffering/retrieval logic.
+    "sample_collector": SimpleListCollector,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -230,7 +265,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "synchronize_filters": True,
     # Configures TF for single-process operation by default.
     "tf_session_args": {
-        # note: overriden by `local_tf_session_args`
+        # note: overridden by `local_tf_session_args`
         "intra_op_parallelism_threads": 2,
         "inter_op_parallelism_threads": 2,
         "gpu_options": {
@@ -281,7 +316,16 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
 
-    # === Advanced Resource Settings ===
+    # === Resource Settings ===
+    # Number of GPUs to allocate to the trainer process. Note that not all
+    # algorithms can take advantage of trainer GPUs. Support for multi-GPU
+    # is currently only available for tf-[PPO/IMPALA/DQN/PG].
+    # This can be fractional (e.g., 0.3 GPUs).
+    "num_gpus": 0,
+    # Set to True for debugging (multi-)?GPU funcitonality on a CPU machine.
+    # GPU towers will be simulated by graphs located on CPUs in this case.
+    # Use `num_gpus` to test for different numbers of fake GPUs.
+    "_fake_gpus": False,
     # Number of CPUs to allocate per worker.
     "num_cpus_per_worker": 1,
     # Number of GPUs to allocate per worker. This can be fractional. This is
@@ -293,36 +337,35 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # You can set these memory quotas to tell Ray to reserve memory for your
-    # training run. This guarantees predictable execution, but the tradeoff is
-    # if your workload exceeeds the memory quota it will fail.
-    # Heap memory to reserve for the trainer process (0 for unlimited). This
-    # can be large if your are using large train batches, replay buffers, etc.
-    "memory": 0,
-    # Object store memory to reserve for the trainer process. Being large
-    # enough to fit a few copies of the model weights should be sufficient.
-    # This is enabled by default since models are typically quite small.
-    "object_store_memory": 0,
-    # Heap memory to reserve for each worker. Should generally be small unless
-    # your environment is very heavyweight.
-    "memory_per_worker": 0,
-    # Object store memory to reserve for each worker. This only needs to be
-    # large enough to fit a few sample batches at a time. This is enabled
-    # by default since it almost never needs to be larger than ~200MB.
-    "object_store_memory_per_worker": 0,
+    # The strategy for the placement group factory returned by
+    # `Trainer.default_resource_request()`. A PlacementGroup defines, which
+    # devices (resources) should always be co-located on the same node.
+    # For example, a Trainer with 2 rollout workers, running with
+    # num_gpus=1 will request a placement group with the bundles:
+    # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
+    # for the driver and the other 2 bundles are for the two workers.
+    # These bundles can now be "placed" on the same or different
+    # nodes depending on the value of `placement_strategy`:
+    # "PACK": Packs bundles into as few nodes as possible.
+    # "SPREAD": Places bundles across distinct nodes as even as possible.
+    # "STRICT_PACK": Packs bundles into one node. The group is not allowed
+    #   to span multiple nodes.
+    # "STRICT_SPREAD": Packs bundles across distinct nodes.
+    "placement_strategy": "PACK",
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
-    #  - "sampler": generate experiences via online simulation (default)
-    #  - a local directory or file glob expression (e.g., "/tmp/*.json")
-    #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    #    "s3://bucket/2.json"])
-    #  - a dict with string keys and sampling probabilities as values (e.g.,
+    #  - "sampler": Generate experiences via online (env) simulation (default).
+    #  - A local directory or file glob expression (e.g., "/tmp/*.json").
+    #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+    #    "s3://bucket/2.json"]).
+    #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - a function that returns a rllib.offline.InputReader
+    #  - A callable that returns a ray.rllib.offline.InputReader.
     "input": "sampler",
     # Specify how to evaluate the current policy. This only has an effect when
-    # reading offline experiences. Available options:
+    # reading offline experiences ("input" is not "sampler").
+    # Available options:
     #  - "wis": the weighted step-wise importance sampling estimator.
     #  - "is": the step-wise importance sampling estimator.
     #  - "simulation": run the environment in the background, but use
@@ -368,6 +411,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # agents it controls at that timestep. When replay_mode=independent,
         # transitions are replayed independently per policy.
         "replay_mode": "independent",
+        # Which metric to use as the "batch size" when building a
+        # MultiAgentBatch. The two supported values are:
+        # env_steps: Count each time the env is "stepped" (no matter how many
+        #   multi-agent actions are passed/how many multi-agent observations
+        #   have been returned in the previous step).
+        # agent_steps: Count each individual agent step as one step.
+        "count_steps_by": "env_steps",
     },
 
     # === Logger ===
@@ -375,14 +425,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
 
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
-
-    # Deprecated keys:
-    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
-    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
+    # === Deprecated keys ===
+    # Uses the sync samples optimizer instead of the multi-gpu one. This is
+    # usually slower, but you might want to try it if you run into issues with
+    # the default optimizer.
+    # This will be set automatically from now on.
+    "simple_optimizer": DEPRECATED_VALUE,
+    # Whether to write episode stats and videos to the agent log dir. This is
+    # typically located in ~/ray_results.
+    "monitor": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -456,27 +507,41 @@ class Trainer(Trainable):
         # in self.setup().
         config = config or {}
 
-        # Vars to synchronize to workers on each train call
-        self.global_vars = {"timestep": 0}
-
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
+            # Default logdir prefix containing the agent's name and the
+            # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
                                               timestr)
+            if not os.path.exists(DEFAULT_RESULTS_DIR):
+                os.makedirs(DEFAULT_RESULTS_DIR)
+            logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
-            def default_logger_creator(config):
-                """Creates a Unified logger with a default logdir prefix
-                containing the agent name and the env id
-                """
-                if not os.path.exists(DEFAULT_RESULTS_DIR):
-                    os.makedirs(DEFAULT_RESULTS_DIR)
-                logdir = tempfile.mkdtemp(
-                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, loggers=None)
+            # Allow users to more precisely configure the created logger
+            # via "logger_config.type".
+            if config.get(
+                    "logger_config") and "type" in config["logger_config"]:
+
+                def default_logger_creator(config):
+                    """Creates a custom logger with the default prefix."""
+                    cfg = config["logger_config"].copy()
+                    cls = cfg.pop("type")
+                    # Provide default for logdir, in case the user does
+                    # not specify this in the "logger_config" dict.
+                    logdir_ = cfg.pop("logdir", logdir)
+                    return from_config(cls=cls, _args=[cfg], logdir=logdir_)
+
+            # If no `type` given, use tune's UnifiedLogger as last resort.
+            else:
+
+                def default_logger_creator(config):
+                    """Creates a Unified logger with the default prefix."""
+                    return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
@@ -485,21 +550,37 @@ class Trainer(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-            cls, config: PartialTrainerConfigDict) -> Resources:
+            cls, config: PartialTrainerConfigDict) -> \
+            Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
-        num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
+
+        eval_config = cf["evaluation_config"]
+
         # TODO(ekl): add custom resources here once tune supports them
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
-            extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Driver.
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": cf["num_gpus"],
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
+                    "CPU": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "GPU": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"])
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
 
     @override(Trainable)
     @PublicAPI
@@ -532,14 +613,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
-
         return result
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
@@ -569,12 +642,11 @@ class Trainer(Trainable):
             # A class specifier.
             elif "." in env:
                 self.env_creator = \
-                    lambda env_config: from_config(env, env_config)
-            # Try gym.
+                    lambda env_context: from_config(env, env_context)
+            # Try gym/PyBullet/Vizdoom.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_config: gym.make(env, **env_config)
+                self.env_creator = functools.partial(
+                    gym_env_creator, env_descriptor=env)
         else:
             self.env_creator = lambda env_config: None
 
@@ -585,18 +657,6 @@ class Trainer(Trainable):
                                                     config)
 
         # Check and resolve DL framework settings.
-        if "use_pytorch" in self.config and \
-                self.config["use_pytorch"] != DEPRECATED_VALUE:
-            deprecation_warning("use_pytorch", "framework=torch", error=False)
-            if self.config["use_pytorch"]:
-                self.config["framework"] = "torch"
-            self.config.pop("use_pytorch")
-        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning("eager", "framework=tfe", error=False)
-            if self.config["eager"]:
-                self.config["framework"] = "tfe"
-            self.config.pop("eager")
-
         # Enable eager/tracing support.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
@@ -623,7 +683,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        Trainer._validate_config(self.config)
+        self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -648,26 +708,38 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
 
             # Evaluation setup.
+            self.evaluation_workers = None
+            self.evaluation_metrics = {}
+            # Do automatic evaluation from time to time.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 # Assert that user has not unset "in_evaluation".
                 assert "in_evaluation" not in extra_config or \
                     extra_config["in_evaluation"] is True
-                extra_config.update({
+                evaluation_config = merge_dicts(self.config, extra_config)
+                # Validate evaluation config.
+                self._validate_config(
+                    evaluation_config, trainer_obj_or_none=self)
+                # Switch on complete_episode rollouts (evaluations are
+                # always done on n complete episodes) and set the
+                # `in_evaluation` flag.
+                evaluation_config.update({
                     "batch_mode": "complete_episodes",
-                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
-
+                # Create a separate evaluation worker set for evaluation.
+                # If evaluation_num_workers=0, use the evaluation set's local
+                # worker for evaluation, otherwise, use its remote workers
+                # (parallelized evaluation).
                 self.evaluation_workers = self._make_workers(
-                    self.env_creator,
-                    self._policy_class,
-                    merge_dicts(self.config, extra_config),
+                    env_creator=self.env_creator,
+                    validate_env=None,
+                    policy_class=self._policy_class,
+                    config=evaluation_config,
                     num_workers=self.config["evaluation_num_workers"])
-                self.evaluation_metrics = {}
 
     @override(Trainable)
     def cleanup(self):
@@ -690,9 +762,11 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy_class: Type[Policy], config: TrainerConfigDict,
-                      num_workers: int) -> WorkerSet:
+    def _make_workers(
+            self, *, env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+            policy_class: Type[Policy], config: TrainerConfigDict,
+            num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -701,6 +775,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
+            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+                Optional callable to validate the generated environment (only
+                on worker=0).
             policy (Type[Policy]): The Policy class to use for creating the
                 policies of the workers.
             config (TrainerConfigDict): The Trainer's config.
@@ -712,6 +789,7 @@ class Trainer(Trainable):
         """
         return WorkerSet(
             env_creator=env_creator,
+            validate_env=validate_env,
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,
@@ -723,21 +801,34 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
+    # TODO: (sven) Deprecate in favor of Trainer.evaluate().
     @DeveloperAPI
     def _evaluate(self) -> dict:
+        deprecation_warning(
+            "Trainer._evaluate", "Trainer.evaluate", error=False)
+        return self.evaluate()
+
+    @PublicAPI
+    def evaluate(self) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
+        # In case we are evaluating (in a thread) parallel to training,
+        # we may have to re-enable eager mode here (gets disabled in the
+        # thread).
+        if self.config.get("framework") in ["tf2", "tfe"] and \
+                not tf.executing_eagerly():
+            tf1.enable_eager_execution()
+
+        # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
-        # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to evaluation workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        self.evaluation_workers.foreach_worker(
-            lambda w: w.restore(ray.get(weights)))
-        self._sync_filters_if_needed(self.evaluation_workers)
+        if self.evaluation_workers is not None:
+            # Sync weights to the evaluation WorkerSet.
+            self._sync_weights_to_workers(worker_set=self.evaluation_workers)
+            self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
             logger.info("Running custom eval function {}".format(
@@ -750,9 +841,35 @@ class Trainer(Trainable):
         else:
             logger.info("Evaluating current policy for {} episodes.".format(
                 self.config["evaluation_num_episodes"]))
-            if self.config["evaluation_num_workers"] == 0:
+            metrics = None
+            # No evaluation worker set ->
+            # Do evaluation using the local worker. Expect error due to the
+            # local worker not having an env.
+            if self.evaluation_workers is None:
+                try:
+                    for _ in range(self.config["evaluation_num_episodes"]):
+                        self.workers.local_worker().sample()
+                    metrics = collect_metrics(self.workers.local_worker())
+                except ValueError as e:
+                    if "RolloutWorker has no `input_reader` object" in \
+                            e.args[0]:
+                        raise ValueError(
+                            "Cannot evaluate w/o an evaluation worker set in "
+                            "the Trainer or w/o an env on the local worker!\n"
+                            "Try one of the following:\n1) Set "
+                            "`evaluation_interval` >= 0 to force creating a "
+                            "separate evaluation worker set.\n2) Set "
+                            "`create_env_on_driver=True` to force the local "
+                            "(non-eval) worker to have an environment to "
+                            "evaluate on.")
+                    else:
+                        raise e
+
+            # Evaluation worker set only has local worker.
+            elif self.config["evaluation_num_workers"] == 0:
                 for _ in range(self.config["evaluation_num_episodes"]):
                     self.evaluation_workers.local_worker().sample()
+            # Evaluation worker set has n remote workers.
             else:
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
@@ -767,15 +884,30 @@ class Trainer(Trainable):
                         w.sample.remote()
                         for w in self.evaluation_workers.remote_workers()
                     ])
-
-            metrics = collect_metrics(self.evaluation_workers.local_worker(),
-                                      self.evaluation_workers.remote_workers())
+            if metrics is None:
+                metrics = collect_metrics(
+                    self.evaluation_workers.local_worker(),
+                    self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
     @DeveloperAPI
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
+
+    @DeveloperAPI
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
+        """Sync "main" weights to given WorkerSet or list of workers."""
+        assert worker_set is not None
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @PublicAPI
     def compute_action(self,
@@ -792,7 +924,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (TensorStructType): observation from the environment.
             state (List[TensorStructType]): RNN hidden state, if any. If state
                 is not None, then all of compute_single_action(...) is returned
@@ -816,23 +948,21 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
-
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
+        # Check the preprocessor and preprocess, if necessary.
+        pp = self.workers.local_worker().preprocessors[policy_id]
+        if type(pp).__name__ != "NoPreprocessor":
+            observation = pp.transform(observation)
+        filtered_observation = self.workers.local_worker().filters[policy_id](
+            observation, update=False)
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
+            filtered_observation,
             state,
             prev_action,
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         if state or full_fetch:
             return result
@@ -853,7 +983,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (obj): observation from the environment.
             state (dict): RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
@@ -898,9 +1028,6 @@ class Trainer(Trainable):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         # Batch compute actions
         actions, states, infos = policy.compute_actions(
             obs_batch,
@@ -909,8 +1036,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         # Unbatch actions for the environment
         atns, actions = space_utils.unbatch(actions), {}
@@ -942,7 +1068,7 @@ class Trainer(Trainable):
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
@@ -951,7 +1077,7 @@ class Trainer(Trainable):
     def get_weights(self, policies: List[PolicyID] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
-        Arguments:
+        Args:
             policies (list): Optional list of policies to return weights for,
                 or None for all policies.
         """
@@ -961,7 +1087,7 @@ class Trainer(Trainable):
     def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
 
-        Arguments:
+        Args:
             weights (dict): Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
@@ -972,7 +1098,7 @@ class Trainer(Trainable):
                             policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
 
@@ -991,7 +1117,7 @@ class Trainer(Trainable):
                                  policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export tensorflow policy model checkpoint to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             filename_prefix (string): file name prefix of checkpoint files.
             policy_id (string): Optional policy id to export.
@@ -1011,7 +1137,7 @@ class Trainer(Trainable):
                                     policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Imports a policy's model with given policy_id from a local h5 file.
 
-        Arguments:
+        Args:
             import_file (str): The h5 file to import from.
             policy_id (string): Optional policy id to import into.
 
@@ -1026,7 +1152,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def collect_metrics(self,
-                        selected_workers: List["ActorHandle"] = None) -> dict:
+                        selected_workers: List[ActorHandle] = None) -> dict:
         """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().
@@ -1050,17 +1176,6 @@ class Trainer(Trainable):
                               _allow_unknown_configs: Optional[bool] = None
                               ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
-        # Error if trainer default has deprecated value.
-        if config1["sample_batch_size"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length", error=True)
-        # Warning if user override config has deprecated value.
-        if ("sample_batch_size" in config2
-                and config2["sample_batch_size"] != DEPRECATED_VALUE):
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length")
-            config2["rollout_fragment_length"] = config2["sample_batch_size"]
-            del config2["sample_batch_size"]
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]
 
@@ -1077,34 +1192,116 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: PartialTrainerConfigDict):
-        if config.get("_use_trajectory_view_api") and \
-                config.get("framework") != "torch":
-            raise ValueError(
-                "`_use_trajectory_view_api` only supported for PyTorch so "
-                "far!")
-        elif not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+    def _validate_config(config: PartialTrainerConfigDict,
+                         trainer_obj_or_none: Optional["Trainer"] = None):
+        model_config = config.get("model")
+        if model_config is None:
+            config["model"] = model_config = {}
 
-        if "policy_graphs" in config["multiagent"]:
-            deprecation_warning("policy_graphs", "policies")
-            # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop(
-                "policy_graphs")
-        if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=0|1", error=True)
-        if "gpu_fraction" in config:
-            deprecation_warning(
-                "gpu_fraction", "num_gpus=<fraction>", error=True)
-        if "use_gpu_for_workers" in config:
-            deprecation_warning(
-                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
-        if type(config["input_evaluation"]) != list:
+        # Monitor should be replaced by `record_env`.
+        if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning("monitor", "record_env", error=False)
+            config["record_env"] = config.get("monitor", False)
+        # Empty string would fail some if-blocks checking for this setting.
+        # Set to True instead, meaning: use default output dir to store
+        # the videos.
+        if config.get("record_env") == "":
+            config["record_env"] = True
+
+        # Multi-GPU settings.
+        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
+        if simple_optim_setting != DEPRECATED_VALUE:
+            deprecation_warning(old="simple_optimizer", error=False)
+
+        framework = config.get("framework")
+        # Multi-GPU setting: Must use TFMultiGPU if tf.
+        if config.get("num_gpus", 0) > 1:
+            if framework in ["tfe", "tf2"]:
+                raise ValueError("`num_gpus` > 1 not supported yet for "
+                                 "framework={}!".format(framework))
+            elif simple_optim_setting is True:
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider `simple_optimizer=False`.")
+            config["simple_optimizer"] = framework == "torch"
+        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
+        elif simple_optim_setting == DEPRECATED_VALUE:
+            # Non-TF: Must use simple optimizer.
+            if framework != "tf":
+                config["simple_optimizer"] = True
+            # TF + Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies).
+            elif len(config["multiagent"]["policies"]) > 0:
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                default_policy_cls = None if trainer_obj_or_none is None else \
+                    getattr(trainer_obj_or_none, "_policy_class", None)
+                if any((p[0] or default_policy_cls) is None or not issubclass(
+                        p[0] or default_policy_cls, DynamicTFPolicy)
+                       for p in config["multiagent"]["policies"].values()):
+                    config["simple_optimizer"] = True
+                else:
+                    config["simple_optimizer"] = False
+            else:
+                config["simple_optimizer"] = False
+
+        # User manually set simple-optimizer to False -> Error if not tf.
+        elif simple_optim_setting is False:
+            if framework in ["tfe", "tf2", "torch"]:
+                raise ValueError("`simple_optimizer=False` not supported for "
+                                 "framework={}!".format(framework))
+
+        # Offline RL settings.
+        if isinstance(config["input_evaluation"], tuple):
+            config["input_evaluation"] = list(config["input_evaluation"])
+        elif not isinstance(config["input_evaluation"], list):
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(
+                "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
+
+        # Check model config.
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
+        if prev_a_r != DEPRECATED_VALUE:
+            deprecation_warning(
+                "model.lstm_use_prev_action_reward",
+                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
+                error=False)
+            model_config["lstm_use_prev_action"] = prev_a_r
+            model_config["lstm_use_prev_reward"] = prev_a_r
+
+        # Check batching/sample collection settings.
+        if config["batch_mode"] not in [
+                "truncate_episodes", "complete_episodes"
+        ]:
+            raise ValueError("`batch_mode` must be one of [truncate_episodes|"
+                             "complete_episodes]! Got {}".format(
+                                 config["batch_mode"]))
+
+        # Check multi-agent batch count mode.
+        if config["multiagent"].get("count_steps_by", "env_steps") not in \
+                ["env_steps", "agent_steps"]:
+            raise ValueError(
+                "`count_steps_by` must be one of [env_steps|agent_steps]! "
+                "Got {}".format(config["multiagent"]["count_steps_by"]))
+
+        # If evaluation_num_workers > 0, warn if evaluation_interval is None
+        # (also set it to 1).
+        if config["evaluation_num_workers"] > 0 and \
+                not config["evaluation_interval"]:
+            logger.warning(
+                "You have specified {} evaluation workers, but no evaluation "
+                "interval! Will set the interval to 1 (each `train()` call). "
+                "If this is too frequent, set `evaluation_interval` to some "
+                "larger value.".format(config["evaluation_num_workers"]))
+            config["evaluation_interval"] = 1
+        elif config["evaluation_num_workers"] == 0 and \
+                config.get("evaluation_parallel_to_training", False):
+            logger.warning(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Setting "
+                "`evaluation_parallel_to_training` to False.")
+            config["evaluation_parallel_to_training"] = False
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
@@ -1195,13 +1392,20 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state:
+        if "worker" in state and hasattr(self, "workers"):
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        if "optimizer" in state:
+        if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
+
+    @staticmethod
+    def with_updates(**overrides) -> Type["Trainer"]:
+        raise NotImplementedError(
+            "`with_updates` may only be called on Trainer sub-classes "
+            "that were generated via the `ray.rllib.agents.trainer_template."
+            "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):
@@ -1214,3 +1418,6 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    def __repr__(self):
+        return self._name

@@ -12,31 +12,39 @@ class FixedPoint {
 
  public:
   FixedPoint(double d = 0);
+  FixedPoint(int i);
+  FixedPoint(uint32_t i);
+  FixedPoint(int64_t i);
+  FixedPoint(uint64_t i);
 
-  FixedPoint operator+(FixedPoint const &ru);
+  FixedPoint operator+(FixedPoint const &ru) const;
 
   FixedPoint operator+=(FixedPoint const &ru);
 
-  FixedPoint operator-(FixedPoint const &ru);
+  FixedPoint operator-(FixedPoint const &ru) const;
 
   FixedPoint operator-=(FixedPoint const &ru);
 
   FixedPoint operator-() const;
 
-  FixedPoint operator+(double const d);
+  FixedPoint operator+(double const d) const;
 
-  FixedPoint operator-(double const d);
+  FixedPoint operator-(double const d) const;
 
   FixedPoint operator=(double const d);
 
-  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
+  FixedPoint operator+=(double const d);
 
-  double Double();
+  FixedPoint operator+=(int64_t const ru);
 
-  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
+  bool operator<(FixedPoint const &ru1) const;
+  bool operator>(FixedPoint const &ru1) const;
+  bool operator<=(FixedPoint const &ru1) const;
+  bool operator>=(FixedPoint const &ru1) const;
+  bool operator==(FixedPoint const &ru1) const;
+  bool operator!=(FixedPoint const &ru1) const;
+
+  double Double() const;
+
+  friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };

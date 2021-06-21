@@ -76,11 +76,21 @@ def auto_http_archive(*, name=None, url=None, urls=True,
                         strip_prefix=strip_prefix, **kwargs)
 
 def ray_deps_setup():
+
+    # Explicitly bring in protobuf dependency to work around
+    # https://github.com/ray-project/ray/issues/14117
+    http_archive(
+        name = "com_google_protobuf",
+        strip_prefix = "protobuf-3.16.0",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
+        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+    )
+
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
-        sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
+        url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
+        sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
         ],
@@ -97,11 +107,18 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_spdlog",
+        build_file = "//bazel:BUILD.spdlog",
+        urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
+        sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
+    )
+    
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
         build_file = "//bazel:BUILD.redis",
         strip_prefix = None,
-        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
-        sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
+        url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
+      sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
     auto_http_archive(
@@ -124,18 +141,12 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_checkstyle_java",
-        url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
-        sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
-    )
-
-    auto_http_archive(
         # This rule is used by @com_github_nelhage_rules_boost and
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
         sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
-        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.bz2",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
@@ -177,16 +188,8 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:glog-log-pid-tid.patch",
             "//thirdparty/patches:glog-stack-trace.patch",
-        ],
-    )
-
-    auto_http_archive(
-        name = "arrow",
-        build_file = True,
-        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
-        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
-        patches = [
-            "//thirdparty/patches:arrow-windows-export.patch",
+            "//thirdparty/patches:glog-suffix-log.patch",
+            "//thirdparty/patches:glog-dump-stacktrack.patch",
         ],
     )
 

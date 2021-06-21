@@ -10,7 +10,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -53,7 +53,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # IN case a buffer optimizer is used
     "learning_starts": 1000,
-    "buffer_size": 10000,
+    # Size of the replay buffer in batches (not timesteps!).
+    "buffer_size": 1000,
     # Stepsize of SGD
     "lr": 5e-5,
     # Learning rate schedule
@@ -163,11 +164,12 @@ def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["simple_optimizer"]:
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(
-                workers, num_sgd_iter=config["num_sgd_iter"]))
+        train_op = rollouts.combine(
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )).for_each(
+                TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
     else:
         replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
@@ -177,7 +179,10 @@ def execution_plan(workers, config):
         replay_op = Replay(local_buffer=replay_buffer) \
             .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
             .combine(
-                ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )) \
             .for_each(TrainOneStep(
                 workers, num_sgd_iter=config["num_sgd_iter"]))
 

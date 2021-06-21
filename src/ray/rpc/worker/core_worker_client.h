@@ -63,7 +63,7 @@ class WorkerAddress {
       : ip_address(address.ip_address()),
         port(address.port()),
         worker_id(WorkerID::FromBinary(address.worker_id())),
-        raylet_id(ClientID::FromBinary(address.raylet_id())) {}
+        raylet_id(NodeID::FromBinary(address.raylet_id())) {}
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
     return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
@@ -90,7 +90,7 @@ class WorkerAddress {
   /// The unique id of the worker.
   const WorkerID worker_id;
   /// The unique id of the worker raylet.
-  const ClientID raylet_id;
+  const NodeID raylet_id;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
@@ -137,10 +137,15 @@ class CoreWorkerClientInterface {
       const WaitForActorOutOfScopeRequest &request,
       const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
-  /// Notify the owner of an object that the object has been pinned.
-  virtual void WaitForObjectEviction(
-      const WaitForObjectEvictionRequest &request,
-      const ClientCallback<WaitForObjectEvictionReply> &callback) {}
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
+                                 const ClientCallback<PubsubLongPollingReply> &callback) {
+  }
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const PubsubCommandBatchRequest &request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
   virtual void AddObjectLocationOwner(
       const AddObjectLocationOwnerRequest &request,
@@ -171,10 +176,6 @@ class CoreWorkerClientInterface {
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) {}
 
-  virtual void WaitForRefRemoved(const WaitForRefRemovedRequest &request,
-                                 const ClientCallback<WaitForRefRemovedReply> &callback) {
-  }
-
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
 
@@ -182,9 +183,22 @@ class CoreWorkerClientInterface {
       const RestoreSpilledObjectsRequest &request,
       const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
 
+  virtual void DeleteSpilledObjects(
+      const DeleteSpilledObjectsRequest &request,
+      const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
+
+  virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
+                             const ClientCallback<AddSpilledUrlReply> &callback) {}
+
+  virtual void RunOnUtilWorker(const RunOnUtilWorkerRequest &request,
+                               const ClientCallback<RunOnUtilWorkerReply> &callback) {}
+
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
+
+  virtual void Exit(const ExitRequest &request,
+                    const ClientCallback<ExitReply> &callback) {}
 
   virtual ~CoreWorkerClientInterface(){};
 };
@@ -200,9 +214,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
       : addr_(address) {
-    grpc_client_ =
-        std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
-            addr_.ip_address(), addr_.port(), client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
+        addr_.ip_address(), addr_.port(), client_call_manager);
   };
 
   const rpc::Address &Addr() const override { return addr_; }
@@ -221,7 +234,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubCommandBatch, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
                          override)
@@ -236,13 +251,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
-
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, SpillObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, RestoreSpilledObjects, grpc_client_, override)
 
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, DeleteSpilledObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RunOnUtilWorker, grpc_client_, override)
+
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, Exit, grpc_client_, override)
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                      const ClientCallback<PushTaskReply> &callback) override {
@@ -257,7 +278,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(std::move(request), callback));
+      send_queue_.push_back(std::make_pair(
+          std::move(request),
+          std::move(const_cast<ClientCallback<PushTaskReply> &>(callback))));
     }
     SendRequests();
   }
@@ -283,13 +306,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       send_queue_.pop_front();
 
       auto request = std::move(pair.first);
-      auto callback = pair.second;
       int64_t task_size = RequestSizeInBytes(*request);
       int64_t seq_no = request->sequence_number();
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
+      auto rpc_callback = [this, this_ptr, seq_no, task_size,
+                           callback = std::move(pair.second)](
                               Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mutex_);
@@ -303,8 +326,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback,
-                                 grpc_client_));
+      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request,
+                                 std::move(rpc_callback), grpc_client_));
     }
 
     if (!send_queue_.empty()) {
