@@ -210,10 +210,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectID &object_id) {
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
+            std::unique_ptr<RayObject> result;
             if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
-              return std::move(results[0]);
+              result = std::move(results[0]);
             }
-            return std::unique_ptr<RayObject>(nullptr);
+            return std::move(result);
           }),
       gcs_client_(gcs_client),
       object_directory_(object_directory),

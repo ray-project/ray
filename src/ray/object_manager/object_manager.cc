@@ -177,7 +177,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
       object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
   // Give the pull manager a chance to pin actively pulled objects.
-  pull_manager->PinNewObjectIfNeeded(object_id);
+  pull_manager_->PinNewObjectIfNeeded(object_id);
 
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.

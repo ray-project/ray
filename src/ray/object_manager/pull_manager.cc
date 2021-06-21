@@ -640,10 +640,10 @@ std::string PullManager::DebugString() const {
   result << "\n- first get request bundle size: " << BundleInfo(get_request_bundles_);
   result << "\n- first wait request bundle size: " << BundleInfo(wait_request_bundles_);
   result << "\n- first task request bundle size: " << BundleInfo(task_argument_bundles_);
-  result << "\n- num objects requested pull: " << object_pull_requests_.size();
-  result << "\n- num objects actively being pulled: "
+  result << "\n- num objects queued: " << object_pull_requests_.size();
+  result << "\n- num objects actively pulled (all): "
          << active_object_pull_requests_.size();
-  result << "\n- num objects pinned: " << pinned_objects_.size();
+  result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
   result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
   return result.str();
