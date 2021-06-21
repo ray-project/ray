@@ -344,9 +344,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   std::vector<ObjectID> object_ids_to_cancel_subscription;
   for (const auto &ref : bundle_it->second.objects) {
     auto obj_id = ObjectRefToId(ref);
-    RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
     auto it = object_pull_requests_.find(obj_id);
     if (it != object_pull_requests_.end()) {
+      RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
         object_pull_requests_.erase(it);
