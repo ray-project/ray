@@ -563,8 +563,10 @@ def trial_progress_table(
 
     # Sort terminated trials by metric and mode, descending if mode is "max"
     if mode and metric:
-        trials_by_state[Trial.TERMINATED] = sorted(trials_by_state[Trial.TERMINATED], reverse=(
-            mode == "max"), key=lambda t: t.last_result[metric])
+        trials_by_state[Trial.TERMINATED] = sorted(
+            trials_by_state[Trial.TERMINATED],
+            reverse=(mode == "max"),
+            key=lambda t: t.last_result[metric])
 
     state_tbl_order = [
         Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
@@ -574,7 +576,8 @@ def trial_progress_table(
     if num_trials > max_rows:
         # TODO(ujvl): suggestion for users to view more rows.
         sorted_by_metric = mode and metric
-        trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows, sorted_by_metric)
+        trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows,
+                                                    sorted_by_metric)
         trials = []
         overflow_strs = []
         for state in state_tbl_order:
@@ -718,7 +721,10 @@ def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
         if state == Trial.TERMINATED and sorted_by_metric:
             sorted_trials_by_state[state] = trials_by_state[state]
         else:
-            sorted_trials_by_state[state] = sorted(trials_by_state[state], reverse=False, key=lambda t: t.trial_id)
+            sorted_trials_by_state[state] = sorted(
+                trials_by_state[state],
+                reverse=False,
+                key=lambda t: t.trial_id)
     # Truncate oldest trials.
     filtered_trials = {
         state: sorted_trials_by_state[state][:num_trials_by_state[state]]
