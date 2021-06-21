@@ -36,6 +36,7 @@ parser.add_argument(
 parser.add_argument(
     "--yaml-dir",
     type=str,
+    required=True,
     help="The directory in which to find all yamls to test.")
 parser.add_argument(
     "--local-mode",
@@ -106,13 +107,15 @@ if __name__ == "__main__":
                 # If we have evaluation workers, use their rewards.
                 # This is useful for offline learning tests, where
                 # we evaluate against an actual environment.
-                reward_mean = t.last_result["episode_reward_mean"] if \
-                    exp["config"].get("evaluation_interval", 0) == 0 else \
-                    t.last_result["evaluation"]["episode_reward_mean"]
+                check_eval = \
+                    exp["config"].get("evaluation_interval", None) is not None
+                reward_mean = \
+                    t.last_result["evaluation"]["episode_reward_mean"] if \
+                    check_eval else t.last_result["episode_reward_mean"]
 
                 if reward_mean >= t.stopping_criterion.get(
-                        "episode_reward_mean", t.
-                        stopping_criterion["evaluation/episode_reward_mean"]):
+                        "evaluation/episode_reward_mean"
+                        if check_eval else "episode_reward_mean"):
                     passed = True
                     break
 
