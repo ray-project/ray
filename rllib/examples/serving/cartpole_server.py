@@ -35,7 +35,7 @@ from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
-# n workers, opening up listen ports 9900 - 990n (n=num_workers-1)
+# n workers, opening up listen ports 9900 - 990n (n = num_workers - 1)
 # to each of which different clients may connect.
 SERVER_BASE_PORT = 9900  # + worker-idx - 1
 
@@ -67,7 +67,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)#TODO
+    ray.init()
 
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).

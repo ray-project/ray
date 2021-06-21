@@ -57,6 +57,8 @@ parser.add_argument(
     type=int,
     default=9999,
     help="Stop once the specified reward is reached.")
+parser.add_argument(
+    "--port", type=int, default=9900, help="The port to use (on localhost).")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -74,7 +76,7 @@ if __name__ == "__main__":
     # Note that no config is needed in this script as it will be defined
     # on and sent from the server.
     client = PolicyClient(
-        "http://localhost:9900", inference_mode=args.inference_mode)
+        f"http://localhost:{args.port}", inference_mode=args.inference_mode)
 
     # In the following, we will use our external environment (the CartPole
     # env we created above) in connection with the PolicyClient to query

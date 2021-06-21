@@ -444,11 +444,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 # `framestack=[invalid value]`.
                 if num_framestacks == "auto":
                     if framestack == DEPRECATED_VALUE:
-                        model_config[
-                            "num_framestacks"] = num_framestacks = 4
+                        model_config["num_framestacks"] = num_framestacks = 4
                     else:
-                        model_config[
-                            "num_framestacks"] = num_framestacks = 0
+                        model_config["num_framestacks"] = num_framestacks = 0
                 framestack_traj_view = num_framestacks > 1
 
                 def wrap(env):
@@ -487,7 +485,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
-            policy_dict.keys())#list(policy_dict.keys())
+            policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
         self.policy_map: Dict[PolicyID, Policy] = None
