@@ -147,6 +147,7 @@ def read_parquet(paths: Union[str, List[str]],
 
     @ray.remote
     def gen_read(pieces: List[pq.ParquetDatasetPiece]):
+        print("Reading {} parquet pieces".format(len(pieces)))
         table = piece.read(
             columns=columns, use_threads=False, partitions=partitions)
         rows = []
