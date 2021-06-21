@@ -17,23 +17,27 @@ def _check_spilled(expected_spilled):
         else:
             return "Spilled " not in s
 
-    ray.test_utils.wait_for_condition(ok, timeout=5, retry_interval_ms=3000)
+    ray.test_utils.wait_for_condition(ok, timeout=5, retry_interval_ms=5000)
 
 
 def _test_object_spilling_threshold(thres, expected_spilled):
-    ray.init(
-        object_store_memory=OBJECT_STORE_MEMORY,
-        _system_config={"object_spilling_threshold": thres} if thres else {})
+    try:
+        ray.init(
+            object_store_memory=OBJECT_STORE_MEMORY,
+            _system_config={"object_spilling_threshold": thres}
+            if thres else {})
+        objs = [
+            ray.put(np.empty(OBJECT_SIZE, dtype=np.uint8))
+            for _ in range(NUM_OBJECTS)
+        ]
+        print(objs)
+        _check_spilled(expected_spilled)
+    finally:
+        ray.shutdown()
 
-    objs = [
-        ray.put(np.empty(OBJECT_SIZE, dtype=np.uint8))
-        for _ in range(NUM_OBJECTS)
-    ]
-    print(objs)
 
-    _check_spilled(expected_spilled)
-
-    ray.shutdown()
+def test_object_spilling_threshold_default():
+    _test_object_spilling_threshold(None, False)
 
 
 def test_object_spilling_threshold_0_1():
@@ -42,10 +46,6 @@ def test_object_spilling_threshold_0_1():
 
 def test_object_spilling_threshold_1_0():
     _test_object_spilling_threshold(1.0, False)
-
-
-def test_object_spilling_threshold_default():
-    _test_object_spilling_threshold(None, False)
 
 
 if __name__ == "__main__":
