@@ -1,6 +1,9 @@
 import builtins
-from typing import List, Any, Callable, Iterable, Generic, TypeVar
 import sys
+from typing import List, Any, Callable, Iterable, Generic, TypeVar, Union, \
+    Optional
+
+import pyarrow.parquet as pq
 
 import ray
 
@@ -81,9 +84,13 @@ class Dataset(Generic[T]):
                 break
         return output
 
+    def show(self, limit: int = 20) -> None:
+        for row in self.take(limit):
+            print(row)
 
-def range(n: int, num_blocks: int = 200) -> Dataset[int]:
-    block_size = max(1, n // num_blocks)
+
+def range(n: int, parallelism: int = 200) -> Dataset[int]:
+    block_size = max(1, n // parallelism)
     blocks: List[BlockRef] = []
     i = 0
 
@@ -98,9 +105,79 @@ def range(n: int, num_blocks: int = 200) -> Dataset[int]:
     return Dataset(blocks, ListBlock)
 
 
-def read_parquet(directory: str) -> Dataset[tuple]:
-    pass
+def read_parquet(paths: Union[str, List[str]],
+                 parallelism: int = 200,
+                 columns: Optional[List[str]] = None,
+                 **kwargs) -> Dataset[Any]:
+    """Read parquet format data from hdfs like filesystem into a Dataset.
+
+    .. code-block:: python
+
+        # create dummy data
+        spark.range(...).write.parquet(...)
+        # create Dataset
+        data = ray.util.data.read_parquet(...)
+
+    Args:
+        paths (Union[str, List[str]): a single file path or a list of file path
+        columns (Optional[List[str]]): a list of column names to read
+        kwargs: the other parquet read options
+
+    Returns:
+        A Dataset
+    """
+    pq_ds = pq.ParquetDataset(paths, **kwargs)
+    pieces = pq_ds.pieces
+    data_pieces = []
+
+    for piece in pieces:
+        num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
+        for i in builtins.range(num_row_groups):
+            data_pieces.append(
+                pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
+                                       piece.file_options, i,
+                                       piece.partition_keys))
+
+    # TODO(ekl) also enforce max size limit of blocks
+    read_tasks = [[] for _ in builtins.range(parallelism)]
+    for i, piece in enumerate(pieces):
+        read_tasks[i].append(piece)
+    nonempty_tasks = [r for r in read_tasks if r]
+    partitions = pq_ds.partitions
+
+    @ray.remote
+    def gen_read(pieces: List[pq.ParquetDatasetPiece]):
+        table = piece.read(
+            columns=columns, use_threads=False, partitions=partitions)
+        rows = []
+        for rb in table.to_batches():
+            for row in zip(
+                    *[rb.column(i) for i in builtins.range(rb.num_columns)]):
+                rows.append([v.as_py() for v in row])
+        return ListBlock(rows)
+
+    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks], ListBlock)
 
 
 def read_files(directory: str) -> Dataset[bytes]:
     pass
+
+
+if __name__ == "__main__":
+    import os
+    import pandas as pd
+    import pyarrow as pa
+    tmp_path = "/tmp/f"
+    ray.init()
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
+
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    import IPython
+    IPython.embed()
+    ds.show()
