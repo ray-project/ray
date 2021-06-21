@@ -161,7 +161,9 @@ def _ray_user_setup_function():
             m = __import__(module_name, globals(), locals(), [fn_name])
             getattr(m, fn_name)()
         except Exception as e:
-            logger.exception(
+            # We still need to allow ray to be imported, even there is
+            # something in the setup function.
+            logger.warning(
                 f"Failed to run user setup function: {user_setup_fn}. "
                 f"Error message {e}")
 

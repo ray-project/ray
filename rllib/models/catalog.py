@@ -738,8 +738,9 @@ class ModelCatalog:
             model_name (str): Name to register the model under.
             model_class (type): Python class of the model.
         """
-        if issubclass(model_class, tf.keras.Model):
-            deprecation_warning(old="register_custom_model", error=False)
+        if tf is not None:
+            if issubclass(model_class, tf.keras.Model):
+                deprecation_warning(old="register_custom_model", error=False)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod

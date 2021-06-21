@@ -31,7 +31,12 @@ class GrpcBasedResourceBroadcasterTest : public ::testing::Test {
         broadcaster_(
             /*raylet_client_pool*/ nullptr,
             /*get_resource_usage_batch_for_broadcast*/
-            [](rpc::ResourceUsageBatchData &batch) {}
+            [](rpc::ResourceUsageBroadcastData &batch) {
+              rpc::ResourceUpdate update;
+              NodeID node_id = NodeID::FromRandom();
+              update.mutable_data()->set_node_id(node_id.Binary());
+              batch.add_batch()->Swap(&update);
+            }
 
             ,
             /*send_batch*/

@@ -41,6 +41,10 @@ std::string GcsPlacementGroup::GetName() const {
   return placement_group_table_data_.name();
 }
 
+std::string GcsPlacementGroup::GetRayNamespace() const {
+  return placement_group_table_data_.ray_namespace();
+}
+
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
@@ -113,11 +117,13 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsResourceManager &gcs_resource_manager)
+    GcsResourceManager &gcs_resource_manager,
+    std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_resource_manager_(gcs_resource_manager) {
+      gcs_resource_manager_(gcs_resource_manager),
+      get_ray_namespace_(get_ray_namespace) {
   Tick();
 }
 
@@ -150,10 +156,11 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     return;
   }
   if (!placement_group->GetName().empty()) {
-    auto it = named_placement_groups_.find(placement_group->GetName());
-    if (it == named_placement_groups_.end()) {
-      named_placement_groups_.emplace(placement_group->GetName(),
-                                      placement_group->GetPlacementGroupID());
+    auto &pgs_in_namespace = named_placement_groups_[placement_group->GetRayNamespace()];
+    auto it = pgs_in_namespace.find(placement_group->GetName());
+    if (it == pgs_in_namespace.end()) {
+      pgs_in_namespace.emplace(placement_group->GetName(),
+                               placement_group->GetPlacementGroupID());
     } else {
       std::stringstream stream;
       stream << "Failed to create placement group '"
@@ -201,11 +208,14 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 }
 
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
-    const std::string &name) {
+    const std::string &name, const std::string &ray_namespace) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
-  auto it = named_placement_groups_.find(name);
-  if (it != named_placement_groups_.end()) {
-    placement_group_id = it->second;
+  auto namespace_it = named_placement_groups_.find(ray_namespace);
+  if (namespace_it != named_placement_groups_.end()) {
+    auto it = namespace_it->second.find(name);
+    if (it != namespace_it->second.end()) {
+      placement_group_id = it->second;
+    }
   }
   return placement_group_id;
 }
@@ -288,7 +298,10 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     const ray::rpc::CreatePlacementGroupRequest &request,
     ray::rpc::CreatePlacementGroupReply *reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request);
+  const JobID &job_id =
+      JobID::FromBinary(request.placement_group_spec().creator_job_id());
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, get_ray_namespace_(job_id));
   RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
                                            placement_group](Status status) {
@@ -337,10 +350,16 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
 
   // Remove placement group from `named_placement_groups_` if its name is not empty.
   if (!placement_group->GetName().empty()) {
-    auto it = named_placement_groups_.find(placement_group->GetName());
-    if (it != named_placement_groups_.end() &&
-        it->second == placement_group->GetPlacementGroupID()) {
-      named_placement_groups_.erase(it);
+    auto namespace_it = named_placement_groups_.find(placement_group->GetRayNamespace());
+    if (namespace_it != named_placement_groups_.end()) {
+      auto it = namespace_it->second.find(placement_group->GetName());
+      if (it != namespace_it->second.end() &&
+          it->second == placement_group->GetPlacementGroupID()) {
+        namespace_it->second.erase(it);
+      }
+      if (namespace_it->second.empty()) {
+        named_placement_groups_.erase(namespace_it);
+      }
     }
   }
 
@@ -419,7 +438,7 @@ void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
 
   // Try to look up the placement Group ID for the named placement group.
-  auto placement_group_id = GetPlacementGroupIDByName(name);
+  auto placement_group_id = GetPlacementGroupIDByName(name, request.ray_namespace());
 
   if (placement_group_id.IsNil()) {
     // The placement group was not found.
@@ -611,8 +630,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
       registered_placement_groups_.emplace(item.first, placement_group);
       if (!placement_group->GetName().empty()) {
-        named_placement_groups_.emplace(placement_group->GetName(),
-                                        placement_group->GetPlacementGroupID());
+        named_placement_groups_[placement_group->GetRayNamespace()].emplace(
+            placement_group->GetName(), placement_group->GetPlacementGroupID());
       }
 
       if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
@@ -639,6 +658,10 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
+  uint64_t num_pgs = 0;
+  for (auto it : named_placement_groups_) {
+    num_pgs += it.second.size();
+  }
   std::ostringstream stream;
   stream << "GcsPlacementGroupManager: {CreatePlacementGroup request count: "
          << counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST]
@@ -651,7 +674,7 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << ", WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
-         << ", Named placement group count: " << named_placement_groups_.size()
+         << ", Named placement group count: " << num_pgs
          << ", Pending placement groups count: " << pending_placement_groups_.size()
          << "}";
   return stream.str();

@@ -156,6 +156,11 @@ class TrainableUtil:
             chkpt_dir = os.path.dirname(marker_path)
             metadata_file = glob.glob(
                 os.path.join(glob.escape(chkpt_dir), "*.tune_metadata"))
+            # glob.glob: filenames starting with a dot are special cases
+            # that are not matched by '*' and '?' patterns.
+            metadata_file += glob.glob(
+                os.path.join(glob.escape(chkpt_dir), ".tune_metadata"))
+            metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
                 raise ValueError(
                     "{} has zero or more than one tune_metadata.".format(

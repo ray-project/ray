@@ -431,7 +431,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -497,7 +497,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -531,7 +531,9 @@ class ActorClass:
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
             placement_group: the placement group this actor belongs to,
-                or None if it doesn't belong to any group.
+                or None if it doesn't belong to any group. Setting to "default"
+                autodetects the placement group based on the current setting of
+                placement_group_capture_child_tasks.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
@@ -631,9 +633,11 @@ class ActorClass:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -701,13 +705,17 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
-            runtime_env_dict = parsed_runtime_env.get_parsed_dict()
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
         else:
             runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

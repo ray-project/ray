@@ -7,4 +7,4 @@ type: application
 version: 0.1.0
 
 # Ray version.
-appVersion: "1.3.0"
+appVersion: "latest"

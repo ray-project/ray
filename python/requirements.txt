@@ -46,16 +46,14 @@ azure-common
 azure-mgmt-resource
 msrestazure
 boto3
-cython==0.29.0
+cython >= 0.29.15
 dataclasses; python_version < '3.7'
-dask[complete]
 feather-format
 google-api-python-client
 gym
 gym-minigrid
 kubernetes
 lxml
-modin
 moto
 mypy
 networkx
