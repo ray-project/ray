@@ -99,7 +99,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        worker_id(WorkerID::FromRandom().Binary()) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -185,6 +186,8 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
+  /// The (binary) worker id for this worker.
+  std::string worker_id;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -341,7 +344,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
-  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+  CoreWorker(const CoreWorkerOptions &options);
 
   CoreWorker(CoreWorker const &) = delete;
 

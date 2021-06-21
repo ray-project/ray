@@ -124,6 +124,8 @@ ray.shutdown()
 
     # The initial driver timestamp/start time go down a different code path.
     assert driver["Timestamp"] == driver["StartTime"]
+    assert finished["Timestamp"] == finished["EndTime"]
+    assert running["Timestamp"] == running["StartTime"]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]

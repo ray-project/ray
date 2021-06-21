@@ -672,11 +672,11 @@ def init(
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         _tracing_startup_hook (str): If provided, turns on and sets up tracing
-        for Ray. Must be the name of a function that takes no arguments and
-        sets up a Tracer Provider, Remote Span Processors, and
-        (optional) additional instruments. See more at
-        docs.ray.io/tracing.html. It is currently under active development,
-        and the API is subject to change.
+            for Ray. Must be the name of a function that takes no arguments and
+            sets up a Tracer Provider, Remote Span Processors, and
+            (optional) additional instruments. See more at
+            docs.ray.io/tracing.html. It is currently under active development,
+            and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -1265,7 +1265,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
+        worker.worker_id)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
