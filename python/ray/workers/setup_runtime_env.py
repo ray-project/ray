@@ -78,7 +78,6 @@ def setup_worker(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    print("setup input args " + args.serialized_runtime_env)
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     py_executable: str = sys.executable
 
