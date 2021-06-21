@@ -980,6 +980,7 @@ class RolloutWorker(ParallelIteratorWorker):
         else:
             return [func(e) for e in envs]
 
+    @DeveloperAPI
     def foreach_env_with_context(
             self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
         """Apply the given function to each underlying env instance."""
