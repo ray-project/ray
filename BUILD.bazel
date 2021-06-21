@@ -145,6 +145,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
+        ":pubsub_lib",
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
@@ -365,6 +366,7 @@ cc_library(
     ],
     hdrs = glob(
         [
+            "src/ray/common/*.h",
             "src/ray/common/**/*.h",
         ],
     ) + [
@@ -527,8 +529,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ray_common",
-        ":worker_rpc",
+        ":grpc_common_lib",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -668,7 +671,6 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
-            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/**/*_test.cc",
@@ -687,7 +689,6 @@ cc_library(
     deps = [
         ":gcs",
         ":plasma_client",
-        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",

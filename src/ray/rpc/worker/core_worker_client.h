@@ -95,7 +95,7 @@ class WorkerAddress {
 };
 
 /// Abstract client interface for testing.
-class CoreWorkerClientInterface : pubsub::SubscriberClientInterface {
+class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
  public:
   virtual const rpc::Address &Addr() const {
     static const rpc::Address empty_addr_;

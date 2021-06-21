@@ -232,6 +232,7 @@ class SubscriberInterface {
 
 /// The grpc client that the subscriber needs.
 class SubscriberClientInterface {
+ public:
   /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(
                                 const rpc::PubsubLongPollingRequest &request,
@@ -266,7 +267,7 @@ class Subscriber : public SubscriberInterface {
   explicit Subscriber(
       const SubscriberID subscriber_id, const std::string subscriber_address,
       const int subscriber_port, const int64_t max_command_batch_size,
-      std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(const rpc::Address &)>
+      std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
       instrumented_io_context *callback_service)
       : callback_service_(callback_service),
@@ -391,7 +392,7 @@ class Subscriber : public SubscriberInterface {
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
   /// Gets an rpc client for connecting to the publisher.
-  std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(const rpc::Address &)>
+  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
       get_client_;
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
