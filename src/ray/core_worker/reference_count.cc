@@ -533,12 +533,13 @@ bool ReferenceCounter::SetDeleteCallback(
     RAY_LOG(INFO) << "[Unpin] Object id " << object_id
                   << " has been already freed by the language frontend.";
     return false;
-  } else if (it->second.spilled) {
-    // The object has been spilled, so it can be released immediately.
-    // SANG-TODO Delete it
-    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " has been spilled.";
-    return false;
   }
+  // } else if (it->second.spilled) {
+  //   // The object has been spilled, so it can be released immediately.
+  //   // SANG-TODO Delete it
+  //   RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " has been spilled.";
+  //   return false;
+  // }
 
   // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
   // than once, causing the delete callback to be set repeatedly.
