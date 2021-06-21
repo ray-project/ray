@@ -1,0 +1,14 @@
+- name: serve
+  owner:
+    mail: "jiaodong@anyscale.com"
+    slack: "@dash-serve-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_template.yaml
+
+  run:
+    timeout: 90000
+    script: python workloads/serve.py
+    time_key: last_update
+    max_update_delay: 120
