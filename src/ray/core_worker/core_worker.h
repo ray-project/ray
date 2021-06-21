@@ -1094,6 +1094,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
+                     std::vector<ObjectID> *contained_ids,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
 
   /// Execute a local mode task (runs normal ExecuteTask)

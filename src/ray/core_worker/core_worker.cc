@@ -2219,7 +2219,7 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs));
+  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, nullptr, &borrowed_refs));
   SetActorId(old_id);
 }
 
