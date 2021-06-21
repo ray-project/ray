@@ -2,7 +2,7 @@ import logging
 
 import ray
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
@@ -103,7 +103,6 @@ class OverrideDefaultResourceRequest:
     @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 

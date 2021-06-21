@@ -338,6 +338,9 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :private-members:
     :show-inheritance:
 
+
+If contributing, make sure to add test cases and an entry in the function described below.
+
 .. _shim:
 
 Shim Instantiation (tune.create_searcher)
