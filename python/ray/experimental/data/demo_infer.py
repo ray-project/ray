@@ -4,9 +4,10 @@ import os
 
 ray.init()
 
-ds = ray.experimental.data.range(10000)
+ds = ray.experimental.data.from_items(range(10000))
 
 setup = False
+
 
 def infer(x):
     global setup
@@ -18,8 +19,8 @@ def infer(x):
     time.sleep(.01)
     return x
 
-ds = ds.map(infer, compute="actors", num_cpus=0.5)
 
 print(ds.count())
 print(ds.sum())
+ds = ds.map(infer, compute="actors", num_cpus=0.5)
 ds.show()

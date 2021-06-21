@@ -195,6 +195,18 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     return Dataset(blocks, ListBlock)
 
 
+def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
+    block_size = max(1, len(items) // parallelism)
+
+    blocks: List[BlockRef] = []
+    i = 0
+    while i < len(items):
+        blocks.append(ray.put(ListBlock(items[i:i + block_size])))
+        i += block_size
+
+    return Dataset(blocks, ListBlock)
+
+
 def read_parquet(paths: Union[str, List[str]],
                  parallelism: int = 200,
                  columns: Optional[List[str]] = None,
