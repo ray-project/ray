@@ -180,5 +180,21 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
+std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  auto pair = core_worker.GetNamedActorHandle(actor_name);
+  if (!pair.second.ok()) {
+    throw RayException(pair.second.message());
+  }
+
+  std::string actor_id;
+  auto actor_handle = pair.first;
+  if (actor_handle) {
+    actor_id = actor_handle->GetActorID().Binary();
+  }
+
+  return actor_id;
+}
+
 }  // namespace api
 }  // namespace ray

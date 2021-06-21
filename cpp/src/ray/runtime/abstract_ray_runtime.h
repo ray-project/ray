@@ -49,6 +49,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   void RemoveLocalReference(const std::string &id);
 
+  std::string GetActorId(const std::string &actor_name);
+
   const TaskID &GetCurrentTaskId();
 
   const JobID &GetCurrentJobID();

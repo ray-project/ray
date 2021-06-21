@@ -85,6 +85,11 @@ class Ray {
   template <typename F>
   static ActorCreator<F> Actor(F create_func);
 
+  inline static std::string GetActorId(const std::string &actor_name);
+
+  template <typename T>
+  inline static ActorHandle<T> GetActor(const std::string &actor_name);
+
  private:
   static std::once_flag is_inited_;
 
@@ -187,6 +192,19 @@ TaskCaller<F> Ray::Task(F func) {
 template <typename F>
 ActorCreator<F> Ray::Actor(F create_func) {
   return CreateActorInternal<F>(create_func);
+}
+
+std::string Ray::GetActorId(const std::string &actor_name) {
+  return ray::internal::RayRuntime()->GetActorId(actor_name);
+}
+
+template <typename T>
+ActorHandle<T> Ray::GetActor(const std::string &actor_name) {
+  if (actor_name.empty()) {
+    throw RayException("The actor name is invalid");
+  }
+
+  return ActorHandle<T>(GetActorId(actor_name));
 }
 
 }  // namespace api
