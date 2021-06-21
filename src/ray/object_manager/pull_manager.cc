@@ -206,8 +206,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // by canceling get and wait requests.
   bool get_requests_remaining = !get_request_bundles_.empty();
   while (get_requests_remaining) {
-    // TODO(ekl) to prevent starvation, should we retain at least 1 active bundle of
-    // each type of request?
     DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
                                /*retain_min=*/0, &highest_task_req_id_being_pulled_,
                                &object_ids_to_cancel);
