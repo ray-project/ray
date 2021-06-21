@@ -52,11 +52,12 @@ Number of trials: 7 (1 PENDING, 3 RUNNING, 3 TERMINATED)
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
 |        00004 | RUNNING    | here  |   4 |   8 |        2   |
+|        00005 | RUNNING    | here  |   5 |  10 |        2.5 |
 |        00003 | PENDING    | here  |   3 |   6 |        1.5 |
 |        00002 | TERMINATED | here  |   2 |   4 |        1   |
 |        00001 | TERMINATED | here  |   1 |   2 |        0.5 |
 +--------------+------------+-------+-----+-----+------------+
-... 3 more trials not shown (2 RUNNING, 1 TERMINATED)"""
+... 2 more trials not shown (1 RUNNING, 1 TERMINATED)"""
 
 END_TO_END_COMMAND = """
 import ray
@@ -391,7 +392,7 @@ class ProgressReporterTest(unittest.TestCase):
         prog4 = trial_progress_str(
             trials, ["metric_1"], ["a", "b"],
             fmt="psql",
-            max_rows=4,
+            max_rows=5,
             force_table=True,
             metric="metric_1",
             mode="max")
