@@ -297,6 +297,12 @@ unstable_object_spilling_config = {
         "directory_path": spill_local_path,
     }
 }
+slow_object_spilling_config = {
+    "type": "slow_fs",
+    "params": {
+        "directory_path": spill_local_path,
+    }
+}
 
 
 def create_object_spilling_config(request, tmp_path):
@@ -334,4 +340,12 @@ def multi_node_object_spilling_config(request, tmp_path):
         unstable_object_spilling_config,
     ])
 def unstable_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function", params=[
+        slow_object_spilling_config,
+    ])
+def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)

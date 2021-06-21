@@ -162,6 +162,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def namespace(self):
+        return self.core_worker.get_job_config().ray_namespace
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
@@ -175,6 +179,12 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env in json format"""
+        return json.loads(
+            self.core_worker.get_job_config().runtime_env.raw_json)
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -279,16 +289,21 @@ class Worker:
                 serialized_value, object_ref=object_ref))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
-        context = self.get_serialization_context()
-        out = context.deserialize_objects(data_metadata_pairs, object_refs)
+        out = self.deserialize_objects(data_metadata_pairs, object_refs)
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
             _unhandled_error_handler(e)
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
-        context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_refs)
+        # Function actor manager or the import thread may call pickle.loads
+        # at the same time which can lead to failed imports
+        # TODO: We may be better off locking on all imports or injecting a lock
+        # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
+        with self.function_actor_manager.lock:
+            context = self.get_serialization_context()
+            return context.deserialize_objects(data_metadata_pairs,
+                                               object_refs)
 
     def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -657,11 +672,11 @@ def init(
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         _tracing_startup_hook (str): If provided, turns on and sets up tracing
-        for Ray. Must be the name of a function that takes no arguments and
-        sets up a Tracer Provider, Remote Span Processors, and
-        (optional) additional instruments. See more at
-        docs.ray.io/tracing.html. It is currently under active development,
-        and the API is subject to change.
+            for Ray. Must be the name of a function that takes no arguments and
+            sets up a Tracer Provider, Remote Span Processors, and
+            (optional) additional instruments. See more at
+            docs.ray.io/tracing.html. It is currently under active development,
+            and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -696,9 +711,11 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if "RAY_ADDRESS" in os.environ:
+    address_env_var = os.environ.get(
+        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var:
         if address is None or address == "auto":
-            address = os.environ["RAY_ADDRESS"]
+            address = address_env_var
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -1264,7 +1281,7 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
         working_dir = runtime_env.ensure_runtime_env_setup(uris)
@@ -1364,6 +1381,8 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
         worker._session_index += 1
+
+        global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
@@ -1888,9 +1907,12 @@ def remote(*args, **kwargs):
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children. See``runtime_env.py`` for
-            detailed documentation.  Note: can only be set via `.options()`.
-        override_environment_variables (Dict[str, str]): This specifies
+            this actor or task and its children. See
+            :ref:`runtime-environments` for detailed documentation.
+            Note: can only be set via `.options()`.
+        override_environment_variables (Dict[str, str]): (Deprecated in Ray
+            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This
             is a dictionary mapping variable names to their values.  Existing

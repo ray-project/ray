@@ -1,6 +1,7 @@
 from itertools import groupby
 import json
 import logging
+import pickle
 import random
 import string
 import time
@@ -91,7 +92,9 @@ def parse_request_item(request_item):
         # it in ServeRequest.
         if isinstance(arg, starlette.requests.Request):
             return (arg, ), {}
-        elif isinstance(arg, HTTPRequestWrapper):
+        elif request_item.metadata.http_arg_is_pickled:
+            assert isinstance(arg, bytes)
+            arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
         elif request_item.metadata.use_serve_request:
             return (ServeRequest(
@@ -102,6 +105,29 @@ def parse_request_item(request_item):
             ), ), {}
 
     return request_item.args, request_item.kwargs
+
+
+class LoggingContext:
+    """
+    Context manager to manage logging behaviors within a particular block, such as:
+    1) Overriding logging level
+
+    Source (python3 official documentation)
+    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging # noqa: E501
+    """
+
+    def __init__(self, logger, level=None):
+        self.logger = logger
+        self.level = level
+
+    def __enter__(self):
+        if self.level is not None:
+            self.old_level = self.logger.level
+            self.logger.setLevel(self.level)
+
+    def __exit__(self, et, ev, tb):
+        if self.level is not None:
+            self.logger.setLevel(self.old_level)
 
 
 def _get_logger():

@@ -115,8 +115,7 @@ class RuntimeContext(object):
 
     @property
     def namespace(self):
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
-        return job_config.ray_namespace
+        return self.worker.namespace
 
     @property
     def was_current_actor_reconstructed(self):
@@ -150,6 +149,15 @@ class RuntimeContext(object):
                 capture the parent placement group.
         """
         return self.worker.should_capture_child_tasks_in_placement_group
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env passed to job_config
+
+        Returns:
+            The runtime env currently using by this worker.
+        """
+        return self.worker.runtime_env
 
 
 _runtime_context = None

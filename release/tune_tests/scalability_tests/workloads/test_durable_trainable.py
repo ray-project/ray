@@ -12,13 +12,51 @@ Acceptance criteria: Should run faster than 500 seconds.
 
 Theoretical minimum time: 300 seconds
 """
+import argparse
+import os
+
 import ray
 from ray import tune
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run
 
 
-def main():
+def main(bucket):
+    secrets_file = os.path.join(
+        os.path.dirname(__file__), "..", "aws_secrets.txt")
+    if os.path.isfile(secrets_file):
+        print(f"Loading AWS secrets from file {secrets_file}")
+
+        from configparser import ConfigParser
+        config = ConfigParser()
+        config.read(secrets_file)
+
+        for k, v in config.items():
+            for x, y in v.items():
+                var = str(x).upper()
+                os.environ[var] = str(y)
+    else:
+        print("No AWS secrets file found. Loading from boto.")
+        from boto3 import Session
+
+        session = Session()
+        credentials = session.get_credentials()
+        current_credentials = credentials.get_frozen_credentials()
+
+        os.environ["AWS_ACCESS_KEY_ID"] = current_credentials.access_key
+        os.environ["AWS_SECRET_ACCESS_KEY"] = current_credentials.secret_key
+        os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
+
+    if all(
+            os.getenv(k, "") for k in [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN",
+            ]):
+        print("AWS secrets found in env.")
+    else:
+        print("Warning: No AWS secrets found in env!")
+
     ray.init(address="auto")
 
     num_samples = 16
@@ -39,9 +77,13 @@ def main():
         resources_per_trial={"cpu": 2},
         sync_config=tune.SyncConfig(
             sync_to_driver=False,
-            upload_dir="s3://ray-tune-scalability-test/durable/",
+            upload_dir=f"s3://{bucket}/durable/",
         ))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bucket", type=str, help="Bucket name")
+    args, _ = parser.parse_known_args()
+
+    main(args.bucket or "ray-tune-scalability-test")

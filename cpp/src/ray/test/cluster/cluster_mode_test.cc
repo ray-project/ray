@@ -1,7 +1,8 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
-#include <ray/api/ray_config.h>
+#include "../../util/process_helper.h"
+#include "gflags/gflags.h"
 
 using namespace ::ray::api;
 
@@ -38,18 +39,23 @@ class Counter {
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
 
-std::string lib_name = "";
+int *cmd_argc = nullptr;
+char ***cmd_argv = nullptr;
 
-std::string redis_ip = "";
+DEFINE_bool(external_cluster, false, "");
+DEFINE_string(redis_password, "12345678", "");
+DEFINE_int32(redis_port, 6379, "");
+DEFINE_int32(node_manager_port, 62665, "");
 
 TEST(RayClusterModeTest, FullTest) {
-  /// initialization to cluster mode
-  ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
-  /// TODO(Guyang Song): add the dynamic library name
-  ray::api::RayConfig::GetInstance()->lib_name = lib_name;
-  ray::api::RayConfig::GetInstance()->redis_ip = redis_ip;
-  Ray::Init();
-
+  ray::api::RayConfig config;
+  if (FLAGS_external_cluster) {
+    ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port, FLAGS_redis_password,
+                                              FLAGS_node_manager_port);
+    config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
+    config.redis_password_ = FLAGS_redis_password;
+  }
+  Ray::Init(config, cmd_argc, cmd_argv);
   /// put and get object
   auto obj = Ray::Put(12345);
   auto get_result = *(Ray::Get(obj));
@@ -89,6 +95,11 @@ TEST(RayClusterModeTest, FullTest) {
   auto r0 = Ray::Task(Return1).Remote();
   auto r1 = Ray::Task(Plus1).Remote(30);
   auto r2 = Ray::Task(Plus).Remote(3, 22);
+
+  std::vector<ObjectRef<int>> objects = {r0, r1, r2};
+  WaitResult<int> result = Ray::Wait(objects, 3, 1000);
+  EXPECT_EQ(result.ready.size(), 3);
+  EXPECT_EQ(result.unready.size(), 0);
 
   int result1 = *(Ray::Get(r1));
   int result0 = *(Ray::Get(r0));
@@ -156,14 +167,16 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result16, 30);
 
   Ray::Shutdown();
+
+  if (FLAGS_external_cluster) {
+    ProcessHelper::GetInstance().StopRayNode();
+  }
 }
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 2 || argc == 3);
-  lib_name = std::string(argv[1]);
-  if (argc == 3) {
-    redis_ip = std::string(argv[2]);
-  }
+  gflags::ParseCommandLineFlags(&argc, &argv, false);
+  cmd_argc = &argc;
+  cmd_argv = &argv;
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

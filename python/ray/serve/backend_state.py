@@ -3,6 +3,7 @@ import time
 from abc import ABC
 from collections import defaultdict
 from enum import Enum
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
@@ -33,6 +34,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
+USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 
 
 class ActorReplicaWrapper:
@@ -82,17 +84,21 @@ class ActorReplicaWrapper:
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
 
-        try:
-            self._placement_group = ray.util.get_placement_group(
-                self._placement_group_name)
-        except ValueError:
-            logger.debug(
-                "Creating placement group '{}' for backend '{}'".format(
-                    self._placement_group_name, self._backend_tag))
-            self._placement_group = ray.util.placement_group(
-                [self._actor_resources],
-                lifetime="detached",
-                name=self._placement_group_name)
+        # Feature flagging because of placement groups doesn't handle
+        # newly added nodes.
+        # https://github.com/ray-project/ray/issues/15801
+        if USE_PLACEMENT_GROUP:
+            try:
+                self._placement_group = ray.util.get_placement_group(
+                    self._placement_group_name)
+            except ValueError:
+                logger.debug(
+                    "Creating placement group '{}' for backend '{}'".format(
+                        self._placement_group_name, self._backend_tag))
+                self._placement_group = ray.util.placement_group(
+                    [self._actor_resources],
+                    lifetime="detached" if self._detached else None,
+                    name=self._placement_group_name)
 
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
@@ -137,9 +143,11 @@ class ActorReplicaWrapper:
             return True
 
         try:
-            ray.get_actor(self._actor_name)
+            handle = ray.get_actor(self._actor_name)
             ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
             self._stopped = len(ready) == 1
+            if self._stopped:
+                ray.kill(handle, no_restart=True)
         except ValueError:
             self._stopped = True
 
@@ -165,6 +173,9 @@ class ActorReplicaWrapper:
 
         Currently, this just removes the placement group.
         """
+        if not USE_PLACEMENT_GROUP:
+            return
+
         try:
             ray.util.remove_placement_group(
                 ray.util.get_placement_group(self._placement_group_name))
@@ -308,7 +319,7 @@ class BackendReplica(VersionedReplica):
             self._actor.cleanup()
             return True
 
-        timeout_passed = time.time() > self._shutdown_deadline
+        timeout_passed = time.time() >= self._shutdown_deadline
 
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
@@ -502,12 +513,32 @@ class BackendState:
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
 
-    def shutdown(self) -> None:
-        for replica_dict in self.get_running_replica_handles().values():
-            for replica in replica_dict.values():
-                ray.kill(replica, no_restart=True)
+    def shutdown(self) -> List[GoalId]:
+        """
+        Shutdown all running replicas by notifying the controller, and leave
+        it to the controller event loop to take actions afterwards.
 
+        Once shutdown signal is received, it will also prevent any new
+        deployments or replicas from being created.
+
+        One can send multiple shutdown signals but won't effectively make any
+        difference compare to calling it once.
+        """
+
+        shutdown_goals = []
+        for backend_tag, _ in self._replicas.items():
+            goal = self.delete_backend(backend_tag, force_kill=True)
+            if goal is not None:
+                shutdown_goals.append(goal)
+
+        # TODO(jiaodong): This might not be 100% safe since we deleted
+        # everything without ensuring all shutdown goals are completed
+        # yet. Need to address in follow-up PRs.
         self._kv_store.delete(CHECKPOINT_KEY)
+
+        # TODO(jiaodong): Need to add some logic to prevent new replicas
+        # from being created once shutdown signal is sent.
+        return shutdown_goals
 
     def _checkpoint(self) -> None:
         self._kv_store.put(
@@ -561,6 +592,15 @@ class BackendState:
 
     def _set_backend_goal(self, backend_tag: BackendTag,
                           backend_info: Optional[BackendInfo]) -> None:
+        """
+        Set desirable state for a given backend, identified by tag.
+
+        Args:
+            backend_tag (BackendTag): Identifier of a backend
+            backend_info (Optional[BackendInfo]): Contains backend and
+                replica config, if passed in as None, we're marking
+                target backend as shutting down.
+        """
         existing_goal_id = self._backend_goals.get(backend_tag)
         new_goal_id = self._goal_manager.create_goal()
 

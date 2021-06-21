@@ -553,7 +553,6 @@ class Trainer(Trainable):
             cls, config: PartialTrainerConfigDict) -> \
             Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 
@@ -816,6 +815,13 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
+        # In case we are evaluating (in a thread) parallel to training,
+        # we may have to re-enable eager mode here (gets disabled in the
+        # thread).
+        if self.config.get("framework") in ["tf2", "tfe"] and \
+                not tf.executing_eagerly():
+            tf1.enable_eager_execution()
+
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 

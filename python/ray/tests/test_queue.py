@@ -1,9 +1,10 @@
 import pytest
+import time
 
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.util.queue import Queue, Empty, Full
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, BatchQueue
 
 
 # Remote helper functions for testing concurrency
@@ -212,6 +213,63 @@ def test_custom_resources(ray_start_regular_shared):
 
     wait_for_condition(no_cpu_in_resources)
     q.shutdown()
+
+
+def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
+    class QueueBatchPuller:
+        def __init__(self, batch_size, queue):
+            self.batch_size = batch_size
+            self.queue = queue
+
+        def __iter__(self):
+            pending = []
+            is_done = False
+            while True:
+                if not pending:
+                    for item in self.queue.get_batch(
+                            self.batch_size, total_timeout=0):
+                        if item is None:
+                            is_done = True
+                            break
+                        else:
+                            pending.append(item)
+                    if is_done:
+                        break
+                ready, pending = ray.wait(pending, num_returns=1)
+                yield ray.get(ready[0])
+
+    @ray.remote
+    class QueueConsumer:
+        def __init__(self, batch_size, queue):
+            self.batch_puller = QueueBatchPuller(batch_size, queue)
+            self.data = []
+
+        def consume(self):
+            for item in self.batch_puller:
+                self.data.append(item)
+                time.sleep(0.3)
+
+        def get_data(self):
+            return self.data
+
+    @ray.remote
+    def dummy(x):
+        return x
+
+    q = BatchQueue()
+    num_batches = 5
+    batch_size = 4
+    consumer = QueueConsumer.remote(batch_size, q)
+    consumer.consume.remote()
+    data = list(range(batch_size * num_batches))
+    for idx in range(0, len(data), batch_size):
+        time.sleep(1)
+        q.put_nowait_batch(
+            [dummy.remote(item) for item in data[idx:idx + batch_size]])
+    q.put_nowait(None)
+    consumed_data = ray.get(consumer.get_data.remote())
+    assert len(consumed_data) == len(data)
+    assert set(consumed_data) == set(data)
 
 
 if __name__ == "__main__":

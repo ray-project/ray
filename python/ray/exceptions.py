@@ -263,6 +263,11 @@ class PlasmaObjectNotAvailable(RayError):
     pass
 
 
+class AsyncioActorExit(RayError):
+    """Raised when an asyncio actor intentionally exits via exit_actor()."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -272,4 +277,5 @@ RAY_EXCEPTION_TYPES = [
     ObjectStoreFullError,
     ObjectLostError,
     GetTimeoutError,
+    AsyncioActorExit,
 ]

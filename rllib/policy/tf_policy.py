@@ -14,8 +14,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -478,8 +479,13 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
+    def get_exploration_state(self) -> Dict[str, TensorType]:
+        return self.exploration.get_state(sess=self.get_session())
+
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.exploration.get_info(sess=self.get_session())
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @override(Policy)
     @DeveloperAPI
@@ -500,17 +506,24 @@ class TFPolicy(Policy):
                 len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self._sess.run(self._optimizer_variables.variables)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state(self.get_session())
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             self._optimizer_variables.set_weights(optimizer_vars)
-        # Then the Policy's (NN) weights.
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(
+                state=state["_exploration_state"], sess=self.get_session())
+
+        # Set the Policy's (NN) weights.
         super().set_state(state)
 
     @override(Policy)
@@ -527,12 +540,14 @@ class TFPolicy(Policy):
                     graph=self._sess.graph))
             builder.save()
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
+        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:
@@ -971,6 +986,7 @@ class LearningRateSchedule:
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
+                self._optimizer.learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)
     def optimizer(self):
@@ -983,35 +999,47 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = get_variable(
-            entropy_coeff,
-            framework="tf",
-            tf_name="entropy_coeff",
-            trainable=False)
-
+        self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff = get_variable(
+                entropy_coeff,
+                framework="tf",
+                tf_name="entropy_coeff",
+                trainable=False)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
                     framework=None)
             else:
                 # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
                     framework=None)
 
+            self.entropy_coeff = get_variable(
+                self._entropy_coeff_schedule.value(0),
+                framework="tf",
+                tf_name="entropy_coeff",
+                trainable=False)
+            if self.framework == "tf":
+                self._entropy_coeff_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="entropy_coeff")
+                self._entropy_coeff_update = self.entropy_coeff.assign(
+                    self._entropy_coeff_placeholder, read_value=False)
+
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        op_or_none = self.entropy_coeff.assign(
-            self.entropy_coeff_schedule.value(global_vars["timestep"]),
-            read_value=False,  # return tf op (None in eager mode).
-        )
-        if self._sess is not None:
-            self._sess.run(op_or_none)
+        if self._entropy_coeff_schedule is not None:
+            new_val = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._entropy_coeff_update,
+                    feed_dict={self._entropy_coeff_placeholder: new_val})
+            else:
+                self.entropy_coeff.assign(new_val, read_value=False)

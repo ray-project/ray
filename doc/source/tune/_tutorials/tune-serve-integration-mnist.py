@@ -587,7 +587,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=3)
+        ray.init(num_cpus=3, namespace="tune-serve-integration")
+    else:
+        ray.init(namespace="tune-serve-integration")
 
     model_dir = os.path.expanduser(args.model_dir)
 

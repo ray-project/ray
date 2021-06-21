@@ -120,3 +120,22 @@ These are simple examples that show you how to leverage Ray Core. For Ray's prod
 .. raw:: html
 
     </div>
+
+End-to-end Machine Learning Guides
+----------------------------------
+
+These are full guides on how you can use Ray with various Machine Learning libraries
+
+.. raw:: html
+
+    <div class="sphx-glr-bigcontainer">
+
+.. toctree::
+   :hidden:
+
+   using-ray-with-pytorch-lightning.rst
+
+.. customgalleryitem::
+   :tooltip: Using Ray with PyTorch Lightning.
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`/auto_examples/using-ray-with-pytorch-lightning`

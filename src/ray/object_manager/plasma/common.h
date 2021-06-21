@@ -25,6 +25,7 @@
 
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/compat.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 
 namespace plasma {
 
@@ -42,8 +43,6 @@ enum class ObjectState : int {
   PLASMA_CREATED = 1,
   /// Object is sealed and stored in the local Plasma Store.
   PLASMA_SEALED = 2,
-  /// Object is evicted to external store.
-  PLASMA_EVICTED = 3,
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
@@ -83,6 +82,8 @@ struct ObjectTableEntry {
   int64_t construct_duration;
   /// The state of the object, e.g., whether it is open or sealed.
   ObjectState state;
+  /// The source of the object. Used for debugging purposes.
+  plasma::flatbuf::ObjectSource source;
 };
 
 /// Mapping from ObjectIDs to information about the object.
