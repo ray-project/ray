@@ -17,7 +17,7 @@ def _check_spilled(expected_spilled):
         else:
             return "Spilled " not in s
 
-    ray.test_utils.wait_for_condition(ok, timeout=5, retry_interval_ms=5000)
+    ray.test_utils.wait_for_condition(ok, timeout=30, retry_interval_ms=5000)
 
 
 def _test_object_spilling_threshold(thres, expected_spilled):
