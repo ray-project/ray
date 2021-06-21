@@ -286,7 +286,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object that we were borrowing.
   void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void RemoveBorrower(const ObjectID& object_id, const rpc::Address& address) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void RemoveBorrower(const ObjectID &object_id, const rpc::Address &address)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);

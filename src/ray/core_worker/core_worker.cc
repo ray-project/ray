@@ -377,11 +377,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3,
                                   std::placeholders::_4, std::placeholders::_5);
-    auto object_transfer = std::bind(&CoreWorker::ShareOwnershipInternal,
-                                     this,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2,
-                                     std::placeholders::_3);
+    auto object_transfer =
+        std::bind(&CoreWorker::ShareOwnershipInternal, this, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task,
         [this] { return local_raylet_client_->TaskDone(); }, object_transfer);
@@ -2831,14 +2829,13 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
   }
 }
 
-void CoreWorker::ShareOwnershipInternal(
-    const rpc::Address& to_addr,
-    const std::vector<ObjectID>& ids,
-    std::function<void(std::vector<ObjectID>)> cb) {
+void CoreWorker::ShareOwnershipInternal(const rpc::Address &to_addr,
+                                        const std::vector<ObjectID> &ids,
+                                        std::function<void(std::vector<ObjectID>)> cb) {
   std::vector<std::pair<NodeID, ObjectID>> node_id_mapping;
   auto succeeded_ids = std::make_shared<std::vector<ObjectID>>();
   for (auto id : ids) {
-    if(!reference_counter_->OwnedByUs(id)) {
+    if (!reference_counter_->OwnedByUs(id)) {
       continue;
     }
     auto node_id = reference_counter_->GetObjectPinnedLocation(id);
@@ -2859,17 +2856,18 @@ void CoreWorker::ShareOwnershipInternal(
           node_info->node_manager_address(), node_info->node_manager_port(),
           *client_call_manager_);
       auto raylet_client = std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-      raylet_client->PinObjectIDs(to_addr, {v.second}, [this, to_addr, succeeded_ids, in_flight, id = v.second, cb](
-          auto& status, auto& pin_reply) mutable {
-        if (status.ok()) {
-          succeeded_ids->push_back(id);
-          reference_counter_->RemoveBorrower(id, to_addr);
-        }
-        // TODO (yic): better with a barrier
-        if (--*in_flight == 0) {
-          cb(std::move(*succeeded_ids));
-        }
-      });
+      raylet_client->PinObjectIDs(to_addr, {v.second},
+                                  [this, to_addr, succeeded_ids, in_flight, id = v.second,
+                                   cb](auto &status, auto &pin_reply) mutable {
+                                    if (status.ok()) {
+                                      succeeded_ids->push_back(id);
+                                      reference_counter_->RemoveBorrower(id, to_addr);
+                                    }
+                                    // TODO (yic): better with a barrier
+                                    if (--*in_flight == 0) {
+                                      cb(std::move(*succeeded_ids));
+                                    }
+                                  });
     }
   }
 }
@@ -2878,16 +2876,17 @@ void CoreWorker::HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
                                       rpc::ShareOwnershipReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> ids;
-  for(const auto& id : request.object_ids()) {
+  for (const auto &id : request.object_ids()) {
     ids.push_back(ObjectID::FromBinary(id));
   }
   const auto &addr = request.new_owner_address();
-  ShareOwnershipInternal(addr, ids, [send_reply_callback, reply](std::vector<ObjectID> ids) {
-    for(auto& id : ids) {
-      reply->add_succeeded_ids(id.Binary());
-    }
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+  ShareOwnershipInternal(addr, ids,
+                         [send_reply_callback, reply](std::vector<ObjectID> ids) {
+                           for (auto &id : ids) {
+                             reply->add_succeeded_ids(id.Binary());
+                           }
+                           send_reply_callback(Status::OK(), nullptr, nullptr);
+                         });
 }
 
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,

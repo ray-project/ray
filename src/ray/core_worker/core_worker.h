@@ -1028,11 +1028,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool IsExiting() const;
 
  private:
-  void ShareOwnershipInternal(
-      const rpc::Address& to_addr,
-      const std::vector<ObjectID>& ids,
-      std::function<void(std::vector<ObjectID>)> cb);
-
+  void ShareOwnershipInternal(const rpc::Address &to_addr,
+                              const std::vector<ObjectID> &ids,
+                              std::function<void(std::vector<ObjectID>)> cb);
 
   void SetCurrentTaskId(const TaskID &task_id);
 

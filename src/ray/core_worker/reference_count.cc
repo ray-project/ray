@@ -769,12 +769,12 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
   DeleteReferenceInternal(it, nullptr);
 }
 
-void ReferenceCounter::RemoveBorrower(const ObjectID& object_id,
-                                      const rpc::Address& address) {
+void ReferenceCounter::RemoveBorrower(const ObjectID &object_id,
+                                      const rpc::Address &address) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end()) << object_id;
-  if(it->second.borrowers.erase(address)) {
+  if (it->second.borrowers.erase(address)) {
     DeleteReferenceInternal(it, nullptr);
   }
 }
