@@ -117,24 +117,28 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
         plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
     lock.lock();
 
-    std::vector<boost::asio::mutable_buffer> buffer;
-    if (!s.ok()) {
-      // Create failed. The object may already exist locally. If something else went
-      // wrong, another chunk will succeed in creating the buffer, and this
-      // chunk will eventually make it here via pull requests.
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-          errored_chunk_, ray::Status::IOError(s.message()));
+    // Another thread may have succeeded in creating the chunk while the lock
+    // was released. In that case skip the remainder of the creation block.
+    if (create_buffer_state_.count(object_id) == 0) {
+      std::vector<boost::asio::mutable_buffer> buffer;
+      if (!s.ok()) {
+        // Create failed. The object may already exist locally. If something else went
+        // wrong, another chunk will succeed in creating the buffer, and this
+        // chunk will eventually make it here via pull requests.
+        return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+            errored_chunk_, ray::Status::IOError(s.message()));
+      }
+      // Read object into store.
+      uint8_t *mutable_data = data->Data();
+      uint64_t num_chunks = GetNumChunks(data_size);
+      create_buffer_state_.emplace(
+          std::piecewise_construct, std::forward_as_tuple(object_id),
+          std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
+      RAY_LOG(DEBUG) << "Created object " << object_id
+                     << " in plasma store, number of chunks: " << num_chunks
+                     << ", chunk index: " << chunk_index;
+      RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
     }
-    // Read object into store.
-    uint8_t *mutable_data = data->Data();
-    uint64_t num_chunks = GetNumChunks(data_size);
-    create_buffer_state_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
-    RAY_LOG(DEBUG) << "Created object " << object_id
-                   << " in plasma store, number of chunks: " << num_chunks
-                   << ", chunk index: " << chunk_index;
-    RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
       CreateChunkState::AVAILABLE) {
