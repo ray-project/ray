@@ -9,8 +9,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
-    """
-    Checks if files are passed as file_mounts. This is a problem for Docker
+    """Checks if files are passed as file_mounts. This is a problem for Docker
     based clusters because when a file is bind-mounted in Docker, updates to
     the file on the host do not always propagate to the container. Using
     directories is recommended.
@@ -23,9 +22,7 @@ def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
 
 
 def validate_docker_config(config: Dict[str, Any]) -> None:
-    """
-    Checks whether the Docker configuration is valid.
-    """
+    """Checks whether the Docker configuration is valid."""
     if "docker" not in config:
         return
 
