@@ -549,7 +549,7 @@ class ExperimentAnalysis(Analysis):
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
                              "`pip install pandas`.")
-        best_result = flatten_dict(self.best_result, delimiter=".")
+        best_result = flatten_dict(self.best_result, delimiter="/")
         return pd.DataFrame.from_records([best_result], index="trial_id")
 
     @property
@@ -560,11 +560,11 @@ class ExperimentAnalysis(Analysis):
     @property
     def results_df(self) -> DataFrame:
         if not pd:
-            raise ValueError("`best_result_df` requires pandas. Install with "
+            raise ValueError("`results_df` requires pandas. Install with "
                              "`pip install pandas`.")
         return pd.DataFrame.from_records(
             [
-                flatten_dict(trial.last_result, delimiter=".")
+                flatten_dict(trial.last_result, delimiter="/")
                 for trial in self.trials
             ],
             index="trial_id")
