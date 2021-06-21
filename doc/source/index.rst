@@ -337,7 +337,6 @@ Papers
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   ray-collective.rst
 
 .. toctree::
    :hidden:
