@@ -6,15 +6,18 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
-from typing import Dict
+import traceback
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -282,7 +285,8 @@ def wait_until_succeeded_without_exception(func,
                                            exceptions,
                                            *args,
                                            timeout_ms=1000,
-                                           retry_interval_ms=100):
+                                           retry_interval_ms=100,
+                                           raise_last_ex=False):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -292,6 +296,7 @@ def wait_until_succeeded_without_exception(func,
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_last_ex: Raise the last exception when timeout.
 
     Return:
         Whether exception occurs within a timeout.
@@ -302,13 +307,20 @@ def wait_until_succeeded_without_exception(func,
 
     time_elapsed = 0
     start = time.time()
+    last_ex = None
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
-        except exceptions:
+        except exceptions as ex:
+            last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
+    if raise_last_ex:
+        ex_stack = traceback.format_exception(
+            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else []
+        ex_stack = "".join(ex_stack)
+        raise Exception(f"Timed out while testing, {ex_stack}")
     return False
 
 
@@ -496,6 +508,13 @@ def client_test_enabled() -> bool:
     return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
 def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
@@ -527,3 +546,144 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+def get_wheel_filename(
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Returns the filename used for the nightly Ray wheel.
+
+    Args:
+        sys_platform (str): The platform as returned by sys.platform. Examples:
+            "darwin", "linux", "win32"
+        ray_version (str): The Ray version as returned by ray.__version__ or
+            `ray --version`.  Examples: "2.0.0.dev0"
+        py_version (str):
+            The major and minor Python versions concatenated.  Examples: "36",
+            "37", "38"
+    Returns:
+        The wheel file name.  Examples:
+            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    """
+    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
+                                              " '37', or '38'")
+
+    os_strings = {
+        "darwin": "macosx_10_13_x86_64"
+        if py_version == "38" else "macosx_10_13_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
+                                        " 'linux', or 'win32'")
+
+    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
+                      f"cp{py_version}{'m' if py_version != '38' else ''}"
+                      f"-{os_strings[sys_platform]}.whl")
+
+    return wheel_filename
+
+
+def get_master_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel from a specific commit."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+            f"{ray_commit}/{filename}")
+
+
+def get_release_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel for a specific release."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
+            f"{ray_version}/{ray_commit}/{filename}")
+    # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
+    # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
+    # 4_x86_64.whl
+
+
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
+
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch

@@ -231,8 +231,7 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   virtual size_t Hash() const {
     return std::hash<int>()(ray::FunctionDescriptorType::kCppFunctionDescriptor) ^
            std::hash<std::string>()(typed_message_->lib_name()) ^
-           std::hash<std::string>()(typed_message_->function_offset()) ^
-           std::hash<std::string>()(typed_message_->exec_function_offset());
+           std::hash<std::string>()(typed_message_->function_name());
   }
 
   inline bool operator==(const CppFunctionDescriptor &other) const {
@@ -240,8 +239,7 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
       return true;
     }
     return this->LibName() == other.LibName() &&
-           this->FunctionOffset() == other.FunctionOffset() &&
-           this->ExecFunctionOffset() == other.ExecFunctionOffset();
+           this->FunctionName() == other.FunctionName();
   }
 
   inline bool operator!=(const CppFunctionDescriptor &other) const {
@@ -250,23 +248,16 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
 
   virtual std::string ToString() const {
     return "{type=CppFunctionDescriptor, lib_name=" + typed_message_->lib_name() +
-           ", function_offset=" + typed_message_->function_offset() +
-           ", exec_function_offset=" + typed_message_->exec_function_offset() + "}";
+           ", function_name=" + typed_message_->function_name() + "}";
   }
 
   virtual std::string CallString() const {
-    return typed_message_->lib_name() + "+" + typed_message_->function_offset();
+    return typed_message_->lib_name() + "+" + typed_message_->function_name();
   }
 
   virtual std::string DefaultTaskName() const { return CallString(); }
 
   const std::string &LibName() const { return typed_message_->lib_name(); }
-
-  const std::string &FunctionOffset() const { return typed_message_->function_offset(); }
-
-  const std::string &ExecFunctionOffset() const {
-    return typed_message_->exec_function_offset();
-  }
 
   const std::string &FunctionName() const { return typed_message_->function_name(); }
 
@@ -336,8 +327,6 @@ class FunctionDescriptorBuilder {
   ///
   /// \return a ray::CppFunctionDescriptor
   static FunctionDescriptor BuildCpp(const std::string &lib_name,
-                                     const std::string &function_offset,
-                                     const std::string &exec_function_offset,
                                      const std::string &function_name);
 
   /// Build a ray::FunctionDescriptor according to input message.

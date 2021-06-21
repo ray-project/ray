@@ -190,7 +190,6 @@ def create_or_update_cluster(
         cli_logger.abort(
             "Provided cluster configuration file ({}) does not exist",
             cf.bold(config_file))
-        raise
     except yaml.parser.ParserError as e:
         handle_yaml_error(e)
         raise
@@ -211,8 +210,6 @@ def create_or_update_cluster(
                 k for k in _NODE_PROVIDERS.keys()
                 if _NODE_PROVIDERS[k] is not None
             ]))
-        raise NotImplementedError("Unsupported provider {}".format(
-            config["provider"]))
 
     printed_overrides = False
 
@@ -600,7 +597,9 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
-    head_node_config = copy.deepcopy(config["head_node"])
+    head_node_config = copy.deepcopy(config.get("head_node", {}))
+    # The above `head_node` field is deprecated in favor of per-node-type
+    # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
     if "head_node_type" in config:
         head_node_type = config["head_node_type"]
@@ -613,8 +612,10 @@ def get_or_create_head_node(config: Dict[str, Any],
         head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
+    launching_new_head = False
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
+        launching_new_head = True
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
                 CreateClusterEvent.acquiring_new_head_node)
@@ -644,9 +645,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             with cli_logger.group("Fetching the new head node"):
                 while True:
                     if time.time() - start > 50:
-                        cli_logger.abort(
-                            "Head node fetch timed out.")  # todo: msg
-                        raise RuntimeError("Failed to create head node.")
+                        cli_logger.abort("Head node fetch timed out. "
+                                         "Failed to create head node.")
                     nodes = provider.non_terminated_nodes(head_node_tags)
                     if len(nodes) == 1:
                         head_node = nodes[0]
@@ -684,7 +684,9 @@ def get_or_create_head_node(config: Dict[str, Any],
             else:
                 setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
-        elif no_restart:
+        # If user passed in --no-restart and we're not launching a new head,
+        # omit start commands.
+        elif no_restart and not launching_new_head:
             setup_commands = config["head_setup_commands"]
             ray_start_commands = []
         else:

@@ -383,7 +383,7 @@ def rollout(agent,
         episodes = 0
         while keep_going(steps, num_steps, episodes, num_episodes):
             saver.begin_rollout()
-            eval_result = agent._evaluate()["evaluation"]
+            eval_result = agent.evaluate()["evaluation"]
             # Increase timestep and episode counters.
             eps = agent.config["evaluation_num_episodes"]
             episodes += eps

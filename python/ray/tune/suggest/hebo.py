@@ -278,6 +278,22 @@ class HEBOSearch(Searcher):
             self._opt.observe(
                 trial_info, np.array([self._metric_op * result[self._metric]]))
 
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        if intermediate_values:
+            logger.warning("HEBO doesn't use intermediate_values. Ignoring.")
+        if not error and not pruned:
+            self._opt.observe(
+                pd.DataFrame([parameters]),
+                np.array([value]) * self._metric_op)
+        else:
+            logger.warning("Only non errored and non pruned points"
+                           " can be added to HEBO.")
+
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
         if self._random_state_seed is not None:
@@ -349,7 +365,7 @@ class HEBOSearch(Searcher):
                         "name": par,
                         "type": "pow_int",
                         "lb": domain.lower,
-                        "ub": domain.upper,
+                        "ub": domain.upper - 1,  # Upper bound exclusive
                         "base": sampler.base
                     }
                 elif isinstance(sampler, Uniform):
@@ -357,7 +373,7 @@ class HEBOSearch(Searcher):
                         "name": par,
                         "type": "int",
                         "lb": domain.lower,
-                        "ub": domain.upper
+                        "ub": domain.upper - 1,  # Upper bound exclusive
                     }
             elif isinstance(domain, Categorical):
                 return {

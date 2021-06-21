@@ -20,15 +20,42 @@ from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PG")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PG",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--stop-reward", type=float, default=7.0)
-parser.add_argument("--stop-timesteps", type=int, default=50000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=50000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=7.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init(num_cpus=args.num_cpus or None)
 
     grouping = {
         "group_1": [0, 1],
@@ -77,7 +104,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
@@ -98,29 +125,27 @@ if __name__ == "__main__":
             },
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": "torch" if args.torch else "tf",
         }
         group = True
     else:
         config = {
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
         }
         group = False
-
-    ray.init(num_cpus=args.num_cpus or None)
 
     stop = {
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
+        "training_iteration": args.stop_iters,
     }
 
     config = dict(config, **{
         "env": "grouped_twostep" if group else TwoStepGame,
     })
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.run(args.run, stop=stop, config=config, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

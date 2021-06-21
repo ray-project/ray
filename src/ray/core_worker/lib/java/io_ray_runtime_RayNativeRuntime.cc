@@ -162,26 +162,29 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
               [](JNIEnv *env, jobject java_native_ray_object) {
                 return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
               });
-          std::vector<size_t> data_sizes;
-          std::vector<std::shared_ptr<ray::Buffer>> metadatas;
-          std::vector<std::vector<ray::ObjectID>> contained_object_ids;
+          results->resize(return_ids.size(), nullptr);
           for (size_t i = 0; i < return_objects.size(); i++) {
-            data_sizes.push_back(
-                return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0);
-            metadatas.push_back(return_objects[i]->GetMetadata());
-            contained_object_ids.push_back(return_objects[i]->GetNestedIds());
-          }
-          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-              return_ids, data_sizes, metadatas, contained_object_ids, results));
-          for (size_t i = 0; i < data_sizes.size(); i++) {
-            auto result = (*results)[i];
+            auto &result_id = return_ids[i];
+            size_t data_size =
+                return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
+            auto &metadata = return_objects[i]->GetMetadata();
+            auto &contained_object_id = return_objects[i]->GetNestedIds();
+            auto result_ptr = &(*results)[0];
+
+            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+                result_id, data_size, metadata, contained_object_id, result_ptr));
+
             // A nullptr is returned if the object already exists.
+            auto result = *result_ptr;
             if (result != nullptr) {
               if (result->HasData()) {
                 memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
-                       data_sizes[i]);
+                       data_size);
               }
             }
+
+            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+                result_id, result));
           }
         }
 

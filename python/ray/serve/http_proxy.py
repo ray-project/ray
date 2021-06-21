@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import time
+import pickle
 from typing import List, Dict, Optional, Tuple
 
 import uvicorn
@@ -30,7 +31,8 @@ async def _send_request_to_handle(handle, scope, receive, send):
         method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
         shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
         http_method=scope["method"].upper(),
-        http_headers=headers)
+        http_headers=headers,
+    )
 
     # scope["router"] and scope["endpoint"] contain references to a router
     # and endpoint object, respectively, which each in turn contain a
@@ -46,6 +48,9 @@ async def _send_request_to_handle(handle, scope, receive, send):
     # request until it reaches the backend replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
+    # Perform a pickle here to improve latency. Stdlib pickle for simple
+    # dataclasses are 10-100x faster than cloudpickle.
+    request = pickle.dumps(request)
 
     retries = 0
     backoff_time_s = 0.05
@@ -89,7 +94,11 @@ class ServeStarletteEndpoint:
         self.endpoint_tag = endpoint_tag
         self.path_prefix = path_prefix
         self.handle = serve.get_handle(
-            self.endpoint_tag, sync=False, missing_ok=True)
+            self.endpoint_tag,
+            sync=False,
+            missing_ok=True,
+            _internal_pickled_http_request=True,
+        )
 
     async def __call__(self, scope, receive, send):
         # Modify the path and root path so that reverse lookups and redirection
@@ -135,7 +144,11 @@ class LongestPrefixRouter:
                 existing_handles.remove(endpoint)
             else:
                 self.handles[endpoint] = serve.get_handle(
-                    endpoint, sync=False, missing_ok=True)
+                    endpoint,
+                    sync=False,
+                    missing_ok=True,
+                    _internal_pickled_http_request=True,
+                )
 
         # Clean up any handles that are no longer used.
         for endpoint in existing_handles:

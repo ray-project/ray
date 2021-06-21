@@ -5,7 +5,6 @@ import logging
 import pickle
 import platform
 import os
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -15,6 +14,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
@@ -48,7 +48,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
@@ -355,7 +355,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
+            from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
@@ -381,14 +381,38 @@ class RolloutWorker(ParallelIteratorWorker):
         # Create an env for this worker.
         else:
             self.env = _validate_env(env_creator(env_context))
+            # Validate environment, if validation function provided.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
-            if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
+            # MultiAgentEnv (a gym.Env) -> Wrap and make
+            # the wrapped Env yet another MultiAgentEnv.
+            if isinstance(self.env, MultiAgentEnv):
 
                 def wrap(env):
-                    return env  # we can't auto-wrap these env types
+                    cls = env.__class__
+                    # Add gym.Env as mixin parent to the env's class
+                    # (so it can be wrapped).
+                    env.__class__ = \
+                        type(env.__class__.__name__, (type(env), gym.Env), {})
+                    # Wrap the (now gym.Env) env with our (multi-agent capable)
+                    # recording wrapper.
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
+                    # Make sure, we make the wrapped object a member of the
+                    # original MultiAgentEnv sub-class again.
+                    if type(env) is not cls:
+                        env.__class__ = \
+                            type(cls.__name__, (type(env), cls), {})
+                    return env
 
+            # We can't auto-wrap a BaseEnv.
+            elif isinstance(self.env, BaseEnv):
+
+                def wrap(env):
+                    return env
+
+            # Atari type env and "deepmind" preprocessor pref.
             elif is_atari(self.env) and \
                     not model_config.get("custom_preprocessor") and \
                     preprocessor_pref == "deepmind":
@@ -421,45 +445,16 @@ class RolloutWorker(ParallelIteratorWorker):
                         dim=model_config.get("dim"),
                         framestack=framestack,
                         framestack_via_traj_view_api=framestack_traj_view)
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
                     return env
+
+            # gym.Env -> Wrap with gym Monitor.
             else:
 
                 def wrap(env):
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
-                    return env
+                    return record_env_wrapper(env, record_env, log_dir,
+                                              policy_config)
 
             self.env: EnvType = wrap(self.env)
 
@@ -482,20 +477,39 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
-        # set numpy and python seed
+        # Set Python random, numpy, env, and torch/tf seeds.
         if seed is not None:
-            np.random.seed(seed)
+            # Python random module.
             random.seed(seed)
+            # Numpy.
+            np.random.seed(seed)
+            # Gym.env.
             if not hasattr(self.env, "seed"):
                 logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
             else:
                 self.env.seed(seed)
-            try:
-                assert torch is not None
+
+            # Torch.
+            if torch and policy_config.get("framework") == "torch":
                 torch.manual_seed(seed)
-            except AssertionError:
-                logger.info("Could not seed torch")
+                # See https://github.com/pytorch/pytorch/issues/47672.
+                cuda_version = torch.version.cuda
+                if cuda_version is not None and float(
+                        torch.version.cuda) >= 10.2:
+                    os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+                else:
+                    # Not all Operations support this.
+                    torch.use_deterministic_algorithms(True)
+                # This is only for Convolution no problem.
+                torch.backends.cudnn.deterministic = True
+            # Tf2.x.
+            elif tf and policy_config.get("framework") == "tf2":
+                tf.random.set_seed(seed)
+            # Tf-eager.
+            elif tf1 and policy_config.get("framework") == "tfe":
+                tf1.set_random_seed(seed)
+
         if _has_tensorflow_graph(policy_dict) and not (
                 tf1 and tf1.executing_eagerly()):
             if not tf1:
@@ -966,10 +980,26 @@ class RolloutWorker(ParallelIteratorWorker):
         else:
             return [func(e) for e in envs]
 
+    def foreach_env_with_context(
+            self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
+        """Apply the given function to each underlying env instance."""
+
+        if self.async_env is None:
+            return []
+
+        envs = self.async_env.get_unwrapped()
+        if not envs:
+            return [func(self.async_env, self.env_context)]
+        else:
+            ret = []
+            for i, e in enumerate(envs):
+                ctx = self.env_context.copy_with_overrides(vector_index=i)
+                ret.append(func(e, ctx))
+            return ret
+
     @DeveloperAPI
-    def get_policy(self,
-                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID
-                   ) -> Policy:
+    def get_policy(
+            self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
@@ -1047,7 +1077,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def save(self) -> str:
+    def save(self) -> bytes:
         filters = self.get_filters(flush_after=True)
         state = {
             pid: self.policy_map[pid].get_state()
@@ -1056,7 +1086,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return pickle.dumps({"filters": filters, "state": state})
 
     @DeveloperAPI
-    def restore(self, objs: str) -> None:
+    def restore(self, objs: bytes) -> None:
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():

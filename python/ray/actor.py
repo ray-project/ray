@@ -1,7 +1,6 @@
 import inspect
 import logging
 import weakref
-import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -22,6 +21,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
@@ -431,7 +431,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -497,7 +497,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -531,7 +531,9 @@ class ActorClass:
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
             placement_group: the placement group this actor belongs to,
-                or None if it doesn't belong to any group.
+                or None if it doesn't belong to any group. Setting to "default"
+                autodetects the placement group based on the current setting of
+                placement_group_capture_child_tasks.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
@@ -631,9 +633,11 @@ class ActorClass:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -701,12 +705,16 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
         else:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+            runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.5.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -725,7 +733,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env=parsed_runtime_env,
+            runtime_env_dict=runtime_env_dict,
             override_environment_variables=override_environment_variables
             or dict())
 
@@ -1076,10 +1084,9 @@ def exit_actor():
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise an interrupt signal to the main thread to tell it to exit.
+        # raise a custom error to the main thread to tell it to exit.
         if worker.core_worker.current_actor_is_asyncio():
-            _thread.interrupt_main()
-            return
+            raise AsyncioActorExit()
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.

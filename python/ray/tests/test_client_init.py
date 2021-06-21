@@ -52,6 +52,7 @@ def init_and_serve():
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)
+    cluster.wait_for_nodes(1)
     address = cluster.address
 
     def connect(job_config=None):

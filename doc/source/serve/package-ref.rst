@@ -38,4 +38,4 @@ ServeHandle API
 
 Batching Requests
 -----------------
-.. autofunction:: ray.serve.batch
+.. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)

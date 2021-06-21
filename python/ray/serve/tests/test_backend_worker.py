@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 import ray
+from ray import cloudpickle
 from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import RequestMetadata, EndpointRouter
@@ -23,7 +24,8 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         async def __init__(self):
-            self.worker = object.__new__(create_backend_replica(backend_def))
+            self.worker = object.__new__(
+                create_backend_replica(name, cloudpickle.dumps(backend_def)))
             await self.worker.__init__(name, name + ":tag", init_args,
                                        backend_config, controller_name)
 

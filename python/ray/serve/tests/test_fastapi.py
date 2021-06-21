@@ -1,7 +1,7 @@
+import sys
 import time
 from typing import Any, List, Optional
 import tempfile
-import sys
 
 import pytest
 import inspect
@@ -310,6 +310,46 @@ def test_fastapi_features(serve_instance):
             "Origin": "https://googlebot.com"
         })
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
+
+
+def test_fast_api_mounted_app(serve_instance):
+    app = FastAPI()
+    subapp = FastAPI()
+
+    @subapp.get("/hi")
+    def hi():
+        return "world"
+
+    app.mount("/mounted", subapp)
+
+    @serve.deployment(route_prefix="/api")
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+
+    assert requests.get(
+        "http://localhost:8000/api/mounted/hi").json() == "world"
+
+
+def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        1 / 0
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        def f(self):
+            return 1
+
+    A.deploy()
+    # Without a proper fix, the actor won't be initialized correctly.
+    # Because it will crash on each startup.
+    assert ray.get(A.get_handle().f.remote()) == 1
 
 
 def test_fastapi_duplicate_routes(serve_instance):

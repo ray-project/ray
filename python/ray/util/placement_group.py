@@ -3,7 +3,6 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from typing import TYPE_CHECKING
 
 import ray
 from ray._raylet import ObjectRef
@@ -12,9 +11,6 @@ from ray._private.utils import hex_to_binary
 from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
-
-if TYPE_CHECKING:
-    from ray.util.common import ClientObjectRef  # noqa
 
 bundle_reservation_check = None
 
@@ -49,7 +45,7 @@ class PlacementGroup:
         self.id = id
         self.bundle_cache = bundle_cache
 
-    def ready(self) -> Union[ObjectRef, "ClientObjectRef"]:
+    def ready(self) -> ObjectRef:
         """Returns an ObjectRef to check ready status.
 
         This API runs a small dummy task to wait for placement group creation.
@@ -300,7 +296,7 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
     worker = ray.worker.global_worker
     worker.check_connected()
     placement_group_info = ray.state.state.get_placement_group_by_name(
-        placement_group_name)
+        placement_group_name, worker.namespace)
     if placement_group_info is None:
         raise ValueError(
             f"Failed to look up actor with name: {placement_group_name}")

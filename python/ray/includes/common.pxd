@@ -14,6 +14,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CPlacementGroupID,
+    CNodeID,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -244,17 +245,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
-    cdef cppclass CRuntimeEnv "ray::RuntimeEnv":
-        CRuntimeEnv()
-        CRuntimeEnv(c_string conda_env_name)
-
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
-                     CRuntimeEnv runtime_env,
+                     c_string serialized_runtime_env,
                      const unordered_map[c_string, c_string]
                      &override_environment_variables)
 
@@ -270,7 +267,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached, c_string &name, c_bool is_asyncio,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
-            CRuntimeEnv runtime_env,
+            c_string serialized_runtime_env,
             const unordered_map[c_string, c_string]
             &override_environment_variables)
 
@@ -283,6 +280,14 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached
         )
+
+    cdef cppclass CObjectLocation "ray::ObjectLocation":
+        const CNodeID &GetPrimaryNodeID() const
+        const uint64_t GetObjectSize() const
+        const c_vector[CNodeID] &GetNodeIDs() const
+        c_bool IsSpilled() const
+        const c_string &GetSpilledURL() const
+        const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

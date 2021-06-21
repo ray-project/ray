@@ -1,3 +1,5 @@
+import socket
+from contextlib import closing
 from typing import Dict, List, Union
 import copy
 import json
@@ -182,17 +184,6 @@ def date_str():
 
 def is_nan_or_inf(value):
     return np.isnan(value) or np.isinf(value)
-
-
-def env_integer(key, default):
-    # TODO(rliaw): move into ray.constants
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-        raise ValueError(f"Found {key} in environment, but value must "
-                         f"be an integer. Got: {value}.")
-    return default
 
 
 def merge_dicts(d1, d2):
@@ -495,6 +486,14 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
+def find_free_port():
+    """Finds a free port on the current node."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     """Returns the most recently modified checkpoint.
 
@@ -758,6 +757,45 @@ def validate_warmstart(parameter_names: List[str],
                 "Dim of evaluated_rewards {}".format(evaluated_rewards) +
                 " and points_to_evaluate {}".format(points_to_evaluate) +
                 " do not match.")
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+    It can be used for actor placement.
+
+    If using Ray Client, this will return the resource key for the node that
+    is running the client server.
+
+    Returns:
+        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def force_on_current_node(task_or_actor):
+    """Given a task or actor, place it on the current node.
+
+    If using Ray Client, the current node is the client server node.
+
+    Args:
+        task_or_actor: A Ray remote function or class to place on the
+            current node.
+
+    Returns:
+        The provided task or actor, but with options modified to force
+            placement on the current node.
+    """
+    node_resource_key = get_current_node_resource_key()
+    options = {"resources": {node_resource_key: 0.01}}
+    return task_or_actor.options(**options)
 
 
 class SafeFallbackEncoder(json.JSONEncoder):

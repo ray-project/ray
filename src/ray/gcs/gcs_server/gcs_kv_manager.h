@@ -39,6 +39,8 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                            rpc::InternalKVDelReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
 
+  void InternalKVDelAsync(const std::string &key, std::function<void(int)> cb);
+
   void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
                               rpc::InternalKVExistsReply *reply,
                               rpc::SendReplyCallback send_reply_callback);

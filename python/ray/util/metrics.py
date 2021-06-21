@@ -3,10 +3,12 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
 
 from ray._raylet import (
-    Count as CythonCount,
+    Sum as CythonCount,
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+# Sum is used for CythonCount because it allows incrementing by positive
+# values that are different from one.
 
 logger = logging.getLogger(__name__)
 

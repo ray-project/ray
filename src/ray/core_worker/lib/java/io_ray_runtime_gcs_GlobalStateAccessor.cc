@@ -59,6 +59,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
       });
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env, jobject o,
+                                                               jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  const auto &job_id = gcs_accessor->GetNextJobID();
+  return IdToJavaByteArray<ray::JobID>(env, job_id);
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jobject o,
                                                                  jlong gcs_accessor_ptr) {
@@ -128,7 +137,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(
   auto full_name = GetFullName(global, placement_group_name);
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name);
+  // Java doesn't support namespaces.
+  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name, "");
   if (placement_group) {
     return NativeStringToJavaByteArray(env, *placement_group);
   }

@@ -997,7 +997,8 @@ def import_attr(full_path: str):
     Returns:
         Imported attr
     """
-
+    if full_path is None:
+        raise TypeError("import path cannot be None")
     last_period_idx = full_path.rfind(".")
     attr_name = full_path[last_period_idx + 1:]
     module_name = full_path[:last_period_idx]

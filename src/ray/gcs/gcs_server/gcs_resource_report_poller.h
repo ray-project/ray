@@ -33,7 +33,6 @@ class GcsResourceReportPoller {
 
  public:
   GcsResourceReportPoller(
-      std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       std::function<void(const rpc::ResourcesData &)> handle_resource_report,
       /* Default values should only be changed for testing. */
@@ -80,9 +79,6 @@ class GcsResourceReportPoller {
   const uint64_t max_concurrent_pulls_;
   // The number of ongoing pulls.
   uint64_t inflight_pulls_;
-  // The resource manager which maintains GCS's view of the cluster's resource
-  // utilization.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   // Handle receiving a resource report (e.g. update the resource manager).

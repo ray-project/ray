@@ -186,7 +186,7 @@ def build_eager_tf_policy(
         postprocess_fn=None,
         stats_fn=None,
         optimizer_fn=None,
-        gradients_fn=None,
+        compute_gradients_fn=None,
         apply_gradients_fn=None,
         grad_stats_fn=None,
         extra_learn_fetches_fn=None,
@@ -199,10 +199,12 @@ def build_eager_tf_policy(
         action_sampler_fn=None,
         action_distribution_fn=None,
         mixins=None,
-        obs_include_prev_action_reward=DEPRECATED_VALUE,
         get_batch_divisibility_req=None,
         # Deprecated args.
-        extra_action_fetches_fn=None):
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        extra_action_fetches_fn=None,
+        gradients_fn=None,
+):
     """Build an eager TF policy.
 
     An eager policy runs all operations in eager mode, which makes debugging
@@ -216,6 +218,9 @@ def build_eager_tf_policy(
 
     base = add_mixins(Policy, mixins)
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     if extra_action_fetches_fn is not None:
         deprecation_warning(
             old="extra_action_fetches_fn",
@@ -223,8 +228,10 @@ def build_eager_tf_policy(
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
-    if obs_include_prev_action_reward != DEPRECATED_VALUE:
-        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+    if gradients_fn is not None:
+        deprecation_warning(
+            old="gradients_fn", new="compute_gradients_fn", error=False)
+        compute_gradients_fn = gradients_fn
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
@@ -610,8 +617,8 @@ def build_eager_tf_policy(
                      for g in gradients], self.model.trainable_variables()))
 
         @override(Policy)
-        def get_exploration_info(self):
-            return _convert_to_numpy(self.exploration.get_info())
+        def get_exploration_state(self):
+            return _convert_to_numpy(self.exploration.get_state())
 
         @override(Policy)
         def get_weights(self, as_dict=False):
@@ -630,18 +637,20 @@ def build_eager_tf_policy(
 
         @override(Policy)
         def get_state(self):
-            state = {"_state": super().get_state()}
+            state = super().get_state()
             if self._optimizer and \
                     len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = \
                     self._optimizer.variables()
+            # Add exploration state.
+            state["_exploration_state"] = self.exploration.get_state()
             return state
 
         @override(Policy)
         def set_state(self, state):
             state = state.copy()  # shallow copy
             # Set optimizer vars first.
-            optimizer_vars = state.pop("_optimizer_variables", None)
+            optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
                 logger.warning(
                     "Cannot restore an optimizer's state for tf eager! Keras "
@@ -651,8 +660,11 @@ def build_eager_tf_policy(
                 for opt_var, value in zip(self._optimizer.variables(),
                                           optimizer_vars):
                     opt_var.assign(value)
+            # Set exploration's state.
+            if hasattr(self, "exploration") and "_exploration_state" in state:
+                self.exploration.set_state(state=state["_exploration_state"])
             # Then the Policy's (NN) weights.
-            super().set_state(state["_state"])
+            super().set_state(state)
 
         def variables(self):
             """Return the list of all savable variables for this policy."""
@@ -691,9 +703,10 @@ def build_eager_tf_policy(
         def export_model(self, export_dir):
             pass
 
+        # TODO: (sven) Deprecate this in favor of `save()`.
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            pass
+            deprecation_warning("export_checkpoint", "save")
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
@@ -709,7 +722,8 @@ def build_eager_tf_policy(
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            with tf.GradientTape(persistent=gradients_fn is not None) as tape:
+            with tf.GradientTape(persistent=compute_gradients_fn is not None) \
+                    as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             if isinstance(self.model, tf.keras.Model):
@@ -717,7 +731,7 @@ def build_eager_tf_policy(
             else:
                 variables = self.model.trainable_variables()
 
-            if gradients_fn:
+            if compute_gradients_fn:
 
                 class OptimizerWrapper:
                     def __init__(self, tape):
@@ -727,8 +741,9 @@ def build_eager_tf_policy(
                         return list(
                             zip(self.tape.gradient(loss, var_list), var_list))
 
-                grads_and_vars = gradients_fn(self, OptimizerWrapper(tape),
-                                              loss)
+                grads_and_vars = compute_gradients_fn(self,
+                                                      OptimizerWrapper(tape),
+                                                      loss)
             else:
                 grads_and_vars = list(
                     zip(tape.gradient(loss, variables), variables))

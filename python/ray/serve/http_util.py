@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Type
 
 import starlette.requests
 
@@ -99,47 +99,6 @@ class Response:
             "headers": self.raw_headers,
         })
         await send({"type": "http.response.body", "body": self.body})
-
-
-def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
-    """Given ASGI app, return two async callables (on_startup, on_shutdown)
-
-    Detail spec at
-    https://asgi.readthedocs.io/en/latest/specs/lifespan.html
-    """
-    scope = {"type": "lifespan"}
-
-    class LifespanHandler:
-        def __init__(self, lifespan_type):
-            assert lifespan_type in {"startup", "shutdown"}
-            self.lifespan_type = lifespan_type
-
-        async def receive(self):
-            return {"type": f"lifespan.{self.lifespan_type}"}
-
-        async def send(self, msg):
-            # We are not doing a strict equality check here because sometimes
-            # starlette will output shutdown.complete on startup lifecycle
-            # event!
-            # https://github.com/encode/starlette/blob/5ee04ef9b1bc11dc14d299e6c855c9a3f7d5ff16/starlette/routing.py#L557 # noqa
-            if msg["type"].endswith(".complete"):
-                return
-            elif msg["type"].endswith(".failed"):
-                raise RayServeException(
-                    f"Failed to run {self.lifespan_type} events for asgi app. "
-                    f"Error: {msg.get('message', '')}")
-            else:
-                raise ValueError(f"Unknown ASGI type {msg}")
-
-    async def startup():
-        handler = LifespanHandler("startup")
-        await app(scope, handler.receive, handler.send)
-
-    async def shutdown():
-        handler = LifespanHandler("shutdown")
-        await app(scope, handler.receive, handler.send)
-
-    return startup, shutdown
 
 
 async def receive_http_body(scope, receive, send):
@@ -253,6 +212,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     # Remove endpoints that belong to other class based views.
     routes = fastapi_app.routes
     for route in routes:
+        if not isinstance(route, APIRoute):
+            continue
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
             routes.remove(route)
