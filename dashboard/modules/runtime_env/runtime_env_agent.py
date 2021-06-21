@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -26,6 +27,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
 
     async def CreateRuntimeEnv(self, request, context):
+        async def _setup_runtime_env(serialized_runtime_env, runtime_env_dir):
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, self._setup, serialized_runtime_env, runtime_env_dir)
+
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
@@ -35,8 +41,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # to download packages.
             # But we don't initailize internal kv in agent now.
             pass
-        result = self._setup(request.serialized_runtime_env,
-                             self._runtime_env_dir)
+        result = await _setup_runtime_env(request.serialized_runtime_env,
+                                          self._runtime_env_dir)
         runtime_env_dict["result"] = result
         new_serialized_runtime_env = json.dumps(runtime_env_dict)
         logger.info("Successfully created runtime env: %s.",
