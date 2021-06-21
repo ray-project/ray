@@ -109,8 +109,8 @@ class DataClient:
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:
         if self._in_shutdown:
-            import ray
-            ray.util.disconnect()
+            from ray.util import disconnect
+            disconnect()
             raise ConnectionError(
                 "Request can't be sent because the data channel is "
                 "terminated. This is likely because the data channel "
@@ -124,8 +124,8 @@ class DataClient:
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
-                import ray
-                ray.util.disconnect()
+                from ray.util import disconnect
+                disconnect()
                 raise ConnectionError(
                     "Sending request failed because the data channel "
                     "terminated. This is usually due to an error "
@@ -139,8 +139,8 @@ class DataClient:
                     req: ray_client_pb2.DataRequest,
                     callback: Optional[ResponseCallable] = None) -> None:
         if self._in_shutdown:
-            import ray
-            ray.util.disconnect()
+            from ray.util import disconnect
+            disconnect()
             raise ConnectionError(
                 "Request can't be sent because the data channel is "
                 "terminated. This is likely because the data channel "
