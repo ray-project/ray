@@ -1,26 +1,27 @@
-import gym
-import torch
-import ray
-import numpy as np
-from torch.nn import functional as F
 from typing import List, Optional, Tuple, Type, Union
 
+import gym
+import numpy as np
+import ray
+import torch
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.agents.sac import SACTorchPolicy
+from ray.rllib.agents.sac.rnnsac_torch_model import RNNSACTorchModel
+from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.agents.sac.rnnsac_torch_model import RNNSACTorchModel
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.agents.sac import SACTorchPolicy
 from ray.rllib.utils.torch_ops import huber_loss, sequence_mask
-from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
-from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class
+from ray.rllib.utils.typing import \
+    ModelInputDict, TensorType, TrainerConfigDict
+from torch.nn import functional as F
 
 
 def build_rnnsac_model(policy: Policy, obs_space: gym.spaces.Space,
-                    action_space: gym.spaces.Space,
-                    config: TrainerConfigDict) -> ModelV2:
+                       action_space: gym.spaces.Space,
+                       config: TrainerConfigDict) -> ModelV2:
     """Constructs the necessary ModelV2 for the Policy and returns it.
 
     Args:
@@ -106,8 +107,9 @@ def build_sac_model_and_action_dist(
             `policy.target_model`.
     """
     model = build_rnnsac_model(policy, obs_space, action_space, config)
-    assert model.get_initial_state() != [], 'RNNSAC requires its model to be a recurrent one!'
-    action_dist_class = _get_dist_class(config, action_space)
+    assert model.get_initial_state() != [], \
+        "RNNSAC requires its model to be a recurrent one!"
+    action_dist_class = _get_dist_class(policy, config, action_space)
     return model, action_dist_class
 
 
@@ -163,15 +165,18 @@ def action_distribution_fn(
     model_out, state_in = model(input_dict, state_batches, seq_lens)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
-    states_in = model.select_state(state_in, ['policy', 'q', 'twin_q'])
-    distribution_inputs, policy_state_out = model.get_policy_output(model_out, states_in['policy'], seq_lens)
-    _, q_state_out = model.get_q_values(model_out, states_in['q'], seq_lens)
+    states_in = model.select_state(state_in, ["policy", "q", "twin_q"])
+    distribution_inputs, policy_state_out = \
+        model.get_policy_output(model_out, states_in["policy"], seq_lens)
+    _, q_state_out = model.get_q_values(model_out, states_in["q"], seq_lens)
     if model.twin_q_net:
-        _, twin_q_state_out = model.get_twin_q_values(model_out, states_in['twin_q'], seq_lens)
+        _, twin_q_state_out = \
+            model.get_twin_q_values(model_out, states_in["twin_q"], seq_lens)
     else:
         twin_q_state_out = []
     # Get a distribution class to be used with the just calculated dist-inputs.
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
     states_out = policy_state_out + q_state_out + twin_q_state_out
 
     return distribution_inputs, action_dist_class, states_out
@@ -210,7 +215,7 @@ def actor_critic_loss(
         "prev_rewards": train_batch[SampleBatch.PREV_REWARDS],
         "is_training": True,
     }, state_batches, seq_lens)
-    states_in_t = model.select_state(state_in_t, ['policy', 'q', 'twin_q'])
+    states_in_t = model.select_state(state_in_t, ["policy", "q", "twin_q"])
 
     model_out_tp1, state_in_tp1 = model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
@@ -218,7 +223,7 @@ def actor_critic_loss(
         "prev_rewards": train_batch[SampleBatch.REWARDS],
         "is_training": True,
     }, state_batches, seq_lens)
-    states_in_tp1 = model.select_state(state_in_tp1, ['policy', 'q', 'twin_q'])
+    states_in_tp1 = model.select_state(state_in_tp1, ["policy", "q", "twin_q"])
 
     target_model_out_tp1, target_state_in_tp1 = policy.target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
@@ -226,25 +231,35 @@ def actor_critic_loss(
         "prev_rewards": train_batch[SampleBatch.REWARDS],
         "is_training": True,
     }, state_batches, seq_lens)
-    target_states_in_tp1 = policy.target_model.select_state(state_in_tp1, ['policy', 'q', 'twin_q'])
+    target_states_in_tp1 = \
+        policy.target_model.select_state(state_in_tp1,
+                                         ["policy", "q", "twin_q"])
 
     alpha = torch.exp(model.log_alpha)
 
     # Discrete case.
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
-        log_pis_t = F.log_softmax(model.get_policy_output(model_out_t, states_in_t['policy'], seq_lens)[0], dim=-1)
+        log_pis_t = F.log_softmax(
+            model.get_policy_output(model_out_t, states_in_t["policy"],
+                                    seq_lens)[0],
+            dim=-1)
         policy_t = torch.exp(log_pis_t)
-        log_pis_tp1 = F.log_softmax(model.get_policy_output(model_out_tp1, states_in_tp1['policy'], seq_lens)[0], -1)
+        log_pis_tp1 = F.log_softmax(
+            model.get_policy_output(model_out_tp1, states_in_tp1["policy"],
+                                    seq_lens)[0], -1)
         policy_tp1 = torch.exp(log_pis_tp1)
         # Q-values.
-        q_t = model.get_q_values(model_out_t, states_in_t['q'], seq_lens)[0]
+        q_t = model.get_q_values(model_out_t, states_in_t["q"], seq_lens)[0]
         # Target Q-values.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, target_states_in_tp1['q'], seq_lens)[0]
+        q_tp1 = policy.target_model.get_q_values(
+            target_model_out_tp1, target_states_in_tp1["q"], seq_lens)[0]
         if policy.config["twin_q"]:
-            twin_q_t = model.get_twin_q_values(model_out_t, states_in_t['twin_q'], seq_lens)[0]
+            twin_q_t = model.get_twin_q_values(
+                model_out_t, states_in_t["twin_q"], seq_lens)[0]
             twin_q_tp1 = policy.target_model.get_twin_q_values(
-                target_model_out_tp1, target_states_in_tp1['twin_q'], seq_lens)[0]
+                target_model_out_tp1, target_states_in_tp1["twin_q"],
+                seq_lens)[0]
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
         q_tp1 -= alpha * log_pis_tp1
 
@@ -263,37 +278,45 @@ def actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
-        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
-            model.get_policy_output(model_out_t, states_in_t['policy'], seq_lens)[0], policy.model)
+            model.get_policy_output(model_out_t, states_in_t["policy"],
+                                    seq_lens)[0], policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
             action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
-            model.get_policy_output(model_out_tp1, states_in_tp1['policy'], seq_lens)[0], policy.model)
+            model.get_policy_output(model_out_tp1, states_in_tp1["policy"],
+                                    seq_lens)[0], policy.model)
         policy_tp1 = action_dist_tp1.sample() if not deterministic else \
             action_dist_tp1.deterministic_sample()
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, states_in_t['q'], seq_lens, train_batch[SampleBatch.ACTIONS])[0]
+        q_t = model.get_q_values(model_out_t, states_in_t["q"], seq_lens,
+                                 train_batch[SampleBatch.ACTIONS])[0]
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
-                model_out_t, states_in_t['twin_q'], seq_lens, train_batch[SampleBatch.ACTIONS])[0]
+                model_out_t, states_in_t["twin_q"], seq_lens,
+                train_batch[SampleBatch.ACTIONS])[0]
 
         # Q-values for current policy in given current state.
-        q_t_det_policy = model.get_q_values(model_out_t, states_in_t['q'], seq_lens, policy_t)[0]
+        q_t_det_policy = model.get_q_values(model_out_t, states_in_t["q"],
+                                            seq_lens, policy_t)[0]
         if policy.config["twin_q"]:
             twin_q_t_det_policy = model.get_twin_q_values(
-                model_out_t, states_in_t['twin_q'], seq_lens, policy_t)[0]
+                model_out_t, states_in_t["twin_q"], seq_lens, policy_t)[0]
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, target_states_in_tp1['q'], seq_lens,
-                                                 policy_tp1)[0]
+        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+                                                 target_states_in_tp1["q"],
+                                                 seq_lens, policy_tp1)[0]
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
-                target_model_out_tp1, target_states_in_tp1['twin_q'], seq_lens, policy_tp1)[0]
+                target_model_out_tp1, target_states_in_tp1["twin_q"], seq_lens,
+                policy_tp1)[0]
             # Take min over both twin-NNs.
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
@@ -303,8 +326,8 @@ def actor_critic_loss(
         q_tp1 -= alpha * log_pis_tp1
 
         q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * \
-            q_tp1_best
+        q_tp1_best_masked = \
+            (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = (
@@ -312,12 +335,12 @@ def actor_critic_loss(
         (policy.config["gamma"]**policy.config["n_step"]) * q_tp1_best_masked
     ).detach()
 
-    ### BURNIN ###
+    # BURNIN #
     B = state_batches[0].shape[0]
     T = q_t_selected.shape[0] // B
     seq_mask = sequence_mask(train_batch["seq_lens"], T)
     # Mask away also the burn-in sequence at the beginning.
-    burn_in = policy.config['burn_in']
+    burn_in = policy.config["burn_in"]
     if burn_in > 0 and burn_in < T:
         seq_mask[:, :burn_in] = False
 
@@ -336,11 +359,13 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        reduce_mean_valid(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
+        reduce_mean_valid(
+            train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
     ]
     if policy.config["twin_q"]:
         critic_loss.append(
-            reduce_mean_valid(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
+            reduce_mean_valid(
+                train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -350,7 +375,8 @@ def actor_critic_loss(
         weighted_log_alpha_loss = policy_t.detach() * (
             -model.log_alpha * (log_pis_t + model.target_entropy).detach())
         # Sum up weighted terms and mean over all batch items.
-        alpha_loss = reduce_mean_valid(torch.sum(weighted_log_alpha_loss, dim=-1))
+        alpha_loss = reduce_mean_valid(
+            torch.sum(weighted_log_alpha_loss, dim=-1))
         # Actor loss.
         actor_loss = reduce_mean_valid(
             torch.sum(
@@ -361,13 +387,14 @@ def actor_critic_loss(
                     alpha.detach() * log_pis_t - q_t.detach()),
                 dim=-1))
     else:
-        alpha_loss = -reduce_mean_valid(model.log_alpha *
-                                 (log_pis_t + model.target_entropy).detach())
+        alpha_loss = -reduce_mean_valid(
+            model.log_alpha * (log_pis_t + model.target_entropy).detach())
         # Note: Do not detach q_t_det_policy here b/c is depends partly
         # on the policy vars (policy sample pushed through Q-net).
         # However, we must make sure `actor_loss` is not used to update
         # the Q-net(s)' variables.
-        actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t - q_t_det_policy)
+        actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t -
+                                       q_t_det_policy)
 
     # Save for stats function.
     policy.q_t = q_t * seq_mask[..., None]
@@ -392,7 +419,7 @@ def actor_critic_loss(
 
 
 RNNSACTorchPolicy = SACTorchPolicy.with_updates(
-    name='RNNSACPolicy',
+    name="RNNSACPolicy",
     get_default_config=lambda: ray.rllib.agents.sac.rnnsac.DEFAULT_CONFIG,
     action_distribution_fn=action_distribution_fn,
     make_model_and_action_dist=build_sac_model_and_action_dist,

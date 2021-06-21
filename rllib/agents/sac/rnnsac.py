@@ -1,16 +1,18 @@
 from typing import Optional, Type
 
-from ray.rllib.agents.sac import SACTrainer, DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
+from ray.rllib.agents.sac import SACTrainer, \
+                                 DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
 from ray.rllib.agents.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 
-
 DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
     SAC_DEFAULT_CONFIG,
     {
-        # Batch mode must be complete_episodes.
+        # Batch mode (see common config)
         "batch_mode": "complete_episodes",
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
         # RNNSAC does not suport n-step > 1 yet!
         "n_step": 1,
         # If True, assume a zero-initialized state input (no matter where in
@@ -28,9 +30,6 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
         # used for loss calculation is `n - burn_in` time steps
         # (n=LSTM’s/attention net’s max_seq_len).
         "burn_in": 0,
-        # If True prioritized replay buffer will be used.
-        # Note: Not supported yet by RNNSAC!
-        "prioritized_replay": False,
         # Set automatically: The number of contiguous environment steps to
         # replay at once. Will be calculated via
         # model->max_seq_len + burn_in.
@@ -70,12 +69,11 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 
 RNNSACTrainer = SACTrainer.with_updates(
-    name='RNNSACTrainer',
+    name="RNNSACTrainer",
     default_policy=RNNSACTorchPolicy,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
 )
 
-
-RNNSACTrainer._allow_unknown_subkeys += ['policy_model', 'Q_model']
+RNNSACTrainer._allow_unknown_subkeys += ["policy_model", "Q_model"]

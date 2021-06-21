@@ -1,13 +1,13 @@
 from typing import Optional, List, Dict
 
-import torch
 import gym
+import torch
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils import override, force_list
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import override, force_list
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 
 class RNNSACTorchModel(SACTorchModel):
@@ -22,24 +22,24 @@ class RNNSACTorchModel(SACTorchModel):
                  twin_q: bool = False,
                  initial_alpha: float = 1.0,
                  target_entropy: Optional[float] = None):
-        super().__init__(obs_space=obs_space,
-                         action_space=action_space,
-                         num_outputs=num_outputs,
-                         model_config=model_config,
-                         name=name,
-                         policy_model_config=policy_model_config,
-                         q_model_config=q_model_config,
-                         twin_q=twin_q,
-                         initial_alpha=initial_alpha,
-                         target_entropy=target_entropy
-        )
-        self.use_prev_action = model_config["lstm_use_prev_action"] or \
-                               policy_model_config["lstm_use_prev_action"] or \
-                               q_model_config["lstm_use_prev_action"]
+        super().__init__(
+            obs_space=obs_space,
+            action_space=action_space,
+            num_outputs=num_outputs,
+            model_config=model_config,
+            name=name,
+            policy_model_config=policy_model_config,
+            q_model_config=q_model_config,
+            twin_q=twin_q,
+            initial_alpha=initial_alpha,
+            target_entropy=target_entropy)
+        self.use_prev_action = (model_config["lstm_use_prev_action"]
+                                or policy_model_config["lstm_use_prev_action"]
+                                or q_model_config["lstm_use_prev_action"])
 
-        self.use_prev_reward = model_config["lstm_use_prev_reward"] or \
-                               policy_model_config["lstm_use_prev_reward"] or \
-                               q_model_config["lstm_use_prev_reward"]
+        self.use_prev_reward = (model_config["lstm_use_prev_reward"]
+                                or policy_model_config["lstm_use_prev_reward"]
+                                or q_model_config["lstm_use_prev_reward"])
         if self.use_prev_action:
             self.view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
@@ -60,12 +60,12 @@ class RNNSACTorchModel(SACTorchModel):
 
         For rnn support remove input_dict filter and pass state and seq_lens
         """
-        model_out = {'obs': input_dict[SampleBatch.OBS]}
+        model_out = {"obs": input_dict[SampleBatch.OBS]}
 
         if self.use_prev_action:
-            model_out['prev_actions'] = input_dict[SampleBatch.PREV_ACTIONS]
+            model_out["prev_actions"] = input_dict[SampleBatch.PREV_ACTIONS]
         if self.use_prev_reward:
-            model_out['prev_rewards'] = input_dict[SampleBatch.PREV_REWARDS]
+            model_out["prev_rewards"] = input_dict[SampleBatch.PREV_REWARDS]
 
         return model_out, state
 
@@ -90,26 +90,27 @@ class RNNSACTorchModel(SACTorchModel):
         return out, state_out
 
     @override(SACTorchModel)
-    def get_q_values(self, model_out: TensorType,
+    def get_q_values(self,
+                     model_out: TensorType,
                      state_in: List[TensorType],
                      seq_lens: TensorType,
-                     actions: Optional[TensorType]=None) -> TensorType:
-        return self._get_q_value(model_out, actions, self.q_net,
-                                 state_in, seq_lens)
+                     actions: Optional[TensorType] = None) -> TensorType:
+        return self._get_q_value(model_out, actions, self.q_net, state_in,
+                                 seq_lens)
 
     @override(SACTorchModel)
-    def get_twin_q_values(self, model_out: TensorType,
+    def get_twin_q_values(self,
+                          model_out: TensorType,
                           state_in: List[TensorType],
                           seq_lens: TensorType,
                           actions: Optional[TensorType] = None) -> TensorType:
-        return self._get_q_value(model_out, actions, self.twin_q_net,
-                                 state_in, seq_lens)
+        return self._get_q_value(model_out, actions, self.twin_q_net, state_in,
+                                 seq_lens)
 
     @override(SACTorchModel)
-    def get_policy_output(self, model_out: TensorType,
-                          state_in: List[TensorType],
-                          seq_lens: TensorType) -> (TensorType,
-                                                    List[TensorType]):
+    def get_policy_output(
+            self, model_out: TensorType, state_in: List[TensorType],
+            seq_lens: TensorType) -> (TensorType, List[TensorType]):
         return self.action_model(model_out, state_in, seq_lens)
 
     @override(ModelV2)
@@ -120,25 +121,24 @@ class RNNSACTorchModel(SACTorchModel):
             q_initial_state *= 2
         return policy_initial_state + q_initial_state
 
-    def select_state(self, state_batch: List[TensorType], net: List[str]
-                     ) -> Dict[str, List[TensorType]]:
-        assert all([n in ['policy', 'q', 'twin_q'] for n in net]), \
-            'Selected state must be either for policy, q or twin_q network'
+    def select_state(self, state_batch: List[TensorType],
+                     net: List[str]) -> Dict[str, List[TensorType]]:
+        assert all([n in ["policy", "q", "twin_q"] for n in net]), \
+            "Selected state must be either for policy, q or twin_q network"
         policy_state_len = len(self.action_model.get_initial_state())
         q_state_len = len(self.q_net.get_initial_state())
 
         selected_state = {}
         for n in net:
-            if n == 'policy':
+            if n == "policy":
                 selected_state[n] = state_batch[:policy_state_len]
-            elif n == 'q':
+            elif n == "q":
                 selected_state[n] = state_batch[policy_state_len:
-                                                policy_state_len+q_state_len]
-            elif n == 'twin_q':
+                                                policy_state_len + q_state_len]
+            elif n == "twin_q":
                 if self.twin_q_net:
                     selected_state[n] = state_batch[policy_state_len +
                                                     q_state_len:]
                 else:
                     selected_state[n] = []
         return selected_state
-

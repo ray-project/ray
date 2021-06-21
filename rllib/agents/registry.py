@@ -115,9 +115,11 @@ def _import_sac():
     from ray.rllib.agents import sac
     return sac.SACTrainer, sac.DEFAULT_CONFIG
 
+
 def _import_rnnsac():
     from ray.rllib.agents import sac
     return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
+
 
 def _import_simple_q():
     from ray.rllib.agents import dqn
