@@ -250,7 +250,8 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
-    RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
+    // SANG-TODO Revert it to DEBUG.
+    RAY_LOG(INFO) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       // This happens if a large argument is transparently passed by reference
@@ -335,7 +336,8 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids, bool release_lineage,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
-    RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
+    // SANG-TODO Revert it back to DEBUG
+    RAY_LOG(INFO) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -514,18 +516,27 @@ bool ReferenceCounter::SetDeleteCallback(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
+    // SANG-TODO Delete it
+    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " is already removed.";
     return false;
   } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
              !it->second.ShouldDelete(lineage_pinning_enabled_)) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
+    // SANG-TODO Delete it
+    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " cannot be deleted.";
     return false;
   } else if (freed_objects_.count(object_id) > 0) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
+    // SANG-TODO Delete it
+    RAY_LOG(INFO) << "[Unpin] Object id " << object_id
+                  << " has been already freed by the language frontend.";
     return false;
   } else if (it->second.spilled) {
     // The object has been spilled, so it can be released immediately.
+    // SANG-TODO Delete it
+    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " has been spilled.";
     return false;
   }
 
