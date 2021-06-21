@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+import warnings
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray.util.debug import log_once
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf
@@ -536,6 +538,16 @@ class ExperimentAnalysis(Analysis):
                 "the metric and mode explicitly and fetch the last result.")
         return self.best_trial.last_result
 
+    def _delimiter(self):
+        delimiter = os.environ.get("TUNE_RESULT_DELIM", "/")
+        if delimiter == "/" and log_once("delimiter_deprecation"):
+            warnings.warn(
+                "Dataframes will use '/' instead of '.' to delimit "
+                "nested result keys in future versions of Ray. For forward "
+                "compatibility, set the environment variable "
+                "TUNE_RESULT_NEW_DELIM=1.")
+        return delimiter
+
     @property
     def best_result_df(self) -> DataFrame:
         """Get the best result of the experiment as a pandas dataframe.
@@ -549,7 +561,9 @@ class ExperimentAnalysis(Analysis):
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
                              "`pip install pandas`.")
-        best_result = flatten_dict(self.best_result, delimiter="/")
+
+        best_result = flatten_dict(
+            self.best_result, delimiter=self._delimiter())
         return pd.DataFrame.from_records([best_result], index="trial_id")
 
     @property
@@ -559,12 +573,13 @@ class ExperimentAnalysis(Analysis):
 
     @property
     def results_df(self) -> DataFrame:
+        """Get all the last results as a pandas dataframe."""
         if not pd:
             raise ValueError("`results_df` requires pandas. Install with "
                              "`pip install pandas`.")
         return pd.DataFrame.from_records(
             [
-                flatten_dict(trial.last_result, delimiter="/")
+                flatten_dict(trial.last_result, delimiter=self._delimiter())
                 for trial in self.trials
             ],
             index="trial_id")
