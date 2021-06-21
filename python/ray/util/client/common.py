@@ -42,7 +42,8 @@ GRPC_OPTIONS = [
     ("grpc.keepalive_permit_without_calls", 1),
     # Send an infinite number of pings
     ("grpc.http2.max_pings_without_data", 0),
-    ("grpc.http2.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    ("grpc.http2.min_ping_interval_without_data_ms",
+     GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
     ("grpc.http2.max_ping_strikes", 0)
 ]
