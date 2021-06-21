@@ -358,7 +358,9 @@ def test_heartbeat_ip(shutdown_only):
 
 
 def test_next_job_id(ray_start_regular):
-    assert ray.state.next_job_id().int() + 1 == ray.state.next_job_id().int()
+    job_id_1 = ray.state.next_job_id()
+    job_id_2 = ray.state.next_job_id()
+    assert job_id_1.int() + 1 == job_id_2.int()
 
 
 if __name__ == "__main__":

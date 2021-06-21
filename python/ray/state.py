@@ -281,7 +281,7 @@ class GlobalState:
         """Get next job id from GCS.
 
         Returns:
-            Information about the node in the cluster.
+            Next job id in the cluster.
         """
         self._check_connected()
 
@@ -785,7 +785,7 @@ def next_job_id():
     """Get next job id from GCS.
 
     Returns:
-        Information about the node in the cluster.
+        Next job id in integer representation in the cluster.
     """
     return state.next_job_id()
 
