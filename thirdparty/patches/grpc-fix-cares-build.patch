@@ -1,0 +1,30 @@
+diff --git third_party/cares/cares.BUILD third_party/cares/cares.BUILD
+--- third_party/cares/cares.BUILD
++++ third_party/cares/cares.BUILD
+@@ -13,6 +13,16 @@ config_setting(
+     values = {"cpu": "x64_windows"},
+ )
+ 
++config_setting(
++    name = "darwin_arm64",
++    values = {"cpu": "darwin_arm64"},
++)
++
++config_setting(
++    name = "darwin_arm64e",
++    values = {"cpu": "darwin_arm64e"},
++)
++
+ # Android is not officially supported through C++.
+ # This just helps with the build for now.
+ config_setting(
+@@ -98,6 +108,8 @@ genrule(
+         ":watchos_arm64_32": ["@com_github_grpc_grpc//third_party/cares:config_darwin/ares_config.h"],
+         ":darwin": ["@com_github_grpc_grpc//third_party/cares:config_darwin/ares_config.h"],
+         ":darwin_x86_64": ["@com_github_grpc_grpc//third_party/cares:config_darwin/ares_config.h"],
++        ":darwin_arm64": ["@com_github_grpc_grpc//third_party/cares:config_darwin/ares_config.h"],
++        ":darwin_arm64e": ["@com_github_grpc_grpc//third_party/cares:config_darwin/ares_config.h"],
+         ":windows": ["@com_github_grpc_grpc//third_party/cares:config_windows/ares_config.h"],
+         ":android": ["@com_github_grpc_grpc//third_party/cares:config_android/ares_config.h"],
+         "//conditions:default": ["@com_github_grpc_grpc//third_party/cares:config_linux/ares_config.h"],
+-- 
