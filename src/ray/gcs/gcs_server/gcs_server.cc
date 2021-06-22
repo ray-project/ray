@@ -217,7 +217,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     gcs_job_distribution_ = std::make_shared<GcsJobDistribution>(
         /*gcs_job_scheduling_factory=*/
-        [this](const JobID &job_id) {
+        [](const JobID &job_id) {
           // TODO(Chong-Li): Get job config from gcs_job_manager_.
           GcsJobConfig gcs_job_config(job_id);
           return std::make_shared<GcsJobSchedulingContext>(gcs_job_config);
