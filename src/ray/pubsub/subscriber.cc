@@ -137,7 +137,7 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
 }
 
 template <typename KeyIdType>
-const std::string SubscriberChannel<KeyIdType>::DebugString() const {
+std::string SubscriberChannel<KeyIdType>::DebugString() const {
   std::stringstream result;
   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
   std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
@@ -147,13 +147,6 @@ const std::string SubscriberChannel<KeyIdType>::DebugString() const {
   result << "\n- active subscribed publishers: " << subscription_map_.size();
   result << "\n- cumulative published messages: " << cum_published_messages_;
   result << "\n- cumulative processed messages: " << cum_processed_messages_;
-
-  uint64_t active_subscribed_entries = 0;
-  for (const auto &subscription_info_it : subscription_map_) {
-    active_subscribed_entries +=
-        subscription_info_it.second.subscription_callback_map.size();
-  }
-  result << "\n- active subscribed entries: " << active_subscribed_entries;
   return result.str();
 }
 
@@ -359,7 +352,7 @@ bool Subscriber::CheckNoLeaks() const {
          !long_polling_leak && !command_queue_leak;
 }
 
-const std::string Subscriber::DebugString() const {
+std::string Subscriber::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Subscriber:";

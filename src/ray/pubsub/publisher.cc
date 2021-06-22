@@ -246,7 +246,6 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     return;
   }
 
-  // SANG-TODO Debug only remove it.
   cum_pub_message_cnt_[channel_type]++;
 
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
@@ -342,7 +341,7 @@ std::string Publisher::DebugString() const {
     auto channel_type = it.first;
     const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
     std::string channel_name = descriptor->FindValueByNumber(channel_type)->name();
-    result << channel_name;
+    result << "\n" << channel_name;
     result << "\n- cumulative published messages: " << it.second;
   }
   return result.str();

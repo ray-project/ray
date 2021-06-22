@@ -136,13 +136,13 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
         request, [worker_id, object_id, node_id, done_callback](
                      Status status, const rpc::AddObjectLocationOwnerReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(INFO) << "Worker " << worker_id << " failed to add the location "
-                          << node_id << " for " << object_id
-                          << ", the object has most likely been freed: "
-                          << status.ToString();
+            RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
+                           << node_id << " for " << object_id
+                           << ", the object has most likely been freed: "
+                           << status.ToString();
           } else {
-            RAY_LOG(INFO) << "Added location " << node_id << " for object " << object_id
-                          << " on owner " << worker_id;
+            RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
+                           << " on owner " << worker_id;
           }
           done_callback();
         });
@@ -181,8 +181,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
                            << ", the object has most likely been freed: "
                            << status.ToString();
           } else {
-            RAY_LOG(INFO) << "Removed location " << node_id << " for object " << object_id
-                          << " on owner " << worker_id;
+            RAY_LOG(DEBUG) << "Removed location " << node_id << " for object "
+                           << object_id << " on owner " << worker_id;
           }
           done_callback();
         });
@@ -209,7 +209,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
       &it->second.spilled_url, &it->second.spilled_node_id, &it->second.object_size);
 
   // If the lookup has failed, that means the object is lost. Trigger the callback in this
-  // case.
+  // case to handle failure properly.
   if (location_updated || location_lookup_failed) {
     RAY_LOG(INFO) << "Pushing location updates to subscribers for object " << object_id
                   << ": " << it->second.current_object_locations.size()

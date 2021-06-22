@@ -711,7 +711,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
-          RAY_LOG(INFO) << "Publisher stats:" << object_info_publisher_->DebugString();
         },
         event_stats_print_interval_ms);
   }
@@ -2490,11 +2489,10 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   const auto object_id = ObjectID::FromBinary(message.object_id());
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    // SANG-TODO Revert
-    RAY_LOG(INFO) << "[Unpin] The SubscribeForObjectEviction message for object id "
-                  << object_id << " is for " << intended_worker_id
-                  << ", but the current worker id is " << worker_context_.GetWorkerID()
-                  << ".";
+    RAY_LOG(DEBUG) << "The SubscribeForObjectEviction message for object id " << object_id
+                   << " is for " << intended_worker_id
+                   << ", but the current worker id is " << worker_context_.GetWorkerID()
+                   << ".";
     unpin_object(object_id);
     return;
   }
@@ -2506,9 +2504,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
-    // SANG-TODO Revert
-    RAY_LOG(INFO) << "[Unpin] Reference for object " << object_id
-                  << " has already been freed.";
+    RAY_LOG(DEBUG) << "Reference for object " << object_id << " has already been freed.";
   }
 }
 

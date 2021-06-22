@@ -407,7 +407,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return The status of the location get.
   Status PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Fill up the object information to the given reply.
+  /// Fill up the object information.
   ///
   /// \param[in] object_id The object id
   /// \param[out] The object information that will be filled by a given object id.
@@ -746,12 +746,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Pushes location updates to subscribers of a particular reference, invoking all
-  /// callbacks registered for the reference by GetLocationsAsync calls. This method
-  /// also increments the reference's location version counter.
+  /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Fill up the object information for the given iterator.
+  void FillObjectInformationInternal(ReferenceTable::iterator it,
+                                     rpc::WorkerObjectLocationsPubMessage *object_info)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Clean up borrowers and references when the reference is removed from borrowers.
@@ -759,13 +762,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
-
-  /// Publish object locations to all subscribers.
-  void PublishObjectLocations(const ObjectID &object_id,
-                              const absl::flat_hash_set<NodeID> &locations,
-                              int64_t object_size, const std::string &spilled_url,
-                              const NodeID &spilled_node_id,
-                              const absl::optional<NodeID> &optional_primary_node_id);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
@@ -814,8 +810,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
-
-  uint64_t total_location_updates_ = 0;
 };
 
 }  // namespace ray

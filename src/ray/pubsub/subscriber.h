@@ -105,7 +105,7 @@ class SubscribeChannelInterface {
   virtual bool CheckNoLeaks() const = 0;
 
   /// Return the statistics of the specific channel.
-  virtual const std::string DebugString() const = 0;
+  virtual std::string DebugString() const = 0;
 };
 
 template <typename KeyIdType>
@@ -134,7 +134,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
 
-  const std::string DebugString() const override;
+  std::string DebugString() const override;
 
  protected:
   rpc::ChannelType channel_type_;
@@ -181,7 +181,6 @@ class SubscriberChannel : public SubscribeChannelInterface {
   ///
   uint64_t cum_subscribe_requests_ = 0;
   uint64_t cum_unsubscribe_requests_ = 0;
-  // SANG-TODO Remove debug only
   uint64_t cum_published_messages_ = 0;
   uint64_t cum_processed_messages_ = 0;
 };
@@ -248,7 +247,8 @@ class SubscriberInterface {
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary) = 0;
 
-  virtual const std::string DebugString() const = 0;
+  /// Return the statistics string for the subscriber.
+  virtual std::string DebugString() const = 0;
 
   virtual ~SubscriberInterface() {}
 };
@@ -313,7 +313,7 @@ class Subscriber : public SubscriberInterface {
     return it->second;
   }
 
-  const std::string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   ///

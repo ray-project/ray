@@ -250,8 +250,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
-    // SANG-TODO Revert it to DEBUG.
-    RAY_LOG(INFO) << "Increment ref count for submitted task argument " << argument_id;
+    RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       // This happens if a large argument is transparently passed by reference
@@ -336,8 +335,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids, bool release_lineage,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
-    // SANG-TODO Revert it back to DEBUG
-    RAY_LOG(INFO) << "Releasing ref for submitted task argument " << argument_id;
+    RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -478,9 +476,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
-    // SANG-TODO Revert it
-    RAY_LOG(INFO) << "[Unpin] The object id " << id
-                  << " is deleted because the reference goes out of scope.";
+    RAY_LOG(DEBUG) << "The object id " << id
+                   << " is deleted because the reference goes out of scope.";
     ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
@@ -516,30 +513,17 @@ bool ReferenceCounter::SetDeleteCallback(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    // SANG-TODO Delete it
-    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " is already removed.";
     return false;
   } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
              !it->second.ShouldDelete(lineage_pinning_enabled_)) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
-    // SANG-TODO Delete it
-    RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " cannot be deleted.";
     return false;
   } else if (freed_objects_.count(object_id) > 0) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
-    // SANG-TODO Delete it
-    RAY_LOG(INFO) << "[Unpin] Object id " << object_id
-                  << " has been already freed by the language frontend.";
     return false;
   }
-  // } else if (it->second.spilled) {
-  //   // The object has been spilled, so it can be released immediately.
-  //   // SANG-TODO Delete it
-  //   RAY_LOG(INFO) << "[Unpin] Object id " << object_id << " has been spilled.";
-  //   return false;
-  // }
 
   // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
   // than once, causing the delete callback to be set repeatedly.
@@ -559,8 +543,6 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id) {
       lost_objects.push_back(object_id);
-      RAY_LOG(INFO) << "[Unpin] The object id " << object_id
-                    << " is deleted because the containing node is dead.";
       ReleasePlasmaObject(it);
     }
   }
@@ -1119,13 +1101,25 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
-  total_location_updates_++;
-  if (total_location_updates_ % 10000 == 0) {
-    RAY_LOG(INFO) << "Total location updates: " << total_location_updates_;
-  }
-  PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
-                         it->second.spilled_url, it->second.spilled_node_id,
-                         it->second.pinned_at_raylet_id);
+  const auto &locations = it->second.locations;
+  auto object_size = it->second.object_size;
+  const auto &spilled_url = it->second.spilled_url;
+  const auto &spilled_node_id = it->second.spilled_node_id;
+  const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
+  const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
+  RAY_LOG(DEBUG) << "Publish a message for " << object_id << ", " << locations.size()
+                 << " locations, spilled url: " << spilled_url
+                 << ", spilled node ID: " << spilled_node_id
+                 << ", and object size: " << object_size
+                 << ", and primary node ID: " << primary_node_id;
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(object_id.Binary());
+  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
+  FillObjectInformationInternal(it, object_locations_msg);
+
+  object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                  pub_message, object_id.Binary());
 }
 
 Status ReferenceCounter::FillObjectInformation(
@@ -1136,7 +1130,12 @@ Status ReferenceCounter::FillObjectInformation(
   if (it == object_id_refs_.end()) {
     return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
+  FillObjectInformationInternal(it, object_info);
+  return Status::OK();
+}
 
+void ReferenceCounter::FillObjectInformationInternal(
+    ReferenceTable::iterator it, rpc::WorkerObjectLocationsPubMessage *object_info) {
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
@@ -1145,7 +1144,6 @@ Status ReferenceCounter::FillObjectInformation(
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
-  return Status::OK();
 }
 
 Status ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
@@ -1161,36 +1159,8 @@ Status ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id
   // Always publish the location when subscribed for the first time.
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
-  PublishObjectLocations(object_id, it->second.locations, it->second.object_size,
-                         it->second.spilled_url, it->second.spilled_node_id,
-                         it->second.pinned_at_raylet_id);
+  PushToLocationSubscribers(it);
   return Status::OK();
-}
-
-void ReferenceCounter::PublishObjectLocations(
-    const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
-    int64_t object_size, const std::string &spilled_url, const NodeID &spilled_node_id,
-    const absl::optional<NodeID> &optional_primary_node_id) {
-  auto primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-  RAY_LOG(DEBUG) << "Publish a message for " << object_id << ", " << locations.size()
-                 << " locations, spilled url: " << spilled_url
-                 << ", spilled node ID: " << spilled_node_id
-                 << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id;
-  rpc::PubMessage pub_message;
-  pub_message.set_key_id(object_id.Binary());
-  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-
-  for (const auto &node_id : locations) {
-    object_locations_msg->add_node_ids(node_id.Binary());
-  }
-  object_locations_msg->set_object_size(object_size);
-  object_locations_msg->set_spilled_url(spilled_url);
-  object_locations_msg->set_spilled_node_id(spilled_node_id.Binary());
-  object_locations_msg->set_primary_node_id(primary_node_id.Binary());
-  object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                  pub_message, object_id.Binary());
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

@@ -143,7 +143,7 @@ class SubscriberTest : public ::testing::Test {
     // Need to call this to invoke callback when the reply comes.
     // The io service basically executes the queued handler in a blocking manner, and
     // reset should be called in order to run the poll_one again.
-    callback_service_.poll_one();
+    callback_service_.poll();
     callback_service_.reset();
     return success;
   }
@@ -220,6 +220,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
 
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
+    // RAY_LOG(ERROR) << "haha " << object_subscribed_.count(object_id);
     ASSERT_TRUE(object_subscribed_.count(object_id) > 0);
   }
 }

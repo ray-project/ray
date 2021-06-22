@@ -103,9 +103,9 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  // RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
-  //                << " num bytes being pulled: " << num_bytes_being_pulled_
-  //                << " num bytes available: " << num_bytes_available_;
+  RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
+                 << " num bytes being pulled: " << num_bytes_being_pulled_
+                 << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
@@ -113,7 +113,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
     if (start_pull) {
-      // RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
       auto it = object_pull_requests_.find(obj_id);
@@ -145,7 +145,7 @@ void PullManager::DeactivatePullBundleRequest(
       continue;
     }
     if (it->second.empty()) {
-      // RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
+      RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
@@ -169,9 +169,9 @@ void PullManager::DeactivateUntilWithinQuota(
     const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
     std::unordered_set<ObjectID> *object_ids_to_cancel) {
   while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
-    // RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
-    //                << " num bytes being pulled: " << num_bytes_being_pulled_
-    //                << " num bytes available: " << num_bytes_available_;
+    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
+                   << " num bytes being pulled: " << num_bytes_being_pulled_
+                   << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
@@ -408,8 +408,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(INFO) << "OnLocationChange " << spilled_url << " num clients "
-                << client_ids.size();
+  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+                 << client_ids.size();
 
   {
     absl::MutexLock lock(&active_objects_mu_);
@@ -440,7 +440,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // disk of the remote node, it will be restored by PushManager prior to pushing.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
-    RAY_LOG(INFO) << "Object is pulled from a remote node." << object_id;
     UpdateRetryTimer(request, object_id);
     return;
   }
@@ -450,7 +449,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
       !request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
-    RAY_LOG(INFO) << "Object is restored from a local node." << object_id;
     UpdateRetryTimer(request, object_id);
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
@@ -463,14 +461,12 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // TODO(ekl) should we more directly mark the object as lost in this case?
-  // SANG-TODO CHANGE BACK TO INFO
-  RAY_LOG(ERROR) << "Object neither in memory nor external storage " << object_id.Hex();
+  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
-    RAY_LOG(INFO) << "Object is not pulled now. " << object_id;
     return false;
   }
 
@@ -480,12 +476,10 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
-      RAY_LOG(INFO) << "Pull object from a remote node." << object_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
     // The timer should never fire if there are no expected client locations.
-    RAY_LOG(INFO) << "No existing locations for the object." << object_id;
     return false;
   }
 
@@ -521,8 +515,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
     RAY_CHECK(node_id != self_node_id_);
   }
 
-  RAY_LOG(INFO) << "Sending pull request from " << self_node_id_ << " to " << node_id
-                << " of object " << object_id;
+  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
+                 << " of object " << object_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
@@ -633,22 +627,6 @@ std::string PullManager::DebugString() const {
   } else {
     result << "\n- max timeout request is already processed. No entry.";
   }
-  // SANG-TODO Remove it
-  result << "\n- active pull requests";
-  auto num_local = 0;
-  for (const auto &pair : active_object_pull_requests_) {
-    const auto &oid = pair.first;
-    const auto it = object_pull_requests_.find(oid);
-    RAY_CHECK(it != object_pull_requests_.end());
-    result << "\n\tObjectID: " << oid;
-    result << "\n\t\tlocation size: " << it->second.client_locations.size();
-    if (it->second.client_locations.size() > 0) {
-      num_local += 1;
-    }
-    result << "\n\t\tspilled url: " << it->second.spilled_url;
-    result << "\n\t\tnum_retries: " << it->second.num_retries;
-  }
-  result << "\nNumber of local objects within active pull requests: " << num_local;
   return result.str();
 }
 
