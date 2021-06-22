@@ -242,6 +242,8 @@ class SubscriberClientInterface {
   virtual void PubsubCommandBatch(
       const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
+
+  virtual ~SubscriberClientInterface() = default;
 };
 
 /// The pubsub client implementation. The class is thread-safe.
