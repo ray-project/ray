@@ -296,7 +296,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
-        c_string worker_id
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod
