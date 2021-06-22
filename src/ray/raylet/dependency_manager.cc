@@ -156,7 +156,10 @@ bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
-  auto inserted = queued_task_requests_.emplace(task_id, required_objects);
+
+  const auto required_ids = ObjectRefsToIds(required_objects);
+  absl::flat_hash_set<ObjectID> deduped_ids(required_ids.begin(), required_ids.end());
+  auto inserted = queued_task_requests_.emplace(task_id, std::move(deduped_ids));
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
                              << task_id;
   auto &task_entry = inserted.first->second;
@@ -167,7 +170,9 @@ bool DependencyManager::RequestTaskDependencies(
 
     auto it = GetOrInsertRequiredObject(obj_id, ref);
     it->second.dependent_tasks.insert(task_id);
+  }
 
+  for (const auto &obj_id : task_entry.dependencies) {
     if (local_objects_.count(obj_id)) {
       task_entry.num_missing_dependencies--;
     }
