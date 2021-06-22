@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 def get_mean_action(alg, obs):
     out = []
     for _ in range(2000):
-        out.append(float(alg.compute_single_action(obs)))
+        out.append(float(alg.compute_action(obs)))
     return np.mean(out)
 
 
