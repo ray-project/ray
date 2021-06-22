@@ -32,6 +32,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -109,10 +110,11 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
-  Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
-                int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
-                uint64_t *retry_with_request_id, std::shared_ptr<Buffer> *data,
-                fb::ObjectSource source, int device_num = 0);
+  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
+                                const ray::rpc::Address &owner_address, int64_t data_size,
+                                const uint8_t *metadata, int64_t metadata_size,
+                                std::shared_ptr<Buffer> *data, fb::ObjectSource source,
+                                int device_num = 0);
 
   Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
                      const uint8_t *metadata, uint64_t *retry_with_request_id,
@@ -331,20 +333,33 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Create(const ObjectID &object_id,
-                                  const ray::rpc::Address &owner_address,
-                                  int64_t data_size, const uint8_t *metadata,
-                                  int64_t metadata_size, uint64_t *retry_with_request_id,
-                                  std::shared_ptr<Buffer> *data, fb::ObjectSource source,
-                                  int device_num) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
+    const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
+    const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
+    fb::ObjectSource source, int device_num) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  uint64_t retry_with_request_id = 0;
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
-  return HandleCreateReply(object_id, metadata, retry_with_request_id, data);
+  Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
+
+  while (retry_with_request_id > 0) {
+    guard.unlock();
+    // TODO(sang): Consider using exponential backoff here.
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
+    guard.lock();
+    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
+                   << retry_with_request_id;
+    status = RetryCreate(object_id, retry_with_request_id, metadata,
+                         &retry_with_request_id, data);
+  }
+
+  return status;
 }
 
 Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id, uint64_t request_id,
@@ -735,20 +750,14 @@ Status PlasmaClient::SetClientOptions(const std::string &client_name,
   return impl_->SetClientOptions(client_name, output_memory_quota);
 }
 
-Status PlasmaClient::Create(const ObjectID &object_id,
-                            const ray::rpc::Address &owner_address, int64_t data_size,
-                            const uint8_t *metadata, int64_t metadata_size,
-                            uint64_t *retry_with_request_id,
-                            std::shared_ptr<Buffer> *data, fb::ObjectSource source,
-                            int device_num) {
-  return impl_->Create(object_id, owner_address, data_size, metadata, metadata_size,
-                       retry_with_request_id, data, source, device_num);
-}
-
-Status PlasmaClient::RetryCreate(const ObjectID &object_id, uint64_t request_id,
-                                 const uint8_t *metadata, uint64_t *retry_with_request_id,
-                                 std::shared_ptr<Buffer> *data) {
-  return impl_->RetryCreate(object_id, request_id, metadata, retry_with_request_id, data);
+Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
+                                            const ray::rpc::Address &owner_address,
+                                            int64_t data_size, const uint8_t *metadata,
+                                            int64_t metadata_size,
+                                            std::shared_ptr<Buffer> *data,
+                                            fb::ObjectSource source, int device_num) {
+  return impl_->CreateAndSpillIfNeeded(object_id, owner_address, data_size, metadata,
+                                       metadata_size, data, source, device_num);
 }
 
 Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,

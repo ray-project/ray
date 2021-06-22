@@ -178,7 +178,7 @@ class TrainTFMultiGPU:
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(samples)
 
-        # Handle everything as if multi agent
+        # Handle everything as if multi agent.
         if isinstance(samples, SampleBatch):
             samples = MultiAgentBatch({
                 DEFAULT_POLICY_ID: samples

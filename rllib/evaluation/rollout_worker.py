@@ -5,7 +5,6 @@ import logging
 import pickle
 import platform
 import os
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -15,6 +14,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
@@ -387,14 +387,38 @@ class RolloutWorker(ParallelIteratorWorker):
         # Create an env for this worker.
         else:
             self.env = _validate_env(env_creator(env_context))
+            # Validate environment, if validation function provided.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
-            if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
+            # MultiAgentEnv (a gym.Env) -> Wrap and make
+            # the wrapped Env yet another MultiAgentEnv.
+            if isinstance(self.env, MultiAgentEnv):
 
                 def wrap(env):
-                    return env  # we can't auto-wrap these env types
+                    cls = env.__class__
+                    # Add gym.Env as mixin parent to the env's class
+                    # (so it can be wrapped).
+                    env.__class__ = \
+                        type(env.__class__.__name__, (type(env), gym.Env), {})
+                    # Wrap the (now gym.Env) env with our (multi-agent capable)
+                    # recording wrapper.
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
+                    # Make sure, we make the wrapped object a member of the
+                    # original MultiAgentEnv sub-class again.
+                    if type(env) is not cls:
+                        env.__class__ = \
+                            type(cls.__name__, (type(env), cls), {})
+                    return env
 
+            # We can't auto-wrap a BaseEnv.
+            elif isinstance(self.env, BaseEnv):
+
+                def wrap(env):
+                    return env
+
+            # Atari type env and "deepmind" preprocessor pref.
             elif is_atari(self.env) and \
                     not model_config.get("custom_preprocessor") and \
                     preprocessor_pref == "deepmind":
@@ -427,45 +451,16 @@ class RolloutWorker(ParallelIteratorWorker):
                         dim=model_config.get("dim"),
                         framestack=framestack,
                         framestack_via_traj_view_api=framestack_traj_view)
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
                     return env
+
+            # gym.Env -> Wrap with gym Monitor.
             else:
 
                 def wrap(env):
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
-                    return env
+                    return record_env_wrapper(env, record_env, log_dir,
+                                              policy_config)
 
             self.env: EnvType = wrap(self.env)
 
@@ -1104,7 +1099,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def set_policy_mapping_fn(
             self,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
     ):
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 
@@ -1252,7 +1248,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def stop(self) -> None:
-        if self.env:
+        if self.env is not None:
             self.async_env.stop()
 
     @DeveloperAPI
