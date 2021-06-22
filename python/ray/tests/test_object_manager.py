@@ -296,6 +296,7 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+# TODO(ekl) this sometimes hangs [DO NOT MERGE UNTIL RESOLVED]
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -329,14 +330,15 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+# TODO(ekl) this sometimes hangs [DO NOT MERGE UNTIL RESOLVED]
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
     # dynamically by concurrent workers.
     cluster = Cluster()
     object_size = int(6e6)
-    num_objects = 10
-    num_tasks = 10
+    num_objects = 20
+    num_tasks = 20
     # Head node can fit all of the objects at once.
     cluster.add_node(
         num_cpus=0,
@@ -370,7 +372,6 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     allocated = [allocate.remote(i) for i in range(num_objects)]
     ray.get(allocated)
 
-    # TODO(ekl) this sometimes hangs (sometimes for 30+s, sometimes forever)
     tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     ray.get(tasks)
     del allocated
