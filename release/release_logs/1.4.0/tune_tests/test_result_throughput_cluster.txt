@@ -1,0 +1,6 @@
+
+2021-05-26 05:32:24,267 INFO tune.py:549 -- Total run time: 116.22 seconds (114.39 seconds for the tuning loop).
+
+The result throughput cluster test took 116.93 seconds, which is below the budget of 120.00 seconds. Test successful. 
+
+--- PASSED: RESULT THROUGHPUT CLUSTER ::: 116.93 <= 120.00 ---

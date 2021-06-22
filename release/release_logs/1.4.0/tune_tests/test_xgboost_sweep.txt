@@ -1,0 +1,7 @@
+2021-05-27 04:02:46,856 INFO tune.py:549 -- Total run time: 3557.49 seconds (3556.64 seconds for the tuning loop).
+
+The large xgboost sweep test took 3557.67 seconds, but should not have exceeded 3500.00 seconds. Test failed.
+
+--- FAILED: LARGE XGBOOST SWEEP ::: 3557.67 > 3500.00 ---
+
+(Signed off by Tune team)

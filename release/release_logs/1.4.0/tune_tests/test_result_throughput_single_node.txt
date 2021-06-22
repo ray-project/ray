@@ -1,0 +1,4 @@
+
+The result throughput single node test took 111.88 seconds, which is below the budget of 120.00 seconds. Test successful.
+
+--- PASSED: RESULT THROUGHPUT SINGLE NODE ::: 111.88 <= 120.00 ---

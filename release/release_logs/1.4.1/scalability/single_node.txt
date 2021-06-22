@@ -1,0 +1,12 @@
+Many args time: 14.435428539999975 (10000 args)
+Many returns time: 5.367026534999923 (3000 returns)
+Ray.get time: 25.213890612999876 (10000 args)
+Queued task time: 171.00097663700012 (1000000 tasks)
+Ray.get large object time: 21.62633252700016 (107374182400 bytes)
+
+Many args time: 13.98283668199997 (10000 args)
+Many returns time: 5.121987026999932 (3000 returns)
+Ray.get time: 24.398906375000024 (10000 args)
+Queued task time: 157.16865607 (1000000 tasks)
+Ray.get large object time: 32.69727429499994 (107374182400 bytes)
+
