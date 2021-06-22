@@ -16,6 +16,26 @@ from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message)
 
 
+def get_pid(name):
+    pids = psutil.process_iter()
+    for pid in pids:
+        if (pid.name() == name):
+            return pid.pid
+
+
+def test_kill_raylet_signal_log(shutdown_only):
+    ray.init(num_cpus=1)
+    session_dir = ray.worker._global_node.get_session_dir_path()
+    raylet_out_path = "{}/logs/raylet.err".format(session_dir)
+    pid = get_pid("raylet")
+    p = psutil.Process(pid)
+    p.send_signal(signal.SIGABRT)
+    p.wait()
+    with open(raylet_out_path) as f:
+        s = f.read()
+        assert "SIGABRT" in s
+
+
 def test_unhandled_errors(ray_start_regular):
     @ray.remote
     def f():
@@ -617,33 +637,6 @@ def test_warning_task_waiting_on_actor(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
-
-
-def get_pid(name):
-    pids = psutil.process_iter()
-    for pid in pids:
-        if (pid.name() == name):
-            return pid.pid
-
-
-def test_kill_raylet_signal_log(shutdown_only):
-    ray.init(num_cpus=1)
-    print("raylet_signal_test: init ok")
-    session_dir = ray.worker._global_node.get_session_dir_path()
-    print("raylet_signal_test: session_dir=", session_dir)
-    raylet_out_path = "{}/logs/raylet.err".format(session_dir)
-    pid = get_pid("raylet")
-    print("raylet_signal_test: pid=", pid)
-    p = psutil.Process(pid)
-    print("raylet_signal_test: sending signal")
-    p.send_signal(signal.SIGABRT)
-    print("raylet_signal_test: send signal ok, begin to wait")
-    p.wait()
-    print("raylet_signal_test: wait ok, begin to read raylet error file")
-    with open(raylet_out_path) as f:
-        s = f.read()
-        print(s)
-        assert "SIGABRT" in s
 
 
 if __name__ == "__main__":
