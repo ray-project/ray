@@ -441,7 +441,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    wait_for_condition(lambda : object_memory_usage() == 0)
+    wait_for_condition(lambda: object_memory_usage() == 0)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")

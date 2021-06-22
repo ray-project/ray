@@ -455,7 +455,7 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       if (url_ref_count_it->second == 0) {
         url_ref_count_.erase(url_ref_count_it);
         RAY_LOG(DEBUG) << "The URL " << object_url
-                      << " is deleted because the references are out of scope.";
+                       << " is deleted because the references are out of scope.";
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
