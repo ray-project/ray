@@ -214,7 +214,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
               result = std::move(results[0]);
             }
-            return std::move(result);
+            return result;
           }),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
