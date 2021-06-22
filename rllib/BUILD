@@ -495,6 +495,14 @@ py_test(
 # Tag: agents_dir
 # --------------------------------------------------------------------
 
+# Generic (all Trainers)
+py_test(
+    name = "test_trainer",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_trainer.py"]
+)
+
 # A2/3CTrainer
 py_test(
     name = "test_a2c",
@@ -1227,13 +1235,6 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
-
-py_test(
-    name = "evaluation/tests/test_evaluation",
-    tags = ["evaluation"],
-    size = "medium",
-    srcs = ["evaluation/tests/test_evaluation.py"]
-)
 
 py_test(
     name = "evaluation/tests/test_rollout_worker",
@@ -2366,6 +2367,8 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
+# Deactivated for now due to open-spiel's dependency on an outdated
+# tensorflow-probability version.
 # py_test(
 #    name = "examples/self_play_with_open_spiel_connect_4",
 #    main = "examples/self_play_with_open_spiel_connect_4.py",
