@@ -101,7 +101,6 @@ from ray import util  # noqa: E402
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
-
 __all__ = [
     "__version__",
     "_config",
