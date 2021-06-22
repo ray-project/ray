@@ -129,6 +129,7 @@ py_test_module_list(
     "test_command_runner.py",
     "test_component_failures.py",
     "test_coordinator_server.py",
+    "test_dataclient_disconnect.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
     "test_job.py",
