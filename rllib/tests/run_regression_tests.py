@@ -113,9 +113,18 @@ if __name__ == "__main__":
                     t.last_result["evaluation"]["episode_reward_mean"] if \
                     check_eval else t.last_result["episode_reward_mean"]
 
-                if reward_mean >= t.stopping_criterion.get(
-                        "evaluation/episode_reward_mean"
-                        if check_eval else "episode_reward_mean"):
+                # If we are using evaluation workers, we may have
+                # a stopping criterion under the "evaluation/" scope. If
+                # not, use `episode_reward_mean`.
+                if check_eval:
+                    min_reward = t.stopping_criterion.get(
+                        "evaluation/episode_reward_mean",
+                        t.stopping_criterion.get("episode_reward_mean"))
+                # Otherwise, expect `episode_reward_mean` to be set.
+                else:
+                    min_reward = t.stopping_criterion["episode_reward_mean"]
+
+                if reward_mean >= min_reward:
                     passed = True
                     break
 

@@ -40,6 +40,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -986,7 +987,8 @@ class Trainer(Trainable):
 
     @PublicAPI
     def compute_action(self, *args, **kwargs):
-        deprecation_warning("compute_action", "compute_single_action")
+        if log_once("Trainer.compute_action"):
+            deprecation_warning("compute_action", "compute_single_action")
         return self.compute_single_action(*args, **kwargs)
 
     @PublicAPI

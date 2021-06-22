@@ -42,5 +42,4 @@ pendulum-sac:
         num_gpus: 0
         clip_actions: False
         normalize_actions: true
-        evaluation_interval: 1
         metrics_smoothing_episodes: 5
