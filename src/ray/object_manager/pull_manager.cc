@@ -128,6 +128,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
 
     // Quota check.
     if (respect_quota &&
+        num_active_bundles_ >= RayConfig::instance().pull_manager_min_active_pulls() &&
         (num_bytes_being_pulled_ + bytes_to_pull > num_bytes_available_)) {
       return false;
     }
@@ -645,7 +646,11 @@ std::string PullManager::BundleInfo(const Queue &bundles,
   if (highest_id_being_pulled) {
     result << " (active)";
   } else {
-    result << " (inactive)";
+    if (bundle.num_object_sizes_missing > 0) {
+      result << " (inactive, waiting for object sizes)";
+    } else {
+      result << " (inactive)";
+    }
   }
   return result.str();
 }
