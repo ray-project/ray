@@ -34,7 +34,7 @@ class TestPettingZooEnv(unittest.TestCase):
                 # the first tuple value is None -> uses default policy
                 "av": (None, obs_space, act_space, {}),
             },
-            "policy_mapping_fn": lambda agent_id: "av"
+            "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
         }
 
         config["log_level"] = "DEBUG"
