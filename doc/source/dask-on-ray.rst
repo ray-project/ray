@@ -21,6 +21,9 @@ the underlying tasks on a Ray cluster.
 specify any callable as the scheduler that you would like Dask to use to execute your
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
+.. note::
+  As of Ray 1.4.1, Dask versions 2021.6.1 or lower are supported.
+
 Scheduler
 ---------
 
