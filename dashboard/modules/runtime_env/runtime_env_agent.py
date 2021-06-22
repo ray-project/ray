@@ -24,6 +24,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
+        self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
@@ -31,15 +32,16 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
     async def CreateRuntimeEnv(self, request, context):
         async def _setup_runtime_env(serialized_runtime_env, runtime_env_dir):
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self._setup, serialized_runtime_env, runtime_env_dir)
+            runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+            return await loop.run_in_executor(None, self._setup, runtime_env,
+                                              runtime_env_dir)
 
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
         uris = runtime_env_dict.get("uris")
         result = None
-        error_message = ""
+        error_message = None
         for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
             try:
                 if uris:
@@ -48,17 +50,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     # But we don't initailize internal kv in agent now.
                     pass
                 result = await _setup_runtime_env(
-                    request.serialized_runtime_env, self._runtime_env_dir)
+                    request.serialized_runtime_env, self._session_dir)
                 break
             except Exception as ex:
                 logger.exception("Runtime env creation failed.")
                 error_message = str(ex)
                 await asyncio.sleep(
                     runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000)
-        if not result:
-            logger.error("Runtime env creation failed for %d times, "
-                         "don't retry any more.",
-                         runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
+        if error_message:
+            logger.error(
+                "Runtime env creation failed for %d times, "
+                "don't retry any more.",
+                runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
             return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)

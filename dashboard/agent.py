@@ -45,6 +45,7 @@ class DashboardAgent(object):
                  dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
+                 session_dir=None,
                  runtime_env_dir=None,
                  runtime_env_setup_hook=None,
                  log_dir=None,
@@ -58,6 +59,7 @@ class DashboardAgent(object):
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
+        self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
         self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
@@ -294,6 +296,12 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
     parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of this session.")
+    parser.add_argument(
         "--runtime-env-dir",
         required=True,
         type=str,
@@ -333,6 +341,7 @@ if __name__ == "__main__":
             args.dashboard_agent_port,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
+            session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
             runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,

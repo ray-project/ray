@@ -30,12 +30,9 @@ parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
 
-def setup_runtime_env(serialized_runtime_env, runtime_dir):
-
-    runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-
+def setup_runtime_env(runtime_env: dict, session_dir):
     if runtime_env.get("conda") or runtime_env.get("pip"):
-        conda_dict = get_conda_dict(runtime_env, runtime_dir)
+        conda_dict = get_conda_dict(runtime_env, session_dir)
         if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:
@@ -55,8 +52,9 @@ def setup_runtime_env(serialized_runtime_env, runtime_dir):
                            sort_keys=True).encode("utf-8")).hexdigest()
             conda_hash_str = f"conda-generated-{conda_hash}"
             file_lock_name = f"ray-{conda_hash_str}.lock"
-            with FileLock(os.path.join(runtime_dir, file_lock_name)):
-                conda_dir = os.path.join(runtime_dir, "conda")
+            with FileLock(os.path.join(session_dir, file_lock_name)):
+                conda_dir = os.path.join(session_dir, "runtime_resources",
+                                         "conda")
                 try_to_create_directory(conda_dir)
                 conda_yaml_path = os.path.join(conda_dir, "environment.yml")
                 with open(conda_yaml_path, "w") as file:
@@ -69,6 +67,7 @@ def setup_runtime_env(serialized_runtime_env, runtime_dir):
 
         return {"conda_env_name": conda_env_name}
 
+    logger.info("11111111")
     return {}
 
 
@@ -79,6 +78,13 @@ def setup_worker(input_args):
 
     commands = []
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
+
+    # Ray client server setup runtime env by itself instead of agent.
+    if runtime_env.get("conda") or runtime_env.get("pip"):
+        if not runtime_env.get("result"):
+            result = setup_runtime_env(runtime_env, args.session_dir)
+            runtime_env["result"] = result
+
     py_executable: str = sys.executable
 
     result = runtime_env.get("result")
