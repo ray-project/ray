@@ -628,12 +628,18 @@ def get_pid(name):
 
 def test_kill_raylet_signal_log(shutdown_only):
     ray.init(num_cpus=1)
+    print("raylet_signal_test: init ok")
     session_dir = ray.worker._global_node.get_session_dir_path()
+    print("raylet_signal_test: session_dir=", session_dir)
     raylet_out_path = "{}/logs/raylet.err".format(session_dir)
     pid = get_pid("raylet")
+    print("raylet_signal_test: pid=", pid)
     p = psutil.Process(pid)
+    print("raylet_signal_test: sending signal")
     p.send_signal(signal.SIGABRT)
+    print("raylet_signal_test: send signal ok, begin to wait")
     p.wait()
+    print("raylet_signal_test: wait ok, begin to read raylet error file")
     with open(raylet_out_path) as f:
         s = f.read()
         print(s)
