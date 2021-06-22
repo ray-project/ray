@@ -187,7 +187,7 @@ class PullManager {
   bool OverQuota();
 
   /// Pin the object if possible. Only actively pulled objects should be pinned.
-  void TryPinObject(const ObjectID &object_id);
+  bool TryPinObject(const ObjectID &object_id);
 
   /// Unpin the given object if pinned.
   void UnpinObject(const ObjectID &object_id);
@@ -239,7 +239,7 @@ class PullManager {
   void TriggerOutOfMemoryHandlingIfNeeded();
 
   /// Return debug info about this bundle queue.
-  std::string BundleInfo(const Queue &bundles) const;
+  std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;

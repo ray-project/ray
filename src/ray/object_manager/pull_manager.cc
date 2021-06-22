@@ -569,24 +569,27 @@ void PullManager::Tick() {
 
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   if (active_object_pull_requests_.count(object_id) > 0) {
-    RAY_LOG(DEBUG) << "Pinning newly created object " << object_id;
-    TryPinObject(object_id);
+    if (TryPinObject(object_id)) {
+      RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
+    } else {
+      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
+    }
   }
 }
 
-void PullManager::TryPinObject(const ObjectID &object_id) {
+bool PullManager::TryPinObject(const ObjectID &object_id) {
   if (!RayConfig::instance().pull_manager_pin_active_objects()) {
-    return;
+    return true;
   }
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
       pinned_objects_[object_id] = std::move(ref);
-    } else {
-      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
+      return false;
     }
   }
   RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
+  return true;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
@@ -627,7 +630,8 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
-std::string PullManager::BundleInfo(const Queue &bundles) const {
+std::string PullManager::BundleInfo(const Queue &bundles,
+                                    uint64_t highest_id_being_pulled) const {
   auto it = bundles.begin();
   if (it == bundles.end()) {
     return "N/A";
@@ -635,6 +639,11 @@ std::string PullManager::BundleInfo(const Queue &bundles) const {
   auto bundle = it->second;
   std::stringstream result;
   result << bundle.num_bytes_needed << " bytes, " << bundle.objects.size() << " objects";
+  if (highest_id_being_pulled) {
+    result << " (active)";
+  } else {
+    result << " (inactive)";
+  }
   return result.str();
 }
 
@@ -647,9 +656,12 @@ std::string PullManager::DebugString() const {
   result << "\n- num get request bundles: " << get_request_bundles_.size();
   result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();
-  result << "\n- first get request bundle size: " << BundleInfo(get_request_bundles_);
-  result << "\n- first wait request bundle size: " << BundleInfo(wait_request_bundles_);
-  result << "\n- first task request bundle size: " << BundleInfo(task_argument_bundles_);
+  result << "\n- first get request bundle: "
+         << BundleInfo(get_request_bundles_, highest_get_req_id_being_pulled_);
+  result << "\n- first wait request bundle: "
+         << BundleInfo(wait_request_bundles_, highest_wait_req_id_being_pulled_);
+  result << "\n- first task request bundle: "
+         << BundleInfo(task_argument_bundles_, highest_task_req_id_being_pulled_);
   result << "\n- num objects queued: " << object_pull_requests_.size();
   result << "\n- num objects actively pulled (all): "
          << active_object_pull_requests_.size();
