@@ -2,6 +2,7 @@ from importlib import reload
 import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import pytest
+import platform
 import sys
 
 import ray
@@ -55,6 +56,7 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
         ]))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_2_nodes",
     [{

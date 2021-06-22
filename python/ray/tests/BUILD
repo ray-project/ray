@@ -107,6 +107,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_reference_counting_2.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",
@@ -168,7 +169,6 @@ py_test_module_list(
     "test_failure_2.py",
     "test_failure_3.py",
     "test_failure_4.py",
-    "test_reference_counting_2.py",
     "test_object_spilling.py",
   ],
   size = "large",
