@@ -512,10 +512,9 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
             object_store_memory=2_000_000_000,
             _system_config={"object_spilling_threshold": thres}
             if thres else {})
-        _objs = [
-            ray.put(np.empty(200_000_000, dtype=np.uint8))
-            for _ in range(num_objects)
-        ]
+        objs = []
+        for _ in range(num_objects):
+            objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
         time.sleep(10)  # Wait for spilling to happen
         _check_spilled(num_objects_spilled)
     finally:
