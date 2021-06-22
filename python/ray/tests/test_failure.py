@@ -630,7 +630,6 @@ def test_kill_raylet_signal_log(ray_start_shared_local_modes):
     session_dir = ray.worker._global_node.get_session_dir_path()
     raylet_out_path = "{}/logs/raylet.err".format(session_dir)
     pid = get_pid("raylet")
-    #os.kill(pid, signal.SIGABRT)
     p = psutil.Process(pid)
     p.send_signal(signal.SIGABRT)
     p.wait()
