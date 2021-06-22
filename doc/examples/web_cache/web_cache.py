@@ -1,7 +1,7 @@
 """
 The purpose of this module is to show how one could implement data
 caching using Ray. If you tried to use multiprocessing to implement
-this from scratch, you would need to deal with race conditions, 
+this from scratch, you would need to deal with race conditions,
 thread-safety, and sharing memory between multiple processes. With
 Ray, you can write this cache roughly like you would write a
 single-threaded Python cache.
@@ -29,9 +29,9 @@ class WebCache:
     def put_user(self, uid: int, user: any):
         self.users[uid] = user
 
-@app.route('/get_user/<uid>')
+@app.route("/get_user/<uid>")
 def fetch_external_user_handler(uid):
-    """This handler retrieves data from an external API if the 
+    """This handler retrieves data from an external API if the
        data isn't cached, otherwise it returns the cached data."""
     uid = int(uid)
     # Check whether the data we want is already cached.
@@ -56,16 +56,16 @@ def fetch_user_from_api(uid: int):
 @ray.remote
 def test_web_cache():
     # sleep for a moment to make sure the server has started up.
-    time.sleep(5) 
+    time.sleep(5)
     # Request the same user id twice. We expect the first call to take
     # substantially longer because the value isn't cached yet.
     timer_st = time.monotonic()
-    resp = requests.get('http://localhost:3000/get_user/4')
+    resp = requests.get("http://localhost:3000/get_user/4")
     timer_end = time.monotonic()
     first_req_runtime_s = timer_end - timer_st
 
     timer_st = time.monotonic()
-    resp = requests.get('http://localhost:3000/get_user/4')
+    resp = requests.get("http://localhost:3000/get_user/4")
     timer_end = time.monotonic()
     second_req_runtime_s = timer_end - timer_st
 
