@@ -284,10 +284,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// RefCount() for the object ID goes to 0.
   ///
   /// \param[in] object_id The object that we were borrowing.
-  /// \param[in] subscriber_worker_id The worker id of the worker that subscribes
-  /// this reference to be removed.
-  void HandleRefRemoved(const ObjectID &object_id, const WorkerID &subscriber_worker_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
@@ -769,8 +766,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// It should be used as a WaitForRefRemoved callback.
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
-                                    const rpc::WorkerAddress &borrower_addr)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                                    const rpc::WorkerAddress &borrower_addr);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
@@ -818,7 +814,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
-  pubsub::SubscriberInterface *object_status_subscriber_ GUARDED_BY(mutex_);
+  pubsub::SubscriberInterface *object_status_subscriber_;
 };
 
 }  // namespace ray

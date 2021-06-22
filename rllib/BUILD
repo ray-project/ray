@@ -495,6 +495,14 @@ py_test(
 # Tag: agents_dir
 # --------------------------------------------------------------------
 
+# Generic (all Trainers)
+py_test(
+    name = "test_trainer",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_trainer.py"]
+)
+
 # A2/3CTrainer
 py_test(
     name = "test_a2c",
@@ -1229,13 +1237,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "evaluation/tests/test_evaluation",
-    tags = ["evaluation"],
-    size = "medium",
-    srcs = ["evaluation/tests/test_evaluation.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["evaluation"],
     size = "medium",
@@ -1284,6 +1285,13 @@ py_test(
     tags = ["policy"],
     size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
+)
+
+py_test(
+    name = "policy/tests/test_policy",
+    tags = ["policy"],
+    size = "medium",
+    srcs = ["policy/tests/test_policy.py"]
 )
 
 py_test(
@@ -2359,6 +2367,26 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
+# Deactivated for now due to open-spiel's dependency on an outdated
+# tensorflow-probability version.
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
 py_test(
     name = "examples/trajectory_view_api_tf",
     main = "examples/trajectory_view_api.py",
@@ -2456,4 +2484,28 @@ py_test(
     size = "small",
     srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
     args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
+    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
+    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
 )

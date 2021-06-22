@@ -102,6 +102,8 @@ For synchronous algorithms like PPO and A2C, the driver and workers can make use
 Scaling Guide
 ~~~~~~~~~~~~~
 
+.. _rllib-scaling-guide:
+
 Here are some rules of thumb for scaling training with RLlib.
 
 1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as :ref:`DQN <dqn>` or :ref:`SAC <sac>`. These algorithms default to ``num_workers: 0`` for single-process operation. Make sure to set ``num_gpus: 1`` if you want to use a GPU. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
