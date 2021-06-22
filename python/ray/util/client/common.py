@@ -162,7 +162,8 @@ class ClientActorClass(ClientStub):
         # Actually instantiate the actor
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
+        return ClientActorHandle(
+            ClientActorRef(ref_ids[0]), actor_class=self.actor_cls)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -206,14 +207,16 @@ class ClientActorHandle(ClientStub):
 
     def __init__(self,
                  actor_ref: ClientActorRef,
-                 actor_class: Optional[ClientActorClass] = None):
+                 actor_class: Optional[Union[Any, List[str]]] = None):
         self.actor_ref = actor_ref
-        self._dir: Optional[List[str]] = None
-        if actor_class is not None:
+        if inspect.isclass(actor_class):
             self._dir = list(
-                dict(
-                    inspect.getmembers(actor_class.actor_cls,
-                                       is_function_or_method)).keys())
+                dict(inspect.getmembers(actor_class,
+                                        is_function_or_method)).keys())
+        elif isinstance(actor_class, list):
+            self._dir = actor_class
+        else:
+            self._dir = None
 
     def __del__(self) -> None:
         if ray.is_connected():
@@ -310,7 +313,7 @@ class ActorOptionWrapper(OptionWrapper):
         assert len(ref_ids) == 1
         actor_class = None
         if isinstance(self.remote_stub, ClientActorClass):
-            actor_class = self.remote_stub
+            actor_class = self.remote_stub.actor_cls
         return ClientActorHandle(
             ClientActorRef(ref_ids[0]), actor_class=actor_class)
 

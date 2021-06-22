@@ -482,8 +482,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_refs[bin_actor_id] = actor
         self.actor_owners[task.client_id].add(bin_actor_id)
         self.named_actors.add(bin_actor_id)
-        return ray_client_pb2.ClientTaskTicket(
-            return_ids=[actor._actor_id.binary()])
+        return ray_client_pb2.ClientTaskTicket(return_ids=[
+            actor._actor_id.binary(),
+            cloudpickle.dumps(dir(actor))
+        ])
 
     def _convert_args(self, arg_list, kwarg_map):
         argout = []

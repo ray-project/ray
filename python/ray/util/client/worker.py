@@ -406,8 +406,13 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         ids = self._call_schedule_for_task(task)
-        assert len(ids) == 1
-        return ClientActorHandle(ClientActorRef(ids[0]))
+        if len(ids) == 1:
+            return ClientActorHandle(ClientActorRef(ids[0]))
+        elif len(ids) == 2:
+            return ClientActorHandle(
+                ClientActorRef(ids[0]), actor_class=cloudpickle.loads(ids[1]))
+        else:
+            assert False, "Incorrect number of return ids"
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
