@@ -53,18 +53,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor.py",
-    "test_global_gc.py",
-    "test_memstat.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
     "test_memory_scheduling.py",
     "test_plasma_unlimited.py",
     "test_metrics.py",
@@ -90,29 +78,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_k_to_z"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_object_spilling_2.py",
-    "test_object_manager.py",
-    "test_multi_tenancy.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_reference_counting_2.py",
-    "test_runtime_env_complicated.py"
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -167,7 +132,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_2.py",
-    "test_failure_3.py",
     "test_failure_4.py",
     "test_object_spilling.py",
   ],
@@ -177,13 +141,71 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
+
+# Flaky tests.
+py_test_module_list(
+  files = [
+    "test_runtime_env_complicated.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "post_wheel_build", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor.py",
+    "test_global_gc.py",
+    "test_memstat.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_spilling_2.py",
+    "test_object_manager.py",
+    "test_multi_tenancy.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_failure_3.py",
+    "test_reference_counting_2.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+# Flaky tests only on Mac.
 py_test_module_list(
   files = [
     "test_placement_group.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky-mac"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_runtime_env.py"
   ],
   size = "large",
   extra_srcs = SRCS,
+  tags = ["flaky-mac"],
   deps = ["//:ray_lib"],
 )
 
