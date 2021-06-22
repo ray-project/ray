@@ -631,9 +631,10 @@ def test_kill_raylet_signal_log(ray_start_shared_local_modes):
     raylet_out_path = "{}/logs/raylet.err".format(session_dir)
     pid = get_pid("raylet")
     os.kill(pid, signal.SIGABRT)
-    time.sleep(1)
+    time.sleep(2)
     with open(raylet_out_path) as f:
         s = f.read()
+        print(s)
         assert "SIGABRT" in s
 
 
