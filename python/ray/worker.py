@@ -1178,6 +1178,9 @@ def connect(node,
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
 
+    ray.state.state._initialize_global_state(
+        node.redis_address, redis_password=node.redis_password)
+
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE,
                 UTIL_WORKER_MODE):
@@ -1189,9 +1192,7 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            job_id = JobID.from_int(
-                int(worker.redis_client.incr("JobCounter")))
+            job_id = ray.state.next_job_id()
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
@@ -1268,11 +1269,6 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
-    # Create an object for interfacing with the global state.
-    # Note, global state should be intialized after `CoreWorker`, because it
-    # will use glog, which is intialized in `CoreWorker`.
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environmen will be prepared
     # at the server side.
