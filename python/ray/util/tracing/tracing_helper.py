@@ -278,7 +278,9 @@ def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
 def _tracing_task_invocation(method):
     """Trace the execution of a remote task. Inject
     the current span context into kwargs for propagation."""
-
+    # If tracing feature flag is not on, do nothing
+    if not is_tracing_enabled():
+        return method
     @wraps(method)
     def _invocation_remote_span(
             self,
@@ -287,9 +289,6 @@ def _tracing_task_invocation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
-        # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
-            return method(self, args, kwargs, *_args, **_kwargs)
         assert "_ray_trace_ctx" not in kwargs
 
         tracer = _opentelemetry.trace.get_tracer(__name__)
@@ -310,6 +309,9 @@ def _inject_tracing_into_function(function):
     future execution of that function will include tracing.
     Use the provided trace context from kwargs.
     """
+    # If tracing feature flag is not on, do nothing
+    if not is_tracing_enabled():
+        return function
     # Add _ray_trace_ctx to function signature
     setattr(
         function, "__signature__",
@@ -325,9 +327,6 @@ def _inject_tracing_into_function(function):
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
             **kwargs: Any,
     ) -> Any:
-        # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
-            return function(*args, **kwargs)
 
         tracer = _opentelemetry.trace.get_tracer(__name__)
 
@@ -351,6 +350,9 @@ def _inject_tracing_into_function(function):
 def _tracing_actor_creation(method):
     """Trace the creation of an actor. Inject
     the current span context into kwargs for propagation."""
+    # If tracing feature flag is not on, do nothing
+    if not is_tracing_enabled():
+        return method
 
     @wraps(method)
     def _invocation_actor_class_remote_span(
@@ -362,9 +364,6 @@ def _tracing_actor_creation(method):
     ):
         if kwargs is None:
             kwargs = {}
-        # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
-            return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
         method_name = "__init__"
@@ -389,6 +388,9 @@ def _tracing_actor_creation(method):
 
 def _tracing_actor_method_invocation(method):
     """Trace the invocation of an actor method."""
+    # If tracing feature flag is not on, do nothing
+    if not is_tracing_enabled():
+        return method
 
     @wraps(method)
     def _start_span(
@@ -398,9 +400,6 @@ def _tracing_actor_method_invocation(method):
             *_args: Any,
             **_kwargs: Any,
     ) -> Any:
-        # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
-            return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = (self._actor_ref()
                       ._ray_actor_creation_function_descriptor.class_name)
@@ -428,6 +427,10 @@ def _inject_tracing_into_class(_cls):
     """Given a class that will be made into an actor,
     inject tracing into all of the methods."""
 
+    # If tracing feature flag is not on, do nothing
+    if not is_tracing_enabled():
+        return _cls
+
     def span_wrapper(method: Callable[..., Any]) -> Any:
         def _resume_span(
                 self: Any,
@@ -439,9 +442,6 @@ def _inject_tracing_into_class(_cls):
             Wrap the user's function with a function that
             will extract the trace context
             """
-            # If tracing feature flag is not on, perform a no-op
-            if not is_tracing_enabled():
-                return method(self, *_args, **_kwargs)
 
             tracer: _opentelemetry.trace.Tracer = _opentelemetry.trace.\
                 get_tracer(__name__)
@@ -481,9 +481,6 @@ def _inject_tracing_into_class(_cls):
             Wrap the user's function with a function that
             will extract the trace context
             """
-            # If tracing feature flag is not on, perform a no-op
-            if not is_tracing_enabled():
-                return await method(self, *_args, **_kwargs)
 
             tracer = _opentelemetry.trace.get_tracer(__name__)
 
@@ -516,8 +513,7 @@ def _inject_tracing_into_class(_cls):
         # Skip tracing for staticmethod or classmethod, because these method
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
-        if (is_static_method(_cls, name) or is_class_method(method)
-                or not is_tracing_enabled()):
+        if (is_static_method(_cls, name) or is_class_method(method)):
             continue
 
         # Add _ray_trace_ctx to method signature
