@@ -70,7 +70,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
   int GetNumberOfInFlightLongPollingRequests() { return long_polling_callbacks.size(); }
 
-  ~MockWorkerClient() {};
+  ~MockWorkerClient(){};
 
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
   std::deque<rpc::ClientCallback<rpc::PubsubCommandBatchReply>> command_batch_callbacks;
@@ -87,7 +87,7 @@ class SubscriberTest : public ::testing::Test {
         self_node_port_(1234),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) {
-          std::shared_ptr<ray::pubsub::SubscriberClientInterface> t = owner_client;
+          std::shared_ptr<SubscriberClientInterface> t = owner_client;
           return owner_client;
         }),
         channel(rpc::ChannelType::WORKER_OBJECT_EVICTION) {}
@@ -138,7 +138,8 @@ class SubscriberTest : public ::testing::Test {
   const std::string self_node_address_;
   const int self_node_port_;
   std::shared_ptr<MockWorkerClient> owner_client;
-  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)> client_pool;
+  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+      client_pool;
   std::shared_ptr<Subscriber> subscriber_;
   std::unordered_set<ObjectID> object_subscribed_;
   std::unordered_set<ObjectID> object_failed_to_subscribe_;
