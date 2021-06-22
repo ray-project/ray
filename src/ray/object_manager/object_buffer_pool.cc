@@ -104,14 +104,19 @@ void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
     const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  std::unique_lock<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    Status s = store_client_.TryCreateImmediately(
+
+    // Release the buffer pool lock during the blocking create call.
+    lock.unlock();
+    Status s = store_client_.CreateAndSpillIfNeeded(
         object_id, owner_address, object_size, NULL, metadata_size, &data,
         plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
+    lock.lock();
+
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
       // Create failed. The object may already exist locally. If something else went
