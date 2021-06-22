@@ -65,6 +65,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
+
         runtime_env_dict["result"] = result
         new_serialized_runtime_env = json.dumps(runtime_env_dict)
         logger.info("Successfully created runtime env: %s.",

@@ -67,7 +67,6 @@ def setup_runtime_env(runtime_env: dict, session_dir):
 
         return {"conda_env_name": conda_env_name}
 
-    logger.info("11111111")
     return {}
 
 
@@ -81,7 +80,7 @@ def setup_worker(input_args):
 
     # Ray client server setup runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
-        if not runtime_env.get("result"):
+        if "result" not in runtime_env:
             result = setup_runtime_env(runtime_env, args.session_dir)
             runtime_env["result"] = result
 
