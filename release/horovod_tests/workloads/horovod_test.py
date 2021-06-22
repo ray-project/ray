@@ -136,11 +136,14 @@ if __name__ == "__main__":
         keep_checkpoints_num=1,
         scheduler=pbt,
         config={
-            "lr": tune.grid_search([0.1 * i for i in range(1, 10)]),
+            "lr": 0.1 if args.smoke_test else
+            tune.grid_search([0.1 * i for i in range(1, 10)]),
             "batch_size": 64,
             "data": ray.put(dataset)
         },
         num_samples=1,
+        stop={"training_iteration": 1} if args.smoke_test else None,
         callbacks=[ProgressCallback()],  # FailureInjectorCallback()
-        fail_fast=True)
+        fail_fast=True,
+    )
     print("Best hyperparameters found were: ", analysis.best_config)
