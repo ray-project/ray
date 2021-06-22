@@ -98,7 +98,6 @@ raylet::RayletClient::RayletClient(
   }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
-  // TODO(architkulkarni) this creates the message
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
       worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,

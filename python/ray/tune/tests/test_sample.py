@@ -1502,6 +1502,70 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(configs[8]["nested"]["random"] == 8.0)
         self.assertTrue(configs[8]["nested"]["dependent"] == -8.0)
 
+    def testConstantGridSearchBasicVariant(self):
+        config = {
+            "grid": tune.grid_search([1, 2, 3]),
+            "rand": tune.uniform(0, 1000),
+            "dependent_rand": tune.sample_from(
+                lambda spec: spec.config.rand / 10),
+            "dependent_grid": tune.sample_from(
+                lambda spec: spec.config.grid / 10)
+        }
+
+        num_samples = 6
+
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        # First, do not keep random variables constant
+        searcher = BasicVariantGenerator(constant_grid_search=False)
+        exp = Experiment(
+            run=_mock_objective,
+            name="test",
+            config=config,
+            num_samples=num_samples)
+        searcher.add_configurations(exp)
+
+        configs = []
+        while not searcher.is_finished():
+            trial = searcher.next_trial()
+            if not trial:
+                break
+            configs.append(trial.config)
+
+        for i in range(num_samples):
+            sub_configs = configs[i * 3:i * 3 + 3]
+            # These should not be equal, because we sample randomly for
+            # each grid search value
+            self.assertNotEqual(sub_configs[0]["rand"], sub_configs[1]["rand"])
+            self.assertNotEqual(sub_configs[0]["rand"], sub_configs[2]["rand"])
+
+        # Second, keep random variables constant
+        searcher = BasicVariantGenerator(constant_grid_search=True)
+        exp = Experiment(
+            run=_mock_objective,
+            name="test",
+            config=config,
+            num_samples=num_samples)
+        searcher.add_configurations(exp)
+
+        configs = []
+        while not searcher.is_finished():
+            trial = searcher.next_trial()
+            if not trial:
+                break
+            configs.append(trial.config)
+
+        for i in range(num_samples):
+            sub_configs = configs[i * 3:i * 3 + 3]
+            # These should be equal, because we sample randomly first and
+            # then keep the random values constant
+            self.assertEqual(sub_configs[0]["rand"], sub_configs[1]["rand"])
+            self.assertEqual(sub_configs[0]["rand"], sub_configs[2]["rand"])
+
+        # Also, for different samples the random variables should differ
+        self.assertEqual(configs[0]["grid"], configs[3]["grid"])
+        self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
+
 
 if __name__ == "__main__":
     import pytest

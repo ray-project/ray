@@ -672,11 +672,11 @@ def init(
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         _tracing_startup_hook (str): If provided, turns on and sets up tracing
-        for Ray. Must be the name of a function that takes no arguments and
-        sets up a Tracer Provider, Remote Span Processors, and
-        (optional) additional instruments. See more at
-        docs.ray.io/tracing.html. It is currently under active development,
-        and the API is subject to change.
+            for Ray. Must be the name of a function that takes no arguments and
+            sets up a Tracer Provider, Remote Span Processors, and
+            (optional) additional instruments. See more at
+            docs.ray.io/tracing.html. It is currently under active development,
+            and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -1285,7 +1285,7 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
         working_dir = runtime_env.ensure_runtime_env_setup(uris)

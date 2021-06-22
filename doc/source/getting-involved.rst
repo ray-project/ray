@@ -34,6 +34,21 @@ What can I work on?
 We use Github to track issues, feature requests, and bugs. Take a look at the
 ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start.
 
+
+Examples of features to contribute
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune
+####
+
+We encourage both the developers and users of optimization libraries to contribute
+:ref:`tune-search-alg` to Tune wrapping around them. Search Algorithms allow Tune's users
+to take advantage of algorithms contained in external libraries while benefitting from 
+a unified API and other Tune features.
+
+For implementation details, please refer to :ref:`byo-algo`.
+
+
 Setting up your development environment
 ---------------------------------------
 
@@ -172,10 +187,10 @@ Understanding CI test jobs
 --------------------------
 
 The Ray project automatically runs continuous integration (CI) tests once a PR
-is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with
+is opened using `Buildkite <https://buildkite.com/ray-project/>`_ with
 multiple CI test jobs.
 
-The `Travis CI`_ test folder contains all integration test scripts and they
+The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
@@ -189,11 +204,11 @@ scripts. Some of the examples include:
     * ``pytest python/ray/serve/tests``
     * ``python python/ray/serve/examples/echo_full.py``
 
-If a Travis-CI build exception doesn't appear to be related to your change,
-please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to
+If a CI build exception doesn't appear to be related to your change,
+please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis
+.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
 
 
 Becoming a Reviewer

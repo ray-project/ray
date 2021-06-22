@@ -745,12 +745,16 @@ class TrialRunner:
                         # non-training future (e.g. a save) was scheduled.
                         # We do not allow processing more results then.
                         if i < len(results) - 1:
-                            raise RuntimeError(
-                                f"Trial {trial} has a non-training future "
-                                f"scheduled but {len(results)-i} results "
-                                f"left to process. This should never "
-                                f"happen - please file an issue at "
-                                f"https://github.com/ray-project/ray/issues")
+                            if log_once("trial_runner_buffer_checkpoint"):
+                                logger.warning(
+                                    f"Trial {trial} has a non-training future "
+                                    f"scheduled but {len(results)-i} results "
+                                    f"left to process. This means that a "
+                                    f"checkpoint was requested, but buffered "
+                                    f"training was continued before it was "
+                                    f"saved. Consider using non-buffered "
+                                    f"training by setting the env variable "
+                                    f"`TUNE_RESULT_BUFFER_LENGTH=1`.")
                     elif decision == TrialScheduler.STOP:
                         # If the decision is to stop the trial,
                         # ignore all results that came after that.
