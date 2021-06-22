@@ -104,32 +104,41 @@ void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
     const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  std::unique_lock<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    Status s = store_client_.TryCreateImmediately(
+
+    // Release the buffer pool lock during the blocking create call.
+    lock.unlock();
+    Status s = store_client_.CreateAndSpillIfNeeded(
         object_id, owner_address, object_size, NULL, metadata_size, &data,
         plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
-    std::vector<boost::asio::mutable_buffer> buffer;
-    if (!s.ok()) {
-      // Create failed. The object may already exist locally. If something else went
-      // wrong, another chunk will succeed in creating the buffer, and this
-      // chunk will eventually make it here via pull requests.
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-          errored_chunk_, ray::Status::IOError(s.message()));
+    lock.lock();
+
+    // Another thread may have succeeded in creating the chunk while the lock
+    // was released. In that case skip the remainder of the creation block.
+    if (create_buffer_state_.count(object_id) == 0) {
+      std::vector<boost::asio::mutable_buffer> buffer;
+      if (!s.ok()) {
+        // Create failed. The object may already exist locally. If something else went
+        // wrong, another chunk will succeed in creating the buffer, and this
+        // chunk will eventually make it here via pull requests.
+        return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+            errored_chunk_, ray::Status::IOError(s.message()));
+      }
+      // Read object into store.
+      uint8_t *mutable_data = data->Data();
+      uint64_t num_chunks = GetNumChunks(data_size);
+      create_buffer_state_.emplace(
+          std::piecewise_construct, std::forward_as_tuple(object_id),
+          std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
+      RAY_LOG(DEBUG) << "Created object " << object_id
+                     << " in plasma store, number of chunks: " << num_chunks
+                     << ", chunk index: " << chunk_index;
+      RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
     }
-    // Read object into store.
-    uint8_t *mutable_data = data->Data();
-    uint64_t num_chunks = GetNumChunks(data_size);
-    create_buffer_state_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
-    RAY_LOG(DEBUG) << "Created object " << object_id
-                   << " in plasma store, number of chunks: " << num_chunks
-                   << ", chunk index: " << chunk_index;
-    RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
       CreateChunkState::AVAILABLE) {

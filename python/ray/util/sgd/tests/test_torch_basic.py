@@ -53,12 +53,18 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
+@pytest.mark.parametrize("use_fp16", [False, True])
+def test_train(ray_start_2_cpus, num_workers, use_local,
+               use_fp16):  # noqa: F811
     trainer = TorchTrainer(
         training_operator_cls=Operator,
         num_workers=num_workers,
         use_local=use_local,
-        use_gpu=False)
+        use_gpu=False,
+        # use_fp16 has no effect here but allows
+        # us to check syntax
+        use_fp16=use_fp16,
+    )
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["val_loss"]

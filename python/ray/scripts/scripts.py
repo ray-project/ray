@@ -489,7 +489,7 @@ def start(node_ip_address, external_addresses, address, port, redis_password,
                          cf.bold("--resources"))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold("--resources='\"CustomResource3\": 1, "
+            cf.bold("--resources='{\"CustomResource3\": 1, "
                     "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "
@@ -599,10 +599,17 @@ def start(node_ip_address, external_addresses, address, port, redis_password,
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
+
         redis_address = node.redis_address
-        with open(
-                os.path.join(ray._private.utils.get_user_temp_dir(),
-                             "ray_current_cluster"), "w") as f:
+        if temp_dir is None:
+            # Default temp directory.
+            temp_dir = ray._private.utils.get_user_temp_dir()
+        # Using the user-supplied temp dir unblocks on-prem
+        # users who can't write to the default temp.
+        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
+        # TODO: Consider using the custom temp_dir for this file across the
+        # code base. (https://github.com/ray-project/ray/issues/16458)
+        with open(current_cluster_path, "w") as f:
             print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls

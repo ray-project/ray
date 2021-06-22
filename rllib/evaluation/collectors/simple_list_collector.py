@@ -674,8 +674,16 @@ class SimpleListCollector(SampleCollector):
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
+
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
+            # PID may be a newly added policy. Just confirm we have it in our
+            # policy map before proceeding with adding a new _PolicyCollector()
+            # to the group.
+            if pid not in policy_collector_group.policy_collectors:
+                assert pid in self.policy_map
+                policy_collector_group.policy_collectors[
+                    pid] = _PolicyCollector(policy)
             policy_collector_group.policy_collectors[
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
@@ -780,9 +788,18 @@ class SimpleListCollector(SampleCollector):
                 vectorized environments).
         """
         pid = self.agent_key_to_policy_id[agent_key]
+
+        # PID may be a newly added policy. Just confirm we have it in our
+        # policy map before proceeding with forward_pass_size=0.
+        if pid not in self.forward_pass_size:
+            assert pid in self.policy_map
+            self.forward_pass_size[pid] = 0
+            self.forward_pass_agent_keys[pid] = []
+
         idx = self.forward_pass_size[pid]
         if idx == 0:
             self.forward_pass_agent_keys[pid].clear()
+
         self.forward_pass_agent_keys[pid].append(agent_key)
         self.forward_pass_size[pid] += 1
 
