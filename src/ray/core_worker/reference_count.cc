@@ -1033,9 +1033,6 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   PushToLocationSubscribers(it);
   if (release) {
     // Release the primary plasma copy, if any.
-    // SANG-TODO Revert it
-    RAY_LOG(INFO) << "[Unpin] The object id " << object_id
-                  << " is unpinned because the object is spilled.";
     ReleasePlasmaObject(it);
   }
   return true;

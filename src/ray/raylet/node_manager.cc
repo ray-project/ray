@@ -194,7 +194,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectID &obj_id) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
-            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+            MarkObjectsAsFailed(ErrorType::ACTOR_DIED, {ref}, JobID::Nil());
           })),
       object_manager_(
           io_service, self_node_id, object_manager_config, object_directory_.get(),
