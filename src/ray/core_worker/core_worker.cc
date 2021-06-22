@@ -118,11 +118,7 @@ void CoreWorkerProcess::Shutdown() {
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
 
 CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
-    : options_(options),
-      global_worker_id_(
-          options.worker_type == WorkerType::DRIVER
-              ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
+    : options_(options), global_worker_id_(WorkerID::FromBinary(options.worker_id)) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -294,9 +290,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  auto worker = std::make_shared<CoreWorker>(
-      options_,
-      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
+  auto worker = std::make_shared<CoreWorker>(options_);
   RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -355,12 +349,13 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   core_worker_process.reset();
 }
 
-CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
+CoreWorker::CoreWorker(const CoreWorkerOptions &options)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
-      worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
+      worker_context_(options_.worker_type, WorkerID::FromBinary(options_.worker_id),
+                      GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
@@ -369,6 +364,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  auto worker_id = WorkerID::FromBinary(options.worker_id);
   RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.

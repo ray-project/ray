@@ -33,18 +33,13 @@ any cloud. It will:
 Kubernetes Operator
 ^^^^^^^^^^^^^^^^^^^
 
-The :ref:`k8s operator <Ray-operator>` serves a very similar purpose to the
-cluster launcher, but follows the `kubernetes operator pattern
-<https://kubernetes.io/docs/concepts/extend-kubernetes/operator>`__. It's
-defined as :ref:`a helm chart <Ray-helm>` and will:
+The goal of the :ref:`Ray Kubernetes Operator <Ray-operator>` is to make it easy
+to deploy a Ray cluster on an existing Kubernetes cluster.
 
-* Create a controller (the operator).
-* Provision a new pod (head node).
-* execute shell commands to set up Ray with the provided options.
-* (optionally) run any custom, user defined setup commands.
-* Initialize the Ray cluster.
+To simplify Operator configuration, Ray provides a :ref:`a Helm chart <Ray-helm>`.
+Installing the Helm chart will create an Operator Deployment.
+The Operator manages autoscaling Ray clusters; each Ray node runs in its own K8s Pod.
 
-The operator will then serve as the autoscaler.
 
 Autoscaling with Ray
 --------------------
@@ -94,11 +89,11 @@ Deploying an application
 ------------------------
 
 The recommended way of connecting to a Ray cluster is to use the
-``Ray.client.connect()`` API and connect via the Ray Client.
+``ray.client(...).connect()`` API and connect via the Ray Client.
 
 .. note::
 
-  Using ``Ray.client.connect()`` is generally a best practice because it allows
+  Using ``ray.client(...).connect()`` is generally a best practice because it allows
   you to test your code locally, and deploy to a cluster with **no code
   changes**.
 
@@ -137,9 +132,9 @@ portforward local traffic to the dashboard via the ``Ray dashboard`` command
 (which establishes an SSH tunnel). The dashboard will now be visible at
 ``http://localhost:8265``.
 
-With the kubernetes operator, you will need to expose port 8265 on the head
-node, or use `kubectl to portforward
-<https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/>`__.
+The Kubernetes Operator makes the dashboard available via a Service targeting the Ray head pod.
+You can :ref:`access the dashboard <ray-k8s-dashboard>` using ``kubectl port-forward``.
+
 
 Observing the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -223,9 +218,10 @@ architecture means that the head node will have extra stress due to GCS.
   resource on the head node is outbound bandwidth. For large clusters (see the
   scalability envelope), we recommend using machines networking characteristics
   at least as good as an r5dn.16xlarge on AWS EC2.
-* Set ``resources: {"CPU": 0}`` on the head node. Due to the heavy networking
+* Set ``resources: {"CPU": 0}`` on the head node. (For Ray clusters deployed using Helm,
+  set ``rayResources: {"CPU": 0}``.) Due to the heavy networking
   load (and the GCS and redis processes), we recommend setting the number of
-  CPUs to 0 ohn the head node to avoid scheduling additional tasks on it.
+  CPUs to 0 on the head node to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
