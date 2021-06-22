@@ -289,13 +289,13 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 
   // Trigger object spilling if current usage is above the specified threshold.
   const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
-  if (footprint_limit != 0 && object_spilling_threshold_ < 1.0) {
+  if (footprint_limit != 0) {
     const float allocated_percentage =
         ((float)PlasmaAllocator::Allocated()) / footprint_limit;
     if (allocated_percentage > object_spilling_threshold_) {
-      RAY_LOG(INFO) << "Triggering object spilling because current usage "
-                    << allocated_percentage << "% is above threshold "
-                    << object_spilling_threshold_ << "%.";
+      RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
+                     << allocated_percentage << "% is above threshold "
+                     << object_spilling_threshold_ << "%.";
       spill_objects_callback_();
     }
   }
