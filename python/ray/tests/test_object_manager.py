@@ -296,7 +296,6 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
-# TODO(ekl) this sometimes hangs [DO NOT MERGE UNTIL RESOLVED]
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
