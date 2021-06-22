@@ -593,19 +593,11 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
       return false;
     }
   }
-  {
-    absl::MutexLock lock(&active_objects_mu_);
-    RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
-  }
   return true;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
   pinned_objects_.erase(object_id);
-  {
-    absl::MutexLock lock(&active_objects_mu_);
-    RAY_CHECK(pinned_objects_.size() <= active_object_pull_requests_.size());
-  }
 }
 
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
