@@ -4,6 +4,8 @@ import ray
 from ray.tune import run_experiments
 import os
 
+from ray.tune.utils.release_test_util import ProgressCallback
+
 num_redis_shards = 5
 redis_max_memory = 10**8
 object_store_memory = 10**8
@@ -35,18 +37,20 @@ if "RAY_ADDRESS" in os.environ:
 ray.init(num_cpus=10)
 # Run the workload.
 
-run_experiments({
-    "impala": {
-        "run": "IMPALA",
-        "env": "CartPole-v0",
-        "config": {
-            "num_workers": 8,
-            "num_gpus": 0,
-            "num_envs_per_worker": 5,
-            "remote_worker_envs": True,
-            "remote_env_batch_wait_ms": 99999999,
-            "rollout_fragment_length": 50,
-            "train_batch_size": 100,
+run_experiments(
+    {
+        "impala": {
+            "run": "IMPALA",
+            "env": "CartPole-v0",
+            "config": {
+                "num_workers": 8,
+                "num_gpus": 0,
+                "num_envs_per_worker": 5,
+                "remote_worker_envs": True,
+                "remote_env_batch_wait_ms": 99999999,
+                "rollout_fragment_length": 50,
+                "train_batch_size": 100,
+            },
         },
     },
-})
+    callbacks=[ProgressCallback()])

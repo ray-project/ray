@@ -113,25 +113,14 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker) {
-  uint64_t retry_with_request_id = 0;
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
   }
-  Status status = store_client_.Create(
+  Status status = store_client_.CreateAndSpillIfNeeded(
       object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-      metadata ? metadata->Size() : 0, &retry_with_request_id, data, source,
+      metadata ? metadata->Size() : 0, data, source,
       /*device_num=*/0);
-
-  while (retry_with_request_id > 0) {
-    // TODO(sang): Use exponential backoff instead.
-    std::this_thread::sleep_for(std::chrono::milliseconds(object_store_full_delay_ms_));
-    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
-                   << retry_with_request_id;
-    status = store_client_.RetryCreate(object_id, retry_with_request_id,
-                                       metadata ? metadata->Data() : nullptr,
-                                       &retry_with_request_id, data);
-  }
 
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id
@@ -280,9 +269,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                    ctx.GetCurrentTaskID(), results, got_exception));
   }
 
-  // If all objects were fetched already, return.
+  // If all objects were fetched already, return. Note that we always need to
+  // call UnblockIfNeeded() to cancel the get request.
   if (remaining.empty() || *got_exception) {
-    return Status::OK();
+    return UnblockIfNeeded(raylet_client_, ctx);
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
@@ -332,6 +322,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_client_, ctx));
         return status;
       }
+    }
+    if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
+        remaining.size() > 0) {
+      // Yield the plasma lock to other threads. This is a temporary workaround since we
+      // are holding the lock for a long time, so it can easily starve inbound RPC
+      // requests to Release() buffers which only require holding the lock for brief
+      // periods. See https://github.com/ray-project/ray/pull/16402 for more context.
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 

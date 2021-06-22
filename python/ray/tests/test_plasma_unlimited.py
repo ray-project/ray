@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import os
 import platform
 import pytest
@@ -169,6 +170,29 @@ def test_task_unlimited_multiget_args():
         del x2p
     finally:
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
+def test_fd_reuse_no_memory_corruption(shutdown_only):
+    @ray.remote
+    class Actor:
+        def produce(self, i):
+            s = int(random.random() * 200)
+            z = np.ones(s * 1024 * 1024)
+            z[0] = i
+            return z
+
+        def consume(self, x, i):
+            print(x)
+            assert x[0] == i, x
+
+    ray.init(object_store_memory=100e6)
+    a = Actor.remote()
+    b = Actor.remote()
+    for i in range(20):
+        x_id = a.produce.remote(i)
+        ray.get(b.consume.remote(x_id, i))
 
 
 # TODO(ekl) enable this test once we implement this behavior.

@@ -156,6 +156,16 @@ def timed_tune_run(name: str,
                 if self.AWS_SESSION_TOKEN:
                     os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
 
+                if all(
+                        os.getenv(k, "") for k in [
+                            "AWS_ACCESS_KEY_ID",
+                            "AWS_SECRET_ACCESS_KEY",
+                            "AWS_SESSION_TOKEN",
+                        ]):
+                    print("Worker: AWS secrets found in env.")
+                else:
+                    print("Worker: No AWS secrets found in env!")
+
         _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
 
