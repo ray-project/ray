@@ -130,6 +130,17 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
         (num_bytes_being_pulled_ + bytes_to_pull - pinned_objects_size_ >
          num_bytes_available_)) {
+      RAY_LOG(DEBUG) << "Bundle would exceed quota: "
+                     << "num_bytes_being_pulled(" << num_bytes_being_pulled_
+                     << ") + "
+                        "bytes_to_pull("
+                     << bytes_to_pull
+                     << ") - "
+                        "pinned_objects_size("
+                     << pinned_objects_size_
+                     << ") > "
+                        "num_bytes_available("
+                     << num_bytes_available_ << ")";
       return false;
     }
 
@@ -195,10 +206,10 @@ void PullManager::DeactivatePullBundleRequest(
   num_active_bundles_ -= 1;
 }
 
-void PullManager::DeactivateUntilWithinQuota(
-    const std::string &debug_name, Queue &bundles, int retain_min,
+void PullManager::DeactivateUntilMarginAvailable(
+    const std::string &debug_name, Queue &bundles, int retain_min, int64_t quota_margin,
     uint64_t *highest_id_for_bundle, std::unordered_set<ObjectID> *object_ids_to_cancel) {
-  while (OverQuota() && *highest_id_for_bundle != 0) {
+  while (RemainingQuota() < quota_margin && *highest_id_for_bundle != 0) {
     if (num_active_bundles_ <= retain_min) {
       return;
     }
@@ -212,9 +223,11 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-bool PullManager::OverQuota() {
-  return num_bytes_being_pulled_ - pinned_objects_size_ > num_bytes_available_;
+int64_t PullManager::RemainingQuota() {
+  return num_bytes_available_ - (num_bytes_being_pulled_ - pinned_objects_size_);
 }
+
+bool PullManager::OverQuota() { return RemainingQuota() < 0L; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
@@ -230,11 +243,16 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // by canceling get and wait requests.
   bool get_requests_remaining = !get_request_bundles_.empty();
   while (get_requests_remaining) {
-    DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               /*retain_min=*/0, &highest_task_req_id_being_pulled_,
-                               &object_ids_to_cancel);
-    DeactivateUntilWithinQuota("wait request", wait_request_bundles_, /*retain_min=*/0,
-                               &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
+    int64_t margin_required =
+        NextRequestBundleSize(get_request_bundles_, highest_get_req_id_being_pulled_);
+    DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
+                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+                                   &highest_task_req_id_being_pulled_,
+                                   &object_ids_to_cancel);
+    DeactivateUntilMarginAvailable("wait request", wait_request_bundles_,
+                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+                                   &highest_wait_req_id_being_pulled_,
+                                   &object_ids_to_cancel);
 
     // Activate the next get request if we have space, or are in unlimited allocation
     // mode.
@@ -246,9 +264,13 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // Do the same but for wait requests (medium priority).
   bool wait_requests_remaining = !wait_request_bundles_.empty();
   while (wait_requests_remaining) {
-    DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                               /*retain_min=*/0, &highest_task_req_id_being_pulled_,
-                               &object_ids_to_cancel);
+    int64_t margin_required =
+        NextRequestBundleSize(wait_request_bundles_, highest_wait_req_id_being_pulled_);
+    RAY_LOG(ERROR) << "Margin required " << margin_required;
+    DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
+                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+                                   &highest_task_req_id_being_pulled_,
+                                   &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
     wait_requests_remaining = ActivateNextPullBundleRequest(
@@ -264,16 +286,18 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   }
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
-  DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                             min_active_pulls_, &highest_task_req_id_being_pulled_,
-                             &object_ids_to_cancel);
-  DeactivateUntilWithinQuota("wait request", wait_request_bundles_, min_active_pulls_,
-                             &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
+  DeactivateUntilMarginAvailable(
+      "task args request", task_argument_bundles_, min_active_pulls_, /*quota_margin=*/0L,
+      &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
+  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, min_active_pulls_,
+                                 /*quota_margin=*/0L, &highest_wait_req_id_being_pulled_,
+                                 &object_ids_to_cancel);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilWithinQuota("get request", get_request_bundles_, min_active_pulls_,
-                               &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
+    DeactivateUntilMarginAvailable("get request", get_request_bundles_, min_active_pulls_,
+                                   /*quota_margin=*/0L, &highest_get_req_id_being_pulled_,
+                                   &object_ids_to_cancel);
     RAY_CHECK(!OverQuota() || num_active_bundles_ <= min_active_pulls_) << DebugString();
   }
 
@@ -663,6 +687,48 @@ std::string PullManager::BundleInfo(const Queue &bundles,
     }
   }
   return result.str();
+}
+
+int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
+                                           uint64_t highest_id_being_pulled) const {
+  // Get the next pull request in the queue.
+  const auto last_request_it = bundles.find(highest_id_being_pulled);
+  auto next_request_it = last_request_it;
+  if (next_request_it == bundles.end()) {
+    // No requests are active. Get the first request in the queue.
+    next_request_it = bundles.begin();
+  } else {
+    next_request_it++;
+  }
+
+  if (next_request_it == bundles.end()) {
+    // No requests in the queue.
+    return 0L;
+  }
+
+  if (next_request_it->second.num_object_sizes_missing > 0) {
+    // There is at least one object size missing. We should not activate the
+    // bundle, since it may put us over the available capacity.
+    return 0L;
+  }
+
+  absl::MutexLock lock(&active_objects_mu_);
+
+  // Calculate the bytes we need.
+  size_t bytes_needed_calculated = 0;
+  for (const auto &ref : next_request_it->second.objects) {
+    auto obj_id = ObjectRefToId(ref);
+    bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
+    if (needs_pull) {
+      // This is the first bundle request in the queue to require this object.
+      // Add the size to the number of bytes being pulled.
+      auto it = object_pull_requests_.find(obj_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      bytes_needed_calculated += it->second.object_size;
+    }
+  }
+
+  return bytes_needed_calculated;
 }
 
 std::string PullManager::DebugString() const {

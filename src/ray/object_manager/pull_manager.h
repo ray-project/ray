@@ -187,6 +187,10 @@ class PullManager {
   /// e.g., for get requests and to ensure at least one active request.
   bool OverQuota();
 
+  /// Returns the number of bytes of quota remaining. When this is less than zero,
+  /// we are OverQuota().
+  int64_t RemainingQuota();
+
   /// Pin the object if possible. Only actively pulled objects should be pinned.
   bool TryPinObject(const ObjectID &object_id);
 
@@ -230,9 +234,12 @@ class PullManager {
   ///
   /// \param retain_min Don't deactivate if this would drop the total number of active
   ///                   bundles (in any queue) below this threshold.
-  void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
-                                  int retain_min, uint64_t *highest_id_for_bundle,
-                                  std::unordered_set<ObjectID> *objects_to_cancel);
+  /// \param quota_margin Keep deactivating bundles until this amount of quota margin
+  ///                     becomes available.
+  void DeactivateUntilMarginAvailable(const std::string &debug_name, Queue &bundles,
+                                      int retain_min, int64_t quota_margin,
+                                      uint64_t *highest_id_for_bundle,
+                                      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
@@ -241,6 +248,11 @@ class PullManager {
 
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
+
+  /// Return the incremental space required to pull the next bundle, if available.
+  /// If the next bundle is not ready for pulling, 0L will be returned.
+  int64_t NextRequestBundleSize(const Queue &bundles,
+                                uint64_t highest_id_being_pulled) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
