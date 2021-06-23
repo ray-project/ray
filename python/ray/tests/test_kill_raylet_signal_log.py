@@ -1,9 +1,8 @@
-import ray
-import signal
-import os
 import psutil
-
+import signal
+import sys
 import pytest
+import ray
 
 
 def get_pid(name):
