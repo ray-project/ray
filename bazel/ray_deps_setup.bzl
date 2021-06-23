@@ -146,7 +146,7 @@ def ray_deps_setup():
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
         sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
-        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.bz2",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],

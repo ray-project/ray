@@ -672,11 +672,11 @@ def init(
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         _tracing_startup_hook (str): If provided, turns on and sets up tracing
-        for Ray. Must be the name of a function that takes no arguments and
-        sets up a Tracer Provider, Remote Span Processors, and
-        (optional) additional instruments. See more at
-        docs.ray.io/tracing.html. It is currently under active development,
-        and the API is subject to change.
+            for Ray. Must be the name of a function that takes no arguments and
+            sets up a Tracer Provider, Remote Span Processors, and
+            (optional) additional instruments. See more at
+            docs.ray.io/tracing.html. It is currently under active development,
+            and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -1178,6 +1178,9 @@ def connect(node,
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
 
+    ray.state.state._initialize_global_state(
+        node.redis_address, redis_password=node.redis_password)
+
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE,
                 UTIL_WORKER_MODE):
@@ -1189,9 +1192,7 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            job_id = JobID.from_int(
-                int(worker.redis_client.incr("JobCounter")))
+            job_id = ray.state.next_job_id()
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
@@ -1268,11 +1269,6 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
-    # Create an object for interfacing with the global state.
-    # Note, global state should be intialized after `CoreWorker`, because it
-    # will use glog, which is intialized in `CoreWorker`.
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environmen will be prepared
     # at the server side.
@@ -1281,7 +1277,7 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
         working_dir = runtime_env.ensure_runtime_env_setup(uris)

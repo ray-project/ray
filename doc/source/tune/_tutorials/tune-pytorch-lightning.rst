@@ -235,7 +235,7 @@ Please note that if using fractional GPUs, it is the user's responsibility to
 make sure multiple trials can share GPUs and there is enough memory to do so.
 Ray does not automatically handle this for you.
 
-If you want to use multiple GPUs per trial, you should check out the `Ray Lightning Plugins Library <https://github.com/ray-project/ray_lightning_accelerators>`_.
+If you want to use multiple GPUs per trial, you should check out the `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_.
 This library makes it easy to run multiple concurrent trials with Ray Tune, with each trial also running
 in a distributed fashion using Ray.
 
