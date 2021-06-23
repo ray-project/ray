@@ -1774,40 +1774,58 @@ def install_nightly(verbose, dryrun):
 
 @cli.command()
 @click.option(
-    "--copy-project-to",
+    "--copy-sample-to",
     "-cp",
     required=False,
     type=str,
-    help="Output directory.")
-def get_cpp_library(copy_project_to):
-    """Get the paths of cpp library and example project."""
+    help="The directory to copy the sample application to, if provided.")
+@add_click_options(logging_options)
+def get_cpp_library(copy_sample_to, log_style, log_color, verbose):
+    """Get the paths of cpp library and sample application."""
+    cli_logger.configure(log_style, log_color, verbose)
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    cpp_example_dir = os.path.join(raydir, "core/src/ray/cpp/example")
-    cpp_library_dir = os.path.join(cpp_example_dir, "thirdparty")
-    welcome_msg = "Welcome to use ray C++ API."
-    print("-" * len(welcome_msg))
-    print("Welcome to use ray C++ API.")
-    print("-" * len(welcome_msg))
-    print("\nYou can find ray C++ library in ")
-    print(f"    {cpp_library_dir}")
-    print("Please include and link this library in your projects by yourself.")
-    print("\nOr, you can use our template bazel project directly."
-          "You can find it in ")
-    print(f"    {cpp_example_dir}")
-    if copy_project_to:
-        if not os.path.isdir(copy_project_to):
-            raise Exception("Please give an existing directory by "
-                            "'--copy-project-to' or '-cp'.")
+    cpp_sample_dir = os.path.join(raydir, "core/src/ray/cpp/example")
+    cpp_library_dir = os.path.join(cpp_sample_dir, "thirdparty")
+    welcome_msg = "Welcome to use the Ray C++ API."
+    cli_logger.success("-" * len(welcome_msg))
+    cli_logger.success(welcome_msg)
+    cli_logger.success("-" * len(welcome_msg))
+    cli_logger.newline()
+    cli_logger.print(
+        "You can find the Ray C++ headers and the Ray C++ library file in ")
+    cli_logger.print(cf.bold(f"    {cpp_library_dir}"))
+    cli_logger.newline()
+    cli_logger.print(
+        "Please integrate the headers and link the library file in your "
+        "project manually. Only '<ray/api.h>' must be included in your "
+        "application.")
+    cli_logger.newline()
+    cli_logger.print(
+        "Or, you can create a new Ray C++ application starting from "
+        "our bazel sample application located in ")
+    cli_logger.print(cf.bold(f"    {cpp_sample_dir}"))
+    if copy_sample_to:
+        if not os.path.isdir(copy_sample_to):
+            cli_logger.abort("The provided directory "
+                             f"{copy_sample_to} doesn't exist.")
         input = os.path.join(raydir, "core/src/ray/cpp/example")
-        output_pro = os.path.join(copy_project_to, os.path.basename(input))
+        output_pro = os.path.join(copy_sample_to, "ray-cpp-sample")
+        if os.path.exists(output_pro):
+            cli_logger.abort(
+                f"The sample application {output_pro} already exists. "
+                "Please remove this or try another directory.")
         shutil.copytree(input, output_pro)
-        print("\nC++ template project has been copied to "
-              f"{os.path.abspath(output_pro)}. "
-              "To build and run this template, run \n"
-              f"pushd {os.path.abspath(output_pro)} && bazel run //:example\n")
-    else:
-        print(
-            "Copy the template project by \"--copy-project-to\" if needed.\n")
+        cli_logger.newline()
+        cli_logger.print(
+            "The sample application of a Ray C++ application has been "
+            "copied to ")
+        cli_logger.print(cf.bold(f"    {os.path.abspath(output_pro)}"))
+        cli_logger.newline()
+        cli_logger.print("To build and run this template, run")
+        cli_logger.print(
+            cf.bold(
+                f"    cd {os.path.abspath(output_pro)} && bazel run //:example"
+            ))
 
 
 def add_command_alias(command, name, hidden):
