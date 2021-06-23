@@ -1,5 +1,5 @@
 import builtins
-from typing import List, Any, Union, Optional, Iterator, TYPE_CHECKING
+from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
 
 import pyarrow.parquet as pq
 import pyarrow
@@ -13,10 +13,19 @@ if TYPE_CHECKING:
 import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
-from ray.experimental.data.impl.arrow_block import ArrowBlock
+from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 
 
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
+    """Create a dataset from a list of local Python objects.
+
+    Args:
+        items: List of local Python objects.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding the items.
+    """
     block_size = max(1, len(items) // parallelism)
 
     blocks: List[ObjectRef[Block]] = []
@@ -32,6 +41,15 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
 
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
+    """Create a dataset from a range of integers [0..n).
+
+    Args:
+        n: The upper bound of the range of integers.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding the integers.
+    """
     block_size = max(1, n // parallelism)
     blocks: List[ObjectRef[Block]] = []
 
@@ -50,7 +68,19 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     return Dataset(blocks, ListBlock)
 
 
-def range_arrow(n: int, num_blocks: int = 200) -> Dataset[dict]:
+def range_arrow(n: int, num_blocks: int = 200) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from a range of integers [0..n).
+
+    This is similar to range(), but uses Arrow tables to hold the integers
+    in Arrow records. The dataset elements take the form {"value": N}.
+
+    Args:
+        n: The upper bound of the range of integer records.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding the integers as Arrow records.
+    """
     block_size = max(1, n // num_blocks)
     blocks = []
     i = 0
@@ -71,25 +101,20 @@ def range_arrow(n: int, num_blocks: int = 200) -> Dataset[dict]:
 
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional[pyarrow.fs.FileSystem] = None,
-                 parallelism: int = 200,
                  columns: Optional[List[str]] = None,
-                 **arrow_parquet_args) -> Dataset[dict]:
-    """Read parquet format data from hdfs like filesystem into a Dataset.
-
-    .. code-block:: python
-
-        # create dummy data
-        spark.range(...).write.parquet(...)
-        # create Dataset
-        data = ray.util.data.read_parquet(...)
+                 parallelism: int = 200,
+                 **arrow_parquet_args) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from parquet files.
 
     Args:
-        paths (Union[str, List[str]): a single file path or a list of file path
-        columns (Optional[List[str]]): a list of column names to read
-        arrow_parquet_args: the other parquet read options
+        paths: A single file path or a list of file paths (or directories).
+        filesystem: The filesystem implementation to read from.
+        columns: A list of column names to read.
+        parallelism: The amount of parallelism to use for the dataset.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
-        A Dataset
+        Dataset holding Arrow records read from the specified paths.
     """
     pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
     pieces = pq_ds.pieces
@@ -122,36 +147,110 @@ def read_parquet(paths: Union[str, List[str]],
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional[pyarrow.fs.FileSystem] = None,
               parallelism: int = 200,
-              **arrow_json_args) -> Dataset[dict]:
+              **arrow_json_args) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from json files.
+
+    Args:
+        paths: A single file path or a list of file paths (or directories).
+        filesystem: The filesystem implementation to read from.
+        parallelism: The amount of parallelism to use for the dataset.
+        arrow_json_args: Other json read options to pass to pyarrow.
+
+    Returns:
+        Dataset holding Arrow records read from the specified paths.
+    """
     raise NotImplementedError  # P0
 
 
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional[pyarrow.fs.FileSystem] = None,
              parallelism: int = 200,
-             **arrow_csv_args) -> Dataset[dict]:
+             **arrow_csv_args) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from csv files.
+
+    Args:
+        paths: A single file path or a list of file paths (or directories).
+        filesystem: The filesystem implementation to read from.
+        parallelism: The amount of parallelism to use for the dataset.
+        arrow_csv_args: Other csv read options to pass to pyarrow.
+
+    Returns:
+        Dataset holding Arrow records read from the specified paths.
+    """
     raise NotImplementedError  # P0
 
 
-def read_binary_files(paths: Union[str, List[str]],
-                      include_paths: bool = False,
-                      filesystem: Optional[pyarrow.fs.FileSystem] = None,
-                      parallelism: int = 200) -> Dataset[bytes]:
+def read_binary_files(
+        paths: Union[str, List[str]],
+        include_paths: bool = False,
+        filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        parallelism: int = 200) -> Dataset[Union[Tuple[str, bytes], bytes]]:
+    """Create a dataset from binary files of arbitrary contents.
+
+    Args:
+        paths: A single file path or a list of file paths (or directories).
+        include_paths: Whether to include the full path of the file in the
+            dataset records. When specified, the dataset records will be a
+            tuple of the file path and the file contents.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records read from the specified paths.
+    """
     raise NotImplementedError  # P0
 
 
-def from_dask(df: "dask.DataFrame") -> Dataset[dict]:
+def from_dask(df: "dask.DataFrame",
+              parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a Dask dataframe.
+
+    Args:
+        df: A Dask dataframe, which must be executed by Dask-on-Ray.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframe.
+    """
     raise NotImplementedError  # P1
 
 
-def from_modin(df: "modin.DataFrame") -> Dataset[dict]:
+def from_modin(df: "modin.DataFrame",
+               parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a Modin dataframe.
+
+    Args:
+        df: A Modin dataframe, which must be using the Ray backend.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframe.
+    """
     raise NotImplementedError  # P1
 
 
-def from_pandas(
-        iter: Iterator[ObjectRef["pandas.DataFrame"]]) -> Dataset[dict]:
+def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
+                parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a set of Pandas dataframes.
+
+    Args:
+        dfs: A list of Ray object references to pandas dataframes.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframes.
+    """
     raise NotImplementedError  # P1
 
 
-def from_spark(df: "pyspark.sql.DataFrame") -> Dataset[dict]:
+def from_spark(df: "pyspark.sql.DataFrame",
+               parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a Spark dataframe.
+
+    Args:
+        df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframe.
+    """
     raise NotImplementedError  # P2

@@ -9,14 +9,15 @@ if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
+ArrowRow = dict
 
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         self._columns = collections.defaultdict(list)
 
-    def add(self, item: dict) -> None:
-        if not isinstance(item, dict):
+    def add(self, item: ArrowRow) -> None:
+        if not isinstance(item, ArrowRow):
             raise ValueError(
                 "Returned elements of an ArrowBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item)))
