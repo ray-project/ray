@@ -154,7 +154,7 @@
 
 - name: serve
   cluster:
-    app_config: app_config_wrk.yaml
+    app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
 
   run:
