@@ -191,10 +191,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           &io_service_)),
       object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
           io_service_, gcs_client_, core_worker_subscriber_.get(),
-          [this](const ObjectID &obj_id) {
+          [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
-            MarkObjectsAsFailed(ErrorType::ACTOR_DIED, {ref}, JobID::Nil());
+            // SANG-TODO Revert
+            MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           })),
       object_manager_(
           io_service, self_node_id, object_manager_config, object_directory_.get(),

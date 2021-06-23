@@ -41,10 +41,10 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  OwnershipBasedObjectDirectory(instrumented_io_context &io_service,
-                                std::shared_ptr<gcs::GcsClient> &gcs_client,
-                                pubsub::SubscriberInterface *object_location_subscriber,
-                                std::function<void(const ObjectID &)> mark_as_failed);
+  OwnershipBasedObjectDirectory(
+      instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+      pubsub::SubscriberInterface *object_location_subscriber,
+      std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -77,7 +77,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// The object location subscriber.
   pubsub::SubscriberInterface *object_location_subscriber_;
   /// The callback used to mark an object as failed.
-  std::function<void(const ObjectID &)> mark_as_failed_;
+  std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
   /// reaches zero, the client will be deleted and a new one will need to be created
