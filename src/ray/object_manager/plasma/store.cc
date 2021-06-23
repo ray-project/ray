@@ -287,23 +287,10 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     *error = PlasmaError::OK;
   }
 
-  // Trigger object spilling if current usage is above the specified threshold.
-  const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
-  if (footprint_limit != 0) {
-    const float allocated_percentage =
-        ((float)PlasmaAllocator::Allocated()) / footprint_limit;
-    if (allocated_percentage > object_spilling_threshold_) {
-      RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
-                     << allocated_percentage << "% is above threshold "
-                     << object_spilling_threshold_ << "%.";
-      spill_objects_callback_();
-    }
-  }
-
   auto now = absl::GetCurrentTimeNanos();
   if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
     RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
-                  << " / " << (footprint_limit / 1e9) << " GB.";
+                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
     last_usage_log_ns_ = now;
   }
   return pointer;
@@ -312,7 +299,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
-                                                   PlasmaObject *object) {
+                                                   PlasmaObject *object,
+                                                   bool *spilling_required) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -334,6 +322,21 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
+  }
+
+  // Trigger object spilling if current usage is above the specified threshold.
+  if (spilling_required != nullptr) {
+    const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
+    if (footprint_limit != 0) {
+      const float allocated_percentage =
+          ((float)PlasmaAllocator::Allocated()) / footprint_limit;
+      if (allocated_percentage > object_spilling_threshold_) {
+        RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
+                       << allocated_percentage << "% is above threshold "
+                       << object_spilling_threshold_ << "%.";
+        *spilling_required = true;
+      }
+    }
   }
   return error;
 }
@@ -833,8 +836,10 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const size_t object_size = request->data_size() + request->metadata_size();
 
     auto handle_create = [this, client, message](PlasmaObject *result,
-                                                 bool fallback_allocator) {
-      return HandleCreateObjectRequest(client, message, fallback_allocator, result);
+                                                 bool fallback_allocator,
+                                                 bool *spilling_required) {
+      return HandleCreateObjectRequest(client, message, fallback_allocator, result,
+                                       spilling_required);
     };
 
     if (request->try_immediately()) {

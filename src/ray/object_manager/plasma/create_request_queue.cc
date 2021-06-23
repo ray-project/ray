@@ -65,7 +65,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 
   // Immediately fulfill it using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited()) {
-    PlasmaError error = create_callback(&result, /*fallback_allocator=*/true);
+    PlasmaError error = create_callback(&result, /*fallback_allocator=*/true, nullptr);
     return {result, error};
   }
 
@@ -90,8 +90,10 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 }
 
 Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
-                                          bool fallback_allocator) {
-  request->error = request->create_callback(&request->result, fallback_allocator);
+                                          bool fallback_allocator,
+                                          bool *spilling_required) {
+  request->error =
+      request->create_callback(&request->result, fallback_allocator, spilling_required);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else if (request->error == PlasmaError::TransientOutOfMemory) {
@@ -106,7 +108,12 @@ Status CreateRequestQueue::ProcessRequests() {
   bool logged_oom = false;
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto status = ProcessRequest(*request_it, /*fallback_allocator=*/false);
+    bool spilling_required = false;
+    auto status =
+        ProcessRequest(*request_it, /*fallback_allocator=*/false, &spilling_required);
+    if (spilling_required) {
+      spill_objects_callback_();
+    }
     auto now = get_time_();
     if (status.ok()) {
       FinishRequest(request_it);
@@ -132,7 +139,8 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         if (plasma_unlimited_) {
           // Trigger the fallback allocator.
-          status = ProcessRequest(*request_it, /*fallback_allocator=*/true);
+          status = ProcessRequest(*request_it, /*fallback_allocator=*/true,
+                                  &spilling_required);
         }
         if (!status.ok()) {
           std::string dump = "";

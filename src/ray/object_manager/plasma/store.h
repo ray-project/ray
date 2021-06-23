@@ -220,7 +220,8 @@ class PlasmaStore {
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        bool fallback_allocator, PlasmaObject *object);
+                                        bool fallback_allocator, PlasmaObject *object,
+                                        bool *spilling_required);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
