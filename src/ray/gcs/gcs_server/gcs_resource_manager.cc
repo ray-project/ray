@@ -20,12 +20,9 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-                                       instrumented_io_context &main_io_service,
+    instrumented_io_context &main_io_service,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : periodical_runner_(main_io_service),
-      gcs_table_storage_(gcs_table_storage)
-      {
-}
+    : periodical_runner_(main_io_service), gcs_table_storage_(gcs_table_storage) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
