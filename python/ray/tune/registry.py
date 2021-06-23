@@ -170,7 +170,3 @@ class _ParameterRegistry:
         for k, v in self.to_flush.items():
             self.references[k] = ray.put(v)
         self.to_flush.clear()
-
-
-parameter_registry = _ParameterRegistry()
-ray.worker._post_init_hooks.append(parameter_registry.flush)
