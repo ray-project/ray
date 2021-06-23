@@ -73,15 +73,13 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.  However, if all values are None this is set to {}.
+        # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
         else:
             self._dict["working_dir"] = None
-            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -93,8 +91,6 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 yaml_file = Path(conda)
                 if yaml_file.suffix in (".yaml", ".yml"):
-                    if working_dir and not yaml_file.is_absolute():
-                        yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
@@ -119,11 +115,14 @@ class RuntimeEnvDict:
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if "conda" in runtime_env_json:
+            if ("conda" in runtime_env_json
+                    and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
-                    "runtime_env cannot both be specified.  To use "
-                    "pip with conda, please only set the 'conda' "
+                    "runtime_env cannot both be specified.\n"
+                    f"specified pip field: {runtime_env_json['pip']}\n"
+                    f"specified conda field: {runtime_env_json['conda']}\n"
+                    "To use pip with conda, please only set the 'conda' "
                     "field, and specify your pip dependencies "
                     "within the conda YAML config dict: see "
                     "https://conda.io/projects/conda/en/latest/"
@@ -133,8 +132,6 @@ class RuntimeEnvDict:
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
-                if working_dir and not pip_file.is_absolute():
-                    pip_file = working_dir / pip_file
                 if not pip_file.is_file():
                     raise ValueError(f"{pip_file} is not a valid file")
                 self._dict["pip"] = pip_file.read_text()
@@ -159,12 +156,15 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        if self._dict.get("working_dir"):
+        # Used by Ray's experimental package loading feature.
+        # TODO(architkulkarni): This should be unified with existing fields
+        if "_packaging_uri" in runtime_env_json:
+            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
             if self._dict["env_vars"] is None:
                 self._dict["env_vars"] = {}
             # TODO(ekl): env vars is probably not the right long term impl.
             self._dict["env_vars"].update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]

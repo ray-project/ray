@@ -446,6 +446,7 @@ def test_lease_request_leak(shutdown_only):
     assert object_memory_usage() == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_many_args(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.

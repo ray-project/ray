@@ -601,7 +601,8 @@ bool PullManager::QueueAtCapacity(const Queue &bundles,
 }
 
 bool PullManager::AtCapacity() const {
-  return QueueAtCapacity(worker_request_bundles_, highest_worker_req_id_being_pulled_) ||
+  return QueueAtCapacity(get_request_bundles_, highest_get_req_id_being_pulled_) ||
+         QueueAtCapacity(wait_request_bundles_, highest_wait_req_id_being_pulled_) ||
          QueueAtCapacity(task_argument_bundles_, highest_task_req_id_being_pulled_);
 }
 
