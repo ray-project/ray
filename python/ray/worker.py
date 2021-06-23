@@ -1663,8 +1663,19 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    handle = worker.core_worker.get_named_actor_handle(name)
-    return handle
+    return worker.core_worker.get_named_actor_handle(name)
+
+
+@client_mode_hook
+def get_all_actor_names() -> List[str]:
+    """Get all named actor names in the system.
+
+    Actors must have been created with Actor.options(name="name").remote().
+    This works for both detached & non-detached actors.
+    """
+    worker = global_worker
+    worker.check_connected()
+    return worker.core_worker.get_all_actor_names()
 
 
 @client_mode_hook

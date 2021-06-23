@@ -200,6 +200,20 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncGetAllActorNames(
+    const std::string &ray_namespace,
+    const ItemCallback<std::vector<std::string>> &callback) {
+  RAY_LOG(DEBUG) << "Getting all actor names";
+  rpc::GetAllActorNamesRequest request;
+  request.set_ray_namespace(ray_namespace);
+  client_impl_->GetGcsRpcClient().GetAllActorNames(
+      request, [callback](const Status &status, const rpc::GetAllActorNamesReply &reply) {
+        callback(VectorFromProtobuf(reply.actor_name_list()));
+        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);

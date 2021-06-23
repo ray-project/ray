@@ -1578,6 +1578,15 @@ cdef class CoreWorker:
 
         return self.make_actor_handle(named_actor_handle_pair.first)
 
+    def get_all_actor_names(self):
+        cdef:
+            c_vector[c_string] actor_names
+
+        check_status(
+            CCoreWorkerProcess.GetCoreWorker().GetAllActorNames(&actor_names))
+
+        return [name.decode("utf-8") for name in actor_names]
+
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
             c_string output

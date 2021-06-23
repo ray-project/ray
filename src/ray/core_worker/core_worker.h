@@ -886,6 +886,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
       const std::string &name);
 
+  /// Returns a list of the named actors currently in the system. This includes
+  /// actors that are pending placement or being restarted.
+  ///
+  /// \param[out] named_actors The list of named actors.
+  /// \return Status.
+  Status GetAllActorNames(std::vector<std::string> *named_actors);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -1107,6 +1114,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Get a handle to a named actor for local mode.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
+
+  /// Get all named actors in local mode.
+  Status GetAllActorNamesLocalMode(std::vector<std::string> *named_actors);
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from

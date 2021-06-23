@@ -41,20 +41,30 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Get all actor specification from GCS asynchronously.
+  /// Get all actor specification from the GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Get actor specification for a named actor from GCS asynchronously.
+  /// Get actor specification for a named actor from the GCS asynchronously.
   ///
   /// \param name The name of the detached actor to look up in the GCS.
+  /// \param ray_namespace The namespace to filter to.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetByName(
       const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
+  /// Get all named actor names from the GCS asynchronously.
+  ///
+  /// \param ray_namespace The namespace to filter to.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllActorNames(
+      const std::string &ray_namespace,
+      const ItemCallback<std::vector<std::string>> &callback) = 0;
 
   /// Register actor to GCS asynchronously.
   ///

@@ -98,6 +98,16 @@ message GetNamedActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
+message GetAllActorNamesRequest {
+  // Namespace to filter to.
+  string ray_namespace = 2;
+}
+
+message GetAllActorNamesReply {
+  GcsStatus status = 1;
+  repeated string actor_name_list = 2;
+}
+
 message GetAllActorInfoRequest {
   // Whether or not to filter out actors which belong to dead jobs.
   bool show_dead_jobs = 1;
@@ -135,6 +145,8 @@ service ActorInfoGcsService {
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Get actor data from GCS Service by name.
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
+  // Get all named actor names from GCS Service.
+  rpc GetAllActorNames(GetAllActorNamesRequest) returns (GetAllActorNamesReply);
   // Get information of all actor from GCS Service.
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.
