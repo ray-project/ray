@@ -63,11 +63,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
-              RetryTaskCallback retry_task_callback,
+              const rpc::Address &address, RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
+        rpc_address_(address),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback) {
@@ -248,6 +249,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
+
+  rpc::Address rpc_address_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

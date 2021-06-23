@@ -72,10 +72,6 @@ message ReturnObject {
   int64 size = 6;
 }
 
-message TransferredObject {
-  bytes object_id = 1;
-}
-
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -116,7 +112,7 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 3;
-  repeated TransferredObject transferred_objs = 4;
+  repeated SharedObjectInfo shared_obj_info = 4;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -372,8 +368,14 @@ message ShareOwnershipRequest {
   Address new_owner_address = 2;
 }
 
+message SharedObjectInfo {
+  bytes object_id = 1;
+  bytes pinned_at_node = 2;
+  uint64 object_size = 3;
+}
+
 message ShareOwnershipReply {
-  repeated bytes succeeded_ids = 1;
+  repeated SharedObjectInfo shared_objs = 1;
 }
 
 service CoreWorkerService {

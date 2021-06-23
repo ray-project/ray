@@ -557,7 +557,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         "CoreWorker.ReconstructObject");
   };
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_,
+      memory_store_, reference_counter_, rpc_address_,
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
@@ -2829,11 +2829,10 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
   }
 }
 
-void CoreWorker::ShareOwnershipInternal(const rpc::Address &to_addr,
-                                        const std::vector<ObjectID> &ids,
-                                        std::function<void(std::vector<ObjectID>)> cb) {
+void CoreWorker::ShareOwnershipInternal(
+    const rpc::Address &to_addr, const std::vector<ObjectID> &ids,
+    std::function<void(google::protobuf::RepeatedPtrField<rpc::SharedObjectInfo>)> cb) {
   std::vector<std::pair<NodeID, ObjectID>> node_id_mapping;
-  auto succeeded_ids = std::make_shared<std::vector<ObjectID>>();
   for (auto id : ids) {
     if (!reference_counter_->OwnedByUs(id)) {
       continue;
@@ -2843,31 +2842,48 @@ void CoreWorker::ShareOwnershipInternal(const rpc::Address &to_addr,
       node_id_mapping.emplace_back(*node_id, id);
     } else {
       // TODO (yic) Should wait until object is ready.
+      RAY_LOG(DEBUG) << "We only take care of put objects right now";
+      continue;
     }
   }
 
   if (node_id_mapping.empty()) {
-    cb(std::move(*succeeded_ids));
+    cb({});
   } else {
     auto in_flight = std::make_shared<size_t>(node_id_mapping.size());
+    auto successed_ids = std::make_shared<absl::flat_hash_set<ObjectID>>();
     for (auto &v : node_id_mapping) {
       auto node_info = gcs_client_->Nodes().Get(v.first);
       auto grpc_client = rpc::NodeManagerWorkerClient::make(
           node_info->node_manager_address(), node_info->node_manager_port(),
           *client_call_manager_);
       auto raylet_client = std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-      raylet_client->PinObjectIDs(to_addr, {v.second},
-                                  [this, to_addr, succeeded_ids, in_flight, id = v.second,
-                                   cb](auto &status, auto &pin_reply) mutable {
-                                    if (status.ok()) {
-                                      succeeded_ids->push_back(id);
-                                      reference_counter_->RemoveBorrower(id, to_addr);
-                                    }
-                                    // TODO (yic): better with a barrier
-                                    if (--*in_flight == 0) {
-                                      cb(std::move(*succeeded_ids));
-                                    }
-                                  });
+      raylet_client->PinObjectIDs(
+          to_addr, {v.second},
+          [this, to_addr, in_flight, successed_ids, id = v.second, node_id = v.first, cb](
+              auto &status, auto &pin_reply) mutable {
+            if (status.ok()) {
+              successed_ids->insert(id);
+            }
+            // TODO (yic): better with a barrier
+            if (--*in_flight == 0) {
+              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+              bool exception = false;
+              plasma_store_provider_->Get(*successed_ids, -1, worker_context_, &results,
+                                          &exception);
+              RAY_CHECK(!exception) << "Failed to get object from store";
+              google::protobuf::RepeatedPtrField<rpc::SharedObjectInfo> transferred_objs;
+              for (auto &result : results) {
+                RAY_CHECK(result.second->IsInPlasmaError())
+                    << "Inline objects are shared by passing value";
+                auto obj = transferred_objs.Add();
+                obj->set_object_id(result.first.Binary());
+                obj->set_object_size(result.second->GetSize());
+                obj->set_pinned_at_node(node_id.Binary());
+              }
+              cb(std::move(transferred_objs));
+            }
+          });
     }
   }
 }
@@ -2880,13 +2896,10 @@ void CoreWorker::HandleShareOwnership(const rpc::ShareOwnershipRequest &request,
     ids.push_back(ObjectID::FromBinary(id));
   }
   const auto &addr = request.new_owner_address();
-  ShareOwnershipInternal(addr, ids,
-                         [send_reply_callback, reply](std::vector<ObjectID> ids) {
-                           for (auto &id : ids) {
-                             reply->add_succeeded_ids(id.Binary());
-                           }
-                           send_reply_callback(Status::OK(), nullptr, nullptr);
-                         });
+  ShareOwnershipInternal(addr, ids, [send_reply_callback, reply](auto ids) {
+    reply->mutable_shared_objs()->Swap(&ids);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
 }
 
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,

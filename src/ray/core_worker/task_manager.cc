@@ -230,6 +230,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  for (auto &obj : reply.shared_obj_info()) {
+    ObjectID object_id = ObjectID::FromBinary(obj.object_id());
+    reference_counter_->AddOwnedObject(object_id, {}, rpc_address_, "<transferred>",
+                                       obj.object_size(), false,
+                                       NodeID::FromBinary(obj.pinned_at_node()));
+  }
+
   TaskSpecification spec;
   bool release_lineage = true;
   {

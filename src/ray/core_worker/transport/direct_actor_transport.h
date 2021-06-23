@@ -615,9 +615,9 @@ class CoreWorkerDirectTaskReceiver {
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
   using OnTaskDone = std::function<ray::Status()>;
-  using ObjectTransfer =
-      std::function<void(const rpc::Address &, const std::vector<ObjectID> &,
-                         std::function<void(std::vector<ObjectID>)>)>;
+  using ObjectTransfer = std::function<void(
+      const rpc::Address &, const std::vector<ObjectID> &,
+      std::function<void(google::protobuf::RepeatedPtrField<rpc::SharedObjectInfo>)>)>;
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
