@@ -481,15 +481,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 @pytest.mark.parametrize("use_working_dir", [True, False])
 def test_conda_input_filepath(use_working_dir, tmp_path):
-    conda_dict = {
-        "dependencies": [
-            "pip", {
-                "pip": [
-                    "pip-install-test==0.5"
-                ]
-            }
-        ]
-    }
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     d = tmp_path / "pip_requirements"
     d.mkdir()
     p = d / "environment.yml"
@@ -561,8 +553,6 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     pip_file = working_dir / "requirements.txt"
     requirements_txt = """
     pip-install-test==0.5
-    opentelemetry-api==1.0.0rc1
-    opentelemetry-sdk==1.0.0rc1
     """
     pip_file.write_text(requirements_txt)
     runtime_env_pip = {
@@ -571,16 +561,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     }
 
     conda_file = working_dir / "environment.yml"
-    conda_dict = {
-        "dependencies": [
-            "pip", {
-                "pip": [
-                    "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                    "opentelemetry-sdk==1.0.0rc1"
-                ]
-            }
-        ]
-    }
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     conda_str = yaml.dump(conda_dict)
     conda_file.write_text(conda_str)
     runtime_env_conda = {
