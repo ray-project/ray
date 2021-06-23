@@ -43,7 +43,7 @@ class TestApexDQN(unittest.TestCase):
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
@@ -55,7 +55,7 @@ class TestApexDQN(unittest.TestCase):
             # Test again per-worker epsilon distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()

@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/gcs/accessor.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -409,6 +410,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
+  /// \return The total resource capacity of the node.
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
+
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///
@@ -434,10 +438,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Use the hybrid spillback policy.
   const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
-  const float hybrid_threshold_;
-  /// Feature lag between legacy scheduling algorithms. When loadbalance_spillback_ is
-  /// true, a node is chosen at uniform random from the possible nodes.
-  bool loadbalance_spillback_;
+  const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;

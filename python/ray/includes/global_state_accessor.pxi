@@ -43,6 +43,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllJobInfo()
         return result
 
+    def get_next_job_id(self):
+        cdef CJobID cjob_id
+        with nogil:
+            cjob_id = self.inner.get().GetNextJobID()
+        return cjob_id.ToInt()
+
     def get_node_table(self):
         cdef c_vector[c_string] result
         with nogil:

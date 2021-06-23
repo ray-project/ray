@@ -24,6 +24,7 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
@@ -535,6 +536,26 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg3, cost = self.set_basic_conf(analysis)
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
+
+
+class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "height": tune.uniform(-100, 100),
+            "width": tune.randint(0, 100),
+        }
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = CFO(
+            space=space,
+            metric="loss",
+            mode="min",
+            seed=20,
+        )
+
+        return search_alg, cost
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):

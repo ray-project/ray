@@ -35,6 +35,9 @@ def setup(input_args):
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
 
+    # add worker-shim-pid argument
+    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
+
     commands = []
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
 
