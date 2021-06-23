@@ -17,18 +17,22 @@ import ray
 
 logger = logging.getLogger(__name__)
 
+
 def test_object_transfer(shutdown_only):
     ray.init()
+
     @ray.remote
     class Test:
         def gen(self):
             r = ray.put(b"a" * 10 * 1024 * 1024)
             return [r]
+
     actor = Test.remote()
     v = actor.gen.remote()
     ray.wait([v])
     ray.kill(actor)
     assert ray.get(ray.get(v)[0]) == b"a" * 10 * 1024 * 1024
+
 
 def test_auto_global_gc(shutdown_only):
     # 100MB
