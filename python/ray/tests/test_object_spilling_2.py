@@ -509,7 +509,7 @@ def _check_spilled(num_objects_spilled=0):
 def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
     try:
         ray.init(
-            object_store_memory=3_000_000_000,
+            object_store_memory=2_200_000_000,
             _system_config={"object_spilling_threshold": thres}
             if thres else {})
         objs = []
