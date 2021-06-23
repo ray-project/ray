@@ -15,8 +15,12 @@ class Dataset(Generic[T]):
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **remote_args) -> "Dataset[U]":
-        def transform(block):
-            return self._block_cls([fn(row) for row in block])
+        def transform(serialized: Any) -> Any:
+            block = self._block_cls.deserialize(serialized)
+            builder = block.builder()
+            for row in block.iter_rows():
+                builder.add(fn(row))
+            return builder.build().serialize()
 
         compute = get_compute(compute)
 
@@ -28,12 +32,13 @@ class Dataset(Generic[T]):
                  fn: Callable[[T], Iterable[U]],
                  compute="tasks",
                  **remote_args) -> "Dataset[U]":
-        def transform(block):
-            output = []
-            for row in block:
+        def transform(serialized: Any) -> Any:
+            block = self._block_cls.deserialize(serialized)
+            builder = block.builder()
+            for row in block.iter_rows():
                 for r2 in fn(row):
-                    output.append(r2)
-            return self._block_cls(output)
+                    builder.add(r2)
+            return builder.build().serialize()
 
         compute = get_compute(compute)
 
@@ -43,8 +48,13 @@ class Dataset(Generic[T]):
 
     def filter(self, fn: Callable[[T], bool], compute="tasks",
                **remote_args) -> "Dataset[T]":
-        def transform(block):
-            return self._block_cls([row for row in block if fn(row)])
+        def transform(serialized: Any) -> Any:
+            block = self._block_cls.deserialize(serialized)
+            builder = block.builder()
+            for row in block.iter_rows():
+                if fn(row):
+                    builder.add(row)
+            return builder.build().serialize()
 
         compute = get_compute(compute)
 
@@ -55,7 +65,8 @@ class Dataset(Generic[T]):
     def take(self, limit: int = 20) -> List[T]:
         output = []
         for b in self._blocks:
-            for row in ray.get(b):
+            block = self._block_cls.deserialize(ray.get(b))
+            for row in block.iter_rows():
                 output.append(row)
                 if len(output) >= limit:
                     break
@@ -69,14 +80,16 @@ class Dataset(Generic[T]):
 
     def count(self) -> int:
         @ray.remote
-        def count(block):
-            return len(block)
+        def count(serialized: Any) -> int:
+            block = self._block_cls.deserialize(serialized)
+            return block.num_rows()
 
         return sum(ray.get([count.remote(block) for block in self._blocks]))
 
     def sum(self) -> int:
         @ray.remote
-        def _sum(block):
-            return sum(block)
+        def _sum(serialized: Any) -> int:
+            block = self._block_cls.deserialize(serialized)
+            return sum(block.iter_rows())
 
         return sum(ray.get([_sum.remote(block) for block in self._blocks]))

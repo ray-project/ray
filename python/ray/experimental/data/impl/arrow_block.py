@@ -1,107 +1,67 @@
-from typing import List, Any, Callable, Iterable, Dict
+import collections
+from typing import Iterator, TypeVar, TYPE_CHECKING
 
 import pyarrow as pa
 
-import ray
-from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.impl.block import Block, BlockBuilder
+
+if TYPE_CHECKING:
+    import pandas
+
+T = TypeVar("T")
 
 
-class ArrowTableAccessor:
-    def __init__(self, table):
-        self._table = table
+class ArrowBlockBuilder(BlockBuilder[T]):
+    def __init__(self):
+        self._columns = collections.defaultdict(list)
 
-    def __getitem__(self, key, index=0):
-        return self._table.to_pydict()[key][index]
+    def add(self, item: dict) -> None:
+        for key, value in item.items():
+            self._columns[key].append(value)
 
-    def to_pydict(self):
-        return {key: self[key] for key in self._table.column_names}
+    def build(self) -> "ArrowBlock[T]":
+        return ArrowBlock(pa.Table.from_pydict(self._columns))
 
 
 class ArrowBlock(Block):
     def __init__(self, table: pa.Table):
         self._table = table
-        self._cur = -1
 
-    def __iter__(self):
-        return self
+    def iter_rows(self) -> Iterator[T]:
+        outer = self
 
-    def __next__(self):
-        self._cur += 1
-        if self._cur < len(self):
-            return self._table.slice(self._cur, 1)
-        raise StopIteration
+        class Iter:
+            def __init__(self):
+                self._cur = -1
 
-    def __len__(self):
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self._cur += 1
+                if self._cur < outer._table.num_rows:
+                    row = outer._table.slice(self._cur, 1).to_pydict()
+                    return {k: v[0] for k, v in row.items()}
+                raise StopIteration
+
+        return Iter()
+
+    def to_pandas(self) -> "pandas.DataFrame":
+        return self._table.to_pandas()
+
+    def num_rows(self) -> int:
         return self._table.num_rows
 
-    def size_bytes(self):
+    def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def serialize(self):
+    def serialize(self) -> dict:
         return self._table.to_pydict()
 
     @staticmethod
-    def deserialize(dict: Dict):
-        return ArrowBlock(pa.Table.from_pydict(dict))
+    def deserialize(value: dict) -> "ArrowBlock[T]":
+        return ArrowBlock(pa.Table.from_pydict(value))
 
-
-class ArrowDataset(Dataset[ArrowBlock]):
-    def __init__(self, blocks: List[Any], block_cls: ArrowBlock):
-        self._blocks: List[Any] = blocks
-        self._block_cls = block_cls
-
-    def map(self, fn: Callable[[], Dict]) -> Dict:
-        @ray.remote
-        def transform(block):
-            columns_by_names = {}
-            arrow_block = ArrowBlock.deserialize(block)
-            for row in arrow_block:
-                result = fn(ArrowTableAccessor(row))
-                for key in result:
-                    if key not in columns_by_names:
-                        columns_by_names[key] = []
-                    columns_by_names[key].append(result[key])
-            return columns_by_names
-
-        return ArrowDataset([transform.remote(b) for b in self._blocks],
-                            self._block_cls)
-
-    def flat_map(self, fn: Callable[[], Iterable]) -> "ArrowDataset":
-        @ray.remote
-        def transform(block):
-            columns_by_names = {}
-            arrow_block = ArrowBlock.deserialize(block)
-            for row in arrow_block:
-                results = fn(ArrowTableAccessor(row))
-                for result in results:
-                    for key in result:
-                        if key not in columns_by_names:
-                            columns_by_names[key] = []
-                        columns_by_names[key].append(result[key])
-            return columns_by_names
-
-        return ArrowDataset([transform.remote(b) for b in self._blocks],
-                            self._block_cls)
-
-    def filter(self, fn: Callable[[], bool]) -> "ArrowDataset":
-        @ray.remote
-        def transform(block):
-            arrow_block = ArrowBlock.deserialize(block)
-            tables = [
-                row for row in arrow_block if fn(ArrowTableAccessor(row))
-            ]
-            tables.append(arrow_block._table.schema.empty_table())
-            return ArrowBlock(pa.concat_tables(tables)).serialize()
-
-        return ArrowDataset([transform.remote(b) for b in self._blocks],
-                            self._block_cls)
-
-    def take(self, limit: int = 20) -> List[Dict]:
-        output = []
-        for b in self._blocks:
-            for row in ArrowBlock.deserialize(ray.get(b)):
-                output.append(ArrowTableAccessor(row).to_pydict())
-            if len(output) >= limit:
-                break
-        return output
+    @staticmethod
+    def builder() -> ArrowBlockBuilder[T]:
+        return ArrowBlockBuilder()

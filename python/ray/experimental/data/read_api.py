@@ -2,10 +2,12 @@ import builtins
 from typing import List, Any, Union, Optional
 
 import pyarrow.parquet as pq
+import pyarrow as pa
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.block import Block, BlockRef, ListBlock
+from ray.experimental.data.impl.block import BlockRef, ListBlock
+from ray.experimental.data.impl.arrow_block import ArrowBlock
 
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
@@ -13,8 +15,11 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     blocks: List[BlockRef] = []
 
     @ray.remote
-    def gen_block(start: int, count: int) -> Block:
-        return ListBlock(list(builtins.range(start, start + count)))
+    def gen_block(start: int, count: int) -> ListBlock:
+        builder = ListBlock.builder()
+        for value in builtins.range(start, start + count):
+            builder.add(value)
+        return builder.build().serialize()
 
     i = 0
     while i < n:
@@ -24,13 +29,35 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     return Dataset(blocks, ListBlock)
 
 
+def range_arrow(n: int, num_blocks: int = 200) -> Dataset[dict]:
+    block_size = max(1, n // num_blocks)
+    blocks = []
+    i = 0
+
+    @ray.remote
+    def gen_block(start: int, count: int) -> "ArrowBlock":
+        return ArrowBlock(
+            pa.Table.from_pydict({
+                "value": list(builtins.range(start, start + count))
+            })).serialize()
+
+    while i < n:
+        blocks.append(gen_block.remote(block_size * i, min(block_size, n - i)))
+        i += block_size
+
+    return Dataset(blocks, ArrowBlock)
+
+
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     block_size = max(1, len(items) // parallelism)
 
     blocks: List[BlockRef] = []
     i = 0
     while i < len(items):
-        blocks.append(ray.put(ListBlock(items[i:i + block_size])))
+        builder = ListBlock.builder()
+        for item in items[i:i + block_size]:
+            builder.add(item)
+        blocks.append(ray.put(builder.build().serialize()))
         i += block_size
 
     return Dataset(blocks, ListBlock)
@@ -39,7 +66,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
 def read_parquet(paths: Union[str, List[str]],
                  parallelism: int = 200,
                  columns: Optional[List[str]] = None,
-                 **kwargs) -> Dataset[Any]:
+                 **kwargs) -> Dataset[dict]:
     """Read parquet format data from hdfs like filesystem into a Dataset.
 
     .. code-block:: python
@@ -69,7 +96,6 @@ def read_parquet(paths: Union[str, List[str]],
                                        piece.file_options, i,
                                        piece.partition_keys))
 
-    # TODO(ekl) also enforce max size limit of blocks
     read_tasks = [[] for _ in builtins.range(parallelism)]
     for i, piece in enumerate(pieces):
         read_tasks[i].append(piece)
@@ -81,14 +107,9 @@ def read_parquet(paths: Union[str, List[str]],
         print("Reading {} parquet pieces".format(len(pieces)))
         table = piece.read(
             columns=columns, use_threads=False, partitions=partitions)
-        rows = []
-        for rb in table.to_batches():
-            for row in zip(
-                    *[rb.column(i) for i in builtins.range(rb.num_columns)]):
-                rows.append([v.as_py() for v in row])
-        return ListBlock(rows)
+        return ArrowBlock(table).serialize()
 
-    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks], ListBlock)
+    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks], ArrowBlock)
 
 
 def read_binary_files(directory: str) -> Dataset[bytes]:
