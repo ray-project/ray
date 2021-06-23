@@ -194,7 +194,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
-            // SANG-TODO Revert
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           })),
       object_manager_(

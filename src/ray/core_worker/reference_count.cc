@@ -1143,21 +1143,28 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_primary_node_id(primary_node_id.Binary());
 }
 
-Status ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
+void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
                   << " that doesn't exist in the reference table."
                   << " The object has probably already been freed.";
-    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+    // Publish the empty location since the object is already evicted or freed.
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    // Needs to call this to set the proper grpc oneof message.
+    pub_message.mutable_worker_object_locations_message();
+    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                    pub_message, object_id.Binary());
+    return;
   }
 
   // Always publish the location when subscribed for the first time.
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
   PushToLocationSubscribers(it);
-  return Status::OK();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

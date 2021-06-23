@@ -255,7 +255,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto failure_callback = [this](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
-      mark_as_failed_(object_id, rpc::ErrorType::WORKER_DIED);
+      mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
       rpc::WorkerObjectLocationsPubMessage location_info;
       ObjectLocationSubscriptionCallback(location_info, object_id,
                                          /*location_lookup_failed*/ true);
@@ -377,7 +377,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
                            << object_id;
-            mark_as_failed_(object_id, rpc::ErrorType::ACTOR_DIED);
+            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
           } else {
             UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
                                   &node_ids, &spilled_url, &spilled_node_id,

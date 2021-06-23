@@ -288,8 +288,9 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
-
-@pytest.mark.parametrize("failure", [False, True])
+# SANG-TODO Revert this
+@pytest.mark.parametrize("failure", [True])
+# @pytest.mark.parametrize("failure", [False, True])
 def test_borrowed_id_failure(one_worker_100MiB, failure):
     @ray.remote
     class Parent:
