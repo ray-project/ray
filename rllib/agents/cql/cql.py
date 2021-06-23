@@ -1,19 +1,15 @@
 """CQL (derived from SAC).
 """
 import numpy as np
-from typing import Optional, Type, List
+from typing import Optional, Type
 
-from ray.actor import ActorHandle
 from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
-from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
-from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.offline.shuffled_input import ShuffledInput
@@ -57,17 +53,6 @@ def validate_config(config: TrainerConfigDict):
 replay_buffer = None
 
 
-class NoOpReplayBuffer:
-    def __init__(self,
-                 *,
-                 local_buffer: LocalReplayBuffer = None,
-                 actors: List[ActorHandle] = None):
-        return
-
-    def __call__(self, batch):
-        return batch
-
-
 def execution_plan(workers, config):
     if config.get("prioritized_replay"):
         prio_args = {
@@ -91,14 +76,6 @@ def execution_plan(workers, config):
 
     global replay_buffer
     replay_buffer = local_replay_buffer
-
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-    # NoReplayBuffer ensures that no online data is added
-    # The Dataset is added to the Replay Buffer in after_init()
-    # method below the execution plan.
-    store_op = rollouts.for_each(
-        NoOpReplayBuffer(local_buffer=local_replay_buffer))
 
     def update_prio(item):
         samples, info_dict = item
@@ -141,16 +118,8 @@ def execution_plan(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode="round_robin",
-        # Only return the output
-        # of (2) since training metrics are not available until (2) runs.
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
-
-    return StandardMetricsReporting(train_op, workers, config)
+    return StandardMetricsReporting(
+        replay_op, workers, config, by_steps_trained=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -185,7 +154,7 @@ def after_init(trainer):
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
         print(
-            f"Loaded {num_batches} batches ({total_timesteps} ts) into "
+            f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
             f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
         raise ValueError(

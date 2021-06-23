@@ -7,7 +7,7 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Iterable, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -25,6 +25,7 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +186,10 @@ class RayTrialExecutor(TrialExecutor):
         self.pg_recon_interval = float(
             os.environ.get("TUNE_PLACEMENT_GROUP_RECON_INTERVAL", "5"))
 
-        self._buffer_length = result_buffer_length or int(
+        self._default_buffer_length = result_buffer_length or int(
             os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
+        self._buffer_length = result_buffer_length
+
         self._buffer_min_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
         self._buffer_max_time_s = float(
@@ -207,7 +210,7 @@ class RayTrialExecutor(TrialExecutor):
     def set_max_pending_trials(self, max_pending: int):
         self._pg_manager.set_max_staging(max_pending)
 
-    def stage_and_update_status(self, trials: List[Trial]):
+    def stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
 
         Stages placement groups of all trials.
@@ -385,8 +388,28 @@ class RayTrialExecutor(TrialExecutor):
             min(self._buffer_max_time_s,
                 len(self._running) // 10))
         with self._change_working_directory(trial):
-            if self._buffer_length > 1:
-                buffer_length = self._buffer_length
+            buffer_length = self._buffer_length
+
+            # If buffer length has not been explicitly set, we determine
+            # it automatically
+            if buffer_length is None:
+                if trial.checkpoint_at_end:
+                    # If a trial checkpoint can be triggered externally,
+                    # it is not safe to buffer results.
+                    buffer_length = 1
+                else:
+                    # Else, use the default buffer length
+                    buffer_length = self._default_buffer_length
+            else:
+                if trial.checkpoint_at_end:
+                    if log_once("trial_executor_buffer_checkpoint"):
+                        logger.warning(
+                            "You passed `checkpoint_at_end` to `tune.run()`, "
+                            "but still requested buffered training. "
+                            "If used with a custom stopper or early stopping, "
+                            "checkpoints may be created later than desired.")
+
+            if buffer_length > 1:
                 if trial.checkpoint_freq > 0:
                     buffer_length = min(buffer_length, trial.checkpoint_freq)
                 remote = trial.runner.train_buffered.remote(

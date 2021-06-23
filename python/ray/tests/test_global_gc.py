@@ -16,7 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 def test_auto_local_gc(shutdown_only):
-    ray.init(num_cpus=2, _system_config={"local_gc_interval_s": 1})
+    ray.init(
+        num_cpus=2,
+        _system_config={
+            "local_gc_interval_s": 10,
+            "local_gc_min_interval_s": 5,
+            "global_gc_min_interval_s": 10
+        })
 
     class ObjectWithCyclicRef:
         def __init__(self):

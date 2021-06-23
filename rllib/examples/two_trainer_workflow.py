@@ -137,7 +137,7 @@ if __name__ == "__main__":
                        obs_space, act_space, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

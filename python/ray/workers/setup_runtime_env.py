@@ -14,7 +14,8 @@ import ray
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
-from ray.test_utils import get_wheel_filename, get_master_wheel_url
+from ray.test_utils import (get_wheel_filename, get_master_wheel_url,
+                            get_release_wheel_url)
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -34,6 +35,9 @@ def setup(input_args):
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
 
+    # add worker-shim-pid argument
+    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
+
     commands = []
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
 
@@ -49,7 +53,10 @@ def setup(input_args):
             py_version = ".".join(map(str,
                                       sys.version_info[:3]))  # like 3.6.10
             ray_pip = current_ray_pip_specifier()
-            extra_pip_dependencies = [ray_pip] if ray_pip else []
+            if ray_pip and not runtime_env.get("_skip_inject_ray"):
+                extra_pip_dependencies = [ray_pip, "ray[default]"]
+            else:
+                extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              extra_pip_dependencies)
             # Locking to avoid multiple processes installing concurrently
@@ -155,7 +162,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         # Running on a nightly wheel.
         return get_master_wheel_url()
     else:
-        return f"ray[all]=={ray.__version__}"
+        return get_release_wheel_url()
 
 
 def inject_dependencies(
