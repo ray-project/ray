@@ -469,10 +469,8 @@ TEST_P(PullManagerTest, TestPinActiveObjects) {
   // Check we pin objects belonging to active bundles.
   allow_pin_ = true;
   ASSERT_EQ(NumPinnedObjects(), 0);
-  RAY_LOG(ERROR) << pull_manager_.DebugString();
   ASSERT_EQ(pull_manager_.RemainingQuota(), 1);
   pull_manager_.PinNewObjectIfNeeded(oids[0]);
-  RAY_LOG(ERROR) << pull_manager_.DebugString();
   // Now we have more space (object manager should also report more space used),
   // so remaining quota would go back to 1 on the avail memory report.
   ASSERT_EQ(pull_manager_.RemainingQuota(), 2);
