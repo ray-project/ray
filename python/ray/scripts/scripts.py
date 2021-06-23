@@ -544,8 +544,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "Will use value of `{}` as remote Redis server address(es). If the primary one is not reachable, we starts new one(s) with ports specified by `{}` in local.",
                 cf.bold("--address"), cf.bold("--port"))
-
-        if address is not None:
             external_addresses = address.split(",")
             reachable = False
             try:
