@@ -40,6 +40,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -100,7 +101,7 @@ struct CoreWorkerOptions {
         metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
-        worker_id(WorkerID::FromRandom().Binary()) {}
+        worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -186,8 +187,8 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The (binary) worker id for this worker.
-  std::string worker_id;
+  /// The PID of the process for setup worker runtime env.
+  pid_t worker_shim_pid;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -344,7 +345,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
-  CoreWorker(const CoreWorkerOptions &options);
+  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
 
