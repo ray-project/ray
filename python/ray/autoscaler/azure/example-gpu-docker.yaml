@@ -88,8 +88,10 @@ file_mounts: {
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
-    # get rid of annoying Ubuntu message
+    # enable docker setup
     - sudo usermod -aG docker $USER || true
+    - sleep 10  # delay to avoid docker permission denied errors
+    # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.

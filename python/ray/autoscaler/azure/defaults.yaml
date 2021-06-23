@@ -63,7 +63,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 20.07.06
+                imageVersion: 21.06.01
 
     ray.worker.default:
         # The minimum number of nodes of this type to launch.
@@ -79,7 +79,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 20.07.06
+                imageVersion: 21.06.01
                 # optionally set priority to use Spot instances
                 priority: Spot
                 # set a maximum price for spot instances if desired
@@ -119,8 +119,10 @@ rsync_filter: []
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
-    # get rid of annoying Ubuntu message
+    # enable docker setup
     - sudo usermod -aG docker $USER || true
+    - sleep 10  # delay to avoid docker permission denied errors
+    # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
@@ -129,8 +131,8 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
-    # - echo 'conda activate py37_pytorch' >> ~/.bashrc
-    - (conda activate py37_tensorflow &> /dev/null && echo 'conda activate py37_tensorflow' >> ~/.bashrc) || true
+    # - echo 'conda activate py38_pytorch' >> ~/.bashrc
+    - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
     - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
