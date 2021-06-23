@@ -24,6 +24,7 @@ NUM_NODES = 4
 # RandomTest setup constants
 CPUS_PER_NODE = 10
 
+
 def update_progress(result):
     """
     Write test result json to /tmp/, which will be read from 
@@ -34,6 +35,7 @@ def update_progress(result):
                                       "/tmp/release_test_output.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
+
 
 cluster = Cluster()
 for i in range(NUM_NODES):
@@ -49,11 +51,10 @@ for i in range(NUM_NODES):
     )
 
 ray.init(
-    namespace="serve_failure_test", 
-    address=cluster.address, 
-    dashboard_host="0.0.0.0", 
-    log_to_driver=False
-)
+    namespace="serve_failure_test",
+    address=cluster.address,
+    dashboard_host="0.0.0.0",
+    log_to_driver=False)
 serve.start(detached=True)
 
 

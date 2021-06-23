@@ -26,6 +26,7 @@ NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
 TIME_PER_CYCLE = "60m"
 
+
 def update_progress(result):
     """
     Write test result json to /tmp/, which will be read from 
@@ -36,6 +37,7 @@ def update_progress(result):
                                       "/tmp/release_test_output.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
+
 
 cluster = Cluster()
 for i in range(NUM_NODES):
@@ -52,6 +54,7 @@ for i in range(NUM_NODES):
 
 ray.init(address=cluster.address, dashboard_host="0.0.0.0")
 serve.start()
+
 
 @serve.deployment(name="echo", num_replicas=NUM_REPLICAS)
 class Echo:
