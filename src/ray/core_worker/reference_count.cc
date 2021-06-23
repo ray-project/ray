@@ -162,10 +162,10 @@ void ReferenceCounter::AddObjectRefStats(
 bool ReferenceCounter::TansferToLocal(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  if(it == object_id_refs_.end()) {
+  if (it == object_id_refs_.end()) {
     return false;
   }
-  if(it->second.on_ref_removed) {
+  if (it->second.on_ref_removed) {
     it->second.on_ref_removed(object_id);
     it->second.on_ref_removed = nullptr;
   }
@@ -868,12 +868,12 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       RAY_CHECK(inner_it != object_id_refs_.end());
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
-          auto inserted = inner_it->second.borrowers.insert(owner_address).second;
-          RAY_LOG(DEBUG) << "Add borrower " << inner_id << ", " << inserted;
-          if (inserted) {
-            // Wait for it to remove its reference.
-            WaitForRefRemoved(inner_it, owner_address, object_id);
-          }
+        auto inserted = inner_it->second.borrowers.insert(owner_address).second;
+        RAY_LOG(DEBUG) << "Add borrower " << inner_id << ", " << inserted;
+        if (inserted) {
+          // Wait for it to remove its reference.
+          WaitForRefRemoved(inner_it, owner_address, object_id);
+        }
       } else {
         auto inserted =
             inner_it->second.stored_in_objects.emplace(object_id, owner_address).second;

@@ -22,9 +22,9 @@ namespace ray {
 
 namespace raylet {
 
-void LocalObjectManager::PinObjects(
-    const std::vector<ObjectID> &object_ids, const rpc::Address &owner_address,
-    std::vector<std::unique_ptr<RayObject>> objects) {
+void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
+                                    const rpc::Address &owner_address,
+                                    std::vector<std::unique_ptr<RayObject>> objects) {
   RAY_CHECK(object_ids.size() == objects.size())
       << "Invalid input with object_ids.size()==" << object_ids.size()
       << " and objects.size()==" << objects.size();

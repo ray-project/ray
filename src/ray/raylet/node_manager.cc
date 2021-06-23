@@ -2113,7 +2113,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
-        "objects may have been evicted while there are still references in scope.";
+           "objects may have been evicted while there are still references in scope.";
     // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
     send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
     return;

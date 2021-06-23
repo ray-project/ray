@@ -73,9 +73,9 @@ class LocalObjectManager {
   /// \param objects Pointers to the objects to be pinned. The pointer should
   ///   be kept in scope until the object can be released. If it's empty,
   ///   it adds an owner address to the existing pinned object
-  void PinObjects(
-      const std::vector<ObjectID> &object_ids, const rpc::Address &owner_address,
-      std::vector<std::unique_ptr<RayObject>> objects);
+  void PinObjects(const std::vector<ObjectID> &object_ids,
+                  const rpc::Address &owner_address,
+                  std::vector<std::unique_ptr<RayObject>> objects);
 
   /// Wait for the objects' owner to free the object.  The objects will be
   /// released when the owner at the given address fails or replies that the

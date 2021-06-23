@@ -2880,13 +2880,15 @@ void CoreWorker::ShareOwnershipInternal(
                 obj->set_object_id(result.first.Binary());
                 obj->set_object_size(result.second->GetSize());
                 obj->set_pinned_at_node(node_id.Binary());
-                if (result.second->GetData() != nullptr && result.second->GetData()->IsPlasmaBuffer()) {
+                if (result.second->GetData() != nullptr &&
+                    result.second->GetData()->IsPlasmaBuffer()) {
                   obj->set_in_plasma(true);
                 } else {
                   obj->set_in_plasma(false);
                   auto ray_obj = obj->mutable_ray_object();
                   if (result.second->GetData() != nullptr) {
-                    ray_obj->set_data(result.second->GetData()->Data(), result.second->GetData()->Size());
+                    ray_obj->set_data(result.second->GetData()->Data(),
+                                      result.second->GetData()->Size());
                   }
                   if (result.second->GetMetadata() != nullptr) {
                     ray_obj->set_metadata(result.second->GetMetadata()->Data(),
