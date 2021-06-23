@@ -113,7 +113,6 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     absl::MutexLock lock(&active_objects_mu_);
 
     // First calculate the bytes we need.
-    std::vector<ObjectID> to_pull;
     size_t bytes_to_pull = 0;
     for (const auto &ref : next_request_it->second.objects) {
       auto obj_id = ObjectRefToId(ref);
@@ -124,7 +123,6 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
         auto it = object_pull_requests_.find(obj_id);
         RAY_CHECK(it != object_pull_requests_.end());
         bytes_to_pull += it->second.object_size;
-        to_pull.push_back(obj_id);
       }
     }
 
@@ -139,12 +137,16 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
     num_bytes_being_pulled_ += bytes_to_pull;
-    for (const auto &obj_id : to_pull) {
+    for (const auto &ref : next_request_it->second.objects) {
+      auto obj_id = ObjectRefToId(ref);
+      bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
-      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
-      TryPinObject(obj_id);
-      objects_to_pull->push_back(obj_id);
-      ResetRetryTimer(obj_id);
+      if (needs_pull) {
+        RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+        TryPinObject(obj_id);
+        objects_to_pull->push_back(obj_id);
+        ResetRetryTimer(obj_id);
+      }
     }
   }
 

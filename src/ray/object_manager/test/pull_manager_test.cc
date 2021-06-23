@@ -32,7 +32,6 @@ class PullManagerTestWithCapacity {
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
             [this]() { num_object_store_full_calls_++; },
-            // TODO(ekl) test pinning.
             [this](const ObjectID &object_id) { return nullptr; }) {}
 
   void AssertNoLeaks() {
