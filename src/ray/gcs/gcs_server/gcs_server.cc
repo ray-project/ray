@@ -189,7 +189,7 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
   gcs_resource_manager_ =
-      std::make_shared<GcsResourceManager>(main_service_, gcs_table_storage_);
+      std::make_shared<GcsResourceManager>(gcs_table_storage_);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
