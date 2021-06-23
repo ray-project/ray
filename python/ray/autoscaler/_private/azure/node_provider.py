@@ -214,10 +214,10 @@ class AzureNodeProvider(NodeProvider):
 
         # TODO: we could get the private/public ips back directly
         if hasattr(self.resource_client.deployments, "create_or_update"):
-            create_or_update = self.resource_client.deployments.create_or_update
+            create = self.resource_client.deployments.create_or_update
         else:
-            create_or_update = self.resource_client.deployments.begin_create_or_update
-        create_or_update(
+            create = self.resource_client.deployments.begin_create_or_update
+        create(
             resource_group_name=resource_group,
             deployment_name="ray-vm-{}".format(name_tag),
             parameters=parameters).wait()

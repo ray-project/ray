@@ -35,9 +35,11 @@ def _configure_resource_group(config):
     # TODO: look at availability sets
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
     resource_client = _get_client(ResourceManagementClient, config)
-    
-    _, cli_subscription_id = get_azure_cli_credentials(resource=ResourceManagementClient)
-    subscription_id = config["provider"].get("subscription_id", cli_subscription_id)
+
+    _, cli_subscription_id = get_azure_cli_credentials(
+        resource=ResourceManagementClient)
+    subscription_id = config["provider"].get("subscription_id",
+                                             cli_subscription_id)
     logger.info("Using subscription id: %s", subscription_id)
     config["provider"]["subscription_id"] = subscription_id
 
