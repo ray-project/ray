@@ -1774,21 +1774,40 @@ def install_nightly(verbose, dryrun):
 
 @cli.command()
 @click.option(
-    "--output", "-o", required=False, type=str, help="Output directory.")
-def get_cpp_example(output):
-    """Copy cpp example project to output directory."""
+    "--copy-project-to",
+    "-cp",
+    required=False,
+    type=str,
+    help="Output directory.")
+def get_cpp_library(copy_project_to):
+    """Get the paths of cpp library and example project."""
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    if not output:
-        output = "."
-    if not os.path.isdir(output):
-        raise Exception(
-            "Please give an existing output directory by '--output' or '-o'.")
-    input = os.path.join(raydir, "core/src/ray/cpp/example")
-    output_pro = os.path.join(output, os.path.basename(input))
-    shutil.copytree(input, output_pro)
-    print(
-        f"C++ example project has been copied to {os.path.abspath(output_pro)}"
-    )
+    cpp_example_dir = os.path.join(raydir, "core/src/ray/cpp/example")
+    cpp_library_dir = os.path.join(cpp_example_dir, "thirdparty")
+    welcome_msg = "Welcome to use ray C++ API."
+    print("-" * len(welcome_msg))
+    print("Welcome to use ray C++ API.")
+    print("-" * len(welcome_msg))
+    print("\nYou can find ray C++ library in ")
+    print(f"    {cpp_library_dir}")
+    print("Please include and link this library in your projects by yourself.")
+    print("\nOr, you can use our template bazel project directly."
+          "You can find it in ")
+    print(f"    {cpp_example_dir}")
+    if copy_project_to:
+        if not os.path.isdir(copy_project_to):
+            raise Exception("Please give an existing directory by "
+                            "'--copy-project-to' or '-cp'.")
+        input = os.path.join(raydir, "core/src/ray/cpp/example")
+        output_pro = os.path.join(copy_project_to, os.path.basename(input))
+        shutil.copytree(input, output_pro)
+        print("\nC++ template project has been copied to "
+              f"{os.path.abspath(output_pro)}. "
+              "To build and run this template, run \n"
+              f"pushd {os.path.abspath(output_pro)} && bazel run //:example\n")
+    else:
+        print(
+            "Copy the template project by \"--copy-project-to\" if needed.\n")
 
 
 def add_command_alias(command, name, hidden):
@@ -1823,7 +1842,7 @@ cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
-cli.add_command(get_cpp_example)
+cli.add_command(get_cpp_library)
 
 try:
     from ray.serve.scripts import serve_cli
