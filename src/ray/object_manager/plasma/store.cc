@@ -329,7 +329,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
     const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
     if (footprint_limit != 0) {
       const float allocated_percentage =
-          ((float)PlasmaAllocator::Allocated()) / footprint_limit;
+          static_cast<float>(PlasmaAllocator::Allocated()) / footprint_limit;
       if (allocated_percentage > object_spilling_threshold_) {
         RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
                        << allocated_percentage << "% is above threshold "
