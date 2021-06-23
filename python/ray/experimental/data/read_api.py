@@ -1,18 +1,39 @@
 import builtins
-from typing import List, Any, Union, Optional
+from typing import List, Any, Union, Optional, Iterator, TYPE_CHECKING
 
 import pyarrow.parquet as pq
-import pyarrow as pa
+import pyarrow
+
+if TYPE_CHECKING:
+    import pandas
+    import dask
+    import modin
+    import pyspark
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.block import BlockRef, ListBlock
+from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock
+
+
+def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
+    block_size = max(1, len(items) // parallelism)
+
+    blocks: List[ObjectRef[Block]] = []
+    i = 0
+    while i < len(items):
+        builder = ListBlock.builder()
+        for item in items[i:i + block_size]:
+            builder.add(item)
+        blocks.append(ray.put(builder.build().serialize()))
+        i += block_size
+
+    return Dataset(blocks, ListBlock)
 
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     block_size = max(1, n // parallelism)
-    blocks: List[BlockRef] = []
+    blocks: List[ObjectRef[Block]] = []
 
     @ray.remote
     def gen_block(start: int, count: int) -> ListBlock:
@@ -37,7 +58,7 @@ def range_arrow(n: int, num_blocks: int = 200) -> Dataset[dict]:
     @ray.remote
     def gen_block(start: int, count: int) -> "ArrowBlock":
         return ArrowBlock(
-            pa.Table.from_pydict({
+            pyarrow.Table.from_pydict({
                 "value": list(builtins.range(start, start + count))
             })).serialize()
 
@@ -48,25 +69,11 @@ def range_arrow(n: int, num_blocks: int = 200) -> Dataset[dict]:
     return Dataset(blocks, ArrowBlock)
 
 
-def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
-    block_size = max(1, len(items) // parallelism)
-
-    blocks: List[BlockRef] = []
-    i = 0
-    while i < len(items):
-        builder = ListBlock.builder()
-        for item in items[i:i + block_size]:
-            builder.add(item)
-        blocks.append(ray.put(builder.build().serialize()))
-        i += block_size
-
-    return Dataset(blocks, ListBlock)
-
-
 def read_parquet(paths: Union[str, List[str]],
+                 filesystem: Optional[pyarrow.fs.FileSystem] = None,
                  parallelism: int = 200,
                  columns: Optional[List[str]] = None,
-                 **kwargs) -> Dataset[dict]:
+                 **arrow_parquet_args) -> Dataset[dict]:
     """Read parquet format data from hdfs like filesystem into a Dataset.
 
     .. code-block:: python
@@ -79,12 +86,12 @@ def read_parquet(paths: Union[str, List[str]],
     Args:
         paths (Union[str, List[str]): a single file path or a list of file path
         columns (Optional[List[str]]): a list of column names to read
-        kwargs: the other parquet read options
+        arrow_parquet_args: the other parquet read options
 
     Returns:
         A Dataset
     """
-    pq_ds = pq.ParquetDataset(paths, **kwargs)
+    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
     pieces = pq_ds.pieces
     data_pieces = []
 
@@ -112,5 +119,39 @@ def read_parquet(paths: Union[str, List[str]],
     return Dataset([gen_read.remote(ps) for ps in nonempty_tasks], ArrowBlock)
 
 
-def read_binary_files(directory: str) -> Dataset[bytes]:
-    pass
+def read_json(paths: Union[str, List[str]],
+              filesystem: Optional[pyarrow.fs.FileSystem] = None,
+              parallelism: int = 200,
+              **arrow_json_args) -> Dataset[dict]:
+    raise NotImplementedError  # P0
+
+
+def read_csv(paths: Union[str, List[str]],
+             filesystem: Optional[pyarrow.fs.FileSystem] = None,
+             parallelism: int = 200,
+             **arrow_csv_args) -> Dataset[dict]:
+    raise NotImplementedError  # P0
+
+
+def read_binary_files(paths: Union[str, List[str]],
+                      include_paths: bool = False,
+                      filesystem: Optional[pyarrow.fs.FileSystem] = None,
+                      parallelism: int = 200) -> Dataset[bytes]:
+    raise NotImplementedError  # P0
+
+
+def from_dask(df: "dask.DataFrame") -> Dataset[dict]:
+    raise NotImplementedError  # P1
+
+
+def from_modin(df: "modin.DataFrame") -> Dataset[dict]:
+    raise NotImplementedError  # P1
+
+
+def from_pandas(
+        iter: Iterator[ObjectRef["pandas.DataFrame"]]) -> Dataset[dict]:
+    raise NotImplementedError  # P1
+
+
+def from_spark(df: "pyspark.sql.DataFrame") -> Dataset[dict]:
+    raise NotImplementedError  # P2

@@ -1,30 +1,32 @@
 from typing import TypeVar, List, Any
 
 import ray
-from ray.experimental.data.impl.block import Block, BlockRef
+from ray.experimental.data.impl.block import Block, ObjectRef
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 
 class ComputePool:
-    def apply(self, fn: Any, blocks: List[Block[T]]) -> List[BlockRef]:
+    def apply(self, fn: Any, blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
         raise NotImplementedError
 
 
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: List[Block[T]]) -> List[BlockRef]:
+              blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
         if remote_args:
             fn = ray.remote(**remote_args)(fn)
         else:
             fn = ray.remote(fn)
-        return [fn.remote(b) for b in blocks]
+        blocks = [fn.remote(b) for b in blocks]
+        ray.wait(blocks, num_returns=len(blocks))
+        return blocks
 
 
 class ActorPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: List[Block[T]]) -> List[BlockRef]:
+              blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
         class Worker:
             def ready(self):
                 print("Worker created")

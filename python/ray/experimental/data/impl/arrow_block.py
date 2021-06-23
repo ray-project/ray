@@ -16,6 +16,10 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._columns = collections.defaultdict(list)
 
     def add(self, item: dict) -> None:
+        if not isinstance(item, dict):
+            raise ValueError(
+                "Returned elements of an ArrowBlock must be of type `dict`, "
+                "got {} (type {}).".format(item, type(item)))
         for key, value in item.items():
             self._columns[key].append(value)
 

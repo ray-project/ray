@@ -4,8 +4,8 @@ from typing import TypeVar, List, Generic, Any, Iterator, TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas
 
-# TODO(ekl) how do we express ObjectRef[Block]?
-BlockRef = List
+# TODO(ekl) Ray provide an ObjectRef type natively?
+ObjectRef = List
 T = TypeVar("T")
 
 

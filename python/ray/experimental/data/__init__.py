@@ -1,6 +1,17 @@
-from ray.experimental.data.read_api import range, from_items, \
-    read_parquet, read_binary_files, range_arrow
+from ray.experimental.data.read_api import from_items, range, range_arrow, \
+    read_parquet, read_json, read_csv, read_binary_files, from_dask, \
+    from_modin, from_pandas, from_spark
 
 __all__ = [
-    "read_parquet", "range", "range_arrow", "from_items", "read_binary_files"
+    "from_items",
+    "range",
+    "range_arrow",
+    "read_parquet",
+    "read_json",
+    "read_csv",
+    "read_binary_files",
+    "from_dask",
+    "from_modin",
+    "from_pandas",
+    "from_spark",
 ]

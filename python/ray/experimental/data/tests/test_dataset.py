@@ -11,7 +11,9 @@ from ray.tests.conftest import *  # noqa
 
 def test_basic(ray_start_regular_shared):
     ds = ray.experimental.data.range(5)
-    assert ds.map(lambda x: x + 1).take() == [1, 2, 3, 4, 5]
+    assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+    assert ds.count() == 5
+    assert sorted(list(ds.to_local_iterator())) == [0, 1, 2, 3, 4]
 
 
 def test_from_items(ray_start_regular_shared):
