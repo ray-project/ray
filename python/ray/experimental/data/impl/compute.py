@@ -1,5 +1,7 @@
 from typing import TypeVar, List, Any
 
+import tqdm
+
 import ray
 from ray.experimental.data.impl.block import Block, ObjectRef
 
@@ -15,30 +17,42 @@ class ComputePool:
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
-        if remote_args:
-            fn = ray.remote(**remote_args)(fn)
-        else:
-            fn = ray.remote(fn)
-        blocks = [fn.remote(b) for b in blocks]
-        ray.wait(blocks, num_returns=len(blocks))
+        try:
+            map_bar = tqdm.tqdm(total=len(blocks), position=0)
+            map_bar.set_description("Map Progress")
+
+            if remote_args:
+                fn = ray.remote(**remote_args)(fn)
+            else:
+                fn = ray.remote(fn)
+            blocks = [fn.remote(b) for b in blocks]
+            remaining = blocks
+
+            while remaining:
+                done, remaining = ray.wait(remaining)
+                map_bar.update(len(done))
+        finally:
+            map_bar.close()
         return blocks
 
 
 class ActorPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
+
+        map_bar = tqdm.tqdm(total=len(blocks), position=0)
+        map_bar.set_description("Map Progress")
+
         class Worker:
             def ready(self):
-                print("Worker created")
                 return "ok"
 
             def process_block(self, block: Block[T]) -> Block[U]:
                 return fn(block)
 
-        if remote_args:
-            Worker = ray.remote(**remote_args)(Worker)
-        else:
-            Worker = ray.remote(Worker)
+        if "num_cpus" not in remote_args:
+            remote_args["num_cpus"] = 1
+        Worker = ray.remote(**remote_args)(Worker)
 
         workers = [Worker.remote()]
         tasks = {w.ready.remote(): w for w in workers}
@@ -49,12 +63,14 @@ class ActorPool(ComputePool):
         while len(blocks_out) < len(blocks):
             ready, _ = ray.wait(list(tasks), timeout=0.01, num_returns=1)
             if not ready:
-                if len(ready_workers) / len(workers) > 0.75:
+                if len(ready_workers) / len(workers) > 0.8:
                     w = Worker.remote()
                     workers.append(w)
                     tasks[w.ready.remote()] = w
-                    print("Creating new worker, {} pending, {} total".format(
-                        len(workers) - len(ready_workers), len(workers)))
+                    map_bar.set_description(
+                        "Map Progress ({} actors {} pending)".format(
+                            len(ready_workers),
+                            len(workers) - len(ready_workers)))
                 continue
 
             [obj_id] = ready
@@ -64,6 +80,7 @@ class ActorPool(ComputePool):
             # Process task result.
             if worker in ready_workers:
                 blocks_out.append(obj_id)
+                map_bar.update(1)
             else:
                 ready_workers.add(worker)
 
@@ -71,6 +88,7 @@ class ActorPool(ComputePool):
             if blocks_in:
                 tasks[worker.process_block.remote(blocks_in.pop())] = worker
 
+        map_bar.close()
         return blocks_out
 
 
