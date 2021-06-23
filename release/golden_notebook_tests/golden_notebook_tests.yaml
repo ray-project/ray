@@ -34,6 +34,6 @@
     compute_template: gpu_tpl.yaml
 
   run:
-    timeout: 900
+    timeout: 1800
     script: python workloads/torch_tune_serve_test.py
 

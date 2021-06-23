@@ -118,26 +118,26 @@ class MnistDeployment:
 
 
 def setup_serve(model_id):
-    serve.start()
+    serve.start(http_options={
+        "location": "EveryNode"
+    })  # Start on every node so `predict` can hit localhost.
     MnistDeployment.options(
         num_replicas=2, ray_actor_options={
             "num_gpus": 1
         }).deploy(model_id)
 
 
-def predict(image):
-    # handle = MnistDeployment.get_handle()
-    # return ray.get(handle.my_batch_handler.remote(image.numpy().tolist()))
-    response = requests.post(
-        "http://localhost:8000/mnist", json={"image": image.numpy().tolist()})
-    try:
-        return response.json()["result"]
-    except:  # noqa: E722
-        return -1
-
-
 @ray.remote
 def predict_and_validate(index, image, label):
+    def predict(image):
+        response = requests.post(
+            "http://localhost:8000/mnist",
+            json={"image": image.numpy().tolist()})
+        try:
+            return response.json()["result"]
+        except:  # noqa: E722
+            return -1
+
     prediction = predict(image)
     print("Querying model with example #{}. "
           "Label = {}, Prediction = {}, Correct = {}".format(
@@ -145,12 +145,15 @@ def predict_and_validate(index, image, label):
     return prediction
 
 
-def test_predictions():
+def test_predictions(test_mode=False):
     # Load in data
     dataset = load_mnist_data(False, True)
-    num_to_test = 10
+    num_to_test = 10 if test_mode else 1000
     filtered_dataset = [dataset[i] for i in range(num_to_test)]
     images, labels = zip(*filtered_dataset)
+
+    # Remote function calls are done here for parallelism.
+    # As a byproduct `predict` can hit localhost.
     predictions = ray.get([
         predict_and_validate.remote(i, images[i], labels[i])
         for i in range(num_to_test)
@@ -189,6 +192,6 @@ if __name__ == "__main__":
     setup_serve(model_id)
 
     print("Testing Prediction Service.")
-    test_predictions()
+    test_predictions(args.smoke_test)
 
     print("Test Successful!")
