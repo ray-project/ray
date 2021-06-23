@@ -388,7 +388,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   auto local_chunk_reader = [this, object_id, total_data_size, metadata_size](
                                 uint64_t chunk_index,
                                 rpc::PushRequest &push_request) -> Status {
-    std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+    std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
         buffer_pool_.GetChunk(object_id, total_data_size, metadata_size, chunk_index);
     // Fail on status not okay. The object is local, and there is
     // no other anticipated error here.
@@ -789,7 +789,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
   if (!pull_manager_->IsObjectActive(object_id, &still_required)) {

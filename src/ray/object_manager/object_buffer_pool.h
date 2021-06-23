@@ -35,14 +35,20 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length)
-        : chunk_index(chunk_index), data(data), buffer_length(buffer_length){};
+    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length,
+              std::shared_ptr<Buffer> buffer_ref)
+        : chunk_index(chunk_index),
+          data(data),
+          buffer_length(buffer_length),
+          buffer_ref(buffer_ref){};
     /// A pointer to the start position of this object chunk.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
     uint8_t *data;
     /// The size of this object chunk.
     uint64_t buffer_length;
+    /// A shared reference to the underlying buffer, keeping it alive.
+    std::shared_ptr<Buffer> buffer_ref;
   };
 
   /// Constructor.
@@ -80,7 +86,7 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   /// \return A pair consisting of a ChunkInfo and status of invoking this method.
   /// An IOError status is returned if the Get call on the plasma store fails.
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> GetChunk(
+  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> GetChunk(
       const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
       uint64_t chunk_index);
 
@@ -108,7 +114,7 @@ class ObjectBufferPool {
   /// An IOError status is returned if object creation on the store client fails,
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(
+  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> CreateChunk(
       const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
       uint64_t metadata_size, uint64_t chunk_index);
 
@@ -153,7 +159,8 @@ class ObjectBufferPool {
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
   /// either be read or written to in parallel.
   std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
-                                     uint64_t data_size);
+                                     uint64_t data_size,
+                                     std::shared_ptr<Buffer> buffer_ref);
 
   /// Holds the state of a get buffer.
   struct GetBufferState {
@@ -189,7 +196,7 @@ class ObjectBufferPool {
   };
 
   /// Returned when GetChunk or CreateChunk fails.
-  const ChunkInfo errored_chunk_ = {0, nullptr, 0};
+  const ChunkInfo errored_chunk_ = {0, nullptr, 0, nullptr};
 
   /// Mutex on public methods for thread-safe operations on
   /// get_buffer_state_, create_buffer_state_, and store_client_.
