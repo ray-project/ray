@@ -281,7 +281,7 @@ def test_pull_request_retry(shutdown_only):
 
         remote_ref = put.remote()
 
-        ready, _ = ray.wait([remote_ref], timeout=10)
+        ready, _ = ray.wait([remote_ref], timeout=30)
 
         if ray.worker.global_worker.core_worker.plasma_unlimited():
             # Sadly, the test cannot work in this mode.
