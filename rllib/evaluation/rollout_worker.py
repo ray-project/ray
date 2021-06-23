@@ -380,14 +380,17 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # No Env will be used in this particular worker (not needed).
-        if worker_index == 0 and num_workers > 0 and \
-                policy_config["create_env_on_driver"] is False:
-            self.env = None
+        self.env = None
+
         # Create an env for this worker.
-        else:
-            self.env = _validate_env(env_creator(env_context))
-            # Validate environment, if validation function provided.
+        if not (worker_index == 0 and num_workers > 0
+                and policy_config["create_env_on_driver"] is False):
+            # Run the `env_creator` function passing the EnvContext.
+            self.env = env_creator(env_context)
+        if self.env is not None:
+            # Validate environment (general validation function).
+            self.env = _validate_env(self.env)
+            # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
@@ -436,8 +439,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 # framestacking via trajectory view API is enabled.
                 num_framestacks = model_config.get("num_framestacks", 0)
 
-                # Trajectory view API is on and num_framestacks=auto: Only
-                # stack traj. view based if old `framestack=[invalid value]`.
+                # Trajectory view API is on and num_framestacks=auto:
+                # Only stack traj. view based if old
+                # `framestack=[invalid value]`.
                 if num_framestacks == "auto":
                     if framestack == DEPRECATED_VALUE:
                         model_config["num_framestacks"] = num_framestacks = 4
@@ -462,6 +466,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return record_env_wrapper(env, record_env, log_dir,
                                               policy_config)
 
+            # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):
@@ -476,11 +481,12 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
-            policy_spec, self.env, spaces=spaces)
+            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
-        self.policies_to_train: List[PolicyID] = list(policy_dict.keys())
-        self.set_policies_to_train(policies_to_train)
+        self.policies_to_train: List[PolicyID] = policies_to_train or list(
+            policy_dict.keys())
+        self.set_policies_to_train(self.policies_to_train)
 
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
@@ -1356,10 +1362,12 @@ class RolloutWorker(ParallelIteratorWorker):
 
 def _validate_and_canonicalize(
         policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
-        env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[
-            gym.spaces.Space, gym.spaces.Space]]] = None) -> \
-        MultiAgentPolicyConfigDict:
+        env: Optional[EnvType],
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]],
+        policy_config: Optional[PartialTrainerConfigDict],
+) -> MultiAgentPolicyConfigDict:
+
     if isinstance(policy, dict):
         _validate_multiagent_config(policy)
         return policy
@@ -1376,11 +1384,22 @@ def _validate_and_canonicalize(
                 DEFAULT_POLICY_ID: (policy, env.observation_space,
                                     env.action_space, {})
             }
-        else:
-            return {
-                DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
-                                    spaces[DEFAULT_POLICY_ID][1], {})
+
+        if spaces is None:
+            if "action_space" not in policy_config or \
+                    "observation_space" not in policy_config:
+                raise ValueError(
+                    "If no env given, must provide obs/action spaces either "
+                    "in the `multiagent.policies` dict or under "
+                    "`config.[observation|action]_space`!")
+            spaces = {
+                DEFAULT_POLICY_ID: (policy_config["observation_space"],
+                                    policy_config["action_space"])
             }
+        return {
+            DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
+                                spaces[DEFAULT_POLICY_ID][1], {})
+        }
 
 
 def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
@@ -1388,8 +1407,7 @@ def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
     # Loop through all policy definitions in multi-agent policie
     for k, v in policy.items():
         if not isinstance(k, str):
-            raise ValueError("policy keys must be strs, got {}".format(
-                type(k)))
+            raise ValueError("Policy key must be str, got {}!".format(k))
         if not isinstance(v, (tuple, list)) or len(v) != 4:
             raise ValueError(
                 "policy values must be tuples/lists of "
