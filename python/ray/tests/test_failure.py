@@ -4,9 +4,7 @@ import tempfile
 import time
 
 import numpy as np
-import psutil
 import pytest
-import signal
 
 import ray
 import ray._private.utils
