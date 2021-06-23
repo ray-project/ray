@@ -65,7 +65,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 
   // Immediately fulfill it using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited()) {
-    PlasmaError error = create_callback(&result, /*fallback_allocator=*/true, nullptr);
+    PlasmaError error = create_callback(/*fallback_allocator=*/true, &result, nullptr);
     return {result, error};
   }
 
@@ -89,11 +89,11 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
-                                          bool fallback_allocator,
+Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
+                                          std::unique_ptr<CreateRequest> &request,
                                           bool *spilling_required) {
   request->error =
-      request->create_callback(&request->result, fallback_allocator, spilling_required);
+      request->create_callback(fallback_allocator, &request->result, spilling_required);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else if (request->error == PlasmaError::TransientOutOfMemory) {
@@ -110,7 +110,7 @@ Status CreateRequestQueue::ProcessRequests() {
     auto request_it = queue_.begin();
     bool spilling_required = false;
     auto status =
-        ProcessRequest(*request_it, /*fallback_allocator=*/false, &spilling_required);
+        ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
     if (spilling_required) {
       spill_objects_callback_();
     }
@@ -139,7 +139,7 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         if (plasma_unlimited_) {
           // Trigger the fallback allocator.
-          status = ProcessRequest(*request_it, /*fallback_allocator=*/true,
+          status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
                                   &spilling_required);
         }
         if (!status.ok()) {

@@ -835,8 +835,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    auto handle_create = [this, client, message](PlasmaObject *result,
-                                                 bool fallback_allocator,
+    auto handle_create = [this, client, message](bool fallback_allocator,
+                                                 PlasmaObject *result,
                                                  bool *spilling_required) {
       return HandleCreateObjectRequest(client, message, fallback_allocator, result,
                                        spilling_required);
