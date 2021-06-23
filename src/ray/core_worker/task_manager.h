@@ -242,6 +242,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
 
+  std::vector<ObjectID> PutIntoStore(const ObjectID& object_id,
+                                     bool transferred,
+                                     bool is_plasma,
+                                     NodeID pinned_node,
+                                     size_t object_size,
+                                     const std::string& data,
+                                     const std::string& meta,
+                                     const std::vector<ObjectID>& inline_nested_id);
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 

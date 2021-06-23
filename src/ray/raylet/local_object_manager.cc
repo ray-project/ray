@@ -24,19 +24,15 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(
     const std::vector<ObjectID> &object_ids, const rpc::Address &owner_address,
-    absl::optional<std::vector<std::unique_ptr<RayObject>>> objects) {
-  RAY_CHECK(!objects || object_ids.size() == objects->size())
+    std::vector<std::unique_ptr<RayObject>> objects) {
+  RAY_CHECK(object_ids.size() == objects.size())
       << "Invalid input with object_ids.size()==" << object_ids.size()
-      << " and objects.size()==" << (objects ? objects->size() : 0UL);
+      << " and objects.size()==" << objects.size();
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
-    if (!objects) {
-      // This request is to share the ownership with existing objects
-      // append the owner to the list
-      auto &owners = util::get_ref_or_fail(object_owners_, object_id);
-      RAY_CHECK(owners.emplace(owner_address).second) << "Owner has been added";
-    } else {
-      auto &object = objects->at(i);
+    auto owners = util::get_ptr(object_owners_, object_id);
+    if (owners == nullptr) {
+      auto &object = objects[i];
       if (object == nullptr) {
         RAY_LOG(ERROR) << "Plasma object " << object_id
                        << " was evicted before the raylet could pin it.";
@@ -46,8 +42,9 @@ void LocalObjectManager::PinObjects(
       pinned_objects_size_ += object->GetSize();
       RAY_CHECK(pinned_objects_.emplace(object_id, std::move(object)).second)
           << "object_id " << object_id << " has been added.";
-      object_owners_[object_id].emplace(owner_address);
+      owners = &object_owners_[object_id];
     }
+    owners->emplace(owner_address);
   }
 }
 

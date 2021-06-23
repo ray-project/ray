@@ -174,68 +174,97 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
+std::vector<ObjectID> TaskManager::PutIntoStore(
+    const ObjectID& object_id,
+    bool transferred,
+    bool in_plasma,
+    NodeID pinned_node,
+    size_t object_size,
+    const std::string& data,
+    const std::string& meta,
+    const std::vector<ObjectID>& inline_nested_id) {
+  if(transferred) {
+    reference_counter_->AddOwnedObject(object_id, {}, rpc_address_, "<transferred>",
+                                       object_size, false,
+                                       pinned_node);
+  } else {
+    reference_counter_->UpdateObjectSize(object_id, object_size);
+  }
+  std::vector<ObjectID> direct_return_ids;
+  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                 << object_size;
+  if (in_plasma) {
+    if (check_node_alive_(pinned_node)) {
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_node);
+      // Mark it as in plasma with a dummy object.
+      RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      object_id));
+    } else if(!transferred) {
+      reconstruct_object_callback_(object_id);
+    }
+  } else {
+    // NOTE(swang): If a direct object was promoted to plasma, then we do not
+    // record the node ID that it was pinned at, which means that we will not
+    // be able to reconstruct it if the plasma object copy is lost. However,
+    // this is okay because the pinned copy is on the local node, so we will
+    // fate-share with the object if the local node fails.
+    std::shared_ptr<LocalMemoryBuffer> data_buffer;
+    if (data.size() > 0) {
+      data_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t *>(
+              reinterpret_cast<const uint8_t *>(data.data())),
+          data.size());
+    }
+    std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+    if (meta.size() > 0) {
+      metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t *>(
+              reinterpret_cast<const uint8_t *>(meta.data())),
+          meta.size());
+    }
+    bool stored_in_direct_memory = in_memory_store_->Put(
+        RayObject(data_buffer, metadata_buffer, inline_nested_id),
+        object_id);
+    if (stored_in_direct_memory) {
+      direct_return_ids.push_back(object_id);
+    }
+  }
+  return direct_return_ids;
+}
+
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
+
+  for (auto &obj : reply.shared_obj_info()) {
+    ObjectID object_id = ObjectID::FromBinary(obj.object_id());
+    PutIntoStore(object_id,
+                 true,
+                 obj.in_plasma(),
+                 NodeID::FromBinary(obj.pinned_at_node()),
+                 obj.object_size(),
+                 obj.ray_object().data(),
+                 obj.ray_object().metadata(),
+                 IdVectorFromProtobuf<ObjectID>(obj.ray_object().nested_inlined_ids()));
+  }
 
   std::vector<ObjectID> direct_return_ids;
   std::vector<ObjectID> plasma_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-    reference_counter_->UpdateObjectSize(object_id, return_object.size());
-    RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
-                   << return_object.size();
-
-    if (return_object.in_plasma()) {
-      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
-      if (check_node_alive_(pinned_at_raylet_id)) {
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
-        // Mark it as in plasma with a dummy object.
-        RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        object_id));
-      } else {
-        RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
-                      << " in plasma on a dead node, attempting to recover";
-        reconstruct_object_callback_(object_id);
-      }
-    } else {
-      // NOTE(swang): If a direct object was promoted to plasma, then we do not
-      // record the node ID that it was pinned at, which means that we will not
-      // be able to reconstruct it if the plasma object copy is lost. However,
-      // this is okay because the pinned copy is on the local node, so we will
-      // fate-share with the object if the local node fails.
-      std::shared_ptr<LocalMemoryBuffer> data_buffer;
-      if (return_object.data().size() > 0) {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(
-                reinterpret_cast<const uint8_t *>(return_object.data().data())),
-            return_object.data().size());
-      }
-      std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-      if (return_object.metadata().size() > 0) {
-        metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(
-                reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-            return_object.metadata().size());
-      }
-      bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
-      if (stored_in_direct_memory) {
-        direct_return_ids.push_back(object_id);
-      }
-    }
+    direct_return_ids = PutIntoStore(object_id,
+                 false,
+                 return_object.in_plasma(),
+                 NodeID::FromBinary(worker_addr.raylet_id()),
+                 return_object.size(),
+                 return_object.data(),
+                 return_object.metadata(),
+                 IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids()));
   }
 
-  for (auto &obj : reply.shared_obj_info()) {
-    ObjectID object_id = ObjectID::FromBinary(obj.object_id());
-    reference_counter_->AddOwnedObject(object_id, {}, rpc_address_, "<transferred>",
-                                       obj.object_size(), false,
-                                       NodeID::FromBinary(obj.pinned_at_node()));
-  }
 
   TaskSpecification spec;
   bool release_lineage = true;

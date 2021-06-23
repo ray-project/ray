@@ -2108,16 +2108,18 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
-           "objects may have been evicted while there are still references in scope.";
+        "objects may have been evicted while there are still references in scope.";
     // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
     send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
     return;
   }
   local_object_manager_.PinObjects(object_ids, owner_address, std::move(results));
+
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(owner_address, object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);

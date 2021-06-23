@@ -372,6 +372,8 @@ message SharedObjectInfo {
   bytes object_id = 1;
   bytes pinned_at_node = 2;
   uint64 object_size = 3;
+  bool in_plasma = 4;
+  RayObject ray_object = 5;
 }
 
 message ShareOwnershipReply {

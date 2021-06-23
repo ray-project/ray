@@ -30,7 +30,7 @@ def test_object_transfer(shutdown_only):
     actor = Test.remote()
     v = actor.gen.remote()
     ray.wait([v])
-    ray.kill(actor)
+
     assert ray.get(ray.get(v)[0]) == b"a" * 10 * 1024 * 1024
 
 

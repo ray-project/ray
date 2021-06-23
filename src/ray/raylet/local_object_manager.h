@@ -18,8 +18,6 @@
 
 #include <functional>
 
-#include "absl/types/optional.h"
-
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -77,7 +75,7 @@ class LocalObjectManager {
   ///   it adds an owner address to the existing pinned object
   void PinObjects(
       const std::vector<ObjectID> &object_ids, const rpc::Address &owner_address,
-      absl::optional<std::vector<std::unique_ptr<RayObject>>> objects = absl::nullopt);
+      std::vector<std::unique_ptr<RayObject>> objects);
 
   /// Wait for the objects' owner to free the object.  The objects will be
   /// released when the owner at the given address fails or replies that the
