@@ -1,7 +1,7 @@
 import builtins
 import sys
 from typing import List, Any, Callable, Iterable, Generic, TypeVar, Union, \
-    Optional
+    Optional, Dict
 
 import pyarrow.parquet as pq
 import pyarrow as pa
@@ -51,14 +51,16 @@ class ComputePool:
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[BlockRef]:
-        fn = ray.remote(**remote_args)(fn)
+        if remote_args:
+            fn = ray.remote(**remote_args)(fn)
+        else:
+            fn = ray.remote(fn)
         return [fn.remote(b) for b in blocks]
 
 
 class ActorPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[BlockRef]:
-        @ray.remote(**remote_args)
         class Worker:
             def ready(self):
                 print("Worker created")
@@ -66,6 +68,11 @@ class ActorPool(ComputePool):
 
             def process_block(self, block: Block[T]) -> Block[U]:
                 return fn(block)
+
+        if remote_args:
+            Worker = ray.remote(**remote_args)(Worker)
+        else:
+            Worker = ray.remote(Worker)
 
         workers = [Worker.remote()]
         tasks = {w.ready.remote(): w for w in workers}
@@ -319,7 +326,7 @@ class ArrowDataset(Dataset[ArrowBlock]):
             for row in arrow_block:
                 result = fn(ArrowTableAccessor(row))
                 for key in result:
-                    if not key in columns_by_names:
+                    if key not in columns_by_names:
                         columns_by_names[key] = []
                     columns_by_names[key].append(result[key])
             return columns_by_names
@@ -336,7 +343,7 @@ class ArrowDataset(Dataset[ArrowBlock]):
                 results = fn(ArrowTableAccessor(row))
                 for result in results:
                     for key in result:
-                        if not key in columns_by_names:
+                        if key not in columns_by_names:
                             columns_by_names[key] = []
                         columns_by_names[key].append(result[key])
             return columns_by_names
@@ -365,23 +372,3 @@ class ArrowDataset(Dataset[ArrowBlock]):
             if len(output) >= limit:
                 break
         return output
-
-
-if __name__ == "__main__":
-    import os
-    import pandas as pd
-    import pyarrow as pa
-    tmp_path = "/tmp/f"
-    ray.init()
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
-
-    ds = ray.experimental.data.read_parquet(tmp_path)
-    import IPython
-    IPython.embed()
-    ds.show()

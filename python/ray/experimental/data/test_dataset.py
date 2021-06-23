@@ -31,7 +31,7 @@ def test_parquet(ray_start_regular_shared, tmp_path):
 
 def range_arrow(n: int, num_blocks: int = 200) -> "ArrowDataset":
     block_size = max(1, n // num_blocks)
-    blocks: List[BlockRef] = []
+    blocks = []
     i = 0
 
     @ray.remote
@@ -49,10 +49,12 @@ def test_pyarrow(ray_start_regular_shared):
     ds = range_arrow(5)
     assert ds.map(lambda x: {"b": x["a"] + 2}).take() == \
         [{"b": 2}, {"b": 3}, {"b": 4}, {"b": 5}, {"b": 6}]
-    assert ds.map(lambda x: {"b": x["a"] + 2}).filter(lambda x: x["b"] % 2 == 0).take() == \
+    assert ds.map(lambda x: {"b": x["a"] + 2}) \
+        .filter(lambda x: x["b"] % 2 == 0).take() == \
         [{"b": 2}, {"b": 4}, {"b": 6}]
-    assert ds.filter(lambda x: x["a"] == 0).flat_map(lambda x: [{"b": x["a"] + 2}, {"b": x["a"] + 20}]).take() == \
-        [{"b": 2}, {"b": 20}]
+    assert ds.filter(lambda x: x["a"] == 0) \
+        .flat_map(lambda x: [{"b": x["a"] + 2}, {"b": x["a"] + 20}]) \
+        .take() == [{"b": 2}, {"b": 20}]
 
 
 if __name__ == "__main__":
