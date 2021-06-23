@@ -452,9 +452,9 @@ def debug(address):
     help="Module path to the Python function that will be used to set up the "
     "environment for the worker process.")
 @add_click_options(logging_options)
-def start(node_ip_address, address, port, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port,
-          gcs_server_port, min_worker_port, max_worker_port, worker_port_list,
+def start(node_ip_address, address, port, redis_password, redis_shard_ports,
+          object_manager_port, node_manager_port, gcs_server_port,
+          min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port, block,
@@ -560,15 +560,15 @@ def start(node_ip_address, address, port, redis_password,
                     "The primary external redis server `{}` is not reachable. Will starts new one(s) with ports specified by `{}` in local.",
                     cf.bold(external_addresses[0]), cf.bold("--port"))
             if reachable:
-                ray_params.update_if_absent(external_addresses=external_addresses)
+                ray_params.update_if_absent(
+                    external_addresses=external_addresses)
                 if len(external_addresses) > 1:
                     num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if external"
                         " redis server(s) `{}` points to requires password.",
-                        cf.bold("--redis-password"),
-                        cf.bold("--address"))
+                        cf.bold("--redis-password"), cf.bold("--address"))
 
         node_ip_address = services.get_node_ip_address()
 
@@ -651,7 +651,7 @@ def start(node_ip_address, address, port, redis_password,
         redis_address = None
         if address is not None:
             (redis_address, redis_address_ip,
-            redis_address_port) = services.validate_redis_address(address)
+             redis_address_port) = services.validate_redis_address(address)
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
