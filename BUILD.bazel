@@ -528,8 +528,8 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":ray_common",
         ":grpc_common_lib",
+        ":ray_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",

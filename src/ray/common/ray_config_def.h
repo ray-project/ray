@@ -249,8 +249,7 @@ RAY_CONFIG(bool, pull_based_resource_reporting, true)
 // Feature flag to use grpc instead of redis for resource broadcast.
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-// TODO(BEFORE MERGING): Disable by default.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
