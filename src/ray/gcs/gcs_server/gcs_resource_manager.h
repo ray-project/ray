@@ -40,8 +40,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param main_io_service The main event loop.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+  explicit GcsResourceManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
