@@ -67,7 +67,6 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
-    "test_scheduling.py",
     "test_serialization.py",
     "test_shuffle.py",
     "test_stress.py",
@@ -142,6 +141,8 @@ py_test_module_list(
 )
 
 
+
+
 # Flaky tests.
 py_test_module_list(
   files = [
@@ -170,6 +171,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
+    "test_scheduling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -208,6 +210,8 @@ py_test_module_list(
   tags = ["flaky-mac"],
   deps = ["//:ray_lib"],
 )
+
+
 
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
