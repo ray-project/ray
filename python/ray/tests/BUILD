@@ -160,7 +160,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_global_gc.py",
     "test_memstat.py",
   ],
   size = "medium",
