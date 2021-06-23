@@ -41,6 +41,7 @@ bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
   if (it != object_id_refs_.end()) {
     return it->second.owned_by_us;
   }
+  RAY_LOG(DEBUG) << "DBG<<: Object doesn't exist " << object_id;
   return false;
 }
 
@@ -156,6 +157,22 @@ void ReferenceCounter::AddObjectRefStats(
       ref_proto->set_pinned_in_memory(true);
     }
   }
+}
+
+bool ReferenceCounter::TansferToLocal(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if(it == object_id_refs_.end()) {
+    return false;
+  }
+  if(it->second.on_ref_removed) {
+    it->second.on_ref_removed(object_id);
+    it->second.on_ref_removed = nullptr;
+  }
+
+  it->second.owned_by_us = true;
+  it->second.owner_address = rpc_address_.ToProto();
+  return true;
 }
 
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
@@ -769,16 +786,6 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
   DeleteReferenceInternal(it, nullptr);
 }
 
-void ReferenceCounter::RemoveBorrower(const ObjectID &object_id,
-                                      const rpc::Address &address) {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end()) << object_id;
-  if (it->second.borrowers.erase(address)) {
-    DeleteReferenceInternal(it, nullptr);
-  }
-}
-
 void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
@@ -861,11 +868,12 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       RAY_CHECK(inner_it != object_id_refs_.end());
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
-        auto inserted = inner_it->second.borrowers.insert(owner_address).second;
-        if (inserted) {
-          // Wait for it to remove its reference.
-          WaitForRefRemoved(inner_it, owner_address, object_id);
-        }
+          auto inserted = inner_it->second.borrowers.insert(owner_address).second;
+          RAY_LOG(DEBUG) << "Add borrower " << inner_id << ", " << inserted;
+          if (inserted) {
+            // Wait for it to remove its reference.
+            WaitForRefRemoved(inner_it, owner_address, object_id);
+          }
       } else {
         auto inserted =
             inner_it->second.stored_in_objects.emplace(object_id, owner_address).second;
@@ -883,14 +891,6 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers";
-  }
-  auto it = object_id_refs_.find(object_id);
-  if (it != object_id_refs_.end()) {
-    // We should only have called this callback once our local ref count for
-    // the object was zero. Also, we should have stripped all distributed ref
-    // count information and returned it to the owner. Therefore, it should be
-    // okay to delete the object, if it wasn't already deleted.
-    RAY_CHECK(it->second.OutOfScope(lineage_pinning_enabled_));
   }
 
   // Send the owner information about any new borrowers.
@@ -920,7 +920,6 @@ void ReferenceCounter::SetRefRemovedCallback(
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
-
   // If we are borrowing the ID because we own an object that contains it, then
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
@@ -935,6 +934,10 @@ void ReferenceCounter::SetRefRemovedCallback(
     // immediately.
     ref_removed_callback(object_id);
     DeleteReferenceInternal(it, nullptr);
+  } else if (it->second.owned_by_us) {
+    // It's a transferred object
+    RAY_LOG(DEBUG) << "It's a transferred object, responding to WaitForRefRemoved.";
+    ref_removed_callback(object_id);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.

@@ -183,10 +183,19 @@ std::vector<ObjectID> TaskManager::PutIntoStore(
     const std::string& data,
     const std::string& meta,
     const std::vector<ObjectID>& inline_nested_id) {
+  RAY_LOG(DEBUG) << "Put into store: id:" << object_id
+                 << " transferred:" << transferred
+                 << " in_plasma:" << in_plasma
+                 << " pinned_node:" << pinned_node
+                 << " obj_size:" << object_size
+                 << " transfer_enabled:" << RayConfig::instance().ownership_transfer_enabled();
+
   if(transferred) {
-    reference_counter_->AddOwnedObject(object_id, {}, rpc_address_, "<transferred>",
-                                       object_size, false,
-                                       pinned_node);
+    if (!reference_counter_->TansferToLocal(object_id)) {
+      reference_counter_->AddOwnedObject(object_id, {}, rpc_address_, "<transferred>",
+                                         object_size, false,
+                                         pinned_node);
+    }
   } else {
     reference_counter_->UpdateObjectSize(object_id, object_size);
   }
@@ -236,7 +245,9 @@ std::vector<ObjectID> TaskManager::PutIntoStore(
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr) {
-  RAY_LOG(DEBUG) << "Completing task " << task_id;
+  RAY_LOG(DEBUG) << "Completing task " << task_id << " returns "
+                 << reply.return_objects_size() << ", transferred "
+                 << reply.shared_obj_info_size();
 
   for (auto &obj : reply.shared_obj_info()) {
     ObjectID object_id = ObjectID::FromBinary(obj.object_id());

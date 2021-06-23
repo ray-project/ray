@@ -38,12 +38,12 @@ void LocalObjectManager::PinObjects(
                        << " was evicted before the raylet could pin it.";
         continue;
       }
-      RAY_LOG(DEBUG) << "Pinning object " << object_id;
       pinned_objects_size_ += object->GetSize();
       RAY_CHECK(pinned_objects_.emplace(object_id, std::move(object)).second)
           << "object_id " << object_id << " has been added.";
       owners = &object_owners_[object_id];
     }
+    RAY_LOG(DEBUG) << "Pinning object " << object_id;
     owners->emplace(owner_address);
   }
 }

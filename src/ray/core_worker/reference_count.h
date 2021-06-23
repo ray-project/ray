@@ -152,6 +152,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
+  void ClaimOwnObject(const ObjectID &object_id);
   /// Release the lineage ref count for this list of object IDs. An object's
   /// lineage ref count is the number of tasks that depend on the object that
   /// may be retried in the future (pending execution or finished but
@@ -187,6 +188,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const int64_t object_size, bool is_reconstructable,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
+
+  bool TansferToLocal(const ObjectID &object_id);
 
   /// Remove reference for an object that we own. The reference will only be
   /// removed if the object's ref count is 0. This should only be used when
@@ -286,9 +289,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object that we were borrowing.
   void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void RemoveBorrower(const ObjectID &object_id, const rpc::Address &address)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
@@ -375,6 +375,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
+  bool TansferToLocal(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
   /// Write the current reference table to the given proto.
   ///
   /// \param[out] stats The proto to write references to.

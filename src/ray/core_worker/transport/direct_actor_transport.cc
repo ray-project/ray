@@ -509,9 +509,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         RAY_CHECK_OK(task_done_());
       }
     }
-
     if (RayConfig::instance().ownership_transfer_enabled()) {
-      RAY_LOG(DEBUG) << "Transfer ownership";
+      RAY_LOG(DEBUG) << "Start to transfer ownership";
       // Pin the object in raylet
       auto &caller_addr = task_spec.CallerAddress();
       transfer_handler_(

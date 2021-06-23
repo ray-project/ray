@@ -2835,6 +2835,7 @@ void CoreWorker::ShareOwnershipInternal(
   std::vector<std::pair<NodeID, ObjectID>> node_id_mapping;
   for (auto id : ids) {
     if (!reference_counter_->OwnedByUs(id)) {
+      RAY_LOG(DEBUG) << "Not owned by us " << id << ", skip it";
       continue;
     }
     auto node_id = reference_counter_->GetObjectPinnedLocation(id);
@@ -2864,6 +2865,7 @@ void CoreWorker::ShareOwnershipInternal(
               auto &status, auto &pin_reply) mutable {
             if (status.ok()) {
               successed_ids->insert(id);
+              RAY_LOG(DEBUG) << "Transferring " << id;
             }
             // TODO (yic): better with a barrier
             if (--*in_flight == 0) {

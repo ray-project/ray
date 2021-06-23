@@ -417,6 +417,6 @@ RAY_CONFIG(bool, gcs_task_scheduling_enabled,
 
 RAY_CONFIG(bool, ownership_transfer_enabled,
            getenv("RAY_TRANSFER_OWNERSHIP") != nullptr &&
-               getenv("RAY_TRANSFER_OWNERSHIP") == std::string("1"))
+           getenv("RAY_TRANSFER_OWNERSHIP") == std::string("1"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)

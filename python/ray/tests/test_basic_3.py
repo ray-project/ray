@@ -19,19 +19,24 @@ logger = logging.getLogger(__name__)
 
 
 def test_object_transfer(shutdown_only):
-    ray.init()
+    os.environ["RAY_TRANSFER_OWNERSHIP"] = "1"
+    ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
     class Test:
         def gen(self):
-            r = ray.put(b"a" * 10 * 1024 * 1024)
-            return [r]
+            return [ray.put(b"a" * 50 * 1024 * 1024)]
 
-    actor = Test.remote()
-    v = actor.gen.remote()
-    ray.wait([v])
+        def pid(self):
+            return os.getpid()
 
-    assert ray.get(ray.get(v)[0]) == b"a" * 10 * 1024 * 1024
+    t = Test.remote()
+    v = t.gen.remote()
+    pid = t.pid.remote()
+    os.system(f"kill -9 {ray.get(pid)}")
+    assert ray.get(ray.get(v)[0]) == b"a" * 50 * 1024 * 1024
+
+    os.environ.pop("RAY_TRANSFER_OWNERSHIP")
 
 
 def test_auto_global_gc(shutdown_only):
