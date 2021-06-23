@@ -1,14 +1,17 @@
 import functools
+import inspect
 from typing import List, Tuple, Union, Any, Dict, Callable, Optional
-import uuid
 
 import ray
+import ray.cloudpickle
 
 from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow import serialization_context
+from ray.experimental.workflow.common import (
+    RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
+from ray.experimental.workflow import workflow_storage
 
-RRef = ray.ObjectRef  # Alias ObjectRef because it is too long in type hints.
-WorkflowOutputType = RRef  # Alias workflow output type.
-StepArgType = Union[RRef, Any]
+StepInputTupleToResolve = Tuple[RRef, List[RRef], List[RRef]]
 
 
 def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
@@ -29,34 +32,33 @@ def resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
     return ref, last_ref
 
 
-def wrap_step_outputs(
-        outputs: WorkflowOutputType) -> Tuple[WorkflowOutputType, List[str]]:
+def _deref_arguments(args: List, kwargs: Dict) -> Tuple[List, Dict]:
     """
-    This function converts returned object refs to workflow
-    step results. It also collects hex strings of these refs.
+    This function decides how the ObjectRefs in the argument will be presented
+    to the user. Currently we dereference arguments like Ray remote functions.
 
     Args:
-        outputs: The outputs of a Ray remote call.
+        args: Positional arguments.
+        kwargs: Keywords arguments.
 
     Returns:
-        Corresponding WorkflowStepResult objects and
-        related hex string.
+        Post processed arguments.
     """
-    if isinstance(outputs, RRef):
-        results = [outputs]
-    elif isinstance(outputs, tuple):
-        results = outputs
-    else:
-        raise TypeError("Unknown return type")
-    output_ids = [o.hex() for o in results]
-    return outputs, output_ids
+    _args = [ray.get(a) if isinstance(a, RRef) else a for a in args]
+    _kwargs = {
+        k: ray.get(v) if isinstance(v, RRef) else v
+        for k, v in kwargs.items()
+    }
+    return _args, _kwargs
 
 
-def resolve_step_inputs(args: List[RRef], kwargs: Dict[str, RRef]
-                        ) -> Tuple[List, Dict, List[RRef]]:
+def _resolve_step_inputs(
+        step_inputs: StepInputTupleToResolve) -> Tuple[List, Dict]:
     """
     This function resolves the inputs for the code inside
-    a workflow step (works on the callee side).
+    a workflow step (works on the callee side). For outputs from other
+    workflows, we resolve them into object instances inplace.
+
     For each ObjectRef argument, the function returns both the ObjectRef
     and the object instance. If the ObjectRef is a chain of nested
     ObjectRefs, then we resolve it recursively until we get the
@@ -66,122 +68,142 @@ def resolve_step_inputs(args: List[RRef], kwargs: Dict[str, RRef]
     flexibility.
 
     Args:
-        args: List of workflow step input arguments.
-        kwargs: Dict of workflow step input arguments.
-
+        step_inputs: Workflow step inputs.
     Returns:
-        Instances of arguments and resolved object refs.
+        Instances of arguments.
     """
 
-    resolved_object_refs = []
-    _args = []
-    _kwargs = {}
-    for a in args:
-        if isinstance(a, RRef):
-            obj, ref = resolve_object_ref(a)
-            _args.append(obj)
-            resolved_object_refs.append(ref)
-        else:
-            _args.append(a)
-    for k, v in kwargs:
-        if isinstance(v, RRef):
-            obj, ref = resolve_object_ref(v)
-            _kwargs[k] = obj
-            resolved_object_refs.append(ref)
-        else:
-            _kwargs[k] = v
-    return _args, _kwargs, resolved_object_refs
+    objects_mapping = []
+    input_placeholder, input_workflows, input_object_refs = step_inputs
+    for rref in input_workflows:
+        obj, ref = resolve_object_ref(rref)
+        objects_mapping.append(obj)
+    with serialization_context.workflow_args_resolving_context(
+            objects_mapping, input_object_refs):
+        # reconstruct input arguments under correct serialization context
+        args, kwargs = ray.get(input_placeholder)
+    _args, _kwargs = _deref_arguments(args, kwargs)
+    return _args, _kwargs
+
+
+@ray.remote
+def workflow_step_executor(
+        func: Callable, context: workflow_context.WorkflowStepContext,
+        step_id: StepID, step_inputs: StepInputTupleToResolve,
+        outer_most_step_id: StepID) -> Any:
+    """Executor function for workflow step.
+
+    Args:
+        func: The workflow step function.
+        context: Workflow step context. Used to access correct storage etc.
+        step_id: The ID of the step.
+        step_inputs: The inputs tuple of the step.
+        outer_most_step_id: See "postprocess_workflow_step" for
+            explanation.
+
+    Returns:
+        Workflow step output.
+    """
+    # Before running the actual function, we
+    # 1. Setup the workflow context, so we have proper access to
+    #    workflow storage.
+    # 2. Decode step inputs to arguments and keyword-arguments.
+    workflow_context.update_workflow_step_context(context, step_id)
+    args, kwargs = _resolve_step_inputs(step_inputs)
+    # Running the actual step function
+    ret = func(*args, **kwargs)
+    # See "postprocess_workflow_step" for explanation of "outer_most_step_id".
+    return postprocess_workflow_step(ret, outer_most_step_id)
 
 
 class WorkflowStepFunction:
+    """This class represents a workflow step."""
+
     def __init__(self, func: Callable):
-        def _func(context, task_id, args, kwargs):
-            # NOTE: must use 'set_current_store_dir' to ensure that we are
-            # accessing the correct global variable.
-            workflow_context.set_workflow_step_context(context)
-            scope = workflow_context.get_scope()
-            scope.append(task_id)
-            args, kwargs, resolved_object_refs = resolve_step_inputs(
-                args, kwargs)
-            # free references to potentially save memory
-            del resolved_object_refs
-
-            output = func(*args, **kwargs)
-            if isinstance(output, Workflow):
-                output = output.execute()
-            return output
-
-        self.func = func
-        self._remote_function = ray.remote(_func)
+        self._func = func
+        self._func_signature = list(
+            inspect.signature(func).parameters.values())
 
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            # TODO(suquark): we can validate if the input arguments match
-            # the signature of the original function here.
-            return Workflow(self._run_step, args, kwargs)
+            # validate if the input arguments match the signature of the
+            # original function.
+            reconstructed_signature = inspect.Signature(
+                parameters=self._func_signature)
+            try:
+                reconstructed_signature.bind(*args, **kwargs)
+            except TypeError as exc:  # capture a friendlier stacktrace
+                raise TypeError(str(exc)) from None
+            workflows: List[Workflow] = []
+            object_refs: List[RRef] = []
+            with serialization_context.workflow_args_serialization_context(
+                    workflows, object_refs):
+                # NOTE: When calling 'ray.put', we trigger python object
+                # serialization. Under our serialization context,
+                # Workflows and ObjectRefs are separated from the arguments,
+                # leaving a placeholder object with all other python objects.
+                # Then we put the placeholder object to object store,
+                # so it won't be mutated later. This guarantees correct
+                # semantics. See "tests/test_variable_mutable.py" as
+                # an example.
+                input_placeholder: RRef = ray.put((args, kwargs))
+            return Workflow(self._func, self._run_step, input_placeholder,
+                            workflows, object_refs)
 
         self.step = _build_workflow
 
-    def _run_step(self, args, kwargs):
-        task_id = uuid.uuid4()
-        refs = self._remote_function.remote(
-            workflow_context.get_workflow_step_context(), task_id, args,
-            kwargs)
-        outputs, output_ids = wrap_step_outputs(refs)
-        return outputs
+    def _run_step(
+            self,
+            step_id: StepID,
+            step_inputs: WorkflowInputTuple,
+            outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
+        ref = workflow_step_executor.remote(
+            self._func, workflow_context.get_workflow_step_context(), step_id,
+            step_inputs, outer_most_step_id)
+        return ref
+
+    def __call__(self, *args, **kwargs):
+        raise TypeError("Workflow steps cannot be called directly. Instead "
+                        f"of running '{self.step.__name__}()', "
+                        f"try '{self.step.__name__}.step()'.")
 
 
-class Workflow:
-    def __init__(self, step_func: Callable, args: Tuple,
-                 kwargs: Dict[str, Any]):
-        self.args: List[RRef] = []
-        self.kwargs: Dict[str, RRef] = {}
-        # NOTE: we must serialize the inputs here, so they cannot be
-        # mutable later.
-        for arg in args:
-            if isinstance(arg, (ray.ObjectRef, Workflow)):
-                self.args.append(arg)
-            else:
-                self.args.append(ray.put(arg))
-        for k, v in kwargs:
-            if isinstance(v, (ray.ObjectRef, Workflow)):
-                self.kwargs[k] = v
-            else:
-                self.kwargs[k] = ray.put(v)
-        self.step_func = step_func
-        self._executed = False
-        self._output: Optional[WorkflowOutputType] = None
+def postprocess_workflow_step(ret: Union[Workflow, Any],
+                              outer_most_step_id: Optional[StepID] = None):
+    """Execute workflow and checkpoint outputs.
 
-    @property
-    def executed(self) -> bool:
-        return self._executed
+    To fully explain what we are doing, we need to introduce some syntax first.
+    The syntax for dependencies between workflow steps
+    "A.step(B.step())" is "A - B"; the syntax for nested workflow steps
+    "def A(): return B.step()" is "A / B".
 
-    @property
-    def output(self):
-        if not self._executed:
-            raise Exception("The workflow has not been executed.")
-        return self._output
+    In a chain/DAG of step dependencies, the "output step" is the step of last
+    (topological) order. For example, in "A - B - C", C is the output step.
 
-    def execute(self) -> WorkflowOutputType:
-        """
-        Trigger workflow execution recursively.
-        """
-        if self.executed:
-            return self._output
-        input_args = []
-        input_kwargs = {}
-        for a in self.args:
-            if isinstance(a, Workflow):
-                input_args.append(a.execute())
-            else:
-                input_args.append(a)
-        for k, v in self.kwargs.items():
-            if isinstance(v, Workflow):
-                input_kwargs[k] = v.execute()
-            else:
-                input_kwargs[k] = v
-        output = self.step_func(input_args, input_kwargs)
-        if not isinstance(output, WorkflowOutputType):
-            raise TypeError("Unexpected return type of the workflow.")
-        return output
+    In a chain of nested workflow steps, the initial "output step" is
+    called the "outer most step" for other "output steps". For example, in
+    "A / B / C / D", "A" is the outer most step for "B", "C", "D";
+    in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
+    "B" is the outer most step for "C", "D"; "E" is the outer most step
+    for "G", "H".
+
+    Args:
+        ret: The returned object of the workflow step.
+        outer_most_step_id: The ID of the outer most workflow. None if it
+            does not exists.
+    """
+    store = workflow_storage.WorkflowStorage()
+    step_id = workflow_context.get_current_step_id()
+    store.commit_step(step_id, ret, outer_most_step_id)
+    if isinstance(ret, Workflow):
+        if outer_most_step_id is None:
+            # The current workflow step returns a nested workflow, and
+            # there is no outer step for the current step. So the current
+            # step is the outer most step for the inner nested workflow
+            # steps.
+            outer_most_step_id = step_id
+        # Passing down outer most step so inner nested steps would
+        # access the same outer most step.
+        return ret.execute(outer_most_step_id)
+    return ret

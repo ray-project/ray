@@ -89,6 +89,11 @@ install_miniconda() {
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
     esac
 
+    case "${OSTYPE}" in
+      # The hosttype variable is deprecated.
+      darwin*) HOSTTYPE="x86_64";;
+    esac
+
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
     curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
@@ -109,19 +114,6 @@ install_miniconda() {
         # Unfortunately it inhibits PATH modifications as a side effect.
         "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
-        ;;
-    esac
-  else
-    case "${OSTYPE}" in
-      darwin*)
-        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
-        local miniconda_dir="/usr/local/miniconda"
-        if [ -n "$BUILDKITE" ]; then
-          mkdir -p -- "${miniconda_dir}"
-        else
-          sudo mkdir -p -- "${miniconda_dir}"
-          sudo chown -R "${USER}" "${miniconda_dir}"
-        fi
         ;;
     esac
   fi
@@ -232,13 +224,6 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if command -v node; then
-    if [ -n "${BUILDKITE-}" ]; then
-      echo "Node existed, skipping install";
-      return
-    fi
-  fi
-
   if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
     return
@@ -280,16 +265,19 @@ download_mnist() {
 install_dependencies() {
 
   install_bazel
-
   install_base
   install_toolchains
-  install_nvm
-  install_upgrade_pip
 
+  install_upgrade_pip
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
     # Upgrade the miniconda pip.
     install_upgrade_pip
+  fi
+
+  install_nvm
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+    install_node
   fi
 
   # Install modules needed in all jobs.
@@ -378,10 +366,6 @@ install_dependencies() {
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
     HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
-  fi
-
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

@@ -51,6 +51,11 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::vector<std::string> GetAllJobInfo();
 
+  /// Get next job id from GCS Service.
+  ///
+  /// \return Next job id.
+  JobID GetNextJobID();
+
   /// Get all node information from GCS.
   ///
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.

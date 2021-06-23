@@ -231,11 +231,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // double-acquiring when the next invocation of this function tries to schedule
           // this task.
           cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-          // No worker available, we won't be able to schedule any kind of task.
-          // Worker processes spin up pretty quickly, so it's not worth trying to spill
-          // this task.
           ReleaseTaskArgs(task_id);
-          return;
+          // It may be that no worker was available with the correct runtime env or
+          // correct job ID.  However, another task with a different env or job ID
+          // might have a worker available, so continue iterating through the queue.
+          work_it++;
+          continue;
         }
 
         RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
@@ -1117,14 +1118,14 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
       auto task_request = allocated_instances->ToTaskRequest();
       for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
-        if (task_request.predefined_resources[i].demand > 0) {
+        if (task_request.predefined_resources[i] > 0) {
           total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              task_request.predefined_resources[i].demand;
+              task_request.predefined_resources[i];
         }
       }
       for (auto &entry : task_request.custom_resources) {
-        if (entry.demand > 0) {
-          total_normal_task_resources[string_id_map.Get(entry.id)] += entry.demand;
+        if (entry.second > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
         }
       }
     }
