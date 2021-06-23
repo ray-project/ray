@@ -831,7 +831,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 }
 
-int GetRuntimEnvHash(const TaskSpecification &task_spec) {
+int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
                               task_spec.SerializedRuntimeEnv()};
   return env.IntHash();
@@ -903,7 +903,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                 return;
               }
               start_worker_process_fn(task_spec, state, dynamic_options, true,
-                                      GetRuntimEnvHash(task_spec),
+                                      GetRuntimeEnvHash(task_spec),
                                       serialized_runtime_env);
             });
       } else {
@@ -914,7 +914,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Find an available worker which is already assigned to this job and which has
     // the specified runtime env.
     // Try to pop the most recently pushed worker.
-    const int runtime_env_hash = GetRuntimEnvHash(task_spec);
+    const int runtime_env_hash = GetRuntimeEnvHash(task_spec);
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -961,7 +961,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                                       serialized_runtime_env);
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, {}, false, 0, "");
+        proc = start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash, "");
       }
     }
   }
