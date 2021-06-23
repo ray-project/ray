@@ -1,6 +1,5 @@
 import ray
 import time
-import os
 
 ray.init()
 

@@ -1,5 +1,4 @@
 import ray
-import s3fs
 
 ray.init()
 
