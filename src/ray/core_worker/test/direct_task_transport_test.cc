@@ -1862,7 +1862,7 @@ TEST(DirectTaskTransportTest, TestNoStealingByExpiredWorker) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   std::this_thread::sleep_for(
-      std::chrono::milliseconds(1000));  // Sleep for 1s, causing the lease to time out.
+      std::chrono::milliseconds(2000));  // Sleep for 1s, causing the lease to time out.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   // Check that the second worker does not start stealing, and that it is returned to the
   // Raylet instead.
