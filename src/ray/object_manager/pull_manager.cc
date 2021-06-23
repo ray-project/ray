@@ -11,13 +11,15 @@ PullManager::PullManager(
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
     size_t num_bytes_available, std::function<void()> object_store_full_callback,
-    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object)
+    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
+    int min_active_pulls)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
+      min_active_pulls_(min_active_pulls),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       object_store_full_callback_(object_store_full_callback),
@@ -127,8 +129,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     }
 
     // Quota check.
-    if (respect_quota &&
-        num_active_bundles_ >= RayConfig::instance().pull_manager_min_active_pulls() &&
+    if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
         (num_bytes_being_pulled_ + bytes_to_pull - pinned_objects_size_ >
          num_bytes_available_)) {
       return false;
@@ -262,20 +263,16 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilWithinQuota("task args request", task_argument_bundles_,
-                             RayConfig::instance().pull_manager_min_active_pulls(),
-                             &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
-  DeactivateUntilWithinQuota("wait request", wait_request_bundles_,
-                             RayConfig::instance().pull_manager_min_active_pulls(),
+                             min_active_pulls_, &highest_task_req_id_being_pulled_,
+                             &object_ids_to_cancel);
+  DeactivateUntilWithinQuota("wait request", wait_request_bundles_, min_active_pulls_,
                              &highest_wait_req_id_being_pulled_, &object_ids_to_cancel);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
   if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilWithinQuota("get request", get_request_bundles_,
-                               RayConfig::instance().pull_manager_min_active_pulls(),
+    DeactivateUntilWithinQuota("get request", get_request_bundles_, min_active_pulls_,
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
-    RAY_CHECK(!OverQuota() || num_active_bundles_ <=
-                                  RayConfig::instance().pull_manager_min_active_pulls())
-        << DebugString();
+    RAY_CHECK(!OverQuota() || num_active_bundles_ <= min_active_pulls_) << DebugString();
   }
 
   // Call the cancellation callbacks outside of the lock.
