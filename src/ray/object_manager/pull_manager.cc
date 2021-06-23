@@ -129,7 +129,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     // Quota check.
     if (respect_quota &&
         num_active_bundles_ >= RayConfig::instance().pull_manager_min_active_pulls() &&
-        (num_bytes_being_pulled_ + bytes_to_pull > num_bytes_available_)) {
+        (num_bytes_being_pulled_ + bytes_to_pull - pinned_objects_size_ >
+         num_bytes_available_)) {
       return false;
     }
 
@@ -208,8 +209,9 @@ void PullManager::DeactivateUntilWithinQuota(
   }
 }
 
-// TODO(ekl) subtract out the pinned bytes from num_bytes_being_pulled_.
-bool PullManager::OverQuota() { return num_bytes_being_pulled_ > num_bytes_available_; }
+bool PullManager::OverQuota() {
+  return num_bytes_being_pulled_ - pinned_objects_size_ > num_bytes_available_;
+}
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
@@ -591,6 +593,7 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
+      pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
       return false;
     }
@@ -599,7 +602,14 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
-  pinned_objects_.erase(object_id);
+  auto it = pinned_objects_.find(object_id);
+  if (it != pinned_objects_.end()) {
+    pinned_objects_size_ -= it->second->GetSize();
+    pinned_objects_.erase(it);
+  }
+  if (pinned_objects_.empty()) {
+    RAY_CHECK(pinned_objects_size_ == 0);
+  }
 }
 
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
@@ -661,7 +671,8 @@ std::string PullManager::DebugString() const {
   std::stringstream result;
   result << "PullManager:";
   result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
-  result << "\n- num bytes being pulled: " << num_bytes_being_pulled_;
+  result << "\n- num bytes being pulled (all): " << num_bytes_being_pulled_;
+  result << "\n- num bytes being pulled / pinned: " << pinned_objects_size_;
   result << "\n- num get request bundles: " << get_request_bundles_.size();
   result << "\n- num wait request bundles: " << wait_request_bundles_.size();
   result << "\n- num task request bundles: " << task_argument_bundles_.size();

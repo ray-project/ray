@@ -326,6 +326,9 @@ class PullManager {
   /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
+  /// The total size of pinned objects.
+  int64_t pinned_objects_size_ = 0;
+
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 
