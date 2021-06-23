@@ -171,3 +171,40 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "benchmark_test",
+    testonly = 0,
+    srcs = glob([
+        "src/ray/test/benchmark/*.cc",
+    ]),
+    args = [
+        "--ray-dynamic-library-path=$(location benchmark_test.so)",
+    ],
+    copts = COPTS,
+    data = [
+        "benchmark_test.so",
+        "ray_cpp_pkg",
+    ],
+    linkstatic = True,
+    deps = [
+        "ray_api",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "benchmark_test.so",
+    srcs = glob([
+        "src/ray/test/benchmark/*.cc",
+    ]),
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_api",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
