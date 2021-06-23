@@ -32,7 +32,7 @@ class PullManagerTestWithCapacity {
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
             [this]() { num_object_store_full_calls_++; },
-            [this](const ObjectID &object_id) { return nullptr; }) {}
+            [this](const ObjectID &object_id) { return PinReturn(); }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
@@ -48,8 +48,19 @@ class PullManagerTestWithCapacity {
     ASSERT_TRUE(pull_manager_.pinned_objects_.empty());
   }
 
+  int NumPinnedObjects() { return pull_manager_.pinned_objects_.size(); }
+
+  std::unique_ptr<RayObject> PinReturn() {
+    if (allow_pin_) {
+      return std::make_unique<RayObject>(rpc::ErrorType::OBJECT_IN_PLASMA);
+    } else {
+      return nullptr;
+    }
+  }
+
   NodeID self_node_id_;
   bool object_is_local_;
+  bool allow_pin_ = false;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
   int num_object_store_full_calls_;
@@ -425,6 +436,60 @@ TEST_P(PullManagerTest, TestBasic) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestPinActiveObjects) {
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(3);
+  auto oids = ObjectRefsToIds(refs);
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 1);
+  }
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
+  }
+  ASSERT_EQ(num_send_pull_request_calls_, oids.size());
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  AssertNumActiveRequestsEquals(oids.size());
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(4);
+
+  // Check we pin objects belonging to active bundles.
+  allow_pin_ = true;
+  ASSERT_EQ(NumPinnedObjects(), 0);
+  RAY_LOG(ERROR) << pull_manager_.DebugString();
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 1);
+  pull_manager_.PinNewObjectIfNeeded(oids[0]);
+  RAY_LOG(ERROR) << pull_manager_.DebugString();
+  // Now we have more space (object manager should also report more space used),
+  // so remaining quota would go back to 1 on the avail memory report.
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 2);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+  pull_manager_.PinNewObjectIfNeeded(oids[0]);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+
+  // Check do not pin objects belonging to inactive bundles.
+  auto refs2 = CreateObjectRefs(1);
+  auto oids2 = ObjectRefsToIds(refs);
+  pull_manager_.PinNewObjectIfNeeded(oids2[0]);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+
+  // The object is unpinned on cancel.
+  pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(NumPinnedObjects(), 0);
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 4);
 
   AssertNoLeaks();
 }

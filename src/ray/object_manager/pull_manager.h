@@ -133,6 +133,10 @@ class PullManager {
 
   std::string DebugString() const;
 
+  /// Returns the number of bytes of quota remaining. When this is less than zero,
+  /// we are OverQuota(). Visible for testing.
+  int64_t RemainingQuota();
+
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
@@ -186,10 +190,6 @@ class PullManager {
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
   /// e.g., for get requests and to ensure at least one active request.
   bool OverQuota();
-
-  /// Returns the number of bytes of quota remaining. When this is less than zero,
-  /// we are OverQuota().
-  int64_t RemainingQuota();
 
   /// Pin the object if possible. Only actively pulled objects should be pinned.
   bool TryPinObject(const ObjectID &object_id);
