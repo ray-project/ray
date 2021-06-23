@@ -252,37 +252,6 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [subscribe, done](
-                        const Status &status,
-                        const std::vector<rpc::ActorTableData> &actor_info_list) {
-      for (auto &actor_info : actor_info_list) {
-        subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
-      }
-      if (done) {
-        done(status);
-      }
-    };
-    RAY_CHECK_OK(AsyncGetAll(callback));
-  };
-
-  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      ActorTableData actor_data;
-      actor_data.ParseFromString(data);
-      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
-    };
-    return client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe, done);
-  };
-
-  return subscribe_all_operation_(
-      [this, done](const Status &status) { fetch_all_data_operation_(done); });
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,

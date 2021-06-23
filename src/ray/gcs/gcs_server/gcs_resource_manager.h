@@ -23,7 +23,6 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -43,9 +42,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
-                              std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              bool redis_broadcast_enabled);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage
+                              );
 
   virtual ~GcsResourceManager() {}
 
@@ -172,9 +170,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &deleted_resources);
 
-  /// Send any buffered resource usage as a single publish.
-  void SendBatchedResourceUsage();
-
   /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
   /// the functionality as part of a larger transaction.
   void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
@@ -195,12 +190,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   rpc::ResourceUsageBroadcastData resources_buffer_proto_
       GUARDED_BY(resource_buffer_mutex_);
 
-  /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Whether or not to broadcast resource usage via redis.
-  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.

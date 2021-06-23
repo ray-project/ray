@@ -87,17 +87,6 @@ class ActorInfoAccessor {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const StatusCallback &callback) = 0;
 
-  /// Subscribe to any register or update operations of actors.
-  ///
-  /// \param subscribe Callback that will be called each time when an actor is registered
-  /// or updated.
-  /// \param done Callback that will be called when subscription is complete and we
-  /// are ready to receive notification.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) = 0;
-
   /// Subscribe to any update operations of an actor.
   ///
   /// \param actor_id The ID of actor to be subscribed to.

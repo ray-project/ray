@@ -90,10 +90,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
                         const StatusCallback &callback) override;
 
-  Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) override;
-
   Status AsyncSubscribe(const ActorID &actor_id,
                         const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
                         const StatusCallback &done) override;
