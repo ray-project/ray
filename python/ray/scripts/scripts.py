@@ -542,8 +542,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         if address is not None:
             cli_logger.print(
-                "Will use value of `{}` as remote Redis server address(es). If the primary one is not reachable, we starts new one(s) with ports specified by `{}` in local.",
-                cf.bold("--address"), cf.bold("--port"))
+                "Will use value of `{}` as remote Redis server address(es). "
+                "If the primary one is not reachable, we starts new one(s) "
+                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
             external_addresses = address.split(",")
             reachable = False
             try:
@@ -551,11 +552,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 ray._private.services.wait_for_redis_to_start(
                     primary_redis_ip, port, password=redis_password)
                 reachable = True
-            # We catch a generic Exception here in case someone later changes the
-            # type of the exception.
-            except Exception as ex:
+            # We catch a generic Exception here in case someone later changes
+            # the type of the exception.
+            except Exception:
                 cli_logger.print(
-                    "The primary external redis server `{}` is not reachable. Will starts new one(s) with ports specified by `{}` in local.",
+                    "The primary external redis server `{}` is not reachable. "
+                    "Will starts new one(s) with `{}` in local.",
                     cf.bold(external_addresses[0]), cf.bold("--port"))
             if reachable:
                 ray_params.update_if_absent(
@@ -564,9 +566,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
-                        "`{}` should not be specified as empty string if external"
-                        " redis server(s) `{}` points to requires password.",
-                        cf.bold("--redis-password"), cf.bold("--address"))
+                        "`{}` should not be specified as empty string if "
+                        "external redis server(s) `{}` points to requires "
+                        "password.", cf.bold("--redis-password"),
+                        cf.bold("--address"))
 
         node_ip_address = services.get_node_ip_address()
 
