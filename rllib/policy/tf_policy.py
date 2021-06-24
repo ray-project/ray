@@ -303,7 +303,7 @@ class TFPolicy(Policy):
             (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
             if g is not None
         ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
+        self._grads = [g for (g, v) in self._grads_and_vars if g is not None]
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
