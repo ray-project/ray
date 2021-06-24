@@ -74,8 +74,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
-    "ray/autoscaler/_private/azure/azure-vm-template.json",
-    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/_private/_azure/azure-vm-template.json",
+    "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
