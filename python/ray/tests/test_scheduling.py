@@ -490,11 +490,10 @@ def test_many_args(ray_start_cluster):
     assert num_tasks_submitted == 100
     assert num_leases_requested <= 10 * num_tasks_submitted
 
+
 def test_pull_manager_at_capacity_reports(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=0,
-        object_store_memory=int(1e8))
+    cluster.add_node(num_cpus=0, object_store_memory=int(1e8))
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
 

@@ -587,9 +587,7 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
-bool PullManager::AtCapacity() const {
-  return at_capacity_;
-}
+bool PullManager::AtCapacity() const { return at_capacity_; }
 
 std::string PullManager::BundleInfo(const Queue &bundles) const {
   auto it = bundles.begin();
