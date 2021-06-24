@@ -1410,7 +1410,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (!worker) {
       worker = worker_pool_.GetRegisteredDriver(client);
     }
-    if (worker) {
+    // Fetch requests can get re-ordered after the worker finishes, so make sure to
+    // check the worker is still assigned a task to avoid leaks.
+    if (worker && !worker->GetAssignedTaskId().IsNil()) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
       dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
