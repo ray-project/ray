@@ -31,20 +31,20 @@ public class LoggingUtil {
     if (rayConfig.workerMode == WorkerType.DRIVER) {
       // Logs of drivers are printed to console.
       ConfigurationBuilder<BuiltConfiguration> builder =
-        ConfigurationBuilderFactory.newConfigurationBuilder();
+          ConfigurationBuilderFactory.newConfigurationBuilder();
 
       builder.setStatusLevel(Level.DEBUG);
       builder.setConfigurationName("DefaultLogger");
 
       // create a console appender
       AppenderComponentBuilder appenderBuilder =
-        builder
-          .newAppender("Console", "CONSOLE")
-          .addAttribute("target", ConsoleAppender.Target.SYSTEM_OUT);
+          builder
+              .newAppender("Console", "CONSOLE")
+              .addAttribute("target", ConsoleAppender.Target.SYSTEM_OUT);
       appenderBuilder.add(
-        builder
-          .newLayout("PatternLayout")
-          .addAttribute("pattern", config.getString("ray.logging.pattern")));
+          builder
+              .newLayout("PatternLayout")
+              .addAttribute("pattern", config.getString("ray.logging.pattern")));
       RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
       rootLogger.add(builder.newAppenderRef("Console"));
 
@@ -57,12 +57,12 @@ public class LoggingUtil {
       // Logs of workers are printed to files.
       String jobIdHex = System.getenv("RAY_JOB_ID");
       String logPath =
-        rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".log";
+          rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".log";
       String rollingLogPath =
-        rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".%i.log";
+          rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".%i.log";
 
       ConfigurationBuilder<BuiltConfiguration> builder =
-        ConfigurationBuilderFactory.newConfigurationBuilder();
+          ConfigurationBuilderFactory.newConfigurationBuilder();
       builder.setStatusLevel(Level.DEBUG);
       builder.setConfigurationName("DefaultLogger");
 
@@ -72,25 +72,25 @@ public class LoggingUtil {
       rootLogger.addAttribute("RingBufferSize", "1048576");
       // Create a rolling file appender.
       LayoutComponentBuilder layoutBuilder =
-        builder
-          .newLayout("PatternLayout")
-          .addAttribute("pattern", config.getString("ray.logging.pattern"));
+          builder
+              .newLayout("PatternLayout")
+              .addAttribute("pattern", config.getString("ray.logging.pattern"));
       ComponentBuilder triggeringPolicy =
-        builder
-          .newComponent("Policies")
-          .addComponent(
-            builder
-              .newComponent("SizeBasedTriggeringPolicy")
-              .addAttribute(
-                "size",
-                rayConfig.getInternalConfig().getString("ray.logging.max-file-size")));
+          builder
+              .newComponent("Policies")
+              .addComponent(
+                  builder
+                      .newComponent("SizeBasedTriggeringPolicy")
+                      .addAttribute(
+                          "size",
+                          rayConfig.getInternalConfig().getString("ray.logging.max-file-size")));
       AppenderComponentBuilder appenderBuilder =
-        builder
-          .newAppender("LogToRollingFile", "RollingFile")
-          .addAttribute("fileName", logPath)
-          .addAttribute("filePattern", rollingLogPath)
-          .add(layoutBuilder)
-          .addComponent(triggeringPolicy);
+          builder
+              .newAppender("LogToRollingFile", "RollingFile")
+              .addAttribute("fileName", logPath)
+              .addAttribute("filePattern", rollingLogPath)
+              .add(layoutBuilder)
+              .addComponent(triggeringPolicy);
       builder.add(appenderBuilder);
       rootLogger.add(builder.newAppenderRef("LogToRollingFile"));
       builder.add(rootLogger);
