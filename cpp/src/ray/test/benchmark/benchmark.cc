@@ -97,7 +97,7 @@ TEST(BenchmarkTest, SimpleLatancyTest) {
 
 TEST(BenchmarkTest, SimpleRemoteTest) {
   ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
-  size_t num_repeats = 1000000;
+  size_t num_repeats = 100000;
   Execute([&actor] { actor.Task(&Counter::Add).Remote(); }, "&Counter::Add", num_repeats);
 
   Execute([] { Ray::Task(NoReturn).Remote(); }, "NoReturn", num_repeats);
@@ -106,7 +106,7 @@ TEST(BenchmarkTest, SimpleRemoteTest) {
 }
 
 TEST(BenchmarkTest, RemoteWithArgsTest) {
-  size_t num_repeats = 1000000;
+  size_t num_repeats = 100000;
   std::string small_str(100, ' ');
   Execute([&small_str] { Ray::Task(Input).Remote(small_str); }, "Input small_str",
           num_repeats);
