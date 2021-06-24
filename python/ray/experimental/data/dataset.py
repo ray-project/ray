@@ -32,8 +32,8 @@ class Dataset(Generic[T]):
     conversion to/from several more featureful dataframe libraries
     (e.g., Spark, Dask), and are also compatible with TensorFlow / PyTorch.
 
-    Dataset support parallel transformations such as .map(), .map_batches(),
-    but currently do not support operations that require partitioning.
+    Dataset supports parallel transformations such as .map(), .map_batches(),
+    and simple repartition, but currently not aggregations and joins.
     """
 
     def __init__(self, blocks: List[ObjectRef[Block[T]]], block_cls: Any):
@@ -152,6 +152,17 @@ class Dataset(Generic[T]):
         return Dataset(
             compute.apply(transform, ray_remote_args, self._blocks),
             self._block_cls)
+
+    def repartition(self, num_partitions: int) -> "Dataset[T]":
+        """Repartition the dataset into exactly this number of blocks.
+
+        Args:
+            num_partitions: The number of partitions.
+
+        Returns:
+            The repartitioned dataset.
+        """
+        raise NotImplementedError  # P1
 
     def truncate(self, limit: int = 1000) -> Dataset[T]:
         """Truncate the dataset to the given number of records.
