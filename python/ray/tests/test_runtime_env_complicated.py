@@ -480,7 +480,8 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
-def test_conda_input_filepath(tmp_path):
+@pytest.mark.parametrize("use_working_dir", [True, False])
+def test_conda_input_filepath(use_working_dir, tmp_path):
     conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     d = tmp_path / "pip_requirements"
     d.mkdir()
@@ -488,7 +489,13 @@ def test_conda_input_filepath(tmp_path):
 
     p.write_text(yaml.dump(conda_dict))
 
-    runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
+    if use_working_dir:
+        runtime_env_dict = RuntimeEnvDict({
+            "working_dir": str(d),
+            "conda": "environment.yml"
+        })
+    else:
+        runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
 
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
@@ -527,6 +534,59 @@ def test_experimental_package_github(shutdown_only):
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"
     assert ray.get(pkg.my_func.remote()) == "hello world"
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_client_working_dir_filepath(call_ray_start, tmp_path):
+    """Test that pip and conda relative filepaths work with working_dir."""
+
+    working_dir = tmp_path / "requirements"
+    working_dir.mkdir()
+
+    pip_file = working_dir / "requirements.txt"
+    requirements_txt = """
+    pip-install-test==0.5
+    """
+    pip_file.write_text(requirements_txt)
+    runtime_env_pip = {
+        "working_dir": str(working_dir),
+        "pip": "requirements.txt"
+    }
+
+    conda_file = working_dir / "environment.yml"
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+    conda_str = yaml.dump(conda_dict)
+    conda_file.write_text(conda_str)
+    runtime_env_conda = {
+        "working_dir": str(working_dir),
+        "conda": "environment.yml"
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with ray.client("localhost:24001").connect():
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+
+    for runtime_env in [runtime_env_pip, runtime_env_conda]:
+        with ray.client("localhost:24001").env(runtime_env).connect():
+            with pytest.raises(ModuleNotFoundError):
+                # Ensure pip-install-test is not installed on the test machine
+                import pip_install_test  # noqa
+            assert ray.get(f.remote())
 
 
 if __name__ == "__main__":
