@@ -11,7 +11,7 @@ This runs three tests and does the necessary resource creation/teardown. The tes
 Notes:
 1. Your Ray cluster should be able to accomodate 30 1-CPU pods to run all of the tests.
 2. These tests use basic Ray client functionality -- your locally installed Ray version may need to be updated match the one in the image.
-3. I did a poor job of process clean up -- if a test fails, it's possible there might be a port-forwarding process stuck running in the background. To identify the rogue process run `ps aux | grep "port-forward"`. Then `kill` it.
+3. The tests do a poor job of Ray client port-forwarding process clean up -- if a test fails, it's possible there might be a port-forwarding process stuck running in the background. To identify the rogue process run `ps aux | grep "port-forward"`. Then `kill` it.
 4. There are some errors that will appear on the screen during the run -- that's normal, error recovery is being tested.
 
 To run any of the individual tests substitute in step 4 above `k8s-test.sh` or `helm-test.sh` or `k8s-test-scale.sh`.
