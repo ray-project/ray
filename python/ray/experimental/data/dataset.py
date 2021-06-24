@@ -153,6 +153,20 @@ class Dataset(Generic[T]):
             compute.apply(transform, ray_remote_args, self._blocks),
             self._block_cls)
 
+    def truncate(self, limit: int = 1000) -> Dataset[T]:
+        """Truncate the dataset to the given number of records.
+
+        This operation is useful to limit the size of the dataset during
+        development.
+
+        Args:
+            limit: The size of the dataset to truncate to.
+
+        Returns:
+            The truncated dataset.
+        """
+        raise NotImplementedError  # P1
+
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
 
