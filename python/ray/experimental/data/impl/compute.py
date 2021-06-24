@@ -1,9 +1,8 @@
 from typing import TypeVar, List, Any
 
-import tqdm
-
 import ray
 from ray.experimental.data.impl.block import Block, ObjectRef
+from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -17,8 +16,7 @@ class ComputePool:
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
-        map_bar = tqdm.tqdm(total=len(blocks), position=0)
-        map_bar.set_description("Map Progress")
+        map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if remote_args:
             fn = ray.remote(**remote_args)(fn)
@@ -26,12 +24,7 @@ class TaskPool(ComputePool):
             fn = ray.remote(fn)
         blocks = [fn.remote(b) for b in blocks]
 
-        remaining = blocks
-        while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False)
-            map_bar.update(len(done))
-
-        map_bar.close()
+        map_bar.block_until_complete(blocks)
         return blocks
 
 
@@ -39,8 +32,7 @@ class ActorPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
 
-        map_bar = tqdm.tqdm(total=len(blocks), position=0)
-        map_bar.set_description("Map Progress")
+        map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         class Worker:
             def ready(self):
