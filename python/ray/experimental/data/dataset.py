@@ -343,3 +343,10 @@ class Dataset(Generic[T]):
             A Spark dataframe created from this dataset.
         """
         raise NotImplementedError  # P2
+
+    def __repr__(self) -> str:
+        return "Dataset({} blocks, {})".format(
+            len(self._blocks), self._block_cls)
+
+    def __str__(self) -> str:
+        return repr(self)
