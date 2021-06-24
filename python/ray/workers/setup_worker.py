@@ -44,8 +44,9 @@ if container_option and container_image_option:
     # default_worker.py --node-ip-address= ...
     entrypoint_args = ["-m"]
     entrypoint_args.append(module_name)
-    # hack
-    remaining_args[1] = "-m ray.workers.default_worker"
+    # replace default_worker.py path
+    if container_option.get("worker_path"):
+        remaining_args[1] = container_option.get("worker_path")
     entrypoint_args.extend(remaining_args)
     # setup_runtime_env will install conda,pip according to
     # serialized-runtime-env, so add this argument
@@ -57,20 +58,21 @@ if container_option and container_image_option:
         logger.error(
             "failed to get tmp_dir, the args: {}".format(remaining_args))
 
+    container_driver = "podman"
     # todo add cgroup config
     # todo add container options
     # todo RAYLET_PID
     # todo flag "--rm"
     # todo --log-opt ???
     container_command = [
-        "podman", "run", "-v", tmp_dir + ":" + tmp_dir,
+        container_driver, "run", "--log-level=debug", "-v", tmp_dir + ":" + tmp_dir,
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
         "--ipc=host", "--env-host", "--entrypoint", "python"
     ]
     container_command.append(container_image_option)
     container_command.extend(entrypoint_args)
     logger.warning("start worker in container: {}".format(container_command))
-    os.execvp("podman", container_command)
+    os.execvp(container_driver, container_command)
 else:
     setup = import_attr(args.worker_setup_hook)
 
