@@ -487,6 +487,43 @@ class FunctionApiTest(unittest.TestCase):
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
 
+    def testWithParametersTwoRuns1(self):
+        # Makes sure two runs in the same script but different ray sessions
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn, extra=8)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 8)
+
+        self.tearDown()
+        self.setUp()
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn_2, extra=9)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 9)
+
+    def testWithParametersTwoRuns2(self):
+        # Makes sure two runs in the same script
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable1 = tune.with_parameters(train_fn, extra=8)
+        trainable2 = tune.with_parameters(train_fn_2, extra=9)
+
+        out1 = tune.run(trainable1, metric="metric", mode="max")
+        out2 = tune.run(trainable2, metric="metric", mode="max")
+        self.assertEquals(out1.best_result["metric"], 8)
+        self.assertEquals(out2.best_result["metric"], 9)
+
     def testReturnAnonymous(self):
         def train(config):
             return config["a"]

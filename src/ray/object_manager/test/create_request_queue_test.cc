@@ -75,7 +75,7 @@ class PlasmaUnlimitedCreateRequestQueueTest : public CreateRequestQueueTest {
 };
 
 TEST_F(CreateRequestQueueTest, TestSimple) {
-  auto request = [&](PlasmaObject *result, bool fallback) {
+  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -111,10 +111,10 @@ TEST_F(CreateRequestQueueTest, TestSimple) {
 }
 
 TEST_F(CreateRequestQueueTest, TestOom) {
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -145,7 +145,7 @@ TEST_F(CreateRequestQueueTest, TestOom) {
 
 TEST_F(PlasmaUnlimitedCreateRequestQueueTest, TestFallbackAllocator) {
   int num_fallbacks = 0;
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     if (fallback) {
       result->data_size = 1234;
       num_fallbacks += 1;
@@ -189,10 +189,10 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
       /*on_global_gc=*/[&]() { num_global_gc_++; },
       /*get_time=*/[&]() { return current_time_ns; });
 
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -221,13 +221,13 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
       /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -265,13 +265,13 @@ TEST_F(CreateRequestQueueTest, TestTransientOomFromCreateCallback) {
       /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::TransientOutOfMemory;
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -311,13 +311,13 @@ TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
       /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -368,13 +368,13 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
       /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](PlasmaObject *result, bool fallback) {
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -420,7 +420,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
       /*on_global_gc=*/[&]() {},
       /*get_time=*/[&]() { return current_time_ns; });
 
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
 
@@ -432,7 +432,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
 }
 
 TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
-  auto request = [&](PlasmaObject *result, bool fallback) {
+  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -461,7 +461,7 @@ TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
 }
 
 TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
-  auto request = [&](PlasmaObject *result, bool fallback) {
+  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -491,7 +491,7 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
 
   // Queue is empty, but request would block. Check that we do not attempt to
   // retry the request.
-  auto oom_request = [&](PlasmaObject *result, bool fallback) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request, 1234);
