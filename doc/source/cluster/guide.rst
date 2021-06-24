@@ -231,7 +231,7 @@ For large, long running clusters, there are a few parameters that can be tuned.
 * Ensure your quotas for node types are set correctly.
 * For long running clusters, set the ``AUTOSCALER_MAX_NUM_FAILURES`` environment
   variable to a large number (or ``inf``) to avoid unexpected autoscaler
-  crashes. The variable can be set by prepending ``export AUTOSCALER_MAX_NUM_FAILURES=inf;``
+  crashes. The variable can be set by prepending \ ``export AUTOSCALER_MAX_NUM_FAILURES=inf;``
   to the head node's Ray start command.
   (Note: you may want a separate mechanism to detect if the autoscaler
   errors too often).
