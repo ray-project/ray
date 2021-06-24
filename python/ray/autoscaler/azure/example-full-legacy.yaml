@@ -68,7 +68,7 @@ head_node:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 21.06.01
+        imageVersion: 21.01.21
 
 # Provider-specific config for worker nodes, e.g. instance type.
 worker_nodes:
@@ -78,7 +78,7 @@ worker_nodes:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 21.06.01
+        imageVersion: 21.01.21
         # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
@@ -131,14 +131,12 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
     # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
-    - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
-    # - echo 'conda activate py38_pytorch' >> ~/.bashrc
-    - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
-    - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0
+head_setup_commands: []
+    # this is already installed in the docker image
+    # - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
