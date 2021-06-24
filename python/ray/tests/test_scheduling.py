@@ -478,7 +478,6 @@ def test_many_args(ray_start_cluster):
 
     try:
         ray.get(tasks, timeout=30)
-        raise Exception
     except Exception:
         for filename in os.listdir("/tmp/ray/session_latest/logs"):
             path = f"/tmp/ray/session_latest/logs/{filename}"
