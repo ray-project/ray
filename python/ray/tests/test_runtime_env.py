@@ -25,14 +25,15 @@ try:
 except:
     pass
 
-job_config = ray.job_config.JobConfig(
-    runtime_env={runtime_env}
-)
-
-if not job_config.runtime_env:
-    job_config=None
-
 try:
+    job_config = ray.job_config.JobConfig(
+        runtime_env={runtime_env}
+    )
+
+    if not job_config.runtime_env:
+        job_config=None
+
+
     if os.environ.get("USE_RAY_CLIENT"):
         ray.client("{address}").env({runtime_env}).namespace("").connect()
     else:
