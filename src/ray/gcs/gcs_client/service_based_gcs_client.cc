@@ -116,7 +116,10 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
 }
 
 void ServiceBasedGcsClient::Disconnect() {
-  RAY_CHECK(is_connected_);
+  if (!is_connected_) {
+    RAY_LOG(WARNING) << "ServiceBasedGcsClient has been disconnected.";
+    return;
+  }
   is_connected_ = false;
   periodical_runner_.reset();
   gcs_pub_sub_.reset();

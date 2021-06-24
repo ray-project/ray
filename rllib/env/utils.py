@@ -1,3 +1,7 @@
+from gym import wrappers
+import os
+import re
+
 from ray.rllib.env.env_context import EnvContext
 
 
@@ -64,3 +68,46 @@ c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
 """
         raise gym.error.Error(error_msg)
+
+
+class VideoMonitor(wrappers.Monitor):
+    # Same as original method, but doesn't use the StatsRecorder as it will
+    # try to add up multi-agent rewards dicts, which throws errors.
+    def _after_step(self, observation, reward, done, info):
+        if not self.enabled:
+            return done
+
+        # Use done["__all__"] b/c this is a multi-agent dict.
+        if done["__all__"] and self.env_semantics_autoreset:
+            # For envs with BlockingReset wrapping VNCEnv, this observation
+            # will be the first one of the new episode
+            self.reset_video_recorder()
+            self.episode_id += 1
+            self._flush()
+
+        # Record video
+        self.video_recorder.capture_frame()
+
+        return done
+
+
+def record_env_wrapper(env, record_env, log_dir, policy_config):
+    if record_env:
+        path_ = record_env if isinstance(record_env, str) else log_dir
+        # Relative path: Add logdir here, otherwise, this would
+        # not work for non-local workers.
+        if not re.search("[/\\\]", path_):
+            path_ = os.path.join(log_dir, path_)
+        print(f"Setting the path for recording to {path_}")
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv
+        wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
+            else wrappers.Monitor
+        env = wrapper_cls(
+            env,
+            path_,
+            resume=True,
+            force=True,
+            video_callable=lambda _: True,
+            mode="evaluation"
+            if policy_config["in_evaluation"] else "training")
+    return env

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
+
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -446,20 +447,21 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid,
+                                  pid_t pid, pid_t worker_shim_pid,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto process = Process::FromPid(pid);
-
-  if (state.starting_worker_processes.count(process) == 0) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown worker "
-                     << process.GetId();
+  auto shim_process = Process::FromPid(worker_shim_pid);
+  worker->SetShimProcess(shim_process);
+  if (state.starting_worker_processes.count(shim_process) == 0) {
+    RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
+                     << shim_process.GetId();
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto process = Process::FromPid(pid);
   worker->SetProcess(process);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
@@ -484,10 +486,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  const auto &process = worker->GetProcess();
-  RAY_CHECK(process.IsValid());
+  const auto &shim_process = worker->GetShimProcess();
+  RAY_CHECK(shim_process.IsValid());
 
-  auto it = state.starting_worker_processes.find(process);
+  auto it = state.starting_worker_processes.find(shim_process);
   if (it != state.starting_worker_processes.end()) {
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
@@ -727,16 +729,16 @@ void WorkerPool::TryKillingIdleWorkers() {
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto process = idle_worker->GetProcess();
-
+    auto shim_process = idle_worker->GetShimProcess();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
-    if (worker_state.starting_worker_processes.count(process) > 0) {
+    if (worker_state.starting_worker_processes.count(shim_process) > 0) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;
     }
 
+    auto process = idle_worker->GetProcess();
     // Make sure all workers in this worker process are idle.
     // This block of code is needed by Java workers.
     auto workers_in_the_same_process = GetWorkersByProcess(process);
