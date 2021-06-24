@@ -269,6 +269,10 @@ class PullManager {
   /// pulling.
   size_t num_bytes_available_;
 
+  /// Whether we are at capacity. This means that there is at least request
+  /// queued that we cannot currently activate due to lack of available memory.
+  bool at_capacity_ = false;
+
   /// Triggered when the first request in the queue can't be pulled due to
   /// out-of-memory. This callback should try to make more bytes available.
   std::function<void()> object_store_full_callback_;

@@ -176,6 +176,7 @@ void PullManager::DeactivateUntilWithinQuota(
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
                                 object_ids_to_cancel);
+    at_capacity_ = true;
   }
 }
 
@@ -184,6 +185,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
+  // Assume that initially we have enough capacity for all pulls.
+  at_capacity_ = false;
+
   std::vector<ObjectID> objects_to_pull;
   std::unordered_set<ObjectID> object_ids_to_cancel;
   // If there are any get requests (highest priority), try to activate them. Since we
@@ -583,27 +587,8 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
   return bundle_it->second.num_object_sizes_missing > 0;
 }
 
-bool PullManager::QueueAtCapacity(const Queue &bundles,
-                                  uint64_t highest_req_id_being_pulled) const {
-  auto last_request_it = bundles.find(highest_req_id_being_pulled);
-  if (last_request_it == bundles.end()) {
-    // No requests are active.
-    return false;
-  }
-
-  last_request_it++;
-  if (last_request_it == bundles.end()) {
-    // No other requests in the queue.
-    return false;
-  }
-
-  return true;
-}
-
 bool PullManager::AtCapacity() const {
-  return QueueAtCapacity(get_request_bundles_, highest_get_req_id_being_pulled_) ||
-         QueueAtCapacity(wait_request_bundles_, highest_wait_req_id_being_pulled_) ||
-         QueueAtCapacity(task_argument_bundles_, highest_task_req_id_being_pulled_);
+  return at_capacity_;
 }
 
 std::string PullManager::BundleInfo(const Queue &bundles) const {

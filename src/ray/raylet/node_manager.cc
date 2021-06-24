@@ -265,7 +265,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); }));
+          [this]() { return object_manager_.GetUsedMemory(); },
+          [this]() { return object_manager_.PullManagerAtCapacity(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -553,8 +554,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  bool at_capacity = object_manager_.PullManagerAtCapacity();
-  cluster_resource_scheduler_->UpdateObjectPullsQueuedLocally(at_capacity);
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);

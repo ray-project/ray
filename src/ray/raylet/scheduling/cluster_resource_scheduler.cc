@@ -39,9 +39,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources,
-    std::function<int64_t(void)> get_used_object_store_memory)
+    std::function<int64_t(void)> get_used_object_store_memory,
+    std::function<bool(void)> get_pull_manager_at_capacity)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()) {
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
+      get_pull_manager_at_capacity_(get_pull_manager_at_capacity) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -1022,9 +1024,12 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     }
   }
 
-  if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
-    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    resources_data.set_resources_available_changed(true);
+  if (get_pull_manager_at_capacity_ != nullptr) {
+    resources.object_pulls_queued = get_pull_manager_at_capacity_();
+    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
+      resources_data.set_object_pulls_queued(resources.object_pulls_queued);
+      resources_data.set_resources_available_changed(true);
+    }
   }
 
   if (resources != *last_report_resources_.get()) {

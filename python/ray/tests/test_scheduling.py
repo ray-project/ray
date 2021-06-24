@@ -448,21 +448,14 @@ def test_lease_request_leak(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_many_args(ray_start_cluster):
-    # This test ensures that a task will run where its task dependencies are
-    # located, even when those objects are borrowed.
     cluster = ray_start_cluster
     object_size = int(1e6)
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
     cluster.add_node(
         num_cpus=1,
         _system_config={
             # Lower this to prevent excessive delays in pull retries.
             "object_manager_pull_timeout_ms": 100,
             "debug_dump_period_milliseconds": 1000,
-            "asio_stats_print_interval_ms": 1000,
-            "asio_event_loop_stats_collection_enabled": True,
         },
         object_store_memory=int(1e8))
     for _ in range(3):
@@ -496,6 +489,17 @@ def test_many_args(ray_start_cluster):
           num_leases_requested)
     assert num_tasks_submitted == 100
     assert num_leases_requested <= 10 * num_tasks_submitted
+
+def test_pull_manager_at_capacity_reports(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=int(1e8))
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
+
+    print(ray.available_resources())
+    print(ray.cluster_resources())
 
 
 if __name__ == "__main__":

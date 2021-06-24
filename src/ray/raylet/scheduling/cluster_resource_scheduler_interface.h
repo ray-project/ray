@@ -57,8 +57,6 @@ class ClusterResourceSchedulerInterface {
   virtual void DeleteResource(const std::string &node_id_string,
                               const std::string &resource_name) = 0;
 
-  virtual void UpdateObjectPullsQueuedLocally(bool object_pulls_queued) = 0;
-
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///

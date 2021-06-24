@@ -52,7 +52,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources,
-      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr,
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -395,13 +396,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
-  void UpdateObjectPullsQueuedLocally(bool object_pulls_queued) {
-    auto it = nodes_.find(local_node_id_);
-    RAY_CHECK(it != nodes_.end());
-    auto local_view = it->second.GetMutableLocalView();
-    local_view->object_pulls_queued = object_pulls_queued;
-  }
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resources_available and resources_total.
@@ -455,6 +449,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
+  /// Function to get whether the pull manager is at capacity.
+  std::function<bool(void)> get_pull_manager_at_capacity_;
 };
 
 }  // end namespace ray
