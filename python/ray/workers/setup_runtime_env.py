@@ -81,7 +81,7 @@ def setup_worker(input_args):
     commands = []
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
 
-    # Ray client server setup runtime env by itself instead of agent.
+    # Ray client server setups runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
         if "result" not in runtime_env:
             result = setup_runtime_env(runtime_env, args.session_dir)
