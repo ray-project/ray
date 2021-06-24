@@ -377,6 +377,7 @@ TEST_P(PullManagerTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -390,6 +391,7 @@ TEST_P(PullManagerTest, TestBasic) {
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   AssertNumActiveRequestsEquals(oids.size());
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   // Don't pull an object if it's local.
   object_is_local_ = true;
@@ -409,6 +411,7 @@ TEST_P(PullManagerTest, TestBasic) {
     ASSERT_EQ(num_abort_calls_[oid], 1);
     ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
   }
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
@@ -418,6 +421,7 @@ TEST_P(PullManagerTest, TestBasic) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   AssertNoLeaks();
 }
@@ -555,6 +559,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -570,11 +575,13 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
   }
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.AtCapacity());
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
+  ASSERT_TRUE(pull_manager_.AtCapacity());
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
@@ -598,9 +605,11 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
+  ASSERT_TRUE(pull_manager_.AtCapacity());
 
   // Increase the available memory again.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size);
+  ASSERT_FALSE(pull_manager_.AtCapacity());
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   AssertNumActiveRequestsEquals(oids.size());
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));

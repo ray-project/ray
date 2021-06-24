@@ -48,14 +48,14 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     bundle_it =
         task_argument_bundles_.emplace(next_req_id_++, std::move(deduplicated)).first;
   }
-  RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first
-                 << ". Bundle size: " << bundle_it->second.objects.size();
+  RAY_LOG(INFO) << "Start pull request " << bundle_it->first
+                << ". Bundle size: " << bundle_it->second.objects.size();
 
   for (const auto &ref : deduplicated) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
     if (it == object_pull_requests_.end()) {
-      RAY_LOG(DEBUG) << "Pull of object " << obj_id;
+      RAY_LOG(INFO) << "Pull of object " << obj_id;
       // We don't have an active pull for this object yet. Ask the caller to
       // send us notifications about the object's location.
       objects_to_locate->push_back(ref);
@@ -103,9 +103,9 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Activating request " << next_request_it->first
-                 << " num bytes being pulled: " << num_bytes_being_pulled_
-                 << " num bytes available: " << num_bytes_available_;
+  RAY_LOG(INFO) << "Activating request " << next_request_it->first
+                << " num bytes being pulled: " << num_bytes_being_pulled_
+                << " num bytes available: " << num_bytes_available_;
   // Activate the pull bundle request.
   for (const auto &ref : next_request_it->second.objects) {
     absl::MutexLock lock(&active_objects_mu_);
@@ -113,7 +113,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
     if (start_pull) {
-      RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+      RAY_LOG(INFO) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
       auto it = object_pull_requests_.find(obj_id);
@@ -145,7 +145,7 @@ void PullManager::DeactivatePullBundleRequest(
       continue;
     }
     if (it->second.empty()) {
-      RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
+      RAY_LOG(INFO) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
@@ -169,9 +169,9 @@ void PullManager::DeactivateUntilWithinQuota(
     const std::string &debug_name, Queue &bundles, uint64_t *highest_id_for_bundle,
     std::unordered_set<ObjectID> *object_ids_to_cancel) {
   while (num_bytes_being_pulled_ > num_bytes_available_ && *highest_id_for_bundle != 0) {
-    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
-                   << " num bytes being pulled: " << num_bytes_being_pulled_
-                   << " num bytes available: " << num_bytes_available_;
+    RAY_LOG(INFO) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
+                  << " num bytes being pulled: " << num_bytes_being_pulled_
+                  << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
     DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
@@ -182,7 +182,7 @@ void PullManager::DeactivateUntilWithinQuota(
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
-    RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
+    RAY_LOG(INFO) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
   // Assume that initially we have enough capacity for all pulls.
@@ -249,6 +249,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivateUntilWithinQuota("get request", get_request_bundles_,
                                &highest_get_req_id_being_pulled_, &object_ids_to_cancel);
     RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
+  } else if (num_bytes_being_pulled_ > num_bytes_available_) {
+    at_capacity_ = true;
   }
 
   // Call the cancellation callbacks outside of the lock.
@@ -315,7 +317,7 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
-  RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
+  RAY_LOG(INFO) << "Cancel pull request " << request_id;
 
   Queue *request_queue = nullptr;
   uint64_t *highest_req_id_being_pulled = nullptr;
@@ -353,7 +355,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
     if (it != object_pull_requests_.end()) {
-      RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
+      RAY_LOG(INFO) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
         object_pull_requests_.erase(it);
@@ -403,8 +405,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     }
 
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
-    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
-                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
+    RAY_LOG(INFO) << "Updated size of object " << object_id << " to " << object_size
+                  << ", num bytes being pulled is now " << num_bytes_being_pulled_;
     if (it->second.object_size == 0) {
       RAY_LOG(WARNING) << "Size of object " << object_id
                        << " stored in object store is zero. This may be a bug since "
@@ -412,8 +414,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
-                 << client_ids.size();
+  RAY_LOG(INFO) << "OnLocationChange " << spilled_url << " num clients "
+                << client_ids.size();
 
   {
     absl::MutexLock lock(&active_objects_mu_);
@@ -465,7 +467,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // TODO(ekl) should we more directly mark the object as lost in this case?
-  RAY_LOG(DEBUG) << "Object neither in memory nor external storage " << object_id.Hex();
+  RAY_LOG(INFO) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -519,8 +521,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
     RAY_CHECK(node_id != self_node_id_);
   }
 
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
-                 << " of object " << object_id;
+  RAY_LOG(INFO) << "Sending pull request from " << self_node_id_ << " to " << node_id
+                << " of object " << object_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
