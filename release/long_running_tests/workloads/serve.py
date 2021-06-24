@@ -24,7 +24,7 @@ NUM_NODES = 4
 # wrk setup constants (might want to make these configurable ?)
 NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
-TIME_PER_CYCLE = "60m"
+TIME_PER_CYCLE = "1m"
 
 
 def update_progress(result):
