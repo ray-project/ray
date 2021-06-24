@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 kubectl create namespace basic-test
 kubectl apply -f ../../deploy/charts/ray/crds/cluster_crd.yaml

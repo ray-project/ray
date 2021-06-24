@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 kubectl create namespace helm-test
 kubectl create namespace helm-test2

@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 kubectl create namespace scale-test
 kubectl create namespace scale-test2
