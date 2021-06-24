@@ -923,6 +923,7 @@ def delete_backend(backend_tag: str, force: bool = False) -> None:
     return _get_global_client().delete_backend(
         backend_tag, force=force, _internal=True)
 
+
 def delete_deployment(deployment_name: str) -> None:
     """Delete the given deployment.
 
