@@ -924,15 +924,6 @@ def delete_backend(backend_tag: str, force: bool = False) -> None:
         backend_tag, force=force, _internal=True)
 
 
-def delete_deployment(deployment_name: str) -> None:
-    """Delete the given deployment.
-
-    Args:
-        deployment_name (str): Name of deployment name to be deleted.
-    """
-    return _get_global_client().delete_deployment(deployment_name)
-
-
 def set_traffic(endpoint_name: str,
                 traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.

@@ -95,7 +95,7 @@ class RandomTest:
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            serve.delete_deployment(deployment_to_delete)
+            serve.get_deployment(deployment_to_delete).delete()
 
         new_name = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])
