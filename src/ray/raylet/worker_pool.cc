@@ -292,6 +292,7 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
+      env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
