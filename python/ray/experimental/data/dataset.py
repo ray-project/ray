@@ -48,6 +48,8 @@ class Dataset(Generic[T]):
         This is a blocking operation. Note that mapping individual records
         can be quite slow. Consider using `.map_batches()` for performance.
 
+        Time complexity: O(data size)
+
         Args:
             fn: The function to apply to each record.
             compute: The compute strategy, either "tasks" to use Ray tasks,
@@ -79,6 +81,8 @@ class Dataset(Generic[T]):
 
         This is a blocking operation.
 
+        Time complexity: O(data size)
+
         Args:
             fn: The function to apply to each record batch.
             batch_size: Request a specific batch size, or leave unspecified
@@ -100,6 +104,8 @@ class Dataset(Generic[T]):
 
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (the batch size can be altered in map_batches).
+
+        Time complexity: O(data size)
 
         Args:
             fn: The function to apply to each record.
@@ -132,6 +138,8 @@ class Dataset(Generic[T]):
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (you can implement filter by dropping records).
 
+        Time complexity: O(data size)
+
         Args:
             fn: The predicate function to apply to each record.
             compute: The compute strategy, either "tasks" to use Ray tasks,
@@ -160,6 +168,8 @@ class Dataset(Generic[T]):
         Args:
             num_blocks: The number of blocks.
 
+        Time complexity: O(data size)
+
         Returns:
             The repartitioned dataset.
         """
@@ -172,6 +182,8 @@ class Dataset(Generic[T]):
 
         This operation is useful to limit the size of the dataset during
         development.
+
+        Time complexity: O(limit specified)
 
         Args:
             limit: The size of the dataset to truncate to.
@@ -187,6 +199,8 @@ class Dataset(Generic[T]):
         Args:
             limit: The max number of records to return.
 
+        Time complexity: O(limit specified)
+
         Returns:
             A list of up to ``limit`` records from the dataset.
         """
@@ -200,6 +214,8 @@ class Dataset(Generic[T]):
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of records from the dataset.
 
+        Time complexity: O(limit specified)
+
         Args:
             limit: The max number of records to print.
         """
@@ -208,6 +224,8 @@ class Dataset(Generic[T]):
 
     def to_local_iterator(self) -> Generator:
         """Return an iterator that can be used to scan the dataset serially.
+
+        Time complexity: O(1)
 
         Returns:
             A local iterator over the entire dataset.
@@ -219,6 +237,8 @@ class Dataset(Generic[T]):
 
     def count(self) -> int:
         """Count the number of records in the dataset.
+
+        Time complexity: O(1)
 
         Returns:
             The number of records in the dataset.
@@ -233,6 +253,8 @@ class Dataset(Generic[T]):
 
     def sum(self) -> int:
         """Sum up the elements of this dataset.
+
+        Time complexity: O(data size)
 
         Returns:
             The sum of the records in the dataset.
@@ -251,6 +273,8 @@ class Dataset(Generic[T]):
         For datasets of Arrow records, this will return the Arrow schema.
         For dataset of Python objects, this returns their Python type.
 
+        Time complexity: O(1)
+
         Returns:
             The Python type or Arrow schema of the records.
         """
@@ -258,6 +282,8 @@ class Dataset(Generic[T]):
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
+
+        Time complexity: O(1)
 
         Returns:
             The number of blocks of this dataset.
@@ -267,6 +293,8 @@ class Dataset(Generic[T]):
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
+        Time complexity: O(1)
+
         Returns:
             The in-memory size of the dataset in bytes.
         """
@@ -274,6 +302,8 @@ class Dataset(Generic[T]):
 
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
+
+        Time complexity: O(num input files)
 
         Returns:
             The list of input files used to create the dataset.
@@ -287,6 +317,8 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
+        Time complexity: O(dataset size)
+
         Args:
             path: The path in the filesystem to write to.
             filesystem: The filesystem implementation to write to.
@@ -298,6 +330,8 @@ class Dataset(Generic[T]):
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
+
+        Time complexity: O(dataset size)
 
         Args:
             path: The path in the filesystem to write to.
@@ -311,6 +345,8 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
+        Time complexity: O(dataset size)
+
         Args:
             path: The path in the filesystem to write to.
             filesystem: The filesystem implementation to write to.
@@ -320,6 +356,8 @@ class Dataset(Generic[T]):
     def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
         """Return a dataset that can be used for Torch distributed training.
 
+        Time complexity: O(1)
+
         Returns:
             A TorchMLDataset.
         """
@@ -327,6 +365,8 @@ class Dataset(Generic[T]):
 
     def to_tf(self, **todo) -> "ray.util.sgd.tf.TFMLDataset":
         """Return a dataset that can be used for TF distributed training.
+
+        Time complexity: O(1)
 
         Returns:
             A TFMLDataset.
@@ -344,6 +384,8 @@ class Dataset(Generic[T]):
 
         This returns a list of iterators that can be passed to Ray tasks
         and actors, and used to read the dataset records in parallel.
+
+        Time complexity: O(1)
 
         Args:
             num_shards: Number of iterators to return.
@@ -365,6 +407,8 @@ class Dataset(Generic[T]):
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask dataframe.
 
+        Time complexity: O(1)
+
         Returns:
             A Dask dataframe created from this dataset.
         """
@@ -372,6 +416,8 @@ class Dataset(Generic[T]):
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
+
+        Time complexity: O(1)
 
         Returns:
             A Modin dataframe created from this dataset.
@@ -381,6 +427,8 @@ class Dataset(Generic[T]):
     def to_pandas(self) -> Iterator[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a set of Pandas dataframes.
 
+        Time complexity: O(1)
+
         Returns:
             A list of remote Pandas dataframes created from this dataset.
         """
@@ -388,6 +436,8 @@ class Dataset(Generic[T]):
 
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
+
+        Time complexity: O(1)
 
         Returns:
             A Spark dataframe created from this dataset.
