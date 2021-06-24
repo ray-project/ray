@@ -79,7 +79,7 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 
 template <typename KeyIdType>
 SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
-    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) {
+    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.

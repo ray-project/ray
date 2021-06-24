@@ -87,7 +87,8 @@ class SubscribeChannelInterface {
   /// \param pub_message The message to handle from the publisher.
   /// \return the subscription callback registered. nullptr otherwise.
   virtual SubscriptionCallback GetCallbackForPubMessage(
-      const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) = 0;
+      const rpc::Address &publisher_address,
+      const rpc::PubMessage &pub_message) const = 0;
 
   /// Handle the failure of the given publisher.
   ///
@@ -124,7 +125,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   bool CheckNoLeaks() const override;
 
   SubscriptionCallback GetCallbackForPubMessage(
-      const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) override;
+      const rpc::Address &publisher_address,
+      const rpc::PubMessage &pub_message) const override;
 
   void HandlePublisherFailure(const rpc::Address &publisher_address) override;
 
@@ -181,8 +183,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   ///
   uint64_t cum_subscribe_requests_ = 0;
   uint64_t cum_unsubscribe_requests_ = 0;
-  uint64_t cum_published_messages_ = 0;
-  uint64_t cum_processed_messages_ = 0;
+  mutable uint64_t cum_published_messages_ = 0;
+  mutable uint64_t cum_processed_messages_ = 0;
 };
 
 /// The below defines the list of channel implementation.
