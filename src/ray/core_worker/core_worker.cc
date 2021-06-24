@@ -118,7 +118,11 @@ void CoreWorkerProcess::Shutdown() {
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
 
 CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
-    : options_(options), global_worker_id_(WorkerID::FromBinary(options.worker_id)) {
+    : options_(options),
+      global_worker_id_(
+          options.worker_type == WorkerType::DRIVER
+              ? ComputeDriverIdFromJob(options_.job_id)
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -290,7 +294,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  auto worker = std::make_shared<CoreWorker>(options_);
+  auto worker = std::make_shared<CoreWorker>(
+      options_,
+      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -349,13 +355,12 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   core_worker_process.reset();
 }
 
-CoreWorker::CoreWorker(const CoreWorkerOptions &options)
+CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
-      worker_context_(options_.worker_type, WorkerID::FromBinary(options_.worker_id),
-                      GetProcessJobID(options_)),
+      worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
@@ -364,7 +369,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options)
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
-  auto worker_id = WorkerID::FromBinary(options.worker_id);
   RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -395,7 +399,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options)
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -625,6 +629,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options)
                                     reference_counter_, node_addr_factory, rpc_address_))
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
+
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
@@ -639,6 +644,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options)
   future_resolver_.reset(new FutureResolver(memory_store_,
                                             std::move(report_locality_data_callback),
                                             core_worker_client_pool_, rpc_address_));
+
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
@@ -897,7 +903,15 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  if (!IsParentProcessAlive()) {
+  // When running worker process in container, the worker parent process is not raylet.
+  // So we add RAYLET_PID enviroment to ray worker process.
+  if (const char *env_pid = std::getenv("RAYLET_PID")) {
+    pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
+    if (!IsProcessAlive(pid)) {
+      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
+      Shutdown();
+    }
+  } else if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
@@ -2343,6 +2357,13 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
         },
         "CoreWorker.HandlePushTask");
   }
+}
+
+void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
+                                  rpc::StealTasksReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Entering CoreWorker::HandleStealWork!";
+  direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(

@@ -97,6 +97,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
+    # Discount factor of the MDP.
+    "gamma": 0.99,
+    # The default learning rate.
+    "lr": 0.0001,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -108,8 +112,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "optimizer": {},
 
     # === Environment Settings ===
-    # Discount factor of the MDP.
-    "gamma": 0.99,
     # Number of steps after which the episode is forced to terminate. Defaults
     # to `env.spec.max_episode_steps` (if present) for Gym envs.
     "horizon": None,
@@ -121,9 +123,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Environment name can also be passed via config.
+    # The environment specifier:
+    # This can either be a tune-registered env, via
+    # `tune.register_env([name], lambda env_ctx: [env object])`,
+    # or a string specifier of an RLlib supported type. In the latter case,
+    # RLlib will try to interpret the specifier as either an openAI gym env,
+    # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
+    # Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
     "env": None,
-    # Arguments to pass to the env creator.
+    # The observation- and action spaces for the Policies of this Trainer.
+    # Use None for automatically inferring these from the given env.
+    "observation_space": None,
+    "action_space": None,
+    # Arguments dict passed to the env creator as an EnvContext object (which
+    # is a dict plus the properties: num_workers, worker_index, vector_index,
+    # and remote).
     "env_config": {},
     # A callable taking the last train results, the base env and the env
     # context as args and returning a new task to set the env to.
@@ -158,8 +172,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "clip_actions": True,
     # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
-    # The default learning rate.
-    "lr": 0.0001,
 
     # === Debug Settings ===
     # Set the ray.rllib.* log level for the agent process and its workers.
@@ -184,7 +196,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     "fake_sampler": False,
 
     # === Deep Learning Framework Settings ===
-    # tf: TensorFlow
+    # tf: TensorFlow (static-graph)
+    # tf2: TensorFlow 2.x (eager)
     # tfe: TensorFlow eager
     # torch: PyTorch
     "framework": "tf",
@@ -1304,6 +1317,11 @@ class Trainer(Trainable):
         if config.get("record_env") == "":
             config["record_env"] = True
 
+        # DefaultCallbacks if callbacks - for whatever reason - set to
+        # None.
+        if config["callbacks"] is None:
+            config["callbacks"] = DefaultCallbacks
+
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
@@ -1503,13 +1521,15 @@ class Trainer(Trainable):
             "that were generated via the `ray.rllib.agents.trainer_template."
             "build_trainer()` function!")
 
-    def _register_if_needed(self, env_object: Union[str, EnvType]):
+    def _register_if_needed(self, env_object: Union[str, EnvType, None]):
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
             register_env(name, lambda config: env_object(config))
             return name
+        elif env_object is None:
+            return None
         raise ValueError(
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "

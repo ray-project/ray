@@ -26,16 +26,20 @@ def conda_envs():
     current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
     assert current_conda_env is not None
 
+    def delete_env(env_name):
+        subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
+
     # Cloning the env twice may take minutes, so parallelize with Ray.
     @ray.remote
     def create_tf_env(tf_version: str):
-
+        env_name = f"tf-{tf_version}"
+        delete_env(env_name)
         subprocess.run([
-            "conda", "create", "-n", f"tf-{tf_version}", "--clone",
-            current_conda_env, "-y"
+            "conda", "create", "-n", env_name, "--clone", current_conda_env,
+            "-y"
         ])
         commands = [
-            init_cmd, f"conda activate tf-{tf_version}",
+            init_cmd, f"conda activate {env_name}",
             f"python -m pip install tensorflow=={tf_version}",
             "conda deactivate"
         ]
@@ -50,12 +54,9 @@ def conda_envs():
 
     ray.init()
 
-    @ray.remote
-    def remove_tf_env(tf_version: str):
-        subprocess.run(
-            ["conda", "remove", "-n", f"tf-{tf_version}", "--all", "-y"])
+    for tf_version in tf_versions:
+        delete_env(env_name=f"tf-{tf_version}")
 
-    ray.get([remove_tf_env.remote(version) for version in tf_versions])
     subprocess.run([f"{init_cmd} && conda deactivate"], shell=True)
     ray.shutdown()
 
