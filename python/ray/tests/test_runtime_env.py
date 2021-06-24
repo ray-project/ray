@@ -692,6 +692,8 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_task(ray_start_cluster_head):
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     def f():
@@ -700,6 +702,8 @@ def test_decorator_task(ray_start_cluster_head):
     assert ray.get(f.remote()) == "bar"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_actor(ray_start_cluster_head):
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     class A:
@@ -710,6 +714,8 @@ def test_decorator_actor(ray_start_cluster_head):
     assert ray.get(a.g.remote()) == "bar"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_complex(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(
