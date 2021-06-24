@@ -1,5 +1,6 @@
 from typing import List
 
+import ray
 from ray.experimental.data.impl.block import ObjectRef
 
 try:
@@ -20,9 +21,8 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print(
-                    "[dataset]: Run `pip install tqdm` to enable "
-                    "progress reporting.")
+                print("[dataset]: Run `pip install tqdm` to enable "
+                      "progress reporting.")
                 needs_warning = False
             self._bar = None
 
