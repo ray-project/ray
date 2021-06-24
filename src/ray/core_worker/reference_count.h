@@ -401,7 +401,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Publish the snapshot of the object location for the given object id.
-  /// Publish the empty locations if object is already evicted or not owned by this worker.
+  /// Publish the empty locations if object is already evicted or not owned by this
+  /// worker.
   ///
   /// \param[in] object_id The object whose locations we want.
   void PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);

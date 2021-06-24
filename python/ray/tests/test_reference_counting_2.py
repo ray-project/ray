@@ -288,6 +288,7 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
+
 # SANG-TODO Revert this
 @pytest.mark.parametrize("failure", [True])
 # @pytest.mark.parametrize("failure", [False, True])
