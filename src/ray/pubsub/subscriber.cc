@@ -195,7 +195,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
                                                  const rpc::Address &subscriber_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
-  auto publisher_client = publisher_client_pool_.GetOrConnect(publisher_address);
+  auto publisher_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
 
@@ -297,7 +297,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     }
 
     command_batch_sent_.emplace(publisher_id);
-    auto publisher_client = publisher_client_pool_.GetOrConnect(publisher_address);
+    auto publisher_client = get_client_(publisher_address);
     publisher_client->PubsubCommandBatch(
         command_batch_request,
         [this, publisher_address, publisher_id](

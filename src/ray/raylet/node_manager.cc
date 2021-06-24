@@ -247,7 +247,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*core_worker_subscriber_=*/
           std::make_shared<pubsub::Subscriber>(
               self_node_id_, config.node_manager_address, config.node_manager_port,
-              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
+              RayConfig::instance().max_command_batch_size(),
+              [this](const rpc::Address &address) {
+                return worker_rpc_pool_.GetOrConnect(address);
+              },
               &io_service_)),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
@@ -1405,7 +1408,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (!worker) {
       worker = worker_pool_.GetRegisteredDriver(client);
     }
-    if (worker) {
+    // Fetch requests can get re-ordered after the worker finishes, so make sure to
+    // check the worker is still assigned a task to avoid leaks.
+    if (worker && !worker->GetAssignedTaskId().IsNil()) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
       dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
