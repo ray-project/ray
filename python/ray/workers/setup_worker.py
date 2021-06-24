@@ -21,11 +21,13 @@ parser.add_argument(
     type=str,
     help="the serialized parsed runtime env dict")
 
+
 def get_tmp_dir(remaining_args):
     for arg in remaining_args:
         if arg.startswith("--temp-dir="):
             return arg[11:]
     return None
+
 
 def start_worker_in_container(container_option, args, remaining_args):
     worker_setup_hook = args.worker_setup_hook
@@ -54,7 +56,7 @@ def start_worker_in_container(container_option, args, remaining_args):
     # todo RAYLET_PID
     # todo flag "--rm"
     container_command = [
-        container_driver, "run", "--log-level=debug", "-v", tmp_dir + ":" + tmp_dir,
+        container_driver, "run", "-v", tmp_dir + ":" + tmp_dir,
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
         "--ipc=host", "--env-host", "--entrypoint"
     ]
@@ -67,6 +69,7 @@ def start_worker_in_container(container_option, args, remaining_args):
     container_command.extend(entrypoint_args)
     logger.warning("start worker in container: {}".format(container_command))
     os.execvp(container_driver, container_command)
+
 
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()

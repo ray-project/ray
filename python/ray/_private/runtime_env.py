@@ -66,7 +66,7 @@ class RuntimeEnvDict:
             https://docs.docker.com/engine/reference/run/
             Examples:
                 {"image": "anyscale/ray-ml:nightly-py38-cpu",
-                 "worker_path": "/root/ray/python/ray/workers/default_worker.py",
+                 "worker_path": "/root/python/ray/workers/default_worker.py",
                  "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
         env_vars (dict): Environment variables to set.
             Examples:
