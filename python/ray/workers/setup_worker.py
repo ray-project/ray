@@ -60,10 +60,9 @@ if container_option and container_image_option:
 
     container_driver = "podman"
     # todo add cgroup config
-    # todo add container options
+    # todo add container run options
     # todo RAYLET_PID
     # todo flag "--rm"
-    # todo --log-opt ???
     container_command = [
         container_driver, "run", "--log-level=debug", "-v", tmp_dir + ":" + tmp_dir,
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
