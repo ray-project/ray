@@ -490,7 +490,7 @@ def test_conda_input_filepath(use_working_dir, tmp_path):
 
     if use_working_dir:
         runtime_env_dict = RuntimeEnvDict({
-            "working_dir": d,
+            "working_dir": str(d),
             "conda": "environment.yml"
         })
     else:

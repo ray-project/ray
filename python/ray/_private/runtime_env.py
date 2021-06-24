@@ -82,9 +82,6 @@ class RuntimeEnvDict:
                 raise TypeError("`working_dir` must be a string. Type "
                                 f"{type(self._dict['working_dir'])} received.")
             working_dir = Path(self._dict["working_dir"]).absolute()
-            if not working_dir.exists() or not working_dir.is_dir():
-                raise ValueError(f"working_dir {working_dir} must be an "
-                                 "existing directory.")
         else:
             self._dict["working_dir"] = None
             working_dir = None
@@ -384,6 +381,12 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
     if working_dir:
+        if not isinstance(working_dir, str):
+            raise TypeError("`working_dir` must be a string.")
+        working_dir = Path(working_dir).absolute()
+        if not working_dir.exists() or not working_dir.is_dir():
+            raise ValueError(f"working_dir {working_dir} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val,
             _hash_modules(working_dir, working_dir,
