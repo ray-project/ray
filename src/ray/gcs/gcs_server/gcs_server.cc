@@ -64,8 +64,10 @@ void GcsServer::Start() {
     // Init grpc based pubsub
     // TODO(before merging): Make these constants configurable.
     grpc_pubsub_publisher_.reset(new pubsub::Publisher(
-        &pubsub_periodical_runner_, []() { return absl::GetCurrentTimeNanos(); },
-        60 * 1000, 1024));
+        /*periodical_runner=*/&pubsub_periodical_runner_,
+        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
   }
 
   // Init gcs table storage.
