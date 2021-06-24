@@ -67,7 +67,7 @@ class RuntimeEnvDict:
             Examples:
                 {"image": "anyscale/ray-ml:nightly-py38-cpu",
                  "worker_path": "/root/ray/python/ray/workers/default_worker.py",
-                 run_options}
+                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
         env_vars (dict): Environment variables to set.
             Examples:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}

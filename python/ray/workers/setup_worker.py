@@ -21,22 +21,13 @@ parser.add_argument(
     type=str,
     help="the serialized parsed runtime env dict")
 
-args, remaining_args = parser.parse_known_args()
-# add worker-shim-pid argument
-remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
-
-
 def get_tmp_dir(remaining_args):
     for arg in remaining_args:
         if arg.startswith("--temp-dir="):
             return arg[11:]
     return None
 
-
-runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-container_option = runtime_env.get("container_option")
-container_image_option = container_option.get("image")
-if container_option and container_image_option:
+def start_worker_in_container(container_option, args, remaining_args):
     worker_setup_hook = args.worker_setup_hook
     last_period_idx = worker_setup_hook.rfind(".")
     module_name = worker_setup_hook[:last_period_idx]
@@ -60,19 +51,32 @@ if container_option and container_image_option:
 
     container_driver = "podman"
     # todo add cgroup config
-    # todo add container run options
     # todo RAYLET_PID
     # todo flag "--rm"
     container_command = [
         container_driver, "run", "--log-level=debug", "-v", tmp_dir + ":" + tmp_dir,
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
-        "--ipc=host", "--env-host", "--entrypoint", "python"
+        "--ipc=host", "--env-host", "--entrypoint"
     ]
+    if container_option.get("run_options"):
+        container_command.extend(container_option.get("run_options"))
+
+    container_command.append("--entrypoint")
+    container_command.append("python")
     container_command.append(container_image_option)
     container_command.extend(entrypoint_args)
     logger.warning("start worker in container: {}".format(container_command))
     os.execvp(container_driver, container_command)
-else:
-    setup = import_attr(args.worker_setup_hook)
 
-    setup(remaining_args)
+if __name__ == "__main__":
+    args, remaining_args = parser.parse_known_args()
+    # add worker-shim-pid argument
+    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
+    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
+    container_option = runtime_env.get("container_option")
+    container_image_option = container_option.get("image")
+    if container_option and container_image_option:
+        start_worker_in_container(container_option, args, remaining_args)
+    else:
+        setup = import_attr(args.worker_setup_hook)
+        setup(remaining_args)
