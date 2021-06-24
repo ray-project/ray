@@ -835,6 +835,28 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncGetAllResourceUsage(
   return Status::OK();
 }
 
+ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
+  RAY_LOG(DEBUG) << "Getting object locations, object id = " << object_id
+                 << ", job id = " << object_id.TaskId().JobId();
+  rpc::GetObjectLocationsRequest request;
+  request.set_object_id(object_id.Binary());
+  client_impl_->GetGcsRpcClient().GetObjectLocations(
+      request, [object_id, callback](const Status &status,
+                                     const rpc::GetObjectLocationsReply &reply) {
+        callback(status, reply.location_info());
+        RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
+                       << ", object id = " << object_id
+                       << ", job id = " << object_id.TaskId().JobId();
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
     const MultiItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting all object locations.";
