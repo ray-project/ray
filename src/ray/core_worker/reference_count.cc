@@ -1150,14 +1150,7 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
     RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
                   << " that doesn't exist in the reference table."
                   << " The object has probably already been freed.";
-    // Publish the empty location since the object is already evicted or freed.
-    // rpc::PubMessage pub_message;
-    // pub_message.set_key_id(object_id.Binary());
-    // pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-    // // Needs to call this to set the proper grpc oneof message.
-    // pub_message.mutable_worker_object_locations_message();
-    // object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-    //                                 pub_message, object_id.Binary());
+    // Consider the object is already freed, and not subscribeable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
