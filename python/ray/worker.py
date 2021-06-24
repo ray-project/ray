@@ -1753,6 +1753,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
+                   runtime_env=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1782,7 +1783,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries)
+                num_returns, max_calls, max_retries, runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1804,7 +1805,7 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
                                         accelerator_type, max_restarts,
-                                        max_task_retries)
+                                        max_task_retries, runtime_env)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1927,29 +1928,20 @@ def remote(*args, **kwargs):
         return make_decorator(worker=worker)(args[0])
 
     # Parse the keyword arguments from the decorator.
+    valid_kwargs = [
+        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
+        "resources", "accelerator_type", "max_calls", "max_restarts",
+        "max_task_retries", "max_retries", "runtime_env"
+    ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
-                    "'memory', 'object_store_memory', 'resources', "
-                    "'max_calls', or 'max_restarts', like "
+                    f"the arguments in the list {valid_kwargs}, for example "
                     "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
-        assert key in [
-            "num_returns",
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "accelerator_type",
-            "max_calls",
-            "max_restarts",
-            "max_task_retries",
-            "max_retries",
-        ], error_string
+        assert key in valid_kwargs, error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
@@ -1971,6 +1963,7 @@ def remote(*args, **kwargs):
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
+    runtime_env = kwargs.get("runtime_env")
 
     return make_decorator(
         num_returns=num_returns,
@@ -1984,4 +1977,5 @@ def remote(*args, **kwargs):
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,
         max_retries=max_retries,
+        runtime_env=runtime_env,
         worker=worker)
