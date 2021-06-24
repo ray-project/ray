@@ -203,7 +203,7 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
         # here by setting them to 0.0. This will simply ignore destructive loss
         # calculations.
         policy.grads = [
-            tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
+            tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads if g is not None
         ]
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
