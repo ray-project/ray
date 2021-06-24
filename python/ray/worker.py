@@ -1910,7 +1910,6 @@ def remote(*args, **kwargs):
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
-            Note: can only be set via `.options()`.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
