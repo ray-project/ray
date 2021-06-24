@@ -1,19 +1,17 @@
 import sys
-import functools
-import time
 import asyncio
+import time
 import os
 from typing import Dict
 
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
-                                 UpdatedObject)
+from ray.serve.long_poll import (LongPollClient, LongPollHost, UpdatedObject)
 
 
 def test_host_standalone(serve_instance):
-    host = ray.remote(LongPollerHost).remote()
+    host = ray.remote(LongPollHost).remote()
 
     # Write two values
     ray.get(host.notify_changed.remote("key_1", 999))
@@ -44,10 +42,10 @@ def test_long_poll_restarts(serve_instance):
         max_restarts=-1,
         max_task_retries=-1,
     )
-    class RestartableLongPollerHost:
+    class RestartableLongPollHost:
         def __init__(self) -> None:
             print("actor started")
-            self.host = LongPollerHost()
+            self.host = LongPollHost()
             self.host.notify_changed("timer", time.time())
             self.should_exit = False
 
@@ -63,7 +61,7 @@ def test_long_poll_restarts(serve_instance):
                 print("actor exit")
                 os._exit(1)
 
-    host = RestartableLongPollerHost.remote()
+    host = RestartableLongPollHost.remote()
     updated_values = ray.get(host.listen_for_change.remote({"timer": -1}))
     timer: UpdatedObject = updated_values["timer"]
 
@@ -79,9 +77,8 @@ def test_long_poll_restarts(serve_instance):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-@pytest.mark.asyncio
-async def test_async_client(serve_instance):
-    host = ray.remote(LongPollerHost).remote()
+def test_client(serve_instance):
+    host = ray.remote(LongPollHost).remote()
 
     # Write two values
     ray.get(host.notify_changed.remote("key_1", 100))
@@ -89,18 +86,19 @@ async def test_async_client(serve_instance):
 
     callback_results = dict()
 
-    async def callback(result, key):
-        callback_results[key] = result
+    def key_1_callback(result):
+        callback_results["key_1"] = result
 
-    client = LongPollerAsyncClient(
-        host, {
-            "key_1": functools.partial(callback, key="key_1"),
-            "key_2": functools.partial(callback, key="key_2")
-        })
+    def key_2_callback(result):
+        callback_results["key_2"] = result
+
+    client = LongPollClient(host, {
+        "key_1": key_1_callback,
+        "key_2": key_2_callback,
+    })
 
     while len(client.object_snapshots) == 0:
-        # Yield the loop for client to get the result
-        await asyncio.sleep(0.2)
+        time.sleep(0.1)
 
     assert client.object_snapshots["key_1"] == 100
     assert client.object_snapshots["key_2"] == 999
@@ -112,10 +110,29 @@ async def test_async_client(serve_instance):
         values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
-        await asyncio.sleep(1)
+        time.sleep(1)
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}
+
+
+@pytest.mark.asyncio
+async def test_client_threadsafe(serve_instance):
+    host = ray.remote(LongPollHost).remote()
+    ray.get(host.notify_changed.remote("key_1", 100))
+
+    e = asyncio.Event()
+
+    def key_1_callback(_):
+        e.set()
+
+    _ = LongPollClient(
+        host, {
+            "key_1": key_1_callback,
+        },
+        call_in_event_loop=asyncio.get_event_loop())
+
+    await e.wait()
 
 
 if __name__ == "__main__":

@@ -25,8 +25,8 @@ public class ValueStateDescriptorTest {
 
   @Test
   public void test() {
-    ValueStateDescriptor<Integer> descriptor = ValueStateDescriptor
-        .build("vsdTest", Integer.class, 0);
+    ValueStateDescriptor<Integer> descriptor =
+        ValueStateDescriptor.build("vsdTest", Integer.class, 0);
     Assert.assertEquals(descriptor.getDefaultValue().intValue(), 0);
   }
 }

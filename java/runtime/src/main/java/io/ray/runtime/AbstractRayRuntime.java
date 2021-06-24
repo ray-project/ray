@@ -1,7 +1,6 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
@@ -17,10 +16,11 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -38,21 +38,17 @@ import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Core functionality to implement Ray APIs.
- */
+/** Core functionality to implement Ray APIs. */
 public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
-  private static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
@@ -63,9 +59,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  /**
-   * Whether the required thread context is set on the current thread.
-   */
+  /** Whether the required thread context is set on the current thread. */
   final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
 
   public AbstractRayRuntime(RayConfig rayConfig) {
@@ -77,8 +71,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public <T> ObjectRef<T> put(T obj) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
+    }
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
@@ -96,18 +93,31 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       objectIds.add(objectRefImpl.getId());
       objectType = objectRefImpl.getType();
     }
+    LOGGER.debug("Getting Objects {}.", objectIds);
     return objectStore.get(objectIds, objectType);
   }
 
   @Override
-  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks) {
-    objectStore.delete(objectRefs.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId()).collect(
-        Collectors.toList()), localOnly, deleteCreatingTasks);
+  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
+    List<ObjectId> objectIds =
+        objectRefs.stream()
+            .map(ref -> ((ObjectRefImpl<?>) ref).getId())
+            .collect(Collectors.toList());
+    LOGGER.debug("Freeing Objects {}, localOnly = {}.", objectIds, localOnly);
+    objectStore.delete(objectIds, localOnly);
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
-    return objectStore.wait(waitList, numReturns, timeoutMs);
+  public <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(
+          "Waiting Objects {} with minimum number {} within {} ms.",
+          waitList,
+          numReturns,
+          timeoutMs);
+    }
+    return objectStore.wait(waitList, numReturns, timeoutMs, fetchLocal);
   }
 
   @Override
@@ -120,13 +130,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyFunction.moduleName,
-        "",
-        pyFunction.functionName);
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(pyFunction.moduleName, "", pyFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
-    return callNormalFunction(functionDescriptor, args,
-        /*returnType=*/Optional.of(pyFunction.returnType), options);
+    return callNormalFunction(
+        functionDescriptor, args, /*returnType=*/ Optional.of(pyFunction.returnType), options);
   }
 
   @Override
@@ -139,17 +147,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object... args) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
-        pyActor.getClassName(), pyActorMethod.methodName);
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(
+            pyActor.getModuleName(), pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
-    return callActorFunction(pyActor, functionDescriptor, args,
-        /*returnType=*/Optional.of(pyActorMethod.returnType));
+    return callActorFunction(
+        pyActor, functionDescriptor, args, /*returnType=*/ Optional.of(pyActorMethod.returnType));
   }
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc,
-                                        Object[] args, ActorCreationOptions options) {
+  public <T> ActorHandle<T> createActor(
+      RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
@@ -157,32 +166,20 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
-                                   ActorCreationOptions options) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyActorClass.moduleName,
-        pyActorClass.className,
-        PYTHON_INIT_METHOD_NAME);
+  public PyActorHandle createActor(
+      PyActorClass pyActorClass, Object[] args, ActorCreationOptions options) {
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(
+            pyActorClass.moduleName, pyActorClass.className, PYTHON_INIT_METHOD_NAME);
     return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(String name,
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    boolean bundleResourceValid = bundles.stream().allMatch(
-        bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
-
-    if (bundles.isEmpty() || !bundleResourceValid) {
-      throw new IllegalArgumentException(
-        "Bundles cannot be empty or bundle's resource must be positive.");
-    }
-    return taskSubmitter.createPlacementGroup(name, bundles, strategy);
-  }
-
-  @Override
-  public PlacementGroup createPlacementGroup(
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
+  public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
+    Preconditions.checkNotNull(
+        creationOptions,
+        "`PlacementGroupCreationOptions` must be specified when creating a new placement group.");
+    return taskSubmitter.createPlacementGroup(creationOptions);
   }
 
   @Override
@@ -196,8 +193,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
+  public PlacementGroup getPlacementGroup(String name, boolean global) {
+    return gcsClient.getPlacementGroupInfo(name, global);
+  }
+
+  @Override
   public List<PlacementGroup> getAllPlacementGroups() {
     return gcsClient.getAllPlacementGroupInfo();
+  }
+
+  @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return taskSubmitter.waitPlacementGroupReady(id, timeoutMs);
   }
 
   @SuppressWarnings("unchecked")
@@ -211,26 +218,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     isContextSet.set(true);
   }
 
-  // TODO (kfstorm): Simplify the duplicate code in wrap*** methods.
-
   @Override
   public final Runnable wrapRunnable(Runnable runnable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         runnable.run();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
@@ -239,32 +232,24 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public final <T> Callable<T> wrapCallable(Callable<T> callable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         return callable.call();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
 
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
-      Object[] args, Optional<Class<?>> returnType, CallOptions options) {
+      Object[] args,
+      Optional<Class<?>> returnType,
+      CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
-    List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
-        functionArgs, numReturns, options);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    if (options == null) {
+      options = new CallOptions.Builder().build();
+    }
+    List<ObjectId> returnIds =
+        taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
     if (returnIds.isEmpty()) {
       return null;
@@ -279,10 +264,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       Object[] args,
       Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
-    List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
-        functionDescriptor, functionArgs, numReturns, null);
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
+    }
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    List<ObjectId> returnIds =
+        taskSubmitter.submitActorTask(rayActor, functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns);
     if (returnIds.isEmpty()) {
       return null;
@@ -291,15 +278,55 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
-  private BaseActorHandle createActorImpl(FunctionDescriptor functionDescriptor,
-                                          Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
+  private BaseActorHandle createActorImpl(
+      FunctionDescriptor functionDescriptor, Object[] args, ActorCreationOptions options) {
+    if (LOGGER.isDebugEnabled()) {
+      if (options == null) {
+        LOGGER.debug("Creating Actor {} with default options.", functionDescriptor);
+      } else {
+        LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
+      }
+    }
+    if (rayConfig.runMode == RunMode.SINGLE_PROCESS
+        && functionDescriptor.getLanguage() != Language.JAVA) {
+      throw new IllegalArgumentException(
+          "Ray doesn't support cross-language invocation in local mode.");
+    }
+
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
+      Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
+  }
+
+  /// An auto closable class that is used for updating the async context when invoking Ray APIs.
+  private static final class RayAsyncContextUpdater implements AutoCloseable {
+
+    private AbstractRayRuntime runtime;
+
+    private boolean oldIsContextSet;
+
+    private Object oldAsyncContext = null;
+
+    public RayAsyncContextUpdater(Object asyncContext, AbstractRayRuntime runtime) {
+      this.runtime = runtime;
+      oldIsContextSet = runtime.isContextSet.get();
+      if (oldIsContextSet) {
+        oldAsyncContext = runtime.getAsyncContext();
+      }
+      runtime.setAsyncContext(asyncContext);
+    }
+
+    @Override
+    public void close() {
+      if (oldIsContextSet) {
+        runtime.setAsyncContext(oldAsyncContext);
+      } else {
+        runtime.setIsContextSet(false);
+      }
+    }
   }
 
   @Override

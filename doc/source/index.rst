@@ -1,6 +1,8 @@
 What is Ray?
 ============
 
+.. tip:: Please take 5 minutes to take the `Ray Pulse Community Survey <https://www.surveymonkey.com/r/ray-community-pulse-2021>`_!
+
 .. include:: ray-overview/basics.rst
 
 Getting Started with Ray
@@ -9,7 +11,7 @@ Getting Started with Ray
 Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
 reinforcement learning, and distributed training.
 
-Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
+Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
 
 .. tabs::
   .. group-tab:: Python
@@ -112,6 +114,35 @@ Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Cla
           }
         }
 
+  .. group-tab:: C++ (EXPERIMENTAL)
+
+    | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
+    | Run the following commands to get started:
+    | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
+    | - Modify and build `cpp/example/example.cc`.
+
+    .. code-block:: shell
+
+      bazel build //cpp:ray_cpp_pkg
+      bazel build //cpp/example:example
+
+    | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
+
+    .. code-block:: shell
+
+      ray stop
+      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so
+
+    | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
+
+    .. code-block:: shell
+
+      ray stop
+      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
+      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so --ray-redis-address=127.0.0.1:6379
+
+    .. literalinclude:: ../../cpp/example/example.cc
+       :language: cpp
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
@@ -176,6 +207,7 @@ Papers
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
+- `RLlib flow paper`_
 - `Tune paper`_
 
 *Older papers:*
@@ -188,6 +220,7 @@ Papers
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 .. toctree::
@@ -209,16 +242,20 @@ Papers
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
+   Design patterns and anti-patterns <ray-design-patterns/index.rst>
    package-ref.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Cluster
+   :caption: Multi-node Ray
 
    cluster/index.rst
-   cluster/launcher.rst
-   cluster/autoscaling.rst
+   cluster/quickstart.rst
+   cluster/guide.rst
+   cluster/reference.rst
+   cluster/cloud.rst
+   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -227,11 +264,14 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
+   serve/tutorial.rst
+   serve/core-apis.rst
+   serve/http-servehandle.rst
    serve/deployment.rst
-   serve/advanced.rst
+   serve/ml-models.rst
+   serve/performance.rst
    serve/architecture.rst
+   serve/tutorials/index.rst
    serve/faq.rst
    serve/package-ref.rst
 
@@ -259,6 +299,7 @@ Papers
    rllib-env.rst
    rllib-models.rst
    rllib-algorithms.rst
+   rllib-sample-collection.rst
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
@@ -281,14 +322,23 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Data Processing
+
+   modin/index.rst
+   dask-on-ray.rst
+   mars-on-ray.rst
+   raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
+   ray-collective.rst
 
 .. toctree::
    :hidden:
@@ -297,6 +347,8 @@ Papers
 
    ray-metrics.rst
    ray-debugging.rst
+   ray-logging.rst
+   ray-tracing.rst
 
 .. toctree::
    :hidden:

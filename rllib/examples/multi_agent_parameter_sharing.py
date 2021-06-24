@@ -1,6 +1,6 @@
 from ray import tune
 from ray.tune.registry import register_env
-from ray.rllib.env.pettingzoo_env import PettingZooEnv
+from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v0
 
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
@@ -51,7 +51,8 @@ if __name__ == "__main__":
             # Method specific
             "multiagent": {
                 "policies": policies,
-                "policy_mapping_fn": (lambda agent_id: "shared_policy"),
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, **kwargs: "shared_policy"),
             },
         },
     )

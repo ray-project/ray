@@ -3,9 +3,7 @@ package io.ray.runtime.runner.worker;
 import io.ray.api.Ray;
 import io.ray.runtime.RayRuntimeInternal;
 
-/**
- * Default implementation of the worker process.
- */
+/** Default implementation of the worker process. */
 public class DefaultWorker {
 
   public static void main(String[] args) {

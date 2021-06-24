@@ -48,6 +48,7 @@ namespace ray {
 #define STATUS_CODE_INTERRUPTED "Interrupted"
 #define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
 #define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
+#define STATUS_CODE_CREATION_TASK_ERROR "CreationTaskError"
 #define STATUS_CODE_UNKNOWN "Unknown"
 #define STATUS_CODE_NOT_FOUND "NotFound"
 #define STATUS_CODE_DISCONNECTED "Disconnected"
@@ -93,6 +94,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
       {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
       {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
+      {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
       {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
       {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
       {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},

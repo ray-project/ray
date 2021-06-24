@@ -18,18 +18,21 @@
 
 #include <memory>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 namespace plasma {
 
 uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
                                         const std::shared_ptr<ClientInterface> &client,
-                                        const CreateObjectCallback &create_callback) {
+                                        const CreateObjectCallback &create_callback,
+                                        size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  queue_.emplace_back(new CreateRequest(object_id, req_id, client, create_callback));
+  queue_.emplace_back(
+      new CreateRequest(object_id, req_id, client, create_callback, object_size));
+  num_bytes_pending_ += object_size;
   return req_id;
 }
 
@@ -57,8 +60,15 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
 
 std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback) {
+    const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
+
+  // Immediately fulfill it using the fallback allocator.
+  if (RayConfig::instance().plasma_unlimited()) {
+    PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
+                                        /*spilling_required=*/nullptr);
+    return {result, error};
+  }
 
   if (!queue_.empty()) {
     // There are other requests queued. Return an out-of-memory error
@@ -66,72 +76,87 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     return {result, PlasmaError::OutOfMemory};
   }
 
-  auto req_id = AddRequest(object_id, client, create_callback);
+  auto req_id = AddRequest(object_id, client, create_callback, object_size);
   if (!ProcessRequests().ok()) {
     // If the request was not immediately fulfillable, finish it.
-    RAY_CHECK(!queue_.empty());
-    FinishRequest(queue_.begin());
+    if (!queue_.empty()) {
+      // Some errors such as a transient OOM error doesn't finish the request, so we
+      // should finish it here.
+      FinishRequest(queue_.begin());
+    }
   }
   PlasmaError error;
   RAY_CHECK(GetRequestResult(req_id, &result, &error));
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
-  // Return an OOM error to the client if we have hit the maximum number of
-  // retries.
-  bool evict_if_full = evict_if_full_;
-  if (max_retries_ == 0) {
-    // If we cannot retry, then always evict on the first attempt.
-    evict_if_full = true;
-  } else if (num_retries_ > 0) {
-    // Always try to evict after the first attempt.
-    evict_if_full = true;
+Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
+                                          std::unique_ptr<CreateRequest> &request,
+                                          bool *spilling_required) {
+  request->error =
+      request->create_callback(fallback_allocator, &request->result, spilling_required);
+  if (request->error == PlasmaError::OutOfMemory) {
+    return Status::ObjectStoreFull("");
+  } else if (request->error == PlasmaError::TransientOutOfMemory) {
+    return Status::TransientObjectStoreFull("");
+  } else {
+    return Status::OK();
   }
-
-  request->error = request->create_callback(evict_if_full, &request->result);
-  Status status;
-  auto should_retry_on_oom = max_retries_ == -1 || num_retries_ < max_retries_;
-  if (request->error == PlasmaError::TransientOutOfMemory) {
-    // The object store is full, but we should wait for space to be made
-    // through spilling, so do nothing. The caller must guarantee that
-    // ProcessRequests is called again so that we can try this request again.
-    // NOTE(swang): There could be other requests behind this one that are
-    // actually serviceable. This may be inefficient, but eventually this
-    // request will get served and unblock the following requests, once
-    // enough objects have been spilled.
-    // TODO(swang): Ask the raylet to spill enough space for multiple requests
-    // at once, instead of just the head of the queue.
-    num_retries_ = 0;
-    status =
-        Status::TransientObjectStoreFull("Object store full, queueing creation request");
-  } else if (request->error == PlasmaError::OutOfMemory && should_retry_on_oom) {
-    num_retries_++;
-    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_
-                   << " tries";
-
-    if (trigger_global_gc_) {
-      trigger_global_gc_();
-    }
-
-    status = Status::ObjectStoreFull("Object store full, should retry on timeout");
-  } else if (request->error == PlasmaError::OutOfMemory) {
-    RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id
-                   << " after " << num_retries_
-                   << " tries, will return OutOfMemory to the client";
-  }
-
-  return status;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
+  // Suppress OOM dump to once per grace period.
+  bool logged_oom = false;
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto status = ProcessRequest(*request_it);
-    if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
-      return status;
+    bool spilling_required = false;
+    auto status =
+        ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+    if (spilling_required) {
+      spill_objects_callback_();
     }
-    FinishRequest(request_it);
+    auto now = get_time_();
+    if (status.ok()) {
+      FinishRequest(request_it);
+      // Reset the oom start time since the creation succeeds.
+      oom_start_time_ns_ = -1;
+    } else {
+      if (trigger_global_gc_) {
+        trigger_global_gc_();
+      }
+
+      if (oom_start_time_ns_ == -1) {
+        oom_start_time_ns_ = now;
+      }
+      auto grace_period_ns = oom_grace_period_ns_;
+      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
+        oom_start_time_ns_ = -1;
+        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
+      } else if (now - oom_start_time_ns_ < grace_period_ns) {
+        // We need a grace period since (1) global GC takes a bit of time to
+        // kick in, and (2) there is a race between spilling finishing and space
+        // actually freeing up in the object store.
+        return Status::ObjectStoreFull("Waiting for grace period.");
+      } else {
+        if (plasma_unlimited_) {
+          // Trigger the fallback allocator.
+          status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
+                                  /*spilling_required=*/nullptr);
+        }
+        if (!status.ok()) {
+          std::string dump = "";
+          if (dump_debug_info_callback_ && !logged_oom) {
+            dump = dump_debug_info_callback_();
+            logged_oom = true;
+          }
+          RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+                        << (*request_it)->object_id << " of size "
+                        << (*request_it)->object_size / 1024 / 1024 << "MB\n"
+                        << dump;
+        }
+        FinishRequest(request_it);
+      }
+    }
   }
   return Status::OK();
 }
@@ -144,10 +169,9 @@ void CreateRequestQueue::FinishRequest(
   RAY_CHECK(it != fulfilled_requests_.end());
   RAY_CHECK(it->second == nullptr);
   it->second = std::move(request);
+  RAY_CHECK(num_bytes_pending_ >= it->second->object_size);
+  num_bytes_pending_ -= it->second->object_size;
   queue_.erase(request_it);
-
-  // Reset the number of retries since we are no longer trying this request.
-  num_retries_ = 0;
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(
@@ -155,6 +179,8 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
   for (auto it = queue_.begin(); it != queue_.end();) {
     if ((*it)->client == client) {
       fulfilled_requests_.erase((*it)->request_id);
+      RAY_CHECK(num_bytes_pending_ >= (*it)->object_size);
+      num_bytes_pending_ -= (*it)->object_size;
       it = queue_.erase(it);
     } else {
       it++;

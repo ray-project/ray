@@ -495,7 +495,7 @@ void Process::Kill() {
       }
 #endif
       if (error) {
-        RAY_LOG(ERROR) << "Failed to kill process " << pid << " with error " << error
+        RAY_LOG(DEBUG) << "Failed to kill process " << pid << " with error " << error
                        << ": " << error.message();
       }
     } else {
@@ -567,6 +567,18 @@ pid_t GetParentPID() { return getppid(); }
 #endif  // #ifdef _WIN32
 
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
+
+bool IsProcessAlive(pid_t pid) {
+#ifdef _WIN32
+  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  return false;
+#else
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  return true;
+#endif
+}
 
 }  // namespace ray
 

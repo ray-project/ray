@@ -13,7 +13,7 @@ import {
 } from "./types";
 
 const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
-  const totalLogCount = sum(nodes.map((n) => n.logCount));
+  const totalLogCount = sum(nodes.map((n) => n.logCount ?? 0));
   return totalLogCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
@@ -25,39 +25,47 @@ const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-const makeNodeLogs = (
-  setLogDialog: (nodeIp: string, pid: number | null) => void,
-): NodeFeatureRenderFn => ({ node }) =>
-  node.logCount === 0 ? (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No logs
-    </Typography>
-  ) : (
-    <SpanButton onClick={() => setLogDialog(node.ip, null)}>
-      View all logs ({node.logCount.toLocaleString()}{" "}
-      {node.logCount === 1 ? "line" : "lines"})
-    </SpanButton>
-  );
+const makeNodeLogs =
+  (
+    setLogDialog: (nodeIp: string, pid: number | null) => void,
+  ): NodeFeatureRenderFn =>
+  ({ node }) => {
+    const logCount = node.logCount ?? 0;
+    return logCount === 0 ? (
+      <Typography color="textSecondary" component="span" variant="inherit">
+        No logs
+      </Typography>
+    ) : (
+      <SpanButton onClick={() => setLogDialog(node.ip, null)}>
+        View all logs ({logCount.toLocaleString()}{" "}
+        {node.logCount === 1 ? "line" : "lines"})
+      </SpanButton>
+    );
+  };
 
 const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.logCount ? sum(Object.values(node.logCount)) : 0;
 
-const makeWorkerLogs = (
-  setLogDialog: (nodeIp: string, pid: number | null) => void,
-): WorkerFeatureRenderFn => ({ worker, node }) =>
-  worker.logCount !== 0 ? (
-    <SpanButton onClick={() => setLogDialog(node.ip, worker.pid)}>
-      View log ({worker.logCount.toLocaleString()}{" "}
-      {worker.logCount === 1 ? "line" : "lines"})
-    </SpanButton>
-  ) : (
-    <Typography color="textSecondary" component="span" variant="inherit">
-      No logs
-    </Typography>
-  );
+const makeWorkerLogs =
+  (
+    setLogDialog: (nodeIp: string, pid: number | null) => void,
+  ): WorkerFeatureRenderFn =>
+  ({ worker, node }) => {
+    const logCount = worker.logCount ?? 0;
+    return logCount !== 0 ? (
+      <SpanButton onClick={() => setLogDialog(node.ip, worker.pid)}>
+        View log ({logCount.toLocaleString()}{" "}
+        {worker.logCount === 1 ? "line" : "lines"})
+      </SpanButton>
+    ) : (
+      <Typography color="textSecondary" component="span" variant="inherit">
+        No logs
+      </Typography>
+    );
+  };
 
 const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
-  worker.logCount;
+  worker.logCount ?? 0;
 
 const makeLogsFeature = (
   setLogDialog: (nodeIp: string, pid: number | null) => void,

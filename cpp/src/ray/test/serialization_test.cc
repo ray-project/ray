@@ -10,33 +10,20 @@ TEST(SerializationTest, TypeHybridTest) {
 
   // 1 arg
   // marshall
-  msgpack::sbuffer buffer1;
-  msgpack::packer<msgpack::sbuffer> pk1(&buffer1);
-  Serializer::Serialize(pk1, in_arg1);
+  msgpack::sbuffer buffer1 = Serializer::Serialize(in_arg1);
   // unmarshall
-  msgpack::unpacker upk1;
-  upk1.reserve_buffer(buffer1.size());
-  memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
-  upk1.buffer_consumed(buffer1.size());
-
-  Serializer::Deserialize(upk1, &out_arg1);
+  out_arg1 = Serializer::Deserialize<uint32_t>(buffer1.data(), buffer1.size());
 
   EXPECT_EQ(in_arg1, out_arg1);
 
   // 2 args
   // marshall
-  msgpack::sbuffer buffer2;
-  msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
-  Serializer::Serialize(pk2, in_arg1);
-  Serializer::Serialize(pk2, in_arg2);
+  msgpack::sbuffer buffer2 = Serializer::Serialize(std::make_tuple(in_arg1, in_arg2));
 
   // unmarshall
-  msgpack::unpacker upk2;
-  upk2.reserve_buffer(buffer2.size());
-  memcpy(upk2.buffer(), buffer2.data(), buffer2.size());
-  upk2.buffer_consumed(buffer2.size());
-  Serializer::Deserialize(upk2, &out_arg1);
-  Serializer::Deserialize(upk2, &out_arg2);
+  std::tie(out_arg1, out_arg2) =
+      Serializer::Deserialize<std::tuple<uint32_t, std::string>>(buffer2.data(),
+                                                                 buffer2.size());
 
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);

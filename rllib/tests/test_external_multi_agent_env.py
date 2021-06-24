@@ -5,8 +5,8 @@ import unittest
 import ray
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
-from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.tests.test_external_env import make_simple_serving
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
@@ -55,7 +55,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid % 2),
             rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)

@@ -8,11 +8,20 @@ import yaml
 import ray
 from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
+from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
 
 # Try to import both backends for flag checking/warnings.
 tf1, tf, tfv = try_import_tf()
@@ -53,8 +62,7 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Whether to run ray with `local_mode=True`. "
-        "Only if --ray-num-nodes is not used.")
+        help="Run ray in local mode for easier debugging.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
@@ -91,6 +99,12 @@ def create_parser(parser_creator=None):
         default="",
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
+    # This will override any framework setting found in a yaml file.
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "tfe", "torch"],
+        default=None,
+        help="The DL framework specifier.")
     parser.add_argument(
         "-v", action="store_true", help="Whether to use INFO level logging.")
     parser.add_argument(
@@ -99,14 +113,6 @@ def create_parser(parser_creator=None):
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
-    parser.add_argument(
-        "--torch",
-        action="store_true",
-        help="Whether to use PyTorch (instead of tf) as the DL framework.")
-    parser.add_argument(
-        "--eager",
-        action="store_true",
-        help="Whether to attempt to enable TF eager execution.")
     parser.add_argument(
         "--trace",
         action="store_true",
@@ -127,6 +133,17 @@ def create_parser(parser_creator=None):
         type=str,
         help="If specified, use config options from this file. Note that this "
         "overrides any trial-specific options set via flags above.")
+
+    # Obsolete: Use --framework=torch|tf2|tfe instead!
+    parser.add_argument(
+        "--torch",
+        action="store_true",
+        help="Whether to use PyTorch (instead of tf) as the DL framework.")
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+
     return parser
 
 
@@ -160,12 +177,19 @@ def run(args, parser):
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
-        if exp.get("config", {}).get("input") and \
-                not os.path.exists(exp["config"]["input"]):
+        input_ = exp.get("config", {}).get("input")
+        if input_ and input_ != "sampler":
+            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
-            exp["config"]["input"] = str(input_file)
+            abs_inputs = [
+                str(rllib_dir.absolute().joinpath(i))
+                if not os.path.exists(i) else i for i in inputs
+            ]
+            if not isinstance(input_, list):
+                abs_inputs = abs_inputs[0]
+
+            exp["config"]["input"] = abs_inputs
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
@@ -173,9 +197,13 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
 
         if args.torch:
+            deprecation_warning("--torch", "--framework=torch")
             exp["config"]["framework"] = "torch"
         elif args.eager:
+            deprecation_warning("--eager", "--framework=[tf2|tfe]")
             exp["config"]["framework"] = "tfe"
+        elif args.framework is not None:
+            exp["config"]["framework"] = args.framework
 
         if args.trace:
             if exp["config"]["framework"] not in ["tf2", "tfe"]:
@@ -184,10 +212,10 @@ def run(args, parser):
 
         if args.v:
             exp["config"]["log_level"] = "INFO"
-            verbose = 2
+            verbose = 3  # Print details on trial result
         if args.vv:
             exp["config"]["log_level"] = "DEBUG"
-            verbose = 3
+            verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
         cluster = Cluster()
@@ -206,12 +234,19 @@ def run(args, parser):
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
 
+    if IS_NOTEBOOK:
+        progress_reporter = JupyterNotebookReporter(
+            overwrite=verbose >= 3, print_intermediate_tables=verbose >= 1)
+    else:
+        progress_reporter = CLIReporter(print_intermediate_tables=verbose >= 1)
+
     run_experiments(
         experiments,
         scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
         queue_trials=args.queue_trials,
         verbose=verbose,
+        progress_reporter=progress_reporter,
         concurrent=True)
 
     ray.shutdown()

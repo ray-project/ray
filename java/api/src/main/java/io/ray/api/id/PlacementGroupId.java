@@ -5,9 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
 
-/**
- * Represents the id of a placement group.
- */
+/** Represents the id of a placement group. */
 public class PlacementGroupId extends BaseId implements Serializable {
 
   public static final int LENGTH = 16;
@@ -18,32 +16,24 @@ public class PlacementGroupId extends BaseId implements Serializable {
     super(id);
   }
 
-  /**
-   * Creates a PlacementGroupId from the given ByteBuffer.
-   */
+  /** Creates a PlacementGroupId from the given ByteBuffer. */
   public static PlacementGroupId fromByteBuffer(ByteBuffer bb) {
     return new PlacementGroupId(byteBuffer2Bytes(bb));
   }
 
-  /**
-   * Create a PlacementGroupId instance according to the given bytes.
-   */
+  /** Create a PlacementGroupId instance according to the given bytes. */
   public static PlacementGroupId fromBytes(byte[] bytes) {
     return new PlacementGroupId(bytes);
   }
 
-  /**
-   * Generate a nil PlacementGroupId.
-   */
+  /** Generate a nil PlacementGroupId. */
   private static PlacementGroupId nil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new PlacementGroupId(b);
   }
 
-  /**
-   * Generate an PlacementGroupId with random value. Used for local mode and test only.
-   */
+  /** Generate an PlacementGroupId with random value. Used for local mode and test only. */
   public static PlacementGroupId fromRandom() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);

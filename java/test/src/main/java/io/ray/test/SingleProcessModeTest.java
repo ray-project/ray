@@ -18,8 +18,7 @@ public class SingleProcessModeTest extends BaseTest {
   private static final int TIMES_TO_CALL_PER_ACTOR = 10;
 
   static class MyActor {
-    public MyActor() {
-    }
+    public MyActor() {}
 
     public long getThreadId() {
       return Thread.currentThread().getId();

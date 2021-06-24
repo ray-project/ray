@@ -191,10 +191,10 @@ class EvictionPolicy {
   /// \param object_id The ID of the object that is now being used.
   virtual void RemoveObject(const ObjectID &object_id);
 
-  virtual void RefreshObjects(const std::vector<ObjectID> &object_ids);
-
   /// Returns debugging information for this eviction policy.
   virtual std::string DebugString() const;
+
+  int64_t GetPinnedMemoryBytes() const { return pinned_memory_bytes_; }
 
  protected:
   /// Returns the size of the object

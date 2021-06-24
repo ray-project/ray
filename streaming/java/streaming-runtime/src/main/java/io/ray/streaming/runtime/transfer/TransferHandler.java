@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.transfer;
 
-import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 
@@ -42,7 +41,6 @@ public class TransferHandler {
   private native long createWriterClientNative();
 
   private native long createReaderClientNative();
-
 
   private native void handleWriterMessageNative(long handler, byte[] buffer);
 

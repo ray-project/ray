@@ -46,7 +46,7 @@ def test_worker_stats(shutdown_only):
 
     @ray.remote
     def f():
-        ray.show_in_dashboard("test")
+        ray.worker.show_in_dashboard("test")
         return os.getpid()
 
     @ray.remote
@@ -55,7 +55,7 @@ def test_worker_stats(shutdown_only):
             pass
 
         def f(self):
-            ray.show_in_dashboard("test")
+            ray.worker.show_in_dashboard("test")
             return os.getpid()
 
     # Test show_in_dashboard for remote functions.
@@ -141,6 +141,6 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))

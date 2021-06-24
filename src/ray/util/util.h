@@ -23,6 +23,13 @@
 #include <thread>
 #include <unordered_map>
 
+// Portable code for unreachable
+#if defined(_MSC_VER)
+#define UNREACHABLE __assume(0)
+#else
+#define UNREACHABLE __builtin_unreachable()
+#endif
+
 // Boost forward-declarations (to avoid forcing slow header inclusions)
 namespace boost {
 
@@ -193,4 +200,12 @@ void FillRandom(T *data) {
   for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
+}
+
+inline void SetThreadName(const std::string &thread_name) {
+#if defined(__APPLE__)
+  pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
 }

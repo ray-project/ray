@@ -68,7 +68,6 @@ class QuotaAwarePolicy : public EvictionPolicy {
   void BeginObjectAccess(const ObjectID &object_id) override;
   void EndObjectAccess(const ObjectID &object_id) override;
   void RemoveObject(const ObjectID &object_id) override;
-  void RefreshObjects(const std::vector<ObjectID> &object_ids) override;
   std::string DebugString() const override;
 
  private:

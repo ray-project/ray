@@ -19,6 +19,11 @@ from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
 
 class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
+        # Wait up to 1.5 seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         ray.init(num_cpus=2)
 
     def tearDown(self):
@@ -115,8 +120,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
-            with patch(
-                    "ray._private.services.get_node_ip_address") as mock_sync:
+            with patch("ray.util.get_node_ip_address") as mock_sync:
                 sync_config = tune.SyncConfig(
                     sync_to_driver="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
@@ -212,7 +216,7 @@ class TestSyncFunctionality(unittest.TestCase):
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
-        with patch("ray._private.services.get_node_ip_address") as mock_sync:
+        with patch("ray.util.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
             [trial] = tune.run(

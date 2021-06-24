@@ -29,10 +29,7 @@ def download_data(task_name, data_dir="./data"):
     import urllib
     import zipfile
     if task_name == "rte":
-        url = "https://firebasestorage.googleapis.com/v0/b/" \
-            "mtl-sentence-representations.appspot.com" \
-            "/o/data%2FRTE.zip?alt=media" \
-            "&token=5efa7e85-a0bb-4f19-8ea2-9e1840f077fb"
+        url = "https://dl.fbaipublicfiles.com/glue/data/RTE.zip"
     else:
         raise ValueError("Unknown task: {}".format(task_name))
     data_file = os.path.join(data_dir, "{}.zip".format(task_name))

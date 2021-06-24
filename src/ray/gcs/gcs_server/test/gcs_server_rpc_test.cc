@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -32,7 +33,7 @@ class GcsServerTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
-    config.is_test = true;
+    config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config, io_service_));
     gcs_server_->Start();
@@ -75,27 +76,6 @@ class GcsServerTest : public ::testing::Test {
     std::promise<bool> promise;
     client_->MarkJobFinished(request, [&promise](const Status &status,
                                                  const rpc::MarkJobFinishedReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->RegisterActorInfo(
-        request,
-        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->UpdateActorInfo(request, [&promise](const Status &status,
-                                                 const rpc::UpdateActorInfoReply &reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
@@ -280,16 +260,6 @@ class GcsServerTest : public ::testing::Test {
     return task_data;
   }
 
-  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
-    std::promise<bool> promise;
-    client_->DeleteTasks(
-        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
     std::promise<bool> promise;
     client_->AddTaskLease(
@@ -383,7 +353,7 @@ class GcsServerTest : public ::testing::Test {
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
 
   // Gcs client
   std::unique_ptr<rpc::GcsRpcClient> client_;
@@ -490,6 +460,46 @@ TEST_F(GcsServerTest, TestNodeInfo) {
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
+TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  // Create gcs node info
+  auto gcs_node_info = Mocker::GenNodeInfo();
+
+  // Report heartbeat wit no registering
+  rpc::ReportHeartbeatRequest report_heartbeat_request;
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  std::promise<bool> disconnected;
+  client_->ReportHeartbeat(
+      report_heartbeat_request,
+      [&disconnected](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+        if (status.IsDisconnected()) {
+          disconnected.set_value(true);
+        }
+      });
+  WaitReady(disconnected.get_future(), timeout_ms_);
+
+  // Register node info
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+  std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+
+  // Report heartbeat
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+
+  // Unregister node info
+  rpc::UnregisterNodeRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+}
+
 TEST_F(GcsServerTest, TestObjectInfo) {
   // Create object table data
   ObjectID object_id = ObjectID::FromRandom();
@@ -533,13 +543,6 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   ASSERT_TRUE(AddTask(add_task_request));
   rpc::TaskTableData result = GetTask(task_id.Binary());
   ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
-
-  // Delete task
-  rpc::DeleteTasksRequest delete_tasks_request;
-  delete_tasks_request.add_task_id_list(task_id.Binary());
-  ASSERT_TRUE(DeleteTasks(delete_tasks_request));
-  result = GetTask(task_id.Binary());
-  ASSERT_TRUE(!result.has_task());
 
   // Add task lease
   NodeID node_id = NodeID::FromRandom();

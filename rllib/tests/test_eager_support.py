@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -23,7 +23,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         else:
             config["env"] = "CartPole-v0"
 
-        a = get_agent_class(alg)
+        a = get_trainer_class(alg)
         if test_eager:
             print("tf-eager: alg={} cont.act={}".format(alg, cont))
             config["eager_tracing"] = False

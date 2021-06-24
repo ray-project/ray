@@ -2,6 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import sys
 import time
 
 from ray import tune
@@ -29,13 +30,19 @@ if __name__ == "__main__":
     import argparse
     import os
 
-    assert "SIGOPT_KEY" in os.environ, \
-        "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
+
+    if "SIGOPT_KEY" not in os.environ:
+        if args.smoke_test:
+            print("SigOpt API Key not found. Skipping smoke test.")
+            sys.exit(0)
+        else:
+            raise ValueError(
+                "SigOpt API Key not found. Please set the SIGOPT_KEY "
+                "environment variable.")
 
     space = [
         {
@@ -67,7 +74,8 @@ if __name__ == "__main__":
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 1000,
+        num_samples=4 if args.smoke_test else 100,
         config={"steps": 10})
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ",
+          analysis.get_best_config("mean_loss", "min"))

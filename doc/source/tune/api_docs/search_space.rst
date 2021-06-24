@@ -196,6 +196,14 @@ For a high-level overview, see this example:
         # rounding to increments of 3 (includes 12)
         "qrandint": tune.qrandint(-21, 12, 3),
 
+        # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
+        # while sampling in log space
+        "lograndint": tune.lograndint(1, 10),
+
+        # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
+        # while sampling in log space and rounding to increments of 2
+        "qlograndint": tune.qlograndint(1, 10, 2),
+
         # Sample an option uniformly from the specified choices
         "choice": tune.choice(["a", "b", "c"]),
 
@@ -248,6 +256,16 @@ tune.qrandint
 
 .. autofunction:: ray.tune.qrandint
 
+tune.lograndint
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.lograndint
+
+tune.qlograndint
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qlograndint
+
 tune.choice
 ~~~~~~~~~~~
 
@@ -263,10 +281,7 @@ Grid Search API
 
 .. autofunction:: ray.tune.grid_search
 
-Internals
----------
+References
+----------
 
-BasicVariantGenerator
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.tune.suggest.BasicVariantGenerator
+See also :ref:`tune-basicvariant`.

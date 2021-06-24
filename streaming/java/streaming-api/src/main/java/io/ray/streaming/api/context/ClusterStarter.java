@@ -12,10 +12,8 @@ class ClusterStarter {
   static synchronized void startCluster(boolean isLocal) {
     Preconditions.checkArgument(!Ray.isInitialized());
     if (!isLocal) {
-      System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
       System.setProperty("ray.run-mode", "CLUSTER");
     } else {
-      System.clearProperty("ray.raylet.config.num_workers_per_process_java");
       System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     }
 
@@ -25,7 +23,6 @@ class ClusterStarter {
   public static synchronized void stopCluster() {
     // Disconnect to the cluster.
     Ray.shutdown();
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
     System.clearProperty("ray.run-mode");
   }
 }

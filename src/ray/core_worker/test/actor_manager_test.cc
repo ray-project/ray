@@ -20,17 +20,17 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_accessor.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : gcs::ServiceBasedActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -44,7 +44,7 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
+                                       const rpc::ActorTableData &actor_data) {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
@@ -60,15 +60,13 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
       callback_map_;
 };
 
-class MockGcsClient : public gcs::RedisGcsClient {
+class MockGcsClient : public gcs::ServiceBasedGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock) {
-    actor_accessor_.reset(actor_accesor_mock);
+  void Init(MockActorInfoAccessor *actor_info_accessor) {
+    actor_accessor_.reset(actor_info_accessor);
   }
-
-  ~MockGcsClient() {}
 };
 
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
@@ -78,10 +76,13 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
   MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
   MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
                                   int64_t num_restarts));
-  MOCK_METHOD3(DisconnectActor,
-               void(const ActorID &actor_id, int64_t num_restarts, bool dead));
+  MOCK_METHOD4(DisconnectActor,
+               void(const ActorID &actor_id, int64_t num_restarts, bool dead,
+                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
+
+  MOCK_METHOD0(CheckTimeoutTasks, void());
 
   virtual ~MockDirectActorSubmitter() {}
 };
@@ -185,7 +186,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), task_id, call_site,
                                                  caller_address, false));
   // Make sure we can get an actor handle correctly.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
 
@@ -197,7 +198,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
   // Now actor state is updated to DEAD. Make sure it is diconnected.
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
@@ -232,7 +233,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
       std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);
@@ -242,7 +243,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   ActorID actor_id = AddActorHandle();
   // Nothing happens if state is pending.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::PENDING_CREATION);
@@ -254,7 +255,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is restarting.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::RESTARTING);
@@ -266,7 +267,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is dead.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);
@@ -278,7 +279,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   ActorID actor_id = AddActorHandle();
   // Should connect to an actor when actor is alive.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::ALIVE);

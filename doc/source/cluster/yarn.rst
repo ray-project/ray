@@ -16,7 +16,7 @@ runs an example script on it.
 
 Skein uses a declarative specification (either written as a yaml file or using the Python API) and allows users to launch jobs and scale applications without the need to write Java code.
 
-You will firt need to install Skein: ``pip install skein``.
+You will first need to install Skein: ``pip install skein``.
 
 The Skein ``yaml`` file and example Ray program used here are provided in the
 `Ray repository`_ to get you started. Refer to the provided ``yaml``

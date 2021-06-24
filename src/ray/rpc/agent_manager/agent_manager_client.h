@@ -31,8 +31,8 @@ class AgentManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   AgentManagerClient(const std::string &address, const int port,
                      ClientCallManager &client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<AgentManagerService>>(
-        new GrpcClient<AgentManagerService>(address, port, client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<AgentManagerService>>(address, port,
+                                                                     client_call_manager);
   };
 
   /// Register agent service to the agent manager server

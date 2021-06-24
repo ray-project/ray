@@ -105,7 +105,7 @@ Methods of the actor can be called remotely.
 
     counter_actor = Counter.remote()
 
-    assert counter_actor.increment.remote() == 1
+    assert ray.get(counter_actor.increment.remote()) == 1
 
     @ray.remote
     class Foo(object):
@@ -174,14 +174,12 @@ have these resources (see `configuration instructions
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you
-    do not specify CPU resources, the default is 1), even if it is not executing
+    do not specify CPU resources, the default is 0), even if it is not executing
     any methods. The actor will not acquire any additional resources when
     executing methods.
   * If you do not specify any resource requirements in the actor class's remote
     decorator, then by default, the actor will not acquire any resources for its
-    lifetime, but every time it executes a method, it will need to acquire 1 CPU
-    resource.
-
+    lifetime.
 
 .. tabs::
   .. code-tab:: python
@@ -371,7 +369,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 Named Actors
 ------------
 
-An actor can be given a globally unique name.
+An actor can be given a unique name within their :ref:`namespace <namespaces-guide>`.
 This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to

@@ -5,24 +5,24 @@ Serialization
 
 Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/docs/python/plasma.html>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
 
+Overview
+--------
+
+Ray has decided to use a customized `Pickle protocol version 5 <https://www.python.org/dev/peps/pep-0574/>`_ backport to replace the original PyArrow serializer. This gets rid of several previous limitations (e.g. cannot serialize recursive objects).
+
+Ray is currently compatible with Pickle protocol version 5, while Ray supports serialization of a wider range of objects (e.g. lambda & nested functions, dynamic classes) with the help of cloudpickle.
+
 .. _plasma-store:
 
 Plasma Object Store
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 Plasma is an in-memory object store that is being developed as part of Apache Arrow. Ray uses Plasma to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
 
 Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 
-Overview
---------
-
-Ray has decided to use a customed `Pickle protocol version 5 <https://www.python.org/dev/peps/pep-0574/>`_ backport to replace the original PyArrow serializer. This gets rid of several previous limitations (e.g. cannot serialize recursive objects).
-
-Ray is currently compatible with Pickle protocol version 5, while Ray supports serialization of a wilder range of objects (e.g. lambda & nested functions, dynamic classes) with the support of cloudpickle.
-
 Numpy Arrays
-------------
+~~~~~~~~~~~~
 
 Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data.
 The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
@@ -33,23 +33,6 @@ Serialization notes
 -------------------
 
 - Ray is currently using Pickle protocol version 5. The default pickle protocol used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 for larger objects.
-
-- Ray may create extra copies of simple native objects (e.g. list, and this is also the default behavior of Pickle Protocol 4 & 5), but recursive objects are treated carefully without any issues:
-
-  .. code-block:: python
-
-    l1 = [0]
-    l2 = [l1, l1]
-    l3 = ray.get(ray.put(l2))
-
-    assert l2[0] is l2[1]
-    assert l3[0] is l3[1]  # will raise AssertionError for protocol 4 & 5, but not protocol 3
-
-    l = []
-    l.append(l)
-
-    # Try to put this list that recursively contains itself in the object store.
-    ray.put(l)  # ok
 
 - For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
 
@@ -63,6 +46,114 @@ Serialization notes
 - Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
 
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
+
+Customized Serialization
+------------------------
+
+Sometimes you may want to customize your serialization process because
+the default serializer used by Ray (pickle5 + cloudpickle) does
+not work for you (fail to serialize some objects, too slow for certain objects, etc.).
+
+There are at least 3 ways to define your custom serialization process:
+
+1. If you want to customize the serialization of a type of objects,
+   and you have access to the code, you can define ``__reduce__``
+   function inside the corresponding class. This is commonly done
+   by most Python libraries. Example code:
+
+   .. code-block:: python
+
+     import ray
+     import sqlite3
+
+     ray.init()
+
+     class DBConnection:
+         def __init__(self, path):
+             self.path = path
+             self.conn = sqlite3.connect(path)
+
+         # without '__reduce__', the instance is unserializable.
+         def __reduce__(self):
+             deserializer = DBConnection
+             serialized_data = (self.path,)
+             return deserializer, serialized_data
+
+     original = DBConnection("/tmp/db")
+     print(original.conn)
+
+     copied = ray.get(ray.put(original))
+     print(copied.conn)
+
+2. If you want to customize the serialization of a type of objects,
+   but you cannot access or modify the corresponding class, you can
+   register the class with the serializer you use:
+
+   .. code-block:: python
+
+      import ray
+      import threading
+
+      class A:
+          def __init__(self, x):
+              self.x = x
+              self.lock = threading.Lock()  # could not be serialized!
+
+      ray.get(ray.put(A(1)))  # fail!
+
+      def custom_serializer(a):
+          return a.x
+
+      def custom_deserializer(b):
+          return A(b)
+
+      # Register serializer and deserializer for class A:
+      ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+      ray.get(ray.put(A(1)))  # success!
+
+      # You can deregister the serializer at any time.
+      ray.util.deregister_serializer(A)
+      ray.get(ray.put(A(1)))  # fail!
+
+      # Nothing happens when deregister an unavailable serializer.
+      ray.util.deregister_serializer(A)
+
+   NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
+   if you want to use the serializer, you need to register the serializer. Deregister
+   a serializer also only applies locally.
+
+   If you register a new serializer for a class, the new serializer would replace
+   the old serializer immediately in the worker. This API is also idempotent, there are
+   no side effects caused by re-registering the same serializer.
+
+3. We also provide you an example, if you want to customize the serialization
+   of a specific object:
+
+   .. code-block:: python
+
+     import threading
+
+     class A:
+         def __init__(self, x):
+             self.x = x
+             self.lock = threading.Lock()  # could not serialize!
+
+     ray.get(ray.put(A(1)))  # fail!
+
+     class SerializationHelperForA:
+         """A helper class for serialization."""
+         def __init__(self, a):
+             self.a = a
+
+         def __reduce__(self):
+             return A, (self.a.x,)
+
+     ray.get(ray.put(SerializationHelperForA(A(1))))  # success!
+     # the serializer only works for a specific object, not all A
+     # instances, so we still expect failure here.
+     ray.get(ray.put(A(1)))  # still fail!
+
 
 Troubleshooting
 ---------------

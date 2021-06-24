@@ -23,7 +23,8 @@ class TestBC(unittest.TestCase):
     def test_bc_compilation_and_learning_from_offline_file(self):
         """Test whether a BCTrainer can be built with all frameworks.
 
-        And learns from a historic-data file.
+        And learns from a historic-data file (while being evaluated on an
+        actual env using evaluation_num_workers > 0).
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
@@ -33,8 +34,11 @@ class TestBC(unittest.TestCase):
 
         config = marwil.BC_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+
+        config["evaluation_interval"] = 3
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 1
+        config["evaluation_num_episodes"] = 5
+        config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
@@ -47,14 +51,15 @@ class TestBC(unittest.TestCase):
             trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                eval_results = trainer.train()["evaluation"]
-                print("iter={} R={}".format(
-                    i, eval_results["episode_reward_mean"]))
-                # Learn until good reward is reached on an actual live env.
-                if eval_results["episode_reward_mean"] > min_reward:
-                    print("learnt!")
-                    learnt = True
-                    break
+                eval_results = trainer.train().get("evaluation")
+                if eval_results:
+                    print("iter={} R={}".format(
+                        i, eval_results["episode_reward_mean"]))
+                    # Learn until good reward is reached in the actual env.
+                    if eval_results["episode_reward_mean"] > min_reward:
+                        print("learnt!")
+                        learnt = True
+                        break
 
             if not learnt:
                 raise ValueError(

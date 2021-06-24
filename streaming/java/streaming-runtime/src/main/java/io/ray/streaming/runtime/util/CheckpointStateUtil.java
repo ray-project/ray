@@ -4,9 +4,7 @@ import io.ray.streaming.runtime.context.ContextBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Handle exception for checkpoint state
- */
+/** Handle exception for checkpoint state */
 public class CheckpointStateUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(CheckpointStateUtil.class);
@@ -45,8 +43,7 @@ public class CheckpointStateUtil {
 
   public static class CheckpointStateRuntimeException extends RuntimeException {
 
-    public CheckpointStateRuntimeException() {
-    }
+    public CheckpointStateRuntimeException() {}
 
     public CheckpointStateRuntimeException(String message) {
       super(message);

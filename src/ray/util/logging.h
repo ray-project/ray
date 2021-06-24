@@ -156,6 +156,8 @@ class RayLog : public RayLogBase {
 
   static std::string GetLogFormatPattern();
 
+  static std::string GetLoggerName();
+
  private:
   // Hide the implementation of log provider by void *.
   // Otherwise, lib user may define the same macro to use the correct header file.
@@ -178,6 +180,8 @@ class RayLog : public RayLogBase {
   static long log_rotation_max_size_;
   // Log rotation file number.
   static long log_rotation_file_num_;
+  // Ray default logger name.
+  static std::string logger_name_;
 
  protected:
   virtual std::ostream &Stream();

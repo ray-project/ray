@@ -3,23 +3,27 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
-from typing import Dict, List, Optional
+import tree  # pip install dm_tree
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,10 @@ class Policy(metaclass=ABCMeta):
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:
-            self.view_requirements.update(view_reqs)
+            for k, v in view_reqs.items():
+                if k not in self.view_requirements:
+                    self.view_requirements[k] = v
+        self._model_init_state_automatically_added = False
 
     @abstractmethod
     @DeveloperAPI
@@ -247,10 +254,6 @@ class Policy(metaclass=ABCMeta):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Note: This is an experimental API method.
-
-        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
-        (also only supported for torch).
         Uses the currently "forward-pass-registered" samples from the collector
         to construct the input_dict for the Model.
 
@@ -277,17 +280,14 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config["_use_trajectory_view_api"] else s.unsqueeze(0)
-            if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
-            for k, s in input_dict.items() if k[:9] == "state_in_"
+            s for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=None,
+            info_batch=input_dict.get(SampleBatch.INFOS),
             explore=explore,
             timestep=timestep,
             episodes=episodes,
@@ -425,7 +425,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_info(self) -> Dict[str, TensorType]:
+    def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the current exploration information of this policy.
 
         This information depends on the policy's Exploration object.
@@ -434,7 +434,12 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: Serializable information on the
                 `self.exploration` object.
         """
-        return self.exploration.get_info()
+        return self.exploration.get_state()
+
+    # TODO: (sven) Deprecate this method.
+    def get_exploration_info(self) -> Dict[str, TensorType]:
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @DeveloperAPI
     def is_recurrent(self) -> bool:
@@ -465,22 +470,28 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        """Saves all local state.
+        """Returns all local state.
 
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
-        return self.get_weights()
+        state = {
+            "weights": self.get_weights(),
+            "global_timestep": self.global_timestep,
+        }
+        return state
 
     @DeveloperAPI
     def set_state(self, state: object) -> None:
-        """Restores all local state.
+        """Restores all local state to the provided `state`.
 
         Args:
-            state (obj): Serialized local state.
+            state (object): The new state to set this policy to. Can be
+                obtained by calling `Policy.get_state()`.
         """
-        self.set_weights(state)
+        self.set_weights(state["weights"])
+        self.global_timestep = state["global_timestep"]
 
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
@@ -496,16 +507,11 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """Export Policy to local directory for serving.
+        """Exports the Policy's Model to local directory for serving.
 
-        Args:
-            export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
+        Note: The file format will depend on the deep learning framework used.
+        See the child classed of Policy and their `export_model`
+        implementations for more details.
 
         Args:
             export_dir (str): Local writable directory.
@@ -544,7 +550,8 @@ class Policy(metaclass=ABCMeta):
             model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework", "tf"))
+            framework=getattr(self, "framework",
+                              self.config.get("framework", "tf")))
         return exploration
 
     def _get_default_view_requirements(self):
@@ -561,19 +568,29 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.OBS: ViewRequirement(
+                space=self.observation_space, used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
-                data_rel_pos=1,
+                shift=1,
                 space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            # For backward compatibility with custom Models that don't specify
+            # these explicitly (will be removed by Policy if not used).
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                data_col=SampleBatch.ACTIONS,
+                shift=-1,
+                space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
+            # For backward compatibility with custom Models that don't specify
+            # these explicitly (will be removed by Policy if not used).
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                data_col=SampleBatch.REWARDS, shift=-1),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.UNROLL_ID: ViewRequirement(),
             "t": ViewRequirement(),
         }
 
@@ -603,24 +620,31 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(self._dummy_batch)
+        self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict, explore=False)
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False)
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
-        batch_for_postproc.count = self._dummy_batch.count
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False)
+        for key in self._dummy_batch.accessed_keys:
+            if key not in self.view_requirements:
+                self.view_requirements[key] = ViewRequirement()
+            self.view_requirements[key].used_for_compute_actions = True
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
+        self._dummy_batch.set_get_interceptor(None)
+        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
+        seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            # TODO: (sven) This hack will not work for attention net traj.
-            #  view setup.
             i = 0
             while "state_in_{}".format(i) in postprocessed_batch:
                 postprocessed_batch["state_in_{}".format(i)] = \
@@ -630,12 +654,14 @@ class Policy(metaclass=ABCMeta):
                         postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
             seq_len = sample_batch_size // B
-            postprocessed_batch["seq_lens"] = \
-                np.array([seq_len for _ in range(B)], dtype=np.int32)
-        # Remove the UsageTrackingDict wrap to prep for wrapping the
-        # train batch with a to-tensor UsageTrackingDict.
-        train_batch = {k: v for k, v in postprocessed_batch.items()}
-        train_batch = self._lazy_tensor_dict(train_batch)
+            seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+            postprocessed_batch["seq_lens"] = seq_lens
+        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.is_training = True
+        if seq_lens is not None:
+            train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -645,35 +671,39 @@ class Policy(metaclass=ABCMeta):
             stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys | \
-                                batch_for_postproc.added_keys
+                                self._dummy_batch.accessed_keys | \
+                                self._dummy_batch.added_keys
             for key in all_accessed_keys:
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
-                # Tag those only needed for post-processing.
-                for key in batch_for_postproc.accessed_keys:
+                # Tag those only needed for post-processing (with some
+                # exceptions).
+                for key in self._dummy_batch.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.inference_view_requirements:
+                            key not in self.model.view_requirements and \
+                            key not in [
+                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                                SampleBatch.REWARDS, SampleBatch.INFOS]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
-                # Also always leave DONES and REWARDS, no matter what.
+                # Also always leave DONES, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS] and \
-                            key not in self.model.inference_view_requirements:
+                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
+                            key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
-                        if key in batch_for_postproc.deleted_keys:
+                        if key in self._dummy_batch.deleted_keys:
                             logger.warning(
                                 "SampleBatch key '{}' was deleted manually in "
                                 "postprocessing function! RLlib will "
@@ -696,31 +726,102 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
-                ret[view_col] = np.zeros_like(
-                    [view_req.space.sample() for _ in range(batch_size)])
+                # Range of indices on time-axis, e.g. "-50:-1".
+                if view_req.shift_from is not None:
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for _ in range(view_req.shift_to -
+                                       view_req.shift_from + 1)
+                    ] for _ in range(batch_size)])
+                # Set of (probably non-consecutive) indices.
+                elif isinstance(view_req.shift, (list, tuple)):
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for t in range(len(view_req.shift))
+                    ] for _ in range(batch_size)])
+                # Single shift int value.
+                else:
+                    if isinstance(view_req.space, gym.spaces.Space):
+                        ret[view_col] = np.zeros_like([
+                            view_req.space.sample() for _ in range(batch_size)
+                        ])
+                    else:
+                        ret[view_col] = [
+                            view_req.space for _ in range(batch_size)
+                        ]
+
+        # Due to different view requirements for the different columns,
+        # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret)
 
-    def _update_model_inference_view_requirements_from_init_state(self):
-        """Uses this Model's initial state to auto-add necessary ViewReqs.
+    def _update_model_view_requirements_from_init_state(self):
+        """Uses Model's (or this Policy's) init state to add needed ViewReqs.
 
         Can be called from within a Policy to make sure RNNs automatically
         update their internal state-related view requirements.
-        Changes the `self.inference_view_requirements` dict.
+        Changes the `self.view_requirements` dict.
         """
-        model = self.model
+        self._model_init_state_automatically_added = True
+        model = getattr(self, "model", None)
+
+        obj = model or self
+        if model and not hasattr(model, "view_requirements"):
+            model.view_requirements = {
+                SampleBatch.OBS: ViewRequirement(space=self.observation_space)
+            }
+        view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        for i, state in enumerate(model.get_initial_state()):
-            model.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    data_rel_pos=-1,
-                    space=Box(-1.0, 1.0, shape=state.shape))
-            model.inference_view_requirements["state_out_{}".format(i)] = \
-                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
+        init_state = []
+        if hasattr(obj, "get_initial_state") and callable(
+                obj.get_initial_state):
+            init_state = obj.get_initial_state()
+        else:
+            # Add this functionality automatically for new native model API.
+            if tf and isinstance(model, tf.keras.Model) and \
+                    "state_in_0" not in view_reqs:
+                obj.get_initial_state = lambda: [
+                    np.zeros_like(view_req.space.sample())
+                    for k, view_req in model.view_requirements.items()
+                    if k.startswith("state_in_")]
+            else:
+                obj.get_initial_state = lambda: []
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
+
+        for i, state in enumerate(init_state):
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
+            fw = np if isinstance(state, np.ndarray) else torch if \
+                torch and torch.is_tensor(state) else None
+            if fw:
+                space = Box(-1.0, 1.0, shape=state.shape) if \
+                    fw.all(state == 0.0) else state
+            else:
+                space = state
+            view_reqs["state_in_{}".format(i)] = ViewRequirement(
+                "state_out_{}".format(i),
+                shift=-1,
+                used_for_compute_actions=True,
+                batch_repeat_value=self.config.get("model", {}).get(
+                    "max_seq_len", 1),
+                space=space)
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(
+                space=space, used_for_training=True)
+
+    # TODO: (sven) Deprecate this in favor of `save()`.
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
+
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        deprecation_warning("export_checkpoint", "save")
+        raise NotImplementedError
 
 
 def clip_action(action, action_space):

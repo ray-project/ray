@@ -18,7 +18,6 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -66,6 +65,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   struct LocationSet {
     absl::flat_hash_set<NodeID> locations;
     std::string spilled_url = "";
+    NodeID spilled_node_id = NodeID::Nil();
+    size_t object_size = 0;
   };
 
   /// Add a location of objects.

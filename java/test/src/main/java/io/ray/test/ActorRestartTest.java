@@ -3,6 +3,7 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -22,13 +23,17 @@ public class ActorRestartTest extends BaseTest {
       wasCurrentActorRestarted = Ray.getRuntimeContext().wasCurrentActorRestarted();
     }
 
-    public boolean wasCurrentActorRestarted() {
+    public boolean checkWasCurrentActorRestartedInActorCreationTask() {
       return wasCurrentActorRestarted;
     }
 
     public int increase() {
       value += 1;
       return value;
+    }
+
+    public boolean checkWasCurrentActorRestartedInActorTask() {
+      return Ray.getRuntimeContext().wasCurrentActorRestarted();
     }
 
     public int getPid() {
@@ -43,31 +48,53 @@ public class ActorRestartTest extends BaseTest {
       actor.task(Counter::increase).remote().get();
     }
 
-    Assert.assertFalse(actor.task(Counter::wasCurrentActorRestarted).remote().get());
+    // Check if actor was restarted.
+    Assert.assertFalse(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertFalse(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process.
-    int pid = actor.task(Counter::getPid).remote().get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
-    // Wait for the actor to be killed.
-    TimeUnit.SECONDS.sleep(1);
+    killActorProcess(actor);
 
+    waitForActorAlive(actor);
     int value = actor.task(Counter::increase).remote().get();
     Assert.assertEquals(value, 1);
 
-    Assert.assertTrue(actor.task(Counter::wasCurrentActorRestarted).remote().get());
+    // Check if actor was restarted again.
+    Assert.assertTrue(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process again.
-    pid = actor.task(Counter::getPid).remote().get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
-    TimeUnit.SECONDS.sleep(1);
+    killActorProcess(actor);
 
     // Try calling increase on this actor again and this should fail.
-    try {
-      actor.task(Counter::increase).remote().get();
-      Assert.fail("The above task didn't fail.");
-    } catch (RayActorException e) {
-      // We should receive a RayActorException because the actor is dead.
-    }
+    Assert.assertThrows(
+        RayActorException.class, () -> actor.task(Counter::increase).remote().get());
+  }
+
+  /** The helper to kill a counter actor. */
+  private static void killActorProcess(ActorHandle<Counter> actor)
+      throws IOException, InterruptedException {
+    // Kill the actor process.
+    int pid = actor.task(Counter::getPid).remote().get();
+    Process p = Runtime.getRuntime().exec("kill -9 " + pid);
+    // Wait for the actor to be killed.
+    TimeUnit.SECONDS.sleep(1);
+  }
+
+  private static void waitForActorAlive(ActorHandle<Counter> actor) {
+    Assert.assertTrue(
+        TestUtils.waitForCondition(
+            () -> {
+              try {
+                actor.task(Counter::getPid).remote().get();
+                return true;
+              } catch (RayException e) {
+                return false;
+              }
+            },
+            10000));
   }
 }
-

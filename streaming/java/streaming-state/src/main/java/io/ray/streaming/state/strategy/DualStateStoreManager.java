@@ -31,9 +31,7 @@ import java.util.Map.Entry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * This class define the checkpoint store strategy, which saves two-version data once.
- */
+/** This class define the checkpoint store strategy, which saves two-version data once. */
 public class DualStateStoreManager<V> extends AbstractStateStoreManager<V> {
 
   private static final Logger LOG = LoggerFactory.getLogger(DualStateStoreManager.class);
@@ -68,14 +66,12 @@ public class DualStateStoreManager<V> extends AbstractStateStoreManager<V> {
         byte[] value = entry.getValue();
 
         /**
-         * 2 is specific key in kv store and indicates that new value
-         * should be stored with this key after overwriting old value in key 1. i.e.
+         * 2 is specific key in kv store and indicates that new value should be stored with this key
+         * after overwriting old value in key 1. i.e.
          *
-         *      -2     -1     1        2
-         * k1   6      5      a        b
-         * k2   9      7      d        e
+         * <p>-2 -1 1 2 k1 6 5 a b k2 9 7 d e
          *
-         * k1's value for checkpoint 5 is a, and b for checkpoint 6.
+         * <p>k1's value for checkpoint 5 is a, and b for checkpoint 6.
          */
         Map<Long, byte[]> remoteData = super.kvStore.get(key);
         if (remoteData == null || remoteData.size() == 0) {
@@ -85,12 +81,12 @@ public class DualStateStoreManager<V> extends AbstractStateStoreManager<V> {
         } else {
           long oldBatchId = Longs.fromByteArray(remoteData.get(-2L));
           if (oldBatchId < checkpointId) {
-            //move the old data
+            // move the old data
             remoteData.put(1L, remoteData.get(2L));
             remoteData.put(-1L, remoteData.get(-2L));
           }
 
-          //put the new data here
+          // put the new data here
           remoteData.put(2L, value);
           remoteData.put(-2L, Longs.toByteArray(checkpointId));
         }
@@ -119,7 +115,7 @@ public class DualStateStoreManager<V> extends AbstractStateStoreManager<V> {
       return storageRecord.getValue();
     }
 
-    //get from not commit cp info
+    // get from not commit cp info
     List<Long> checkpointIds = new ArrayList<>(middleStore.keySet());
     Collections.sort(checkpointIds);
     for (int i = checkpointIds.size() - 1; i >= 0; i--) {

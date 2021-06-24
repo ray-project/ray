@@ -1,10 +1,11 @@
-import numpy as np
-import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-from ray.rllib.env.meta_env import MetaEnv
+from gym.utils import EzPickle
+import numpy as np
+
+from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 
 
-class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle, MetaEnv):
+class HalfCheetahRandDirecEnv(MujocoEnv, EzPickle, TaskSettableEnv):
     """HalfCheetah Environment with two diff tasks, moving forwards or backwards
 
     Direction is defined as a scalar: +1.0 (forwards) or -1.0 (backwards)
@@ -13,7 +14,7 @@ class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle, MetaEnv):
     def __init__(self, goal_direction=None):
         self.goal_direction = goal_direction if goal_direction else 1.0
         MujocoEnv.__init__(self, "half_cheetah.xml", 5)
-        gym.utils.EzPickle.__init__(self, goal_direction)
+        EzPickle.__init__(self, goal_direction)
 
     def sample_tasks(self, n_tasks):
         # For fwd/bwd env, goal direc is backwards if - 1.0, forwards if + 1.0

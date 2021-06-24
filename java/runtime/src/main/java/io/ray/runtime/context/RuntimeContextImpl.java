@@ -3,11 +3,11 @@ package io.ray.runtime.context;
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import io.ray.api.id.TaskId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RunMode;
-import io.ray.runtime.generated.Common.TaskType;
 import java.util.List;
 
 public class RuntimeContextImpl implements RuntimeContext {
@@ -26,20 +26,21 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public ActorId getCurrentActorId() {
     ActorId actorId = runtime.getWorkerContext().getCurrentActorId();
-    Preconditions.checkState(actorId != null && !actorId.isNil(),
-        "This method should only be called from an actor.");
+    Preconditions.checkState(
+        actorId != null && !actorId.isNil(), "This method should only be called from an actor.");
     return actorId;
   }
 
   @Override
+  public TaskId getCurrentTaskId() {
+    return runtime.getWorkerContext().getCurrentTaskId();
+  }
+
+  @Override
   public boolean wasCurrentActorRestarted() {
-    TaskType currentTaskType = runtime.getWorkerContext().getCurrentTaskType();
-    Preconditions.checkState(currentTaskType == TaskType.ACTOR_CREATION_TASK,
-        "This method can only be called from an actor creation task.");
     if (isSingleProcess()) {
       return false;
     }
-
     return runtime.getGcsClient().wasCurrentActorRestarted(getCurrentActorId());
   }
 

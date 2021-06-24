@@ -1,10 +1,18 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
 import gym
+
+if TYPE_CHECKING:
+    from ray.rllib.utils import try_import_tf, try_import_torch
+    _, tf, _ = try_import_tf()
+    torch, _ = try_import_torch()
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.view_requirement import ViewRequirement
 
 # Represents a fully filled out config of a Trainer class.
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Trainer.
+
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with
@@ -67,6 +75,10 @@ EnvInfoDict = dict
 # Represents a File object
 FileType = Any
 
+# Represents a ViewRequirements dict mapping column names (str) to
+# ViewRequirement objects.
+ViewRequirementsDict = Dict[str, "ViewRequirement"]
+
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
 
@@ -95,6 +107,9 @@ ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
+
+# An input dict used for direct ModelV2 calls or `ModelV2.from_batch` calls.
+ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]

@@ -18,6 +18,8 @@ There are three ways of starting the Ray runtime:
 * Explicitly via CLI (:ref:`start-ray-cli`)
 * Explicitly via the cluster launcher (:ref:`start-ray-up`)
 
+You can also connect to an existing Ray runtime using the `Ray Client <ray-client.html>`
+
 .. _start-ray-init:
 
 Starting Ray on a single machine
@@ -125,25 +127,34 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
   ...
 
 
+You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
+
 .. tabs::
-  .. group-tab:: python
+  .. code-tab:: python
 
-    You can connect to this Ray runtime by starting a Python process that calls the following on the same node as where you ran ``ray start``:
-
-    .. code-block:: python
-
-      # This must
-      import ray
-      ray.init(address='auto')
+    # This must
+    import ray
+    ray.init(address='auto')
 
   .. group-tab:: java
 
+    .. code-block:: java
 
-    If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
+      import io.ray.api.Ray;
+
+      public class MyRayApp {
+
+        public static void main(String[] args) {
+          Ray.init();
+          ...
+        }
+      }
 
     .. code-block:: bash
 
-      $ ray start ... --code-search-path=/path/to/jars
+      java -classpath <classpath> \
+        -Dray.address=<address> \
+        <classname> <args>
 
 
 You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init(address="auto")`` on any of the cluster machines will connect to the ray cluster.
@@ -153,7 +164,7 @@ You can connect other nodes to the head node, creating a Ray cluster by also cal
 Launching a Ray cluster (``ray up``)
 ------------------------------------
 
-Ray clusters can be launched with the :ref:`Cluster Launcher <ref-automatic-cluster>`.
+Ray clusters can be launched with the :ref:`Cluster Launcher <cluster-cloud>`.
 The ``ray up`` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls ``ray start`` to create a Ray cluster.
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.

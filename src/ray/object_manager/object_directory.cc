@@ -14,9 +14,11 @@
 
 #include "ray/object_manager/object_directory.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
+ObjectDirectory::ObjectDirectory(instrumented_io_context &io_service,
                                  std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
@@ -31,13 +33,21 @@ using ray::rpc::ObjectTableData;
 /// object table entries up to but not including this notification.
 bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
-                           std::unordered_set<NodeID> *node_ids,
-                           std::string *spilled_url) {
+                           std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
+                           NodeID *spilled_node_id, size_t *object_size) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
   bool isUpdated = false;
   for (const auto &update : location_updates) {
+    // The size can be 0 if the update was a deletion. This assumes that an
+    // object's size is always greater than 0.
+    // TODO(swang): If that's not the case, we should use a flag to check
+    // whether the size is set instead.
+    if (update.size() > 0) {
+      *object_size = update.size();
+    }
+
     if (!update.node_id().empty()) {
       NodeID node_id = NodeID::FromBinary(update.node_id());
       if (update.is_add() && 0 == node_ids->count(node_id)) {
@@ -49,9 +59,12 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
       }
     } else {
       RAY_CHECK(!update.spilled_url().empty());
-      RAY_LOG(DEBUG) << "Received object spilled at " << update.spilled_url();
+      const auto received_spilled_node_id = NodeID::FromBinary(update.spilled_node_id());
+      RAY_LOG(DEBUG) << "Received object spilled at " << update.spilled_url()
+                     << " spilled at " << NodeID::FromBinary(update.spilled_node_id());
       if (update.spilled_url() != *spilled_url) {
         *spilled_url = update.spilled_url();
+        *spilled_node_id = received_spilled_node_id;
         isUpdated = true;
       }
     }
@@ -69,24 +82,6 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
 }
 
 }  // namespace
-
-ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
-  ray::Status status =
-      gcs_client_->Objects().AsyncAddLocation(object_id, node_id, nullptr);
-  return status;
-}
-
-ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
-  ray::Status status =
-      gcs_client_->Objects().AsyncRemoveLocation(object_id, node_id, nullptr);
-  return status;
-};
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
@@ -119,153 +114,20 @@ void ObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
       // If the subscribed object has the removed node as a location, update
       // its locations with an empty update so that the location will be removed.
       UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
-                            &listener.second.spilled_url);
+                            &listener.second.spilled_url,
+                            &listener.second.spilled_node_id,
+                            &listener.second.object_size);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
         callback_pair.second(object_id, listener.second.current_object_locations,
-                             listener.second.spilled_url);
+                             listener.second.spilled_url, listener.second.spilled_node_id,
+                             listener.second.object_size);
       }
     }
   }
-}
-
-ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
-                                                      const ObjectID &object_id,
-                                                      const rpc::Address &owner_address,
-                                                      const OnLocationsFound &callback) {
-  ray::Status status = ray::Status::OK();
-  auto it = listeners_.find(object_id);
-  if (it == listeners_.end()) {
-    it = listeners_.emplace(object_id, LocationListenerState()).first;
-
-    auto object_notification_callback =
-        [this](const ObjectID &object_id,
-               const std::vector<rpc::ObjectLocationChange> &object_notifications) {
-          // Objects are added to this map in SubscribeObjectLocations.
-          auto it = listeners_.find(object_id);
-          // Do nothing for objects we are not listening for.
-          if (it == listeners_.end()) {
-            return;
-          }
-
-          // Once this flag is set to true, it should never go back to false.
-          it->second.subscribed = true;
-
-          // Update entries for this object.
-          if (!UpdateObjectLocations(object_notifications, gcs_client_,
-                                     &it->second.current_object_locations,
-                                     &it->second.spilled_url)) {
-            return;
-          }
-          // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-          // looping over the callbacks.
-          auto callbacks = it->second.callbacks;
-          // Call all callbacks associated with the object id locations we have
-          // received.  This notifies the client even if the list of locations is
-          // empty, since this may indicate that the objects have been evicted from
-          // all nodes.
-          for (const auto &callback_pair : callbacks) {
-            // It is safe to call the callback directly since this is already running
-            // in the subscription callback stack.
-            callback_pair.second(object_id, it->second.current_object_locations,
-                                 it->second.spilled_url);
-          }
-        };
-    status = gcs_client_->Objects().AsyncSubscribeToLocations(
-        object_id, object_notification_callback, /*done*/ nullptr);
-  }
-
-  auto &listener_state = it->second;
-  // TODO(hme): Make this fatal after implementing Pull suppression.
-  if (listener_state.callbacks.count(callback_id) > 0) {
-    return ray::Status::OK();
-  }
-  listener_state.callbacks.emplace(callback_id, callback);
-  // If we previously received some notifications about the object's locations,
-  // immediately notify the caller of the current known locations.
-  if (listener_state.subscribed) {
-    auto &locations = listener_state.current_object_locations;
-    auto &spilled_url = listener_state.spilled_url;
-    io_service_.post([callback, locations, spilled_url, object_id]() {
-      callback(object_id, locations, spilled_url);
-    });
-  }
-  return status;
-}
-
-ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                                        const ObjectID &object_id) {
-  ray::Status status = ray::Status::OK();
-  auto entry = listeners_.find(object_id);
-  if (entry == listeners_.end()) {
-    return status;
-  }
-  entry->second.callbacks.erase(callback_id);
-  if (entry->second.callbacks.empty()) {
-    status = gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id);
-    listeners_.erase(entry);
-  }
-  return status;
-}
-
-ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
-                                             const rpc::Address &owner_address,
-                                             const OnLocationsFound &callback) {
-  ray::Status status;
-  auto it = listeners_.find(object_id);
-  if (it != listeners_.end() && it->second.subscribed) {
-    // If we have locations cached due to a concurrent SubscribeObjectLocations
-    // call, and we have received at least one notification from the GCS about
-    // the object's creation, then call the callback immediately with the
-    // cached locations.
-    auto &locations = it->second.current_object_locations;
-    auto &spilled_url = it->second.spilled_url;
-    io_service_.post([callback, object_id, spilled_url, locations]() {
-      callback(object_id, locations, spilled_url);
-    });
-  } else {
-    // We do not have any locations cached due to a concurrent
-    // SubscribeObjectLocations call, so look up the object's locations
-    // directly from the GCS.
-    status = gcs_client_->Objects().AsyncGetLocations(
-        object_id,
-        [this, object_id, callback](
-            Status status, const boost::optional<rpc::ObjectLocationInfo> &update) {
-          RAY_CHECK(status.ok())
-              << "Failed to get object location from GCS: " << status.message();
-          // Build the set of current locations based on the entries in the log.
-          std::vector<rpc::ObjectLocationChange> notification;
-          for (const auto &loc : update->locations()) {
-            rpc::ObjectLocationChange change;
-            change.set_is_add(true);
-            change.set_node_id(loc.manager());
-            notification.push_back(change);
-          }
-          if (!update->spilled_url().empty()) {
-            rpc::ObjectLocationChange change;
-            change.set_spilled_url(update->spilled_url());
-            notification.push_back(change);
-          }
-
-          std::unordered_set<NodeID> node_ids;
-          std::string spilled_url;
-          UpdateObjectLocations(notification, gcs_client_, &node_ids, &spilled_url);
-          // It is safe to call the callback directly since this is already running
-          // in the GCS client's lookup callback stack.
-          callback(object_id, node_ids, spilled_url);
-        });
-  }
-  return status;
-}
-
-std::string ObjectDirectory::DebugString() const {
-  std::stringstream result;
-  result << "ObjectDirectory:";
-  result << "\n- num listeners: " << listeners_.size();
-  return result.str();
 }
 
 }  // namespace ray

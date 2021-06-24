@@ -68,7 +68,6 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
         self.rnn_model = tf.keras.Model(
             inputs=[inputs, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
     @override(RecurrentNetwork)

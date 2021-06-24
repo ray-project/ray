@@ -53,24 +53,24 @@ bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
 }
 
 void TaskSpecification::ComputeResources() {
-  auto required_resources = MapFromProtobuf(message_->required_resources());
-  auto required_placement_resources =
-      MapFromProtobuf(message_->required_placement_resources());
-  if (required_placement_resources.empty()) {
-    required_placement_resources = required_resources;
-  }
+  auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(required_resources));
+    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
   }
+
+  auto &required_placement_resources = message_->required_placement_resources().empty()
+                                           ? required_resources
+                                           : message_->required_placement_resources();
 
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(new ResourceSet(required_placement_resources));
+    required_placement_resources_.reset(
+        new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
   if (!IsActorTask()) {
@@ -78,7 +78,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredResources();
+    auto sched_cls = GetRequiredPlacementResources();
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
@@ -109,6 +109,14 @@ size_t TaskSpecification::ParentCounter() const { return message_->parent_counte
 
 ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
+}
+
+std::string TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->serialized_runtime_env();
+}
+
+bool TaskSpecification::HasRuntimeEnv() const {
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -174,14 +182,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
+    bool add_dummy_dependency) const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
   }
-  if (IsActorTask()) {
+  if (add_dummy_dependency && IsActorTask()) {
     const auto &dummy_ref =
         GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
     dependencies.push_back(dummy_ref);
@@ -191,6 +200,10 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
 
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
+}
+
+std::string TaskSpecification::GetDebuggerBreakpoint() const {
+  return message_->debugger_breakpoint();
 }
 
 std::unordered_map<std::string, std::string>

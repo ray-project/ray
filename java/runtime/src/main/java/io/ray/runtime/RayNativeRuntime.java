@@ -20,8 +20,6 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -29,9 +27,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Native runtime for cluster mode.
- */
+/** Native runtime for cluster mode. */
 public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
@@ -39,10 +35,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private boolean startRayHead = false;
 
   /**
-   * In Java, GC runs in a standalone thread, and we can't control the exact
-   * timing of garbage collection. By using this lock, when
-   * {@link NativeObjectStore#nativeRemoveLocalReference} is executing, the core
-   * worker will not be shut down, therefore it guarantees some kind of
+   * In Java, GC runs in a standalone thread, and we can't control the exact timing of garbage
+   * collection. By using this lock, when {@link NativeObjectStore#nativeRemoveLocalReference} is
+   * executing, the core worker will not be shut down, therefore it guarantees some kind of
    * thread-safety. Note that this guarantee only works for driver.
    */
   private final ReadWriteLock shutdownLock = new ReentrantReadWriteLock();
@@ -58,13 +53,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       final String sessionDir = client.get("session_dir", null);
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
-    }
-  }
-
-  private void loadConfigFromGcs() {
-    rayConfig.rayletConfigParameters.clear();
-    for (Map.Entry<String, String> entry : gcsClient.getInternalConfig().entrySet()) {
-      rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
     }
   }
 
@@ -93,8 +81,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
       gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
-      loadConfigFromGcs();
-
       if (rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(gcsClient.nextJobId());
       }
@@ -112,26 +98,28 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 
-      Map<String, String> rayletConfigStringMap = new HashMap<>();
-      for (Map.Entry<String, Object> entry : rayConfig.rayletConfigParameters.entrySet()) {
-        rayletConfigStringMap.put(entry.getKey(), entry.getValue().toString());
-      }
-
-      nativeInitialize(rayConfig.workerMode.getNumber(),
-          rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
+      nativeInitialize(
+          rayConfig.workerMode.getNumber(),
+          rayConfig.nodeIp,
+          rayConfig.getNodeManagerPort(),
           rayConfig.workerMode == WorkerType.DRIVER ? System.getProperty("user.dir") : "",
-          rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
+          rayConfig.objectStoreSocketName,
+          rayConfig.rayletSocketName,
           (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
-          new GcsClientOptions(rayConfig), numWorkersPerProcess,
-          rayConfig.logDir, rayletConfigStringMap, serializedJobConfig);
+          new GcsClientOptions(rayConfig),
+          numWorkersPerProcess,
+          rayConfig.logDir,
+          serializedJobConfig);
 
       taskExecutor = new NativeTaskExecutor(this);
       workerContext = new NativeWorkerContext();
       objectStore = new NativeObjectStore(workerContext, shutdownLock);
       taskSubmitter = new NativeTaskSubmitter();
 
-      LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
-          rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
+      LOGGER.debug(
+          "RayNativeRuntime started with store {}, raylet {}",
+          rayConfig.objectStoreSocketName,
+          rayConfig.rayletSocketName);
     } catch (Exception e) {
       if (startRayHead) {
         try {
@@ -201,8 +189,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public Object getAsyncContext() {
-    return new AsyncContext(workerContext.getCurrentWorkerId(),
-        workerContext.getCurrentClassLoader());
+    return new AsyncContext(
+        workerContext.getCurrentWorkerId(), workerContext.getCurrentClassLoader());
   }
 
   @Override
@@ -229,10 +217,17 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   private static native void nativeInitialize(
-      int workerMode, String ndoeIpAddress,
-      int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
-      byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
-      String logDir, Map<String, String> rayletConfigParameters, byte[] serializedJobConfig);
+      int workerMode,
+      String ndoeIpAddress,
+      int nodeManagerPort,
+      String driverName,
+      String storeSocket,
+      String rayletSocket,
+      byte[] jobId,
+      GcsClientOptions gcsClientOptions,
+      int numWorkersPerProcess,
+      String logDir,
+      byte[] serializedJobConfig);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 

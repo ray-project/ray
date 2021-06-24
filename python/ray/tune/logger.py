@@ -77,37 +77,6 @@ class NoopLogger(Logger):
         pass
 
 
-class MLFLowLogger(Logger):
-    """MLFlow logger.
-
-    Requires the experiment configuration to have a MLFlow Experiment ID
-    or manually set the proper environment variables.
-
-    """
-
-    def _init(self):
-        logger_config = self.config.get("logger_config", {})
-        from mlflow.tracking import MlflowClient
-        client = MlflowClient(
-            tracking_uri=logger_config.get("mlflow_tracking_uri"),
-            registry_uri=logger_config.get("mlflow_registry_uri"))
-        run = client.create_run(logger_config.get("mlflow_experiment_id"))
-        self._run_id = run.info.run_id
-        for key, value in self.config.items():
-            client.log_param(self._run_id, key, value)
-        self.client = client
-
-    def on_result(self, result: Dict):
-        for key, value in result.items():
-            if not isinstance(value, float):
-                continue
-            self.client.log_metric(
-                self._run_id, key, value, step=result.get(TRAINING_ITERATION))
-
-    def close(self):
-        self.client.set_terminated(self._run_id)
-
-
 class JsonLogger(Logger):
     """Logs trial results in json format.
 
@@ -615,7 +584,8 @@ class TBXLoggerCallback(LoggerCallback):
     """
 
     # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, int, float, list)
+    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(self):
         try:
@@ -710,10 +680,18 @@ class TBXLoggerCallback(LoggerCallback):
             if isinstance(v, self.VALID_HPARAMS)
         }
 
+        np_params = {
+            k: v.tolist()
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_NP_HPARAMS)
+        }
+
+        scrubbed_params.update(np_params)
+
         removed = {
             k: v
             for k, v in flat_params.items()
-            if not isinstance(v, self.VALID_HPARAMS)
+            if not isinstance(v, self.VALID_HPARAMS + self.VALID_NP_HPARAMS)
         }
         if removed:
             logger.info(
@@ -732,6 +710,13 @@ class TBXLoggerCallback(LoggerCallback):
             logger.exception("TensorboardX failed to log hparams. "
                              "This may be due to an unsupported type "
                              "in the hyperparameter values.")
+
+
+# Maintain backwards compatibility.
+from ray.tune.integration.mlflow import MLflowLogger as _MLflowLogger  # noqa: E402, E501
+MLflowLogger = _MLflowLogger
+# The capital L is a typo, but needs to remain for backwards compatibility.
+MLFLowLogger = _MLflowLogger
 
 
 def pretty_print(result):

@@ -1,0 +1,59 @@
+/*
+Dracula Theme v1.2.0
+https://github.com/zenorocha/dracula-theme
+Copyright 2015, All rights reserved
+Code licensed under the MIT license
+http://zenorocha.mit-license.org
+@author Éverton Ribeiro <nuxlli@gmail.com>
+@author Zeno Rocha <hi@zenorocha.com>
+*/
+.hljs-dark {
+  display: block;
+  overflow-x: auto;
+  padding: 0.5em;
+  color: #f8f8f2;
+}
+.hljs-dark .hljs-number,
+.hljs-dark .hljs-keyword,
+.hljs-dark .hljs-selector-tag,
+.hljs-dark .hljs-literal,
+.hljs-dark .hljs-section,
+.hljs-dark .hljs-link {
+  color: #8be9fd;
+}
+.hljs-dark .hljs-function .hljs-keyword {
+  color: #ff79c6;
+}
+.hljs-dark .hljs-string,
+.hljs-dark .hljs-title,
+.hljs-dark .hljs-name,
+.hljs-dark .hljs-type,
+.hljs-dark .hljs-attribute,
+.hljs-dark .hljs-symbol,
+.hljs-dark .hljs-bullet,
+.hljs-dark .hljs-addition,
+.hljs-dark .hljs-variable,
+.hljs-dark .hljs-template-tag,
+.hljs-dark .hljs-template-variable {
+  color: #f1fa8c;
+}
+.hljs-dark .hljs-comment,
+.hljs-dark .hljs-quote,
+.hljs-dark .hljs-deletion,
+.hljs-dark .hljs-meta {
+  color: #6272a4;
+}
+.hljs-dark .hljs-keyword,
+.hljs-dark .hljs-selector-tag,
+.hljs-dark .hljs-literal,
+.hljs-dark .hljs-title,
+.hljs-dark .hljs-section,
+.hljs-dark .hljs-doctag,
+.hljs-dark .hljs-type,
+.hljs-dark .hljs-name,
+.hljs-dark .hljs-strong {
+  font-weight: bold;
+}
+.hljs-dark .hljs-emphasis {
+  font-style: italic;
+}

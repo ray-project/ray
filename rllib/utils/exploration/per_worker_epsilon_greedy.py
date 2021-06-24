@@ -34,9 +34,9 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
                 alpha, eps, i = 7, 0.4, worker_index - 1
                 num_workers_minus_1 = float(num_workers - 1) \
                     if num_workers > 1 else 1.0
+                constant_eps = eps**(1 + (i / num_workers_minus_1) * alpha)
                 epsilon_schedule = ConstantSchedule(
-                    eps**(1 + (i / num_workers_minus_1) * alpha),
-                    framework=framework)
+                    constant_eps, framework=framework)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:

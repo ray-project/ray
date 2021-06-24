@@ -6,14 +6,20 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
-
+import traceback
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
+import yaml
 
 import ray
 import ray._private.services
-import ray.utils
+import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
+import requests
+from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -123,6 +129,24 @@ def wait_for_pid_to_exit(pid, timeout=20):
         f"Timed out while waiting for process {pid} to exit.")
 
 
+def wait_for_children_names_of_pid(pid, children_names, timeout=20):
+    p = psutil.Process(pid)
+    start_time = time.time()
+    children_names = set(children_names)
+    not_found_children = []
+    children = []
+    while time.time() - start_time < timeout:
+        children = p.children(recursive=False)
+        not_found_children = set(children_names) - {c.name() for c in children}
+        if len(not_found_children) == 0:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException(
+        "Timed out while waiting for process {} children to start "
+        "({} not found from children {}).".format(pid, not_found_children,
+                                                  children))
+
+
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
     start_time = time.time()
@@ -157,11 +181,12 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script):
+def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 
     Args:
-        driver_script: A string to run as a Python script.
+        driver_script (str): A string to run as a Python script.
+        env (dict): The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -170,18 +195,20 @@ def run_string_as_driver(driver_script):
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
-            print(ray.utils.decode(output))
+            print(ray._private.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
-        out = ray.utils.decode(output)
+        out = ray._private.utils.decode(output)
     return out
 
 
-def run_string_as_driver_nonblocking(driver_script):
+def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
@@ -201,7 +228,8 @@ def run_string_as_driver_nonblocking(driver_script):
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -211,12 +239,27 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
-                _ for _ in ray.actors().values()
+                _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state
         ]) >= num_actors:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
+
+
+def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
+    actor_id = actor._actor_id.hex()
+    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
+    ray.kill(actor)
+    start = time.time()
+    while time.time() - start <= timeout:
+        actor_status = ray.state.actors(actor_id)
+        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
+                or actor_status["NumRestarts"] > current_num_restarts:
+            return
+        time.sleep(retry_interval_ms / 1000.0)
+    raise RuntimeError(
+        "It took too much time to kill an actor: {}".format(actor_id))
 
 
 def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
@@ -242,7 +285,8 @@ def wait_until_succeeded_without_exception(func,
                                            exceptions,
                                            *args,
                                            timeout_ms=1000,
-                                           retry_interval_ms=100):
+                                           retry_interval_ms=100,
+                                           raise_last_ex=False):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -252,6 +296,7 @@ def wait_until_succeeded_without_exception(func,
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_last_ex: Raise the last exception when timeout.
 
     Return:
         Whether exception occurs within a timeout.
@@ -262,13 +307,20 @@ def wait_until_succeeded_without_exception(func,
 
     time_elapsed = 0
     start = time.time()
+    last_ex = None
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
-        except exceptions:
+        except exceptions as ex:
+            last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
+    if raise_last_ex:
+        ex_stack = traceback.format_exception(
+            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else []
+        ex_stack = "".join(ex_stack)
+        raise Exception(f"Timed out while testing, {ex_stack}")
     return False
 
 
@@ -368,6 +420,13 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
+def put_unpinned_object(obj):
+    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
+    return ray.ObjectRef(
+        ray.worker.global_worker.core_worker.put_serialized_object(
+            value, pin_object=False))
+
+
 def wait_until_server_available(address,
                                 timeout_ms=5000,
                                 retry_interval_ms=100):
@@ -414,7 +473,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=5):
+def get_error_message(pub_sub, num, error_type=None, timeout=20):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -442,4 +501,117 @@ def format_web_url(url):
 
 
 def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
+
+
+def client_test_enabled() -> bool:
+    return os.environ.get("RAY_CLIENT_MODE") is not None
+
+
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+        try:
+            response = requests.get(f"http://{address}/metrics")
+        except requests.exceptions.ConnectionError:
+            continue
+
+        for line in response.text.split("\n"):
+            for family in text_string_to_metric_families(line):
+                for sample in family.samples:
+                    metric_names.add(sample.name)
+                    metric_samples.append(sample)
+                    if "Component" in sample.labels:
+                        components_dict[address].add(
+                            sample.labels["Component"])
+    return components_dict, metric_names, metric_samples
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    here = os.path.realpath(__file__)
+    parent = os.path.dirname(here)
+    config_path = os.path.join(parent, "tests/test_cli_patterns",
+                               config_file_name)
+    config = yaml.safe_load(open(config_path).read())
+    return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
+
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch

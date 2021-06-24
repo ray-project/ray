@@ -32,6 +32,7 @@ enum WorkerType {
   // IO worker types.
   SPILL_WORKER = 2;
   RESTORE_WORKER = 3;
+  UTIL_WORKER = 4;
 }
 
 // Type of a task.
@@ -44,19 +45,6 @@ enum TaskType {
   ACTOR_TASK = 2;
   // Driver task.
   DRIVER_TASK = 3;
-}
-
-// Type of placement group strategy.
-enum PlacementStrategy {
-  // Packs Bundles into as few nodes as possible.
-  PACK = 0;
-  // Places Bundles across distinct nodes or processes as even as possible.
-  SPREAD = 1;
-  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
-  STRICT_PACK = 2;
-  // Places Bundles across distinct nodes.
-  // The group is not allowed to deploy more than one bundle on a node.
-  STRICT_SPREAD = 3;
 }
 
 // Address of a worker or node manager.
@@ -87,10 +75,7 @@ message PythonFunctionDescriptor {
 message CppFunctionDescriptor {
   /// Dynamic library name which contains the remote function.
   string lib_name = 1;
-  /// Remote function offset from base address.
-  string function_offset = 2;
-  /// Executable function offset from base address.
-  string exec_function_offset = 3;
+  string function_name = 4;
 }
 
 // A union wrapper for various function descriptor types.
@@ -144,6 +129,15 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
+}
+
+/// The runtime environment describes all the runtime packages needed to
+/// run some task or actor.
+message RuntimeEnv {
+  /// The raw json passed from user
+  string raw_json = 1;
+  /// Uris used in this runtime env
+  repeated string uris = 2;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -200,6 +194,11 @@ message TaskSpec {
   // the receiver will not execute the task. This field is used by async actors
   // to guarantee task submission order after restart.
   bool skip_execution = 22;
+  // Breakpoint if this task should drop into the debugger when it starts executing
+  // and "" if the task should not drop into the debugger.
+  bytes debugger_breakpoint = 23;
+  // Serialized JSON string of the parsed runtime environment dict for this task.
+  string serialized_runtime_env = 24;
 }
 
 message Bundle {
@@ -230,6 +229,8 @@ message PlacementGroupSpec {
   bool creator_job_dead = 7;
   // Whether or not if the creator actor is dead.
   bool creator_actor_dead = 8;
+  // Whether the placement group is persistent.
+  bool is_detached = 9;
 }
 
 message ObjectReference {
@@ -237,6 +238,31 @@ message ObjectReference {
   bytes object_id = 1;
   // The address of the object's owner.
   Address owner_address = 2;
+}
+
+message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
+  ObjectReference reference = 1;
+  // Whether the worker is still using the ObjectID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the ObjectID.
+  bool has_local_ref = 2;
+  // Any other borrowers that the worker created (by passing the ID on to them).
+  repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
+  bytes contained_in_borrowed_id = 5;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
+  repeated bytes contains = 6;
 }
 
 // Argument in the task.
@@ -255,24 +281,29 @@ message TaskArg {
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
   bytes actor_id = 2;
-  // The max number of times this actor should be recontructed.
+  // The max number of times this actor should be restarted.
   // If this number is 0 the actor won't be restarted.
   // If this number is -1 the actor will be restarted indefinitely.
   int64 max_actor_restarts = 3;
+  // The max number of times tasks submitted on this actor should be retried
+  // if the actor fails and is restarted.
+  // If this number is 0 the tasks won't be resubmitted.
+  // If this number is -1 the tasks will be resubmitted indefinitely.
+  int64 max_task_retries = 4;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
-  repeated string dynamic_worker_options = 4;
+  repeated string dynamic_worker_options = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 5;
+  int32 max_concurrency = 6;
   // Whether the actor is persistent.
-  bool is_detached = 6;
+  bool is_detached = 7;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
-  string name = 7;
+  string name = 8;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 8;
+  bool is_asyncio = 9;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 9;
+  string extension_data = 10;
 }
 
 // Task spec of an actor task.
@@ -434,3 +465,41 @@ message MetricPoint {
   // [Optional] Unit of the metric.
   string units = 6;
 }
+
+// Type of a worker exit.
+enum WorkerExitType {
+  // Worker exit due to system level failures (i.e. worker crash).
+  SYSTEM_ERROR_EXIT = 0;
+  // Intended, initiated worker exit via raylet API.
+  INTENDED_EXIT = 1;
+  // Worker exit due to resource bundle release.
+  UNUSED_RESOURCE_RELEASED = 2;
+  // Worker exit due to placement group removal.
+  PLACEMENT_GROUP_REMOVED = 3;
+  // Worker exit due to exceptions in creation task.
+  CREATION_TASK_ERROR = 4;
+  // Worker killed by raylet if it has been idle for too long.
+  IDLE_EXIT = 5;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/* Please do not modify/remove/change the following enum to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
+}
+///////////////////////////////////////////////////////////////////////////////

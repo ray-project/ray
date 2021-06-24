@@ -39,19 +39,17 @@ class WorkerContext {
 
   bool ShouldCaptureChildTasksInPlacementGroup() const;
 
+  const std::string &GetCurrentSerializedRuntimeEnv() const;
+
   const std::unordered_map<std::string, std::string>
       &GetCurrentOverrideEnvironmentVariables() const;
-
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
-  void ResetCurrentTask(const TaskSpecification &task_spec);
+  void ResetCurrentTask();
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
@@ -77,10 +75,10 @@ class WorkerContext {
 
   bool CurrentActorDetached() const;
 
-  int GetNextTaskIndex();
+  uint64_t GetNextTaskIndex();
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
-  int GetNextPutIndex();
+  ObjectIDIndexType GetNextPutIndex();
 
  protected:
   // allow unit test to set.
@@ -99,6 +97,8 @@ class WorkerContext {
   PlacementGroupID current_actor_placement_group_id_;
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_;
+  // The JSON-serialized runtime env for the current actor or task.
+  std::string serialized_runtime_env_ = "{}";
   // The environment variable overrides for the current actor or task.
   std::unordered_map<std::string, std::string> override_environment_variables_;
   /// The id of the (main) thread that constructed this worker context.

@@ -21,7 +21,7 @@ class WorkerGroupInterface:
     """Manages a group of TorchRunner workers."""
 
     def start_workers(self, num_workers):
-        """Start workers for training.
+        """Start workers for training. Returns if startup is successful.
 
         This method has 4 steps.
             1. Creates `num_workers` TorchRunner objects, either all as remote
@@ -47,7 +47,7 @@ class WorkerGroupInterface:
         """See TorchTrainer.get_local_operator."""
         raise NotImplementedError
 
-    def get_model(self):
+    def get_model(self, to_cpu=False):
         """See TorchTrainer.get_model."""
         raise NotImplementedError
 
@@ -175,7 +175,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=i + starting_rank,
                 world_size=world_size,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
@@ -206,29 +206,34 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         return futures
 
     def start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
-        if num_workers == 1:
-            RemoteRunner = ray.remote(
-                num_cpus=self._num_cpus_per_worker,
-                num_gpus=int(self._use_gpu))(TorchRunner)
-            self.remote_workers = [RemoteRunner.remote(**self._params)]
-            ray.get(self.remote_workers[0].setup_operator.remote())
-        else:
-            self._init_dist_workers(num_workers)
+        logger.debug(f"start_workers: Setting {num_workers} workers.")
+        try:
+            if num_workers == 1:
+                RemoteRunner = ray.remote(
+                    num_cpus=self._num_cpus_per_worker,
+                    num_gpus=int(self._use_gpu))(TorchRunner)
+                self.remote_workers = [RemoteRunner.remote(**self._params)]
+                ray.get(self.remote_workers[0].setup_operator.remote())
+            else:
+                self._init_dist_workers(num_workers)
 
-            if self._initialization_hook:
-                self.apply_all_workers(self._initialization_hook)
+                if self._initialization_hook:
+                    self.apply_all_workers(self._initialization_hook)
 
-            # Make sure to get the IP address of the rank 0 worker node.
-            address = ray.get(self.remote_workers[0].setup_address.remote())
+                # Make sure to get the IP address of the rank 0 worker node.
+                address = ray.get(
+                    self.remote_workers[0].setup_address.remote())
 
-            ray.get(
-                self._setup_process_group(
-                    address=address, world_size=num_workers))
+                ray.get(
+                    self._setup_process_group(
+                        address=address, world_size=num_workers))
 
-            ray.get(self._setup_local_rank())
+                ray.get(self._setup_local_rank())
 
-            ray.get(self._setup_operator())
+                ray.get(self._setup_operator())
+            return True
+        except RayActorError:
+            return False
 
     def _apply_all_operators(self, fn):
         remote_calls = [
@@ -251,9 +256,9 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             "workers are remote. Set use_local to True in"
             "TorchTrainer to access a local operator.")
 
-    def get_model(self):
+    def get_model(self, to_cpu=False):
         ready, _ = ray.wait(
-            [r.get_models.remote() for r in self.remote_workers])
+            [r.get_models.remote(to_cpu) for r in self.remote_workers])
         models = ray.get(ready[0])
         return models
 
@@ -381,7 +386,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             # Assume 1 resource is already reserved for local worker.
-            potential_remote_size = self._check_potential_remote_workers_size()
+            potential_remote_size = self.new_workers_size()
             return potential_remote_size > 0
         return False
 
@@ -436,49 +441,53 @@ class LocalWorkerGroup(WorkerGroupInterface):
             use_gpu=use_gpu)
 
     def start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
+        logger.debug(f"start_workers: Setting {num_workers} workers.")
 
         if num_workers == 1:
             self.local_worker = TorchRunner(**self._params)
             if self._initialization_hook:
                 self.apply_all_workers(self._initialization_hook)
             self.local_worker.setup_operator()
+            return True
         else:
+            try:
+                # Start local worker
+                self.local_worker = LocalDistributedRunner(
+                    num_cpus=self._num_cpus_per_worker,
+                    num_gpus=int(self._use_gpu),
+                    **{
+                        **self._params,
+                        **self._dist_params
+                    })
+                self.remote_worker_group._init_dist_workers(num_workers - 1)
+                if self._initialization_hook:
+                    self.apply_all_workers(self._initialization_hook)
 
-            # Start local worker
-            self.local_worker = LocalDistributedRunner(
-                num_cpus=self._num_cpus_per_worker,
-                num_gpus=int(self._use_gpu),
-                **{
-                    **self._params,
-                    **self._dist_params
-                })
-            self.remote_worker_group._init_dist_workers(num_workers - 1)
-            if self._initialization_hook:
-                self.apply_all_workers(self._initialization_hook)
+                # Compute URL for initializing distributed PyTorch.
+                address = setup_address()
 
-            # Compute URL for initializing distributed PyTorch.
-            address = setup_address()
+                remote_pgs = self.remote_worker_group._setup_process_group(
+                    address=address, world_size=num_workers, starting_rank=1)
+                # Use the local worker as rank 0. Helps with debugging.
+                self.local_worker.setup_process_group(
+                    url=address,
+                    world_rank=0,
+                    world_size=num_workers,
+                    timeout=timedelta(seconds=self._timeout_s))
+                ray.get(remote_pgs)
 
-            remote_pgs = self.remote_worker_group._setup_process_group(
-                address=address, world_size=num_workers, starting_rank=1)
-            # Use the local worker as rank 0. This will help with debugging.
-            self.local_worker.setup_process_group(
-                url=address,
-                world_rank=0,
-                world_size=num_workers,
-                timeout=timedelta(self._timeout_s))
-            ray.get(remote_pgs)
+                local_node_ip = ray.util.get_node_ip_address()
+                rank_dict = defaultdict(int)
+                self.local_worker.set_local_rank(local_rank=0)
+                rank_dict[local_node_ip] += 1
+                self.remote_worker_group._setup_local_rank(rank_dict)
 
-            local_node_ip = ray.services.get_node_ip_address()
-            rank_dict = defaultdict(int)
-            self.local_worker.set_local_rank(local_rank=0)
-            rank_dict[local_node_ip] += 1
-            self.remote_worker_group._setup_local_rank(rank_dict)
-
-            remote_operators = self.remote_worker_group._setup_operator()
-            self.local_worker.setup_operator()
-            ray.get(remote_operators)
+                remote_operators = self.remote_worker_group._setup_operator()
+                self.local_worker.setup_operator()
+                ray.get(remote_operators)
+                return True
+            except RayActorError:
+                return False
 
     def apply_all_operators(self, fn):
         remote_calls = self.remote_worker_group._apply_all_operators(fn)
@@ -493,8 +502,11 @@ class LocalWorkerGroup(WorkerGroupInterface):
     def get_local_operator(self):
         return self.local_worker.training_operator
 
-    def get_model(self):
-        return self.local_worker.models
+    def get_model(self, to_cpu=False):
+        models = self.local_worker.models
+        if to_cpu:
+            models = [m.cpu() for m in models]
+        return models
 
     def load_state_dict(self, state_dict, blocking=False):
         # This is not the most efficient because you have to wait for
@@ -514,7 +526,10 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
     def reset(self):
         """Terminates models without giving up local resource reservation."""
-        self.local_worker.shutdown(cleanup=False)
+        if not isinstance(self.local_worker, LocalDistributedRunner):
+            self.local_worker.shutdown()
+        else:
+            self.local_worker.shutdown(cleanup=False)
         self.remote_worker_group.reset()
 
         self.local_worker = None

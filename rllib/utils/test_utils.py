@@ -5,7 +5,7 @@ import numpy as np
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
 
-jax = try_import_jax()
+jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
@@ -34,6 +34,8 @@ def framework_iterator(config=None,
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session (bool): If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
+            Also sets a seed (42) on the session to make the test
+            deterministic.
 
     Yields:
         str: If enter_session is False:
@@ -77,6 +79,7 @@ def framework_iterator(config=None,
         if fw == "tf" and session is True:
             sess = tf1.Session()
             sess.__enter__()
+            tf1.set_random_seed(42)
 
         print("framework={}".format(fw))
 
@@ -288,6 +291,7 @@ def check_compute_single_action(trainer,
         pol = trainer.get_policy()
     except AttributeError:
         pol = trainer.policy
+    model = pol.model
 
     action_space = pol.action_space
 
@@ -301,13 +305,10 @@ def check_compute_single_action(trainer,
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space
-                try:
-                    obs_space = obs_space.original_space
-                except AttributeError:
-                    pass
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space)
+            obs_space = getattr(obs_space, "original_space", obs_space)
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space
@@ -321,11 +322,24 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
+                # Framestacking w/ traj. view API.
+                framestacks = pol.config["model"].get("num_framestacks",
+                                                      "auto")
+                if isinstance(framestacks, int) and framestacks > 1:
+                    obs = np.stack(
+                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
                 if include_state:
-                    state_in = pol.model.get_initial_state()
+                    state_in = model.get_initial_state()
+                    if not state_in:
+                        state_in = []
+                        i = 0
+                        while f"state_in_{i}" in model.view_requirements:
+                            state_in.append(model.view_requirements[
+                                f"state_in_{i}"].space.sample())
+                            i += 1
                 action_in = action_space.sample() \
                     if include_prev_action_reward else None
                 reward_in = 1.0 if include_prev_action_reward else None

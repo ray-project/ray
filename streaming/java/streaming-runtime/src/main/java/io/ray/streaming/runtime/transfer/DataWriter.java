@@ -17,9 +17,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * DataWriter is a wrapper of streaming c++ DataWriter, which sends data to downstream workers
- */
+/** DataWriter is a wrapper of streaming c++ DataWriter, which sends data to downstream workers */
 public class DataWriter {
 
   private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
@@ -51,8 +49,8 @@ public class DataWriter {
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
 
-    byte[][] outputChannelsBytes = outputChannels.stream()
-        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+    byte[][] outputChannelsBytes =
+        outputChannels.stream().map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
 
     // load message id from checkpoints
@@ -70,15 +68,16 @@ public class DataWriter {
     if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
-    this.nativeWriterPtr = createWriterNative(
-        initialParameters,
-        outputChannelsBytes,
-        msgIds,
-        channelSize,
-        ChannelUtils.toNativeConf(workerConfig),
-        isMock
-    );
-    LOG.info("Create DataWriter succeed for worker: {}.",
+    this.nativeWriterPtr =
+        createWriterNative(
+            initialParameters,
+            outputChannelsBytes,
+            msgIds,
+            channelSize,
+            ChannelUtils.toNativeConf(workerConfig),
+            isMock);
+    LOG.info(
+        "Create DataWriter succeed for worker: {}.",
         workerConfig.workerInternalConfig.workerName());
   }
 
@@ -108,8 +107,8 @@ public class DataWriter {
    * Write msg into the specified channels
    *
    * @param ids channel ids
-   * @param item message item data section is specified by [position, limit).
-   *     item doesn't have to be a direct buffer.
+   * @param item message item data section is specified by [position, limit). item doesn't have to
+   *     be a direct buffer.
    */
   public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();
@@ -150,16 +149,12 @@ public class DataWriter {
     clearCheckpointNative(nativeWriterPtr, checkpointId);
   }
 
-  /**
-   * stop writer
-   */
+  /** stop writer */
   public void stop() {
     stopWriterNative(nativeWriterPtr);
   }
 
-  /**
-   * close writer to release resources
-   */
+  /** close writer to release resources */
   public void close() {
     if (nativeWriterPtr == 0) {
       return;
@@ -180,12 +175,7 @@ public class DataWriter {
   private native long[] getOutputMsgIdNative(long nativeQueueProducerPtr);
 
   private native void broadcastBarrierNative(
-      long nativeQueueProducerPtr, long checkpointId,
-      byte[] data);
+      long nativeQueueProducerPtr, long checkpointId, byte[] data);
 
-  private native void clearCheckpointNative(
-      long nativeQueueProducerPtr,
-      long checkpointId
-  );
-
+  private native void clearCheckpointNative(long nativeQueueProducerPtr, long checkpointId);
 }

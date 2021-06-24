@@ -2,9 +2,9 @@ package io.ray.api.function;
 
 /**
  * A class that represents a method of a Python actor.
- * <p>
- * Note, information about the actor will be inferred from the actor handle,
- * so it's not specified in this class.
+ *
+ * <p>Note, information about the actor will be inferred from the actor handle, so it's not
+ * specified in this class.
  *
  * <pre>
  * there is a Python actor class A.
@@ -61,5 +61,4 @@ public class PyActorMethod<R> {
   public static <R> PyActorMethod<R> of(String methodName, Class<R> returnType) {
     return new PyActorMethod<>(methodName, returnType);
   }
-
 }

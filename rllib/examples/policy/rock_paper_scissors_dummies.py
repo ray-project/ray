@@ -16,7 +16,7 @@ class AlwaysSameHeuristic(Policy):
         self.view_requirements.update({
             "state_in_0": ViewRequirement(
                 "state_out_0",
-                data_rel_pos=-1,
+                shift=-1,
                 space=gym.spaces.Box(0, 100, shape=(), dtype=np.int32))
         })
 

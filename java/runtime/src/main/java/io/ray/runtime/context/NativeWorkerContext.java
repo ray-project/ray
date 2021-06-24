@@ -9,9 +9,7 @@ import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskType;
 import java.nio.ByteBuffer;
 
-/**
- * Worker context for cluster mode. This is a wrapper class for worker context of core worker.
- */
+/** Worker context for cluster mode. This is a wrapper class for worker context of core worker. */
 public class NativeWorkerContext implements WorkerContext {
 
   private final ThreadLocal<ClassLoader> currentClassLoader = new ThreadLocal<>();

@@ -79,11 +79,11 @@ def register_env(name, env_creator):
 
     Args:
         name (str): Name to register.
-        env_creator (obj): Function that creates an env.
+        env_creator (obj): Callable that creates an env.
     """
 
-    if not isinstance(env_creator, FunctionType):
-        raise TypeError("Second argument must be a function.", env_creator)
+    if not callable(env_creator):
+        raise TypeError("Second argument must be callable.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
@@ -170,7 +170,3 @@ class _ParameterRegistry:
         for k, v in self.to_flush.items():
             self.references[k] = ray.put(v)
         self.to_flush.clear()
-
-
-parameter_registry = _ParameterRegistry()
-ray.worker._post_init_hooks.append(parameter_registry.flush)

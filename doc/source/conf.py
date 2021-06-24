@@ -17,6 +17,7 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 from datetime import datetime
@@ -25,7 +26,7 @@ from datetime import datetime
 import mock
 
 
-class ChildClassMock(mock.MagicMock):
+class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock
@@ -41,6 +42,8 @@ MOCK_MODULES = [
     "horovod",
     "horovod.ray",
     "kubernetes",
+    "mlflow",
+    "modin",
     "mxnet",
     "mxnet.model",
     "psutil",
@@ -94,6 +97,10 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
+sys.modules["xgboost"] = ChildClassMock()
+sys.modules["xgboost.core"] = ChildClassMock()
+sys.modules["xgboost.callback"] = ChildClassMock()
+sys.modules["xgboost_ray"] = ChildClassMock()
 
 
 class SimpleClass(object):
@@ -144,16 +151,26 @@ extensions = [
     'sphinx_gallery.gen_gallery',
     'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
+    'sphinxcontrib.yt',
     'versionwarning.extension',
 ]
 
-versionwarning_admonition_type = "tip"
+versionwarning_admonition_type = "note"
+versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+
+SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
+               "?utm_source=anyscale&utm_medium=docs&utm_campaign=raysummit")
 
 versionwarning_messages = {
-    "latest": (
-        "This document is for the latest pip release. "
-        'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    ),
+    # Re-enable this after Ray Summit.
+    # "latest": (
+    #     "This document is for the latest pip release. "
+    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    # ),
+    "master": (f'<a href="{SUMMIT_LINK}">Join the global Ray '
+               "community at Ray Summit 2021</a> "
+               "to learn about new Ray features and hear how "
+               "users are scaling machine learning applications with Ray!"),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -164,10 +181,10 @@ sphinx_gallery_conf = {
     "gallery_dirs": ["auto_examples", "tune/tutorials"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
+    "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
     # "backreferences_dir": "False",
     # "show_memory': False,
-    # 'min_reported_time': False
 }
 
 for i in range(len(sphinx_gallery_conf["examples_dirs"])):
@@ -180,6 +197,10 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
 
     # Copy rst files from source dir to gallery dir.
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
+        shutil.copy(f, gallery_dir)
+
+    # Copy inc files from source dir to gallery dir.
+    for f in glob.glob(os.path.join(source_dir, '*.inc')):
         shutil.copy(f, gallery_dir)
 
 # Add any paths that contain templates here, relative to this directory.
@@ -473,6 +494,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    app.add_stylesheet('css/custom.css')
+    app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

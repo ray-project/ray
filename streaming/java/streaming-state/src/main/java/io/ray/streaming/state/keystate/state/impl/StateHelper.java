@@ -22,9 +22,7 @@ import com.google.common.base.Preconditions;
 import io.ray.streaming.state.backend.AbstractKeyStateBackend;
 import io.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 
-/**
- * State Helper Class.
- */
+/** State Helper Class. */
 public class StateHelper<T> {
 
   private final AbstractKeyStateBackend backend;

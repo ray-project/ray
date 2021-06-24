@@ -1,11 +1,12 @@
 import os
+import sys
 import ray
 from ray.streaming import StreamingContext
 from ray.test_utils import wait_for_condition
 
 
 def test_word_count():
-    ray.init(_load_code_from_local=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder() \
         .build()
     ctx.read_text_file(__file__) \
@@ -24,7 +25,7 @@ def test_word_count():
 
 
 def test_simple_word_count():
-    ray.init(_load_code_from_local=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder() \
         .build()
     sink_file = "/tmp/ray_streaming_test_simple_word_count.txt"

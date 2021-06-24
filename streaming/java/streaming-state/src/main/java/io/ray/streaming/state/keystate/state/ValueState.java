@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state.keystate.state;
 
-/**
- * ValueState interface.
- */
+/** ValueState interface. */
 public interface ValueState<T> extends UnaryState<T> {
 
   /**

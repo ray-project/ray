@@ -10,8 +10,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import Trainable
-from ray.tune.resources import Resources
+from ray.tune import PlacementGroupFactory, Trainable
 from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
@@ -105,14 +104,21 @@ class TorchTrainer:
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         timeout_s (float): Seconds before the torch process group
-            times out. Useful when machines are unreliable.
+            times out. Useful when machines are unreliable. If not set, default
+            to 30 min, which is the same default as
+            ``torch.init_process_group(...)``.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
-        use_fp16 (bool): Enables mixed precision training via apex if apex
-            is installed. This is automatically done after the model and
-            optimizers are constructed and will work for multi-model training.
-            Please see https://github.com/NVIDIA/apex for more details.
+        use_fp16 (bool|string): Enables mixed precision training.
+            If set to True, will first try to use native mixed
+            precision training backend, and if it's unavailable, the Apex
+            backed, if installed. Apex backend must be installed separately
+            and can be forced over the native backend by setting `use_fp16`
+            to "apex". Torch documentation recommends the usage of the native
+            backend. Mixed precision training is automatically done after
+            the model and optimizers are constructed and will work for
+            multi-model training. Defaults to False.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -143,7 +149,7 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
-            timeout_s=NCCL_TIMEOUT_S,
+            timeout_s=1800,
             use_fp16=False,
             use_tqdm=False,
             add_dist_sampler=True,
@@ -172,6 +178,10 @@ class TorchTrainer:
                 "model_creator, ...) and pass in CustomOperator into "
                 "TorchTrainer.")
 
+        if use_local and ray.util.client.ray.is_connected():
+            raise ValueError("use_local setting is not supported with Ray "
+                             "Client.")
+
         if use_local and log_once("use_local"):
             logger.warning("use_local is set to True. This could lead to "
                            "issues with Cuda devices. If you are seeing this "
@@ -179,7 +189,8 @@ class TorchTrainer:
                            "information, see "
                            "https://github.com/ray-project/ray/issues/9202.")
 
-        if num_workers > 1 and not dist.is_available():
+        if num_workers > 1 and not dist.is_available() and not \
+                ray.util.client.ray.is_connected():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
@@ -230,6 +241,9 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
+        if backend == "nccl":
+            timeout_s = NCCL_TIMEOUT_S
+
         logger.debug(f"Using {backend} as backend.")
         self.backend = backend
         self.num_cpus_per_worker = num_cpus_per_worker
@@ -258,7 +272,11 @@ class TorchTrainer:
                         "multi-node training, be sure to run `ray.init("
                         "address='auto')` before instantiating the Trainer.")
             ray.init()
-        self._start_workers(self.max_replicas)
+        startup_success = self._start_workers(self.max_replicas)
+        if not startup_success:
+            raise RuntimeError("Worker startup failed. "
+                               "Are you sure you have enough resources to "
+                               "start the specified number of workers?")
 
     def _configure_and_split_batch(self, num_workers):
         """If sgd.utils.BATCH_SIZE is provided, split among workers."""
@@ -300,7 +318,7 @@ class TorchTrainer:
             wrap_ddp=self.wrap_ddp)
 
         worker_args = {
-            "max_workers": num_workers,
+            "max_workers": self.max_replicas,
             "params": params,
             "dist_params": dist_params,
             "initialization_hook": self.initialization_hook,
@@ -318,17 +336,17 @@ class TorchTrainer:
         #  num_workers workers, this command will hang. Instead,
         #  start_workers should take into account available resources when
         #  determining how many workers to create.
-        self.worker_group.start_workers(num_workers)
+        return self.worker_group.start_workers(num_workers)
 
-    def _resize_worker_group(self, max_retries=10):
+    def _resize_worker_group(self, state_dict, max_retries=10):
         """Resizes the number of remote workers based on available resources.
         Total number of workers will never exceed `num_workers` amount.
 
         Args:
+            state_dict (dict): The state dict to load to all workers.
             max_retries (int): How many times to attempt to resize workers
                 before failing.
         """
-        state_dict = self.state_dict()
         old_workers = self.worker_group.num_workers
         self.worker_group.reset()
 
@@ -337,7 +355,12 @@ class TorchTrainer:
             new_workers = self.worker_group.new_workers_size()
             if new_workers:
                 self._last_resize = time.time()
-                self._start_workers(int(new_workers))
+                startup_success = self._start_workers(int(new_workers))
+                if not startup_success:
+                    logger.info(f"Worker startup failed. Retrying "
+                                f"{max_retries-i-1} more times.")
+                    self.worker_group.reset()
+                    continue
                 self.load_state_dict(state_dict, blocking=True)
                 if self.use_local and new_workers == 1 and old_workers > 1:
                     # Major hack. If we go from LocalDistributedRunner to a
@@ -403,9 +426,10 @@ class TorchTrainer:
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
+        state_dict = self.state_dict()
         if self.worker_group.should_scale_up():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_worker_group()
+            self._resize_worker_group(state_dict)
         success, worker_stats = self.worker_group.train(
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
@@ -414,7 +438,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_worker_group()
+            self._resize_worker_group(state_dict)
             logger.info("Retrying training step with %d workers." %
                         self.worker_group.num_workers)
             success, worker_stats = self.worker_group.train(
@@ -508,10 +532,17 @@ class TorchTrainer:
         self.worker_group.apply_all_operators(
             lambda op: [sched.step(metric) for sched in op._schedulers])
 
-    def get_model(self):
-        """Returns the learned model(s)."""
+    def get_model(self, to_cpu=False):
+        """Returns the learned model(s).
+
+        Arguments:
+            to_cpu (bool): Forces returned model to be on CPU. This is
+                useful if workers are trained on GPU, but the TorchTrainer
+                lives on a CPU-only machine.
+
+        """
         unwrapped = []
-        models = self.worker_group.get_model()
+        models = self.worker_group.get_model(to_cpu)
         for model in models:
             unwrapped += [model.module if hasattr(model, "module") else model]
         if len(unwrapped) == 1:
@@ -589,7 +620,8 @@ class TorchTrainer:
 
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2,
+                num_workers=2,
+                use_gpu=True,
                 override_tune_step=step
             )
             analysis = tune.run(
@@ -634,20 +666,21 @@ class TorchTrainer:
                 use_local = config.get("use_local",
                                        kwargs.get("use_local", False))
 
-                if use_local:
-                    remote_worker_count = num_workers - 1
-                    local_cpus = 1
-                    local_gpus = int(use_gpu)
-                else:
-                    remote_worker_count = num_workers
-                    local_cpus = 0
-                    local_gpus = 0
+                bundles = []
 
-                return Resources(
-                    cpu=int(local_cpus * num_cpus_per_worker),
-                    gpu=int(local_gpus),
-                    extra_cpu=int(remote_worker_count * num_cpus_per_worker),
-                    extra_gpu=int(int(use_gpu) * remote_worker_count))
+                if not use_local:
+                    # We need a separate bundle for the driver
+                    bundles += [{"CPU": 1}]
+
+                bundles += [
+                    # Worker bundles
+                    {
+                        "CPU": num_cpus_per_worker,
+                        "GPU": int(use_gpu)
+                    }
+                ] * num_workers
+
+                return PlacementGroupFactory(bundles, strategy="PACK")
 
             def step(self):
                 if override_tune_step is not None:
@@ -690,7 +723,8 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2,
+            num_workers=2,
+            use_gpu=True,
             override_tune_step=custom_step
         )
 
@@ -707,13 +741,12 @@ class BaseTorchTrainable(Trainable):
 
     def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
-        if self._is_overridden("_train"):
+        if self._implements_method("_train"):
             raise DeprecationWarning(
-                "Trainable._train is deprecated and will be "
-                "removed in "
-                "a future version of Ray. Override Trainable.step instead.")
+                "Trainable._train is deprecated and is now removed."
+                "Override Trainable.step instead.")
 
-        train_stats = self.trainer.train(max_retries=10, profile=True)
+        train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats

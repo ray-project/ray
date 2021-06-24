@@ -4,14 +4,16 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
+    ShuffledInput, D4RLReader
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 
@@ -74,12 +76,15 @@ class WorkerSet:
             self.add_workers(num_workers)
 
             # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the driver.
+            # to not be forced to create an Env on the local worker.
             if self._remote_workers:
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
                     lambda p, pid: (pid, p.observation_space, p.action_space)))
-                spaces = {e[0]: (e[1], e[2]) for e in remote_spaces}
+                spaces = {
+                    e[0]: (getattr(e[1], "original_space", e[1]), e[2])
+                    for e in remote_spaces
+                }
             else:
                 spaces = None
 
@@ -99,12 +104,12 @@ class WorkerSet:
         """Return the local rollout worker."""
         return self._local_worker
 
-    def remote_workers(self) -> List["ActorHandle"]:
+    def remote_workers(self) -> List[ActorHandle]:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
     def sync_weights(self) -> None:
-        """Syncs weights of remote workers with the local worker."""
+        """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights())
             for e in self.remote_workers():
@@ -120,10 +125,6 @@ class WorkerSet:
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
-            # memory=0 is an error, but memory=None means no limits.
-            "memory": self._remote_config["memory_per_worker"] or None,
-            "object_store_memory": self.
-            _remote_config["object_store_memory_per_worker"] or None,
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
@@ -135,10 +136,11 @@ class WorkerSet:
                 policy_cls=self._policy_class,
                 worker_index=i + 1,
                 num_workers=num_workers,
-                config=self._remote_config) for i in range(num_workers)
+                config=self._remote_config,
+            ) for i in range(num_workers)
         ])
 
-    def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
+    def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
@@ -189,13 +191,15 @@ class WorkerSet:
             List[any]: The list of return values of func over all workers'
                 policies.
         """
-        local_results = self.local_worker().foreach_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(lambda w: w.foreach_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
 
     @DeveloperAPI
     def trainable_policies(self) -> List[PolicyID]:
@@ -215,18 +219,64 @@ class WorkerSet:
             List[any]: The list of n return values of all
                 `func([trainable policy], [ID])`-calls.
         """
-        local_results = self.local_worker().foreach_trainable_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_trainable_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(
                     lambda w: w.foreach_trainable_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
+
+    @DeveloperAPI
+    def foreach_env(self, func: Callable[[BaseEnv], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env as arg.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env.remote(func))
+        return local_results + ray.get(ray_gets)
+
+    @DeveloperAPI
+    def foreach_env_with_context(
+            self,
+            func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env and the env_context as args.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env_with_context(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env_with_context.remote(func))
+        return local_results + ray.get(ray_gets)
 
     @staticmethod
     def _from_existing(local_worker: RolloutWorker,
-                       remote_workers: List["ActorHandle"] = None):
+                       remote_workers: List[ActorHandle] = None):
         workers = WorkerSet(
             env_creator=None,
             policy_class=None,
@@ -248,7 +298,7 @@ class WorkerSet:
             config: TrainerConfigDict,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-    ) -> Union[RolloutWorker, "ActorHandle"]:
+    ) -> Union[RolloutWorker, ActorHandle]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -260,13 +310,16 @@ class WorkerSet:
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
+        elif "d4rl" in config["input"]:
+            env_name = config["input"].split(".")[1]
+            input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
         else:
-            input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -321,6 +374,7 @@ class WorkerSet:
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
             rollout_fragment_length=config["rollout_fragment_length"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],
@@ -336,7 +390,7 @@ class WorkerSet:
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
-            monitor_path=self._logdir if config["monitor"] else None,
+            record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],

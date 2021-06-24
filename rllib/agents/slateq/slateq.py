@@ -78,10 +78,14 @@ DEFAULT_CONFIG = with_common_config({
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
+
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # If set, this will fix the ratio of replayed from a buffer and learned on
@@ -132,6 +136,9 @@ DEFAULT_CONFIG = with_common_config({
 
 def validate_config(config: TrainerConfigDict) -> None:
     """Checks the config based on settings"""
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
+
     if config["framework"] != "torch":
         raise ValueError("SlateQ only runs on PyTorch")
 

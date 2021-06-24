@@ -1,48 +1,46 @@
-cluster_name: default
-min_workers: 0
-max_workers: 0
-target_utilization_fraction: 0.8
-idle_timeout_minutes: 5
+cluster_name: ray-release-long-running-tests
 
-# Cloud-provider specific configuration.
+docker:
+    image: anyscale/ray-ml:nightly
+    container_name: ray_container
+    pull_before_run: False
+
 provider:
     type: aws
     region: us-west-2
-    availability_zone: us-west-2a
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: m5.2xlarge
-    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 150
+available_node_types:
+    cpu_8_ondemand:
+        node_config:
+            InstanceType: m5.2xlarge
+            TagSpecifications:
+              - ResourceType: "instance"
+                Tags:
+                  - Key: anyscale-user
+                    Value: "release-automation@anyscale.com"
+                  - Key: anyscale-custodian
+                    Value: "ignore"
+                  - Key: anyscale-expiration
+                    Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+            BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                  VolumeSize: 200
+        resources: {"CPU": 8}
+        min_workers: 0
+        max_workers: 0
 
-worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 150
+head_node_type: cpu_8_ondemand
+worker_default_node_type: cpu_8_ondemand
 
-    # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
 
-# List of shell commands to run to set up nodes.
-setup_commands: []
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands: []
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands: []
+setup_commands:
+   - sudo apt update && sudo apt install -y unzip
+   - pip install --upgrade pip
+   - pip install -U tensorflow==1.14
+   - pip install -U {{env["RAY_WHEEL"]}}
+   - pip install -q "ray[all]" "gym[atari]"

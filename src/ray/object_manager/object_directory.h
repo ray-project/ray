@@ -20,10 +20,11 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/gcs/gcs_client.h"
+#include "ray/object_manager/common.h"
 
 namespace ray {
 
@@ -39,6 +40,11 @@ struct RemoteConnectionInfo {
   std::string ip;
   uint16_t port;
 };
+
+/// Callback for object location notifications.
+using OnLocationsFound = std::function<void(
+    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
+    const std::string &, const NodeID &, size_t object_size)>;
 
 class ObjectDirectoryInterface {
  public:
@@ -58,12 +64,7 @@ class ObjectDirectoryInterface {
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
-  /// Callback for object location notifications.
-  using OnLocationsFound =
-      std::function<void(const ray::ObjectID &object_id,
-                         const std::unordered_set<ray::NodeID> &, const std::string &)>;
-
-  /// Lookup object locations. Callback may be invoked with empty list of node ids.
+  /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
   /// \param object_id The object's ObjectID.
   /// \param callback Invoked with (possibly empty) list of node ids and object_id.
@@ -113,9 +114,8 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                        const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
@@ -123,9 +123,12 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                          const NodeID &node_id,
+                                          const ObjectInfo &object_info) = 0;
+
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
 
   /// Returns debug string for class.
   ///
@@ -142,7 +145,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  ObjectDirectory(boost::asio::io_service &io_service,
+  ObjectDirectory(instrumented_io_context &io_service,
                   std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
@@ -151,27 +154,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
   void HandleNodeRemoved(const NodeID &node_id) override;
-
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
-
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-
-  std::string DebugString() const override;
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
@@ -185,6 +168,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
     std::string spilled_url = "";
+    // The node id that spills the object to the disk.
+    // It will be Nil if it uses a distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
+    /// The size of the object.
+    size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.
     /// It means current_object_locations is up-to-date with GCS. It
     /// should never go back to false once set to true. If this is true, and
@@ -194,7 +182,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   };
 
   /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.

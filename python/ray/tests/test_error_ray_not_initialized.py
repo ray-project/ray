@@ -17,17 +17,12 @@ def test_errors_before_initializing_ray():
     api_methods = [
         f.remote,
         Foo.remote,
-        ray.actors,
         lambda: ray.cancel(None),  # Not valid API usage.
         lambda: ray.get([]),
         lambda: ray.get_actor("name"),
         ray.get_gpu_ids,
-        ray.get_resource_ids,
-        ray.get_dashboard_url,
-        ray.jobs,
         lambda: ray.kill(None),  # Not valid API usage.
         ray.nodes,
-        ray.objects,
         lambda: ray.put(1),
         lambda: ray.wait([])
     ]

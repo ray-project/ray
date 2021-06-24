@@ -5,7 +5,7 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-FLAKE8_VERSION_REQUIRED="3.7.7"
+FLAKE8_VERSION_REQUIRED="3.9.1"
 YAPF_VERSION_REQUIRED="0.23.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
@@ -49,6 +49,7 @@ FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
+GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
 # params: tool name, tool version, required version
 tool_version_check() {
@@ -69,6 +70,15 @@ else
     echo "WARNING: clang-format is not installed!"
 fi
 
+if command -v java >/dev/null; then
+  if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+    echo "Java code format tool google-java-format.jar is not installed, start to install it."
+    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
+  fi
+else
+    echo "WARNING:java is not installed, skip format java files!"
+fi
+
 if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
     echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
 fi
@@ -86,7 +96,7 @@ YAPF_FLAGS=(
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
-# should be set to do a more stringent check. 
+# should be set to do a more stringent check.
 MYPY_FLAGS=(
     '--follow-imports=skip'
     '--ignore-missing-imports'
@@ -97,7 +107,10 @@ MYPY_FILES=(
     'autoscaler/node_provider.py'
     'autoscaler/sdk.py'
     'autoscaler/_private/commands.py'
-    'operator.py'
+    # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
+    # in the CI. Type check once we get serious about type checking:
+    #'ray_operator/operator.py'
+    'ray_operator/operator_utils.py'
 )
 
 YAPF_EXCLUDES=(
@@ -105,24 +118,35 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
     '--exclude' 'python/ray/thirdparty_files/*'
+    '--exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
 )
 
+JAVA_EXCLUDES=(
+  'java/api/src/main/java/io/ray/api/ActorCall.java'
+  'java/api/src/main/java/io/ray/api/PyActorCall.java'
+  'java/api/src/main/java/io/ray/api/RayCall.java'
+)
+
+JAVA_EXCLUDES_REGEX=""
+for f in "${JAVA_EXCLUDES[@]}"; do
+  JAVA_EXCLUDES_REGEX="$JAVA_EXCLUDES_REGEX|(${f//\//\/})"
+done
+JAVA_EXCLUDES_REGEX=${JAVA_EXCLUDES_REGEX#|}
+
 # TODO(barakmich): This should be cleaned up. I've at least excised the copies
 # of these arguments to this location, but the long-term answer is to actually
 # make a flake8 config file
-FLAKE8_EXCLUDE="--exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/,python/build/,python/.eggs/"
-FLAKE8_IGNORES="--ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605"
 FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
 
-# Runs mypy on each argument in sequence. This is different than running mypy 
+# Runs mypy on each argument in sequence. This is different than running mypy
 # once on the list of arguments.
 mypy_on_each() {
     pushd python/ray
@@ -132,7 +156,6 @@ mypy_on_each() {
     done
     popd
 }
-
 
 # Format specified files
 format_files() {
@@ -195,15 +218,20 @@ format_all() {
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --inline-quotes '"' --no-avoid-escape  "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
+        flake8 --config=.flake8
 
       git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_PYX_IGNORES"
+        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
     fi
 
     echo "$(date)" "clang-format...."
     if command -v clang-format >/dev/null; then
       git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+    fi
+
+    echo "$(date)" "format java...."
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
     fi
 
     if command -v shellcheck >/dev/null; then
@@ -237,14 +265,14 @@ format_changed() {
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
+                 flake8 --config=.flake8
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_PYX_IGNORES"
+                 flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
         fi
     fi
 
@@ -252,6 +280,12 @@ format_changed() {
         if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
                  clang-format -i
+        fi
+    fi
+
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+       if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
         fi
     fi
 

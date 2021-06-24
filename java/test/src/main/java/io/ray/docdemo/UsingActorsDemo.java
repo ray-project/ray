@@ -2,15 +2,18 @@ package io.ray.docdemo;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.docdemo.WalkthroughDemo.Counter;
+import io.ray.api.function.RayFunc1;
+import io.ray.api.function.RayFunc2;
+import io.ray.api.function.RayFunc3;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/master/actors.html).
+ * This class contains demo code of the Ray core Using Actors doc
+ * (https://docs.ray.io/en/master/actors.html).
  *
- * Please keep them in sync.
+ * <p>Please keep them in sync.
  */
 public class UsingActorsDemo {
 
@@ -33,6 +36,18 @@ public class UsingActorsDemo {
     }
   }
 
+  public static class CounterOverloaded extends Counter {
+    public int increment(int diff) {
+      super.value += diff;
+      return super.value;
+    }
+
+    public int increment(int diff1, int diff2) {
+      super.value += diff1 + diff2;
+      return super.value;
+    }
+  }
+
   public static class CounterFactory {
 
     public static Counter createCounter() {
@@ -40,9 +55,7 @@ public class UsingActorsDemo {
     }
   }
 
-  public static class GpuActor {
-
-  }
+  public static class GpuActor {}
 
   public static class MyRayApp {
 
@@ -74,6 +87,19 @@ public class UsingActorsDemo {
     }
 
     {
+      ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+      // Call an overloaded actor method by super class method reference.
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+      // Call an overloaded actor method, cast method reference first.
+      a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+      a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10)
+          .remote();
+      RayFunc3<CounterOverloaded, Integer, Integer, Integer> f = CounterOverloaded::increment;
+      a.task(f, 10, 10).remote();
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
+    }
+
+    {
       Ray.actor(GpuActor::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
     }
 
@@ -82,12 +108,12 @@ public class UsingActorsDemo {
     }
 
     {
-      ActorHandle<Counter> a1 = Ray.actor(Counter::new).setResource("CPU", 1.0)
-          .setResource("Custom1", 1.0).remote();
-      ActorHandle<Counter> a2 = Ray.actor(Counter::new).setResource("CPU", 2.0)
-          .setResource("Custom2", 1.0).remote();
-      ActorHandle<Counter> a3 = Ray.actor(Counter::new).setResource("CPU", 3.0)
-          .setResource("Custom3", 1.0).remote();
+      ActorHandle<Counter> a1 =
+          Ray.actor(Counter::new).setResource("CPU", 1.0).setResource("Custom1", 1.0).remote();
+      ActorHandle<Counter> a2 =
+          Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("Custom2", 1.0).remote();
+      ActorHandle<Counter> a3 =
+          Ray.actor(Counter::new).setResource("CPU", 3.0).setResource("Custom3", 1.0).remote();
     }
 
     {

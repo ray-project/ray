@@ -14,6 +14,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -86,13 +87,23 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
                                          const rpc::Address &addr));
-  MOCK_METHOD3(PendingTaskFailed,
-               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
+  MOCK_METHOD5(PendingTaskFailed,
+               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+                    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+                    bool immediately_mark_object_fail));
 
   MOCK_METHOD2(OnTaskDependenciesInlined,
                void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
 
   MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
+
+  MOCK_CONST_METHOD1(GetTaskSpec,
+                     absl::optional<TaskSpecification>(const TaskID &task_id));
+
+  MOCK_METHOD4(MarkPendingTaskFailed,
+               void(const TaskID &task_id, const TaskSpecification &spec,
+                    rpc::ErrorType error_type,
+                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
@@ -135,7 +146,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _, _))
       .Times(worker_client_->callbacks.size());
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
@@ -223,7 +234,6 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  gcs::ActorTableData actor_data;
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -237,16 +247,16 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Simulate the actor dying. All in-flight tasks should get failed.
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task1.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task1.TaskId(), _, _, _, _)).Times(1);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
   }
 
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _, _, _)).Times(0);
   submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
   // Actor marked as dead. All queued tasks should get failed.
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/true);
 }
 
@@ -256,7 +266,6 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  gcs::ActorTableData actor_data;
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -272,7 +281,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(2);
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(2);
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -299,7 +308,6 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  gcs::ActorTableData actor_data;
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -317,7 +325,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   // All tasks will eventually finish.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(4);
   // Tasks 2 and 3 will be retried.
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _))
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _))
       .Times(2)
       .WillRepeatedly(Return(true));
   // First task finishes. Second task fails.
@@ -351,7 +359,6 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  gcs::ActorTableData actor_data;
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -368,7 +375,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(3);
 
   // Tasks 2 will be retried
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _))
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _))
       .Times(1)
       .WillRepeatedly(Return(true));
   // First task finishes. Second task hang. Third task finishes.
@@ -401,7 +408,6 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  gcs::ActorTableData actor_data;
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -449,7 +455,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently. All tasks are failed.
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _, _, _)).Times(1);
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/true);
   ASSERT_EQ(num_clients_connected_, 2);
 
@@ -460,7 +466,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _, _, _)).Times(1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
 }
 
@@ -489,9 +495,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
-                                         [] { return Status::OK(); }));
+    receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+        worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
@@ -518,7 +523,7 @@ class DirectActorReceiverTest : public ::testing::Test {
  private:
   rpc::Address rpc_address_;
   MockWorkerContext worker_context_;
-  boost::asio::io_service main_io_service_;
+  instrumented_io_context main_io_service_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };

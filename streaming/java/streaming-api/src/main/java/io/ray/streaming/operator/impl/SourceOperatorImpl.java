@@ -61,7 +61,5 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
         collector.collect(new Record<>(t));
       }
     }
-
   }
-
 }

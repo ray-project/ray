@@ -77,11 +77,20 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
 
+    # Explicitly bring in protobuf dependency to work around
+    # https://github.com/ray-project/ray/issues/14117
+    http_archive(
+        name = "com_google_protobuf",
+        strip_prefix = "protobuf-3.16.0",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
+        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+    )
+
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/redis/redis/archive/6.0.9.tar.gz",
-        sha256 = "2819b6d9c56be1f25cd157b9cb6b7c2733edcb46f4f6bcb1b79cefe639a2853b",
+        url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
+        sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
         ],
@@ -132,18 +141,12 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_checkstyle_java",
-        url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
-        sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
-    )
-
-    auto_http_archive(
         # This rule is used by @com_github_nelhage_rules_boost and
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
         sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
-        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.bz2",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
@@ -187,16 +190,6 @@ def ray_deps_setup():
             "//thirdparty/patches:glog-stack-trace.patch",
             "//thirdparty/patches:glog-suffix-log.patch",
             "//thirdparty/patches:glog-dump-stacktrack.patch",
-        ],
-    )
-
-    auto_http_archive(
-        name = "arrow",
-        build_file = True,
-        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
-        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
-        patches = [
-            "//thirdparty/patches:arrow-windows-export.patch",
         ],
     )
 

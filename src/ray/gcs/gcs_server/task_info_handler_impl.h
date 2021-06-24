@@ -16,7 +16,6 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -34,9 +33,6 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
 
   void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
                      SendReplyCallback send_reply_callback) override;
-
-  void HandleDeleteTasks(const DeleteTasksRequest &request, DeleteTasksReply *reply,
-                         SendReplyCallback send_reply_callback) override;
 
   void HandleAddTaskLease(const AddTaskLeaseRequest &request, AddTaskLeaseReply *reply,
                           SendReplyCallback send_reply_callback) override;
@@ -58,7 +54,6 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
   enum CountType {
     ADD_TASK_REQUEST = 0,
     GET_TASK_REQUEST = 1,
-    DELETE_TASKS_REQUEST = 2,
     ADD_TASK_LEASE_REQUEST = 3,
     GET_TASK_LEASE_REQUEST = 4,
     ATTEMPT_TASK_RECONSTRUCTION_REQUEST = 5,

@@ -32,12 +32,28 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--mixed-torch-tf", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=20)
-parser.add_argument("--stop-reward", type=float, default=150.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=20,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 def custom_training_workflow(workers: WorkerSet, config: dict):
@@ -81,7 +97,8 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     # PPO sub-flow.
     ppo_train_op = r2.for_each(SelectExperiences(["ppo_policy"])) \
-        .combine(ConcatBatches(min_batch_size=200)) \
+        .combine(ConcatBatches(
+            min_batch_size=200, count_steps_by="env_steps")) \
         .for_each(add_ppo_metrics) \
         .for_each(StandardizeFields(["advantages"])) \
         .for_each(TrainOneStep(
@@ -120,7 +137,7 @@ if __name__ == "__main__":
                        obs_space, act_space, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

@@ -1,0 +1,4 @@
+Actor time: 34.21903751100001 (10000 actors)                                              │
+Task time: 386.82114117900005 (10000 tasks)                                               │
+PG time: 31.368525181999985 (1000 placement groups)                                       │
+Node launch time: 756.3447095859999 (250 nodes) 

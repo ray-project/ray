@@ -1,3 +1,5 @@
+import concurrent.futures
+from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -5,13 +7,13 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
+    PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +24,25 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
     # Combine experiences batches until we hit `train_batch_size` in size.
     # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
-        .for_each(TrainOneStep(workers))
+    train_op = rollouts.combine(
+        ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+        ))
+
+    if config.get("simple_optimizer") is True:
+        train_op = train_op.for_each(TrainOneStep(workers))
+    else:
+        train_op = train_op.for_each(
+            TrainTFMultiGPU(
+                workers=workers,
+                sgd_minibatch_size=config.get("sgd_minibatch_size",
+                                              config["train_batch_size"]),
+                num_sgd_iter=config.get("num_sgd_iter", 1),
+                num_gpus=config["num_gpus"],
+                shuffle_sequences=config.get("shuffle_sequences", False),
+                _fake_gpus=config["_fake_gpus"],
+                framework=config["framework"]))
 
     # Add on the standard episode reward, etc. metrics reporting. This returns
     # a LocalIterator[metrics_dict] representing metrics for each train step.
@@ -64,7 +81,7 @@ def build_trainer(
             Optional callable that takes the config to check for correctness.
             It may mutate the config as needed.
         default_policy (Optional[Type[Policy]]): The default Policy class to
-            use.
+            use if `get_policy_class` returns None.
         get_policy_class (Optional[Callable[
             TrainerConfigDict, Optional[Type[Policy]]]]): Optional callable
             that takes a config and returns the policy class or None. If None
@@ -107,9 +124,6 @@ def build_trainer(
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
-            # Validate config via custom validation function.
-            if validate_config:
-                validate_config(config)
 
             # No `get_policy_class` function.
             if get_policy_class is None:
@@ -144,8 +158,65 @@ def build_trainer(
 
         @override(Trainer)
         def step(self):
-            res = next(self.train_exec_impl)
+            # self._iteration gets incremented after this function returns,
+            # meaning that e. g. the first time this function is called,
+            # self._iteration will be 0.
+            evaluate_this_iter = \
+                self.config["evaluation_interval"] and \
+                (self._iteration + 1) % self.config["evaluation_interval"] == 0
+
+            # No evaluation necessary.
+            if not evaluate_this_iter:
+                res = next(self.train_exec_impl)
+            # We have to evaluate in this training iteration.
+            else:
+                # No parallelism.
+                if not self.config["evaluation_parallel_to_training"]:
+                    res = next(self.train_exec_impl)
+
+                # Kick off evaluation-loop (and parallel train() call,
+                # if requested).
+                # Parallel eval + training.
+                if self.config["evaluation_parallel_to_training"]:
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        eval_future = executor.submit(self.evaluate)
+                        res = next(self.train_exec_impl)
+                        evaluation_metrics = eval_future.result()
+                # Sequential: train (already done above), then eval.
+                else:
+                    evaluation_metrics = self.evaluate()
+
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
+
+            # Check `env_task_fn` for possible update of the env's task.
+            if self.config["env_task_fn"] is not None:
+                if not callable(self.config["env_task_fn"]):
+                    raise ValueError(
+                        "`env_task_fn` must be None or a callable taking "
+                        "[train_results, env, env_ctx] as args!")
+
+                def fn(env, env_context, task_fn):
+                    new_task = task_fn(res, env, env_context)
+                    cur_task = env.get_task()
+                    if cur_task != new_task:
+                        env.set_task(new_task)
+
+                fn = partial(fn, task_fn=self.config["env_task_fn"])
+                self.workers.foreach_env_with_context(fn)
+
             return res
+
+        @staticmethod
+        @override(Trainer)
+        def _validate_config(config: PartialTrainerConfigDict,
+                             trainer_obj_or_none: Optional["Trainer"] = None):
+            # Call super (Trainer) validation method first.
+            Trainer._validate_config(config, trainer_obj_or_none)
+            # Then call user defined one, if any.
+            if validate_config is not None:
+                validate_config(config)
 
         @override(Trainer)
         def _before_evaluate(self):
@@ -186,6 +257,9 @@ def build_trainer(
                 ... True
             """
             return build_trainer(**dict(original_kwargs, **overrides))
+
+        def __repr__(self):
+            return self._name
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name

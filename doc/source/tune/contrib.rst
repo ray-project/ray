@@ -33,7 +33,7 @@ There are a couple steps to merge a contribution.
      git fetch upstream
      git rebase upstream/master # or git pull . upstream/master
 
-2. Make sure all existing tests `pass <tune-contrib.html#testing>`__.
+2. Make sure all existing tests `pass <contrib.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in ``tune/tests/``.
 4. Document the code. Public functions need to be documented, and remember to provide a usage
@@ -85,7 +85,7 @@ Becoming a Reviewer
 -------------------
 
 We identify reviewers from active contributors. Reviewers are individuals who
-not only actively contribute to the project and are also willing
+not only actively contribute to the project but are also willing
 to participate in the code review of new contributions.
 A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
 There is currently no formal process, but active contributors to Tune will be

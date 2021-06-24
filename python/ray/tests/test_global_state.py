@@ -8,7 +8,6 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
-from ray.test_utils import new_scheduler_enabled
 
 from ray._raylet import GlobalStateAccessor
 
@@ -88,19 +87,19 @@ def test_global_state_actor_table(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.actors()) == 0
+    assert len(ray.state.actors()) == 0
 
     # actor table should contain only one entry
     a = Actor.remote()
     ray.get(a.ready.remote())
-    assert len(ray.actors()) == 1
+    assert len(ray.state.actors()) == 1
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
     def get_state():
-        return list(ray.actors().values())[0]["State"]
+        return list(ray.state.actors().values())[0]["State"]
 
     dead_state = ray.gcs_utils.ActorTableData.DEAD
     for _ in range(10):
@@ -126,25 +125,24 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.actors()) == 0
+    assert len(ray.state.actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray.actors()) == 2
+    assert len(ray.state.actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
-    assert ray.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray.actors(
+    assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
+    assert ray.state.actors(
         actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
-    assert ray.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray.actors(
+    assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
+    assert ray.state.actors(
         actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_load_report(shutdown_only, max_shapes):
     resource1 = "A"
     resource2 = "B"
@@ -173,13 +171,14 @@ def test_load_report(shutdown_only, max_shapes):
             self.report = None
 
         def check_load_report(self):
-            message = global_state_accessor.get_all_heartbeat()
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            self.report = heartbeat.resource_load_by_shape.resource_demands
+            self.report = \
+                resource_usage.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
             elif max_shapes == 2:
@@ -194,6 +193,8 @@ def test_load_report(shutdown_only, max_shapes):
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
         assert len(checker.report) <= max_shapes
+
+    print(checker.report)
 
     if max_shapes > 0:
         # Check that we always include the 1-CPU resource shape.
@@ -215,7 +216,6 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
@@ -227,40 +227,40 @@ def test_placement_group_load_report(ray_start_cluster):
 
     class PgLoadChecker:
         def nothing_is_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
         def only_first_one_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 1
             return False
 
         def two_infeasible_pg(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
-        def _read_heartbeat(self):
-            message = global_state_accessor.get_all_heartbeat()
+        def _read_resource_usage(self):
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            return heartbeat
+            return resource_usage
 
     checker = PgLoadChecker()
 
@@ -284,7 +284,6 @@ def test_placement_group_load_report(ray_start_cluster):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
         num_cpus=1, _system_config={
@@ -301,13 +300,14 @@ def test_backlog_report(shutdown_only):
         return None
 
     def backlog_size_set():
-        message = global_state_accessor.get_all_heartbeat()
+        message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return False
 
-        heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
         aggregate_resource_load = \
-            heartbeat.resource_load_by_shape.resource_demands
+            resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)
@@ -330,6 +330,37 @@ def test_backlog_report(shutdown_only):
 
     ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
     global_state_accessor.disconnect()
+
+
+def test_heartbeat_ip(shutdown_only):
+    cluster = ray.init(
+        num_cpus=1, _system_config={
+            "report_worker_backlog": True,
+        })
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    self_ip = ray.util.get_node_ip_address()
+
+    def self_ip_is_set():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        resources_data = resource_usage.batch[0]
+        return resources_data.node_manager_address == self_ip
+
+    ray.test_utils.wait_for_condition(self_ip_is_set, timeout=2)
+    global_state_accessor.disconnect()
+
+
+def test_next_job_id(ray_start_regular):
+    job_id_1 = ray.state.next_job_id()
+    job_id_2 = ray.state.next_job_id()
+    assert job_id_1.int() + 1 == job_id_2.int()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import json
+import os
 import time
 import subprocess
 from subprocess import PIPE
@@ -8,10 +10,19 @@ import ray
 from ray import serve
 from ray.cluster_utils import Cluster
 
+
+def update_progress(result):
+    result["last_update"] = time.time()
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/release_test_output.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+
 num_redis_shards = 1
 redis_max_memory = 10**8
 object_store_memory = 10**8
-num_nodes = 5
+num_nodes = 4
 cluster = Cluster()
 for i in range(num_nodes):
     cluster.add_node(
@@ -22,23 +33,28 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0")
+        dashboard_host="0.0.0.0",
+    )
 
 ray.init(address=cluster.address, dashboard_host="0.0.0.0")
-client = serve.start()
+serve.start()
+
+NUM_REPLICAS = 7
+MAX_BATCH_SIZE = 16
 
 
-@serve.accept_batch
-def echo(_):
-    time.sleep(0.01)  # Sleep for 10ms
-    ray.show_in_dashboard(
-        str(serve.context.batch_size), key="Current batch size")
-    return ["hi {}".format(i) for i in range(serve.context.batch_size)]
+@serve.deployment(name="echo", num_replicas=NUM_REPLICAS)
+class Echo:
+    @serve.batch(max_batch_size=MAX_BATCH_SIZE)
+    async def handle_batch(self, requests):
+        time.sleep(0.01)
+        return ["hi" for _ in range(len(requests))]
+
+    async def __call__(self, request):
+        return await self.handle_batch(request)
 
 
-config = {"num_replicas": 30, "max_batch_size": 16}
-client.create_backend("echo:v1", echo, config=config)
-client.create_endpoint("echo", backend="echo:v1", route="/echo")
+Echo.deploy()
 
 print("Warming up")
 for _ in range(5):
@@ -46,19 +62,25 @@ for _ in range(5):
     print(resp)
     time.sleep(0.5)
 
-connections = int(config["num_replicas"] * config["max_batch_size"] * 0.75)
+connections = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 num_threads = 2
 time_to_run = "60m"
 
 while True:
     proc = subprocess.Popen(
         [
-            "wrk", "-c",
-            str(connections), "-t",
-            str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/echo"
+            "wrk",
+            "-c",
+            str(connections),
+            "-t",
+            str(num_threads),
+            "-d",
+            time_to_run,
+            "http://127.0.0.1:8000/echo",
         ],
         stdout=PIPE,
-        stderr=PIPE)
+        stderr=PIPE,
+    )
     print("started load testing")
     proc.wait()
     out, err = proc.communicate()

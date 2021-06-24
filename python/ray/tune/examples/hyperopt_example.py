@@ -33,19 +33,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
-    ray.init(configure_logging=False)
+
+    if args.server_address:
+        ray.util.connect(args.server_address)
+    else:
+        ray.init(configure_logging=False)
 
     current_best_params = [
         {
             "width": 1,
             "height": 2,
-            "activation": 0  # Activation will be relu
+            "activation": "relu"  # Activation will be relu
         },
         {
             "width": 4,
             "height": 2,
-            "activation": 1  # Activation will be tanh
+            "activation": "tanh"  # Activation will be tanh
         }
     ]
 

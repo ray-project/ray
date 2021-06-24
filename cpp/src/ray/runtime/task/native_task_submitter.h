@@ -2,7 +2,6 @@
 
 #include "../native_ray_runtime.h"
 #include "invocation_spec.h"
-#include "ray/core.h"
 #include "task_submitter.h"
 
 namespace ray {

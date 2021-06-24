@@ -64,6 +64,14 @@ ray.cancel
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_actor-ref:
+
+
+ray.get_actor
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.get_actor
+
 .. _ray-get_gpu_ids-ref:
 
 ray.get_gpu_ids
@@ -172,16 +180,10 @@ get_current_placement_group
 Custom Metrics APIs
 -------------------
 
-Metric
-~~~~~~
+Counter
+~~~~~~~
 
-.. autoclass:: ray.util.metrics.Metric
-   :members:
-
-Count
-~~~~~
-
-.. autoclass:: ray.util.metrics.Count
+.. autoclass:: ray.util.metrics.Counter
    :members:
 
 Gauge
@@ -195,6 +197,16 @@ Histogram
 
 .. autoclass:: ray.util.metrics.Histogram
    :members:
+
+.. _runtime-context-apis:
+
+Runtime Context APIs
+--------------------
+
+.. autofunction:: ray.runtime_context.get_runtime_context
+
+.. autoclass:: ray.runtime_context.RuntimeContext
+    :members:
 
 .. _package-ref-debugging-apis:
 
@@ -211,6 +223,15 @@ Experimental APIs
 .. automodule:: ray.experimental
    :members:
 
+ClientBuilder API
+~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.client
+
+.. autoclass:: ray.ClientBuilder
+   :members:
+
+.. _ray-cli:
 
 The Ray Command Line API
 ------------------------
