@@ -1,6 +1,7 @@
 import copy
 from datetime import datetime
 import functools
+import gym
 import logging
 import math
 import numpy as np
@@ -31,8 +32,8 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.typing import TrainerConfigDict, \
-    PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
+from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
+    PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -96,6 +97,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
+    # Discount factor of the MDP.
+    "gamma": 0.99,
+    # The default learning rate.
+    "lr": 0.0001,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -107,8 +112,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "optimizer": {},
 
     # === Environment Settings ===
-    # Discount factor of the MDP.
-    "gamma": 0.99,
     # Number of steps after which the episode is forced to terminate. Defaults
     # to `env.spec.max_episode_steps` (if present) for Gym envs.
     "horizon": None,
@@ -120,9 +123,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Environment name can also be passed via config.
+    # The environment specifier:
+    # This can either be a tune-registered env, via
+    # `tune.register_env([name], lambda env_ctx: [env object])`,
+    # or a string specifier of an RLlib supported type. In the latter case,
+    # RLlib will try to interpret the specifier as either an openAI gym env,
+    # a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
+    # Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
     "env": None,
-    # Arguments to pass to the env creator.
+    # The observation- and action spaces for the Policies of this Trainer.
+    # Use None for automatically inferring these from the given env.
+    "observation_space": None,
+    "action_space": None,
+    # Arguments dict passed to the env creator as an EnvContext object (which
+    # is a dict plus the properties: num_workers, worker_index, vector_index,
+    # and remote).
     "env_config": {},
     # A callable taking the last train results, the base env and the env
     # context as args and returning a new task to set the env to.
@@ -157,8 +172,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "clip_actions": True,
     # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
-    # The default learning rate.
-    "lr": 0.0001,
 
     # === Debug Settings ===
     # Set the ray.rllib.* log level for the agent process and its workers.
@@ -183,7 +196,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     "fake_sampler": False,
 
     # === Deep Learning Framework Settings ===
-    # tf: TensorFlow
+    # tf: TensorFlow (static-graph)
+    # tf2: TensorFlow 2.x (eager)
     # tfe: TensorFlow eager
     # torch: PyTorch
     "framework": "tf",
@@ -905,7 +919,7 @@ class Trainer(Trainable):
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to evaluation workers.")
+        logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
@@ -1069,7 +1083,7 @@ class Trainer(Trainable):
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): id of policy to return.
+            policy_id (PolicyID): ID of the policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
 
@@ -1091,6 +1105,101 @@ class Trainer(Trainable):
             weights (dict): Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
+
+    @PublicAPI
+    def add_policy(
+            self,
+            policy_id: PolicyID,
+            policy_cls: Type[Policy],
+            *,
+            observation_space: Optional[gym.spaces.Space] = None,
+            action_space: Optional[gym.spaces.Space] = None,
+            config: Optional[PartialTrainerConfigDict] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
+                                                 PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> Policy:
+        """Adds a new policy to this Trainer.
+
+        Args:
+            policy_id (PolicyID): ID of the policy to add.
+            policy_cls (Type[Policy]): The Policy class to use for
+                constructing the new Policy.
+            observation_space (Optional[gym.spaces.Space]): The observation
+                space of the policy to add.
+            action_space (Optional[gym.spaces.Space]): The action space
+                of the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config overrides
+                for the policy to add.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+
+        Returns:
+            Policy: The newly added policy (the copy that got added to the
+                local worker).
+        """
+
+        def fn(worker):
+            # `foreach_worker` function: Adds the policy the the worker (and
+            # maybe changes its policy_mapping_fn - if provided here).
+            worker.add_policy(
+                policy_id=policy_id,
+                policy_cls=policy_cls,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
+
+        # Run foreach_worker fn on all workers (incl. evaluation workers).
+        self.workers.foreach_worker(fn)
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(fn)
+
+        # Return newly added policy (from the local rollout worker).
+        return self.get_policy(policy_id)
+
+    @PublicAPI
+    def remove_policy(
+            self,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            *,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> None:
+        """Removes a new policy from this Trainer.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to be removed.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+        """
+
+        def fn(worker):
+            worker.remove_policy(
+                policy_id=policy_id,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
+
+        self.workers.foreach_worker(fn)
+        if self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
     def export_policy_model(self,
@@ -1207,6 +1316,11 @@ class Trainer(Trainable):
         # the videos.
         if config.get("record_env") == "":
             config["record_env"] = True
+
+        # DefaultCallbacks if callbacks - for whatever reason - set to
+        # None.
+        if config["callbacks"] is None:
+            config["callbacks"] = DefaultCallbacks
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
@@ -1407,13 +1521,15 @@ class Trainer(Trainable):
             "that were generated via the `ray.rllib.agents.trainer_template."
             "build_trainer()` function!")
 
-    def _register_if_needed(self, env_object: Union[str, EnvType]):
+    def _register_if_needed(self, env_object: Union[str, EnvType, None]):
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
             register_env(name, lambda config: env_object(config))
             return name
+        elif env_object is None:
+            return None
         raise ValueError(
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "

@@ -680,6 +680,12 @@ def main():
         required=False,
         type=str,
         help="Password for connecting to Redis")
+    parser.add_argument(
+        "--worker-shim-pid",
+        required=False,
+        type=int,
+        default=0,
+        help="The PID of the process for setup worker runtime env.")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 

@@ -6,9 +6,10 @@ import tempfile
 import requests
 from pathlib import Path
 import ray
-from ray.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking, get_wheel_filename,
-    get_master_wheel_url, get_release_wheel_url)
+from ray.test_utils import (run_string_as_driver,
+                            run_string_as_driver_nonblocking)
+from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
+                                get_release_wheel_url)
 import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
