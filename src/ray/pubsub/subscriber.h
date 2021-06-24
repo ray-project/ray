@@ -23,7 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -230,6 +230,22 @@ class SubscriberInterface {
   virtual ~SubscriberInterface() {}
 };
 
+/// The grpc client that the subscriber needs.
+class SubscriberClientInterface {
+ public:
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
+
+  virtual ~SubscriberClientInterface() = default;
+};
+
 /// The pubsub client implementation. The class is thread-safe.
 ///
 /// Protocol details:
@@ -250,17 +266,18 @@ class SubscriberInterface {
 ///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(const SubscriberID subscriber_id,
-                      const std::string subscriber_address, const int subscriber_port,
-                      const int64_t max_command_batch_size,
-                      rpc::CoreWorkerClientPool &publisher_client_pool,
-                      instrumented_io_context *callback_service)
+  explicit Subscriber(
+      const SubscriberID subscriber_id, const std::string subscriber_address,
+      const int subscriber_port, const int64_t max_command_batch_size,
+      std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+          get_client,
+      instrumented_io_context *callback_service)
       : callback_service_(callback_service),
         subscriber_id_(subscriber_id),
         subscriber_address_(subscriber_address),
         subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
-        publisher_client_pool_(publisher_client_pool),
+        get_client_(get_client),
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
         wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
@@ -376,8 +393,9 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<rpc::Command>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
-  /// Cache of gRPC clients to publishers.
-  rpc::CoreWorkerClientPool &publisher_client_pool_;
+  /// Gets an rpc client for connecting to the publisher.
+  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+      get_client_;
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.
