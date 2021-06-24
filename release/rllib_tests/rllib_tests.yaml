@@ -4,7 +4,7 @@
     compute_template: 8gpus_64cpus.yaml
 
   run:
-    timeout: 7200
+    timeout: 10800
     script: python learning_tests/run_learning_tests.py
 
 - name: example_scripts_on_gpu_tests
@@ -23,4 +23,4 @@
 
   run:
     timeout: 3600
-    script: stress_tests/run.sh
+    script: python stress_tests/run_stress_tests.py

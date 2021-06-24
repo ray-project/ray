@@ -48,7 +48,6 @@ if __name__ == "__main__":
         # Add torch version of all experiments to the list.
         for k, e in experiments.items():
             checks[k] = {
-                "min_reward": e["stop"]["episode_reward_mean"],
                 "time_total_s": e["stop"]["time_total_s"],
                 "timesteps_total": e["stop"]["timesteps_total"],
                 "failures": 0,

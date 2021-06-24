@@ -3,6 +3,10 @@ env_vars: {}
 debian_packages:
   - libglib2.0-0
   - unrar
+  - curl
+  - unzip
+  - gcc
+  - python3-dev
 
 python:
   pip_packages:
