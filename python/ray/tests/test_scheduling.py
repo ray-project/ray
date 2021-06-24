@@ -487,6 +487,7 @@ def test_many_args(ray_start_cluster):
             f = open(path, "r")
             print(f.read())
             print("\n\n\n\n")
+        raise
 
 
 if __name__ == "__main__":
