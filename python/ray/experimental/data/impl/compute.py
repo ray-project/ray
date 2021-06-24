@@ -17,22 +17,21 @@ class ComputePool:
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
-        try:
-            map_bar = tqdm.tqdm(total=len(blocks), position=0)
-            map_bar.set_description("Map Progress")
+        map_bar = tqdm.tqdm(total=len(blocks), position=0)
+        map_bar.set_description("Map Progress")
 
-            if remote_args:
-                fn = ray.remote(**remote_args)(fn)
-            else:
-                fn = ray.remote(fn)
-            blocks = [fn.remote(b) for b in blocks]
-            remaining = blocks
+        if remote_args:
+            fn = ray.remote(**remote_args)(fn)
+        else:
+            fn = ray.remote(fn)
+        blocks = [fn.remote(b) for b in blocks]
 
-            while remaining:
-                done, remaining = ray.wait(remaining)
-                map_bar.update(len(done))
-        finally:
-            map_bar.close()
+        remaining = blocks
+        while remaining:
+            done, remaining = ray.wait(remaining, fetch_local=False)
+            map_bar.update(len(done))
+
+        map_bar.close()
         return blocks
 
 
@@ -61,7 +60,8 @@ class ActorPool(ComputePool):
         blocks_out = []
 
         while len(blocks_out) < len(blocks):
-            ready, _ = ray.wait(list(tasks), timeout=0.01, num_returns=1)
+            ready, _ = ray.wait(
+                list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
                 if len(ready_workers) / len(workers) > 0.8:
                     w = Worker.remote()

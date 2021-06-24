@@ -24,6 +24,9 @@ class Block(Generic[T]):
     def iter_rows(self) -> Iterator[T]:
         raise NotImplementedError
 
+    def slice(self, start: int, end: int) -> "Block[T]":
+        raise NotImplementedError
+
     def to_pandas(self) -> "pandas.DataFrame":
         raise NotImplementedError
 
@@ -51,6 +54,9 @@ class ListBlockBuilder(BlockBuilder[T]):
     def add(self, item: T) -> None:
         self._items.append(item)
 
+    def add_block(self, block: "ListBlock[T]") -> None:
+        self._items.extend(block._items)
+
     def build(self) -> "ListBlock[T]":
         return ListBlock(self._items)
 
@@ -64,6 +70,9 @@ class ListBlock(Block):
 
     def iter_rows(self) -> Iterator[T]:
         return self._items.__iter__()
+
+    def slice(self, start: int, end: int) -> "ListBlock[T]":
+        return ListBlock(self._items[start:end])
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas

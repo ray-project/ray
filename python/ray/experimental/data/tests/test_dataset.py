@@ -21,6 +21,49 @@ def test_from_items(ray_start_regular_shared):
     assert ds.take() == ["hello", "world"]
 
 
+def test_repartition(ray_start_regular_shared):
+    ds = ray.experimental.data.range(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_sizes() == [2] * 10
+
+    ds2 = ds.repartition(5)
+    assert ds2.num_blocks() == 5
+    assert ds2.sum() == 190
+    # TODO: would be nice to re-distribute these more evenly
+    ds2._block_sizes() == [10, 10, 0, 0, 0]
+
+    ds3 = ds2.repartition(20)
+    assert ds3.num_blocks() == 20
+    assert ds3.sum() == 190
+    ds2._block_sizes() == [2] * 10 + [0] * 10
+
+    large = ray.experimental.data.range(10000, parallelism=10)
+    large = large.repartition(20)
+    assert large._block_sizes() == [500] * 20
+
+
+def test_repartition_arrow(ray_start_regular_shared):
+    ds = ray.experimental.data.range_arrow(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.count() == 20
+    assert ds._block_sizes() == [2] * 10
+
+    ds2 = ds.repartition(5)
+    assert ds2.num_blocks() == 5
+    assert ds2.count() == 20
+    ds2._block_sizes() == [10, 10, 0, 0, 0]
+
+    ds3 = ds2.repartition(20)
+    assert ds3.num_blocks() == 20
+    assert ds3.count() == 20
+    ds2._block_sizes() == [2] * 10 + [0] * 10
+
+    large = ray.experimental.data.range_arrow(10000, parallelism=10)
+    large = large.repartition(20)
+    assert large._block_sizes() == [500] * 20
+
+
 def test_parquet(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)

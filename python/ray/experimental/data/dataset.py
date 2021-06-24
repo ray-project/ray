@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray.experimental.data.impl.compute import get_compute
+from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block
 
 T = TypeVar("T")
@@ -38,7 +39,7 @@ class Dataset(Generic[T]):
 
     def __init__(self, blocks: List[ObjectRef[Block[T]]], block_cls: Any):
         self._blocks: List[ObjectRef[Block[T]]] = blocks
-        self._block_cls = block_cls
+        self._block_cls: type = block_cls
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -153,18 +154,20 @@ class Dataset(Generic[T]):
             compute.apply(transform, ray_remote_args, self._blocks),
             self._block_cls)
 
-    def repartition(self, num_partitions: int) -> "Dataset[T]":
+    def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
         Args:
-            num_partitions: The number of partitions.
+            num_blocks: The number of blocks.
 
         Returns:
             The repartitioned dataset.
         """
-        raise NotImplementedError  # P1
 
-    def truncate(self, limit: int = 1000) -> Dataset[T]:
+        new_blocks = simple_shuffle(self._block_cls, self._blocks, num_blocks)
+        return Dataset(new_blocks, self._block_cls)
+
+    def truncate(self, limit: int) -> "Dataset[T]":
         """Truncate the dataset to the given number of records.
 
         This operation is useful to limit the size of the dataset during
@@ -228,6 +231,20 @@ class Dataset(Generic[T]):
 
         return sum(ray.get([count.remote(block) for block in self._blocks]))
 
+    def sum(self) -> int:
+        """Sum up the elements of this dataset.
+
+        Returns:
+            The sum of the records in the dataset.
+        """
+
+        @ray.remote
+        def agg(serialized: Any) -> int:
+            block = self._block_cls.deserialize(serialized)
+            return sum(block.iter_rows())
+
+        return sum(ray.get([agg.remote(block) for block in self._blocks]))
+
     def schema(self) -> Union[type, pyarrow.lib.Schema]:
         """Return the schema of the dataset.
 
@@ -238,6 +255,14 @@ class Dataset(Generic[T]):
             The Python type or Arrow schema of the records.
         """
         raise NotImplementedError  # P0
+
+    def num_blocks(self) -> int:
+        """Return the number of blocks of this dataset.
+
+        Returns:
+            The number of blocks of this dataset.
+        """
+        return len(self._blocks)
 
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
@@ -375,3 +400,11 @@ class Dataset(Generic[T]):
 
     def __str__(self) -> str:
         return repr(self)
+
+    def _block_sizes(self) -> List[int]:
+        @ray.remote
+        def query(serialized: Any) -> int:
+            block = self._block_cls.deserialize(serialized)
+            return block.num_rows()
+
+        return ray.get([query.remote(b) for b in self._blocks])

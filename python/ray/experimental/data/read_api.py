@@ -68,7 +68,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     return Dataset(blocks, ListBlock)
 
 
-def range_arrow(n: int, num_blocks: int = 200) -> Dataset[ArrowRow]:
+def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     This is similar to range(), but uses Arrow tables to hold the integers
@@ -81,7 +81,7 @@ def range_arrow(n: int, num_blocks: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
-    block_size = max(1, n // num_blocks)
+    block_size = max(1, n // parallelism)
     blocks = []
     i = 0
 
