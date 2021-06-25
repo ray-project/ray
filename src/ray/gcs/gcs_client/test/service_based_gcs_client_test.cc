@@ -29,7 +29,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        R"({"ping_gcs_rpc_server_max_retries": 60, "maximum_gcs_destroyed_actor_cached_count": 10, "maximum_gcs_dead_node_cached_count": 10, "grpc_based_resource_broadcast": false})");
+        R"(
+{
+  "ping_gcs_rpc_server_max_retries": 60,
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "maximum_gcs_dead_node_cached_count": 10,
+  "grpc_based_resource_broadcast": false
+}
+  )");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
