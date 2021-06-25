@@ -22,6 +22,7 @@ PullManager::PullManager(
       min_active_pulls_(min_active_pulls),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
+      // TODO(ekl) remove this callback once plasma unlimited is the only path.
       object_store_full_callback_(object_store_full_callback),
       pin_object_(pin_object),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
@@ -309,11 +310,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     cancel_pull_request_(obj_id);
   }
 
-  if (RayConfig::instance().plasma_unlimited()) {
-    if (OverQuota()) {
-      object_store_full_callback_();
-    }
-  } else {
+  if (!RayConfig::instance().plasma_unlimited()) {
     TriggerOutOfMemoryHandlingIfNeeded();
   }
 

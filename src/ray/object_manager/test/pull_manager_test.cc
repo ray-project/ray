@@ -651,13 +651,17 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
-    ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
+    }
     return;
   }
 
   if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
     AssertNumActiveRequestsEquals(0);
-    ASSERT_EQ(num_object_store_full_calls_, 1);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    }
     for (auto &oid : oids) {
       ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
       ASSERT_EQ(num_abort_calls_[oid], 1);
@@ -665,7 +669,9 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   } else {
     AssertNumActiveRequestsEquals(3);
-    ASSERT_EQ(num_object_store_full_calls_, 1);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    }
     for (auto &oid : oids) {
       ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
       ASSERT_EQ(num_abort_calls_[oid], 0);
@@ -736,10 +742,12 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (num_requests_quota == num_requests_expected) {
-      ASSERT_EQ(num_object_store_full_calls_, 0);
-    } else {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      if (num_requests_quota == num_requests_expected) {
+        ASSERT_EQ(num_object_store_full_calls_, 0);
+      } else {
+        ASSERT_EQ(num_object_store_full_calls_, 1);
+      }
     }
     for (size_t i = 0; i < req_ids.size(); i++) {
       if ((int)i < num_requests_expected) {
