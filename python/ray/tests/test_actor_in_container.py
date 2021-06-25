@@ -8,12 +8,11 @@ import sys
 import ray
 import ray.job_config
 import ray.test_utils
-from ray.tests.conftest import shutdown_only  # noqa: F401
 import ray.cluster_utils
 
 
 @pytest.mark.skipif("sys.platform != 'linux'")
-def test_actor_in_container(shutdown_only):
+def test_actor_in_container():
     job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
         "image": "rayproject/ray-nest-container:nightly-py36-cpu",
     }})
@@ -35,12 +34,13 @@ def test_actor_in_container(shutdown_only):
     a1.increment.remote()
     result = ray.get(a1.get_counter.remote())
     assert result == 1
+    ray.shutdown()
 
 
 # Raylet runs in container image "ray-nest-container:nightly-py36-cpu"
 # Ray job run in container image "ray-nest-container:nightly-py36-cpu-pandas"
 @pytest.mark.skipif("sys.platform != 'linux'")
-def test_actor_in_heterogeneous_image(shutdown_only):
+def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
         "image": "rayproject/ray-nest-container:nightly-py36-cpu-pandas",
     }})
@@ -59,6 +59,7 @@ def test_actor_in_heterogeneous_image(shutdown_only):
     h1 = HeterogeneousActor.options().remote()
     pandas_result = ray.get(h1.run_pandas.remote())
     assert pandas_result == 5
+    ray.shutdown()
 
 
 if __name__ == "__main__":
