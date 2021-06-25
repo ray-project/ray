@@ -46,6 +46,7 @@ class PullManagerTestWithCapacity {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
     ASSERT_TRUE(pull_manager_.pinned_objects_.empty());
+    ASSERT_EQ(pull_manager_.pinned_objects_size_, 0);
   }
 
   int NumPinnedObjects() { return pull_manager_.pinned_objects_.size(); }
@@ -75,13 +76,13 @@ class PullManagerTest : public PullManagerTestWithCapacity,
  public:
   PullManagerTest() : PullManagerTestWithCapacity(1) {}
 
-  void AssertNumActiveRequestsEquals(size_t num_requests) {
+  void AssertNumActiveRequestsEquals(int64_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.object_pull_requests_.size(), num_requests);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
 
-  size_t NumBytesBeingPulled() { return pull_manager_.num_bytes_being_pulled_; }
+  int64_t NumBytesBeingPulled() { return pull_manager_.num_bytes_being_pulled_; }
 };
 
 class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
@@ -89,16 +90,16 @@ class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
  public:
   PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10) {}
 
-  void AssertNumActiveRequestsEquals(size_t num_requests) {
+  void AssertNumActiveRequestsEquals(int64_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
 
-  void AssertNumActiveBundlesEquals(size_t num_bundles) {
+  void AssertNumActiveBundlesEquals(int64_t num_bundles) {
     ASSERT_EQ(pull_manager_.num_active_bundles_, num_bundles);
   }
 
-  bool IsUnderCapacity(size_t num_bytes_requested) {
+  bool IsUnderCapacity(int64_t num_bytes_requested) {
     return num_bytes_requested <= pull_manager_.num_bytes_available_;
   }
 };

@@ -220,6 +220,8 @@ class PullManager {
   /// false, then there are no more requests in the queue that can be activated
   /// (because we have reached the end of the queue or because there is missing
   /// size information), or activating the request would exceed memory quota.
+  ///
+  /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
   bool ActivateNextPullBundleRequest(const Queue &bundles,
                                      uint64_t *highest_req_id_being_pulled,
                                      bool respect_quota,
@@ -264,6 +266,7 @@ class PullManager {
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
+  /// The minimum number of pull bundles to keep active.
   const int min_active_pulls_;
   uint64_t pull_timeout_ms_;
 

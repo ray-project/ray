@@ -131,18 +131,17 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     // Quota check.
     if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
         bytes_to_pull > RemainingQuota()) {
-      RAY_LOG(ERROR)
-          << "Bundle would exceed quota: "
-          << "num_bytes_being_pulled(" << num_bytes_being_pulled_
-          << ") + "
-             "bytes_to_pull("
-          << bytes_to_pull
-          << ") - "
-             "pinned_objects_size("
-          << pinned_objects_size_
-          << ") > "
-             "num_bytes_available("
-          << num_bytes_available_ << ")";
+      RAY_LOG(ERROR) << "Bundle would exceed quota: "
+                     << "num_bytes_being_pulled(" << num_bytes_being_pulled_
+                     << ") + "
+                        "bytes_to_pull("
+                     << bytes_to_pull
+                     << ") - "
+                        "pinned_objects_size("
+                     << pinned_objects_size_
+                     << ") > "
+                        "num_bytes_available("
+                     << num_bytes_available_ << ")";
       return false;
     }
 
