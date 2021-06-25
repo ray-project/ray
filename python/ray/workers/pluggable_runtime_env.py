@@ -1,9 +1,9 @@
-
 import json
 
 
 class RuntimeEnvContext:
     """A context used to describe the created runtime env."""
+
     def __init__(self, conda_env_name=None):
         self.conda_env_name = conda_env_name
 
