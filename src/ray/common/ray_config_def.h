@@ -246,8 +246,8 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
-// Feature flag to use grpc instead of redis for resource broadcast.
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
+// Feature flag to enable grpc based pubsub in GCS.
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -362,6 +362,10 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// The minimum object size that can be spilled by each spill operation. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// take more than this percentage of the available memory.
+RAY_CONFIG(float, object_spilling_threshold, 1.0)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)

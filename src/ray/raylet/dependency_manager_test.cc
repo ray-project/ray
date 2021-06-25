@@ -314,6 +314,37 @@ TEST_F(DependencyManagerTest, TestWaitObjectLocal) {
   AssertNoLeaks();
 }
 
+/// Test requesting the dependencies for a task. The dependency manager should
+/// return the task ID as ready once all of its unique arguments are local.
+TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
+  // Create a task with 3 arguments.
+  int num_arguments = 3;
+  auto obj_id = ObjectID::FromRandom();
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < num_arguments; i++) {
+    arguments.push_back(obj_id);
+  }
+  TaskID task_id = RandomTaskId();
+  bool ready =
+      dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs(arguments));
+  ASSERT_FALSE(ready);
+  ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
+
+  auto ready_task_ids = dependency_manager_.HandleObjectLocal(obj_id);
+  ASSERT_EQ(ready_task_ids.size(), 1);
+  ASSERT_EQ(ready_task_ids.front(), task_id);
+  dependency_manager_.RemoveTaskDependencies(task_id);
+
+  TaskID task_id2 = RandomTaskId();
+  ready =
+      dependency_manager_.RequestTaskDependencies(task_id2, ObjectIdsToRefs(arguments));
+  ASSERT_TRUE(ready);
+  ASSERT_EQ(object_manager_mock_.active_task_requests.size(), 1);
+  dependency_manager_.RemoveTaskDependencies(task_id2);
+
+  AssertNoLeaks();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

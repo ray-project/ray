@@ -28,6 +28,7 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -46,7 +47,7 @@ struct GcsServerConfig {
   bool enable_sharding_conn = true;
   std::string node_ip_address;
   bool pull_based_resource_reporting;
-  bool grpc_based_resource_broadcast;
+  bool grpc_pubsub_enabled;
 };
 
 class GcsNodeManager;
@@ -111,9 +112,6 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
-
-  /// Initialize task info handler.
-  void InitTaskInfoHandler();
 
   /// Initialize stats handler.
   void InitStatsHandler();
@@ -191,9 +189,6 @@ class GcsServer {
   /// Object info handler and service.
   std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
-  /// Task info handler and service.
-  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
-  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
@@ -214,6 +209,10 @@ class GcsServer {
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Grpc based pubsub.
+  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  /// Grpc based pubsub's periodical runner.
+  PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;

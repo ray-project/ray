@@ -207,3 +207,17 @@
   smoke_test:
     cluster:
       compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
+
+# Stress tests with placement groups
+- name: stress_test_placement_group
+  cluster:
+    app_config: stress_tests/stress_tests_app_config.yaml
+    compute_template: stress_tests/placement_group_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_placement_group.py
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
