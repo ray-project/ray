@@ -266,7 +266,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   while (wait_requests_remaining) {
     int64_t margin_required =
         NextRequestBundleSize(wait_request_bundles_, highest_wait_req_id_being_pulled_);
-    RAY_LOG(ERROR) << "Margin required " << margin_required;
     DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
                                    /*retain_min=*/0, /*quota_margin=*/margin_required,
                                    &highest_task_req_id_being_pulled_,
@@ -306,11 +305,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     cancel_pull_request_(obj_id);
   }
 
-  if (RayConfig::instance().plasma_unlimited()) {
-    if (OverQuota()) {
-      object_store_full_callback_();
-    }
-  } else {
+  if (!RayConfig::instance().plasma_unlimited()) {
     TriggerOutOfMemoryHandlingIfNeeded();
   }
 
