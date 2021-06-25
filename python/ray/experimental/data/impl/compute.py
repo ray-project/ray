@@ -48,7 +48,7 @@ class ActorPool(ComputePool):
         workers = [Worker.remote()]
         tasks = {w.ready.remote(): w for w in workers}
         ready_workers = set()
-        blocks_in = [b for b in blocks]
+        blocks_in = blocks.copy()
         blocks_out = []
 
         while len(blocks_out) < len(blocks):
