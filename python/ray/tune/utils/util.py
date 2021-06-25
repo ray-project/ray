@@ -169,6 +169,10 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def seek(self, *args, **kwargs):
+        self.stream1.seek(*args, **kwargs)
+        self.stream2.seek(*args, **kwargs)
+
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
@@ -194,6 +198,18 @@ class Tee(object):
         if hasattr(self.stream1, "newlines"):
             return self.stream1.newlines
         return self.stream2.newlines
+
+    def detach(self):
+        raise NotImplementedError
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def readline(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def tell(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 def date_str():
