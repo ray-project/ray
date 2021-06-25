@@ -73,10 +73,10 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
+        self._disable_ipython()
+
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
-
-        self._disable_ipython()
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
