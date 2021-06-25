@@ -94,8 +94,6 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
   request->error = request->create_callback(&request->result, fallback_allocator);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
-  } else if (request->error == PlasmaError::TransientOutOfMemory) {
-    return Status::TransientObjectStoreFull("");
   } else {
     return Status::OK();
   }
@@ -121,13 +119,16 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
       auto grace_period_ns = oom_grace_period_ns_;
-      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
+      auto spill_pending = spill_objects_callback_();
+      if (spill_pending) {
+        RAY_LOG(DEBUG) << "Reset grace period " << status << " " << spill_pending;
         oom_start_time_ns_ = -1;
-        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
+        return Status::TransientObjectStoreFull("Waiting for objects to spill.");
       } else if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
+        RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         if (plasma_unlimited_) {

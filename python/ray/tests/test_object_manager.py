@@ -335,6 +335,31 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+# This will hang if RAY_pull_manager_pin_objects=0 due to an eviction loop.
+def test_pull_bundles_pinning(shutdown_only):
+    cluster = Cluster()
+    object_size = int(50e6)
+    num_objects = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(num_cpus=0, object_store_memory=1000e6)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node cannot even fit a single task.
+    cluster.add_node(num_cpus=1, object_store_memory=200e6)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    def foo(*args):
+        return
+
+    task_args = [
+        ray.put(np.zeros(object_size, dtype=np.uint8))
+        for _ in range(num_objects)
+    ]
+    ray.get(foo.remote(*task_args))
+
+
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
