@@ -26,9 +26,9 @@ NUM_NODES = 4
 NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
 # Smoke tests currently run 60m period and we need to ensure
-# each wrk run in subprocess is significantly shorter in order
-# to produce good intermediate results to json file.
-TIME_PER_CYCLE = "5s"
+# each wrk run at least is able to show aggregated results
+# from the last iteration
+TIME_PER_CYCLE = "60m"
 
 
 def update_progress(result):
