@@ -53,21 +53,20 @@ def start_worker_in_container(container_option, args, remaining_args):
 
     container_driver = "podman"
     # todo add cgroup config
-    # todo RAYLET_PID
     # todo flag "--rm"
     container_command = [
         container_driver, "run", "-v", tmp_dir + ":" + tmp_dir,
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
-        "--ipc=host", "--env-host", "--entrypoint"
+        "--ipc=host", "--env-host"
     ]
     container_command.append("--env")
-    container_command.append("RAY_RAYLET_PID="+os.getppid())
+    container_command.append("RAY_RAYLET_PID=" + str(os.getppid()))
     if container_option.get("run_options"):
         container_command.extend(container_option.get("run_options"))
 
     container_command.append("--entrypoint")
     container_command.append("python")
-    container_command.append(container_image_option)
+    container_command.append(container_option.get("image"))
     container_command.extend(entrypoint_args)
     logger.warning("start worker in container: {}".format(container_command))
     os.execvp(container_driver, container_command)
@@ -79,8 +78,7 @@ if __name__ == "__main__":
     remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     container_option = runtime_env.get("container_option")
-    container_image_option = container_option.get("image")
-    if container_option and container_image_option:
+    if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
         setup = import_attr(args.worker_setup_hook)
