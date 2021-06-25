@@ -335,7 +335,7 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-# This will hang if RAY_pull_manager_pin_objects=0 due to an eviction loop.
+# Will hang if RAY_pull_manager_pin_active_objects=0 due to an eviction loop.
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)
