@@ -13,6 +13,7 @@ import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block
+from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -36,9 +37,8 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block[T]]], block_cls: Any):
+    def __init__(self, blocks: List[ObjectRef[Block[T]]]):
         self._blocks: List[ObjectRef[Block[T]]] = blocks
-        self._block_cls: type = block_cls
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -57,18 +57,15 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def transform(serialized: Any) -> Any:
-            block = self._block_cls.deserialize(serialized)
-            builder = block.builder()
+        def transform(block: Block[T]) -> Block[U]:
+            builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 builder.add(fn(row))
-            return builder.build().serialize()
+            return builder.build()
 
         compute = get_compute(compute)
 
-        return Dataset(
-            compute.apply(transform, ray_remote_args, self._blocks),
-            self._block_cls)
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def map_batches(self,
                     fn: Callable[[BatchType], BatchType],
@@ -114,19 +111,16 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def transform(serialized: Any) -> Any:
-            block = self._block_cls.deserialize(serialized)
-            builder = block.builder()
+        def transform(block: Block[T]) -> Block[U]:
+            builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
                     builder.add(r2)
-            return builder.build().serialize()
+            return builder.build()
 
         compute = get_compute(compute)
 
-        return Dataset(
-            compute.apply(transform, ray_remote_args, self._blocks),
-            self._block_cls)
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def filter(self,
                fn: Callable[[T], bool],
@@ -147,19 +141,16 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def transform(serialized: Any) -> Any:
-            block = self._block_cls.deserialize(serialized)
+        def transform(block: Block[T]) -> Block[T]:
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
                     builder.add(row)
-            return builder.build().serialize()
+            return builder.build()
 
         compute = get_compute(compute)
 
-        return Dataset(
-            compute.apply(transform, ray_remote_args, self._blocks),
-            self._block_cls)
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -173,8 +164,8 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
-        new_blocks = simple_shuffle(self._block_cls, self._blocks, num_blocks)
-        return Dataset(new_blocks, self._block_cls)
+        new_blocks = simple_shuffle(self._blocks, num_blocks)
+        return Dataset(new_blocks)
 
     def truncate(self, limit: int) -> "Dataset[T]":
         """Truncate the dataset to the given number of records.
@@ -230,7 +221,7 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
         for b in self._blocks:
-            block = self._block_cls.deserialize(ray.get(b))
+            block = ray.get(b)
             for row in block.iter_rows():
                 yield row
 
@@ -244,8 +235,7 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def count(serialized: Any) -> int:
-            block = self._block_cls.deserialize(serialized)
+        def count(block: Block[T]) -> int:
             return block.num_rows()
 
         return sum(ray.get([count.remote(block) for block in self._blocks]))
@@ -260,8 +250,7 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def agg(serialized: Any) -> int:
-            block = self._block_cls.deserialize(serialized)
+        def agg(block: Block[T]) -> int:
             return sum(block.iter_rows())
 
         return sum(ray.get([agg.remote(block) for block in self._blocks]))
@@ -446,16 +435,14 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P2
 
     def __repr__(self) -> str:
-        return "Dataset({} blocks, {})".format(
-            len(self._blocks), self._block_cls)
+        return "Dataset({} blocks)".format(len(self._blocks))
 
     def __str__(self) -> str:
         return repr(self)
 
     def _block_sizes(self) -> List[int]:
         @ray.remote
-        def query(serialized: Any) -> int:
-            block = self._block_cls.deserialize(serialized)
+        def query(block: Block[T]) -> int:
             return block.num_rows()
 
         return ray.get([query.remote(b) for b in self._blocks])

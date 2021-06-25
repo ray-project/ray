@@ -6,7 +6,8 @@ try:
 except ImportError:
     pa = None
 
-from ray.experimental.data.impl.block import Block, BlockBuilder
+from ray.experimental.data.impl.block import Block, BlockBuilder, \
+    ListBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
@@ -41,6 +42,35 @@ class ArrowRow:
 
     def __repr__(self):
         return str(self)
+
+
+class DelegatingArrowBlockBuilder(BlockBuilder[T]):
+    def __init__(self):
+        self._builder = None
+
+    def add(self, item: Any) -> None:
+        if self._builder is None:
+            if isinstance(item, dict):
+                try:
+                    check = ArrowBlockBuilder()
+                    check.add(item)
+                    check.build()
+                    self._builder = ArrowBlockBuilder()
+                except (TypeError, pa.lib.ArrowInvalid):
+                    self._builder = ListBlockBuilder()
+            else:
+                self._builder = ListBlockBuilder()
+        self._builder.add(item)
+
+    def add_block(self, block: Block[T]) -> None:
+        if self._builder is None:
+            self._builder = block.builder()
+        self._builder.add_block(block)
+
+    def build(self) -> Block[T]:
+        if self._builder is None:
+            self._builder = ArrowBlockBuilder()
+        return self._builder.build()
 
 
 class ArrowBlockBuilder(BlockBuilder[T]):
@@ -105,12 +135,11 @@ class ArrowBlock(Block):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def serialize(self) -> dict:
+    def __getstate__(self) -> dict:
         return self._table.to_pydict()
 
-    @staticmethod
-    def deserialize(value: dict) -> "ArrowBlock[T]":
-        return ArrowBlock(pa.Table.from_pydict(value))
+    def __setstate__(self, value: dict) -> None:
+        self._table = pa.Table.from_pydict(value)
 
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:

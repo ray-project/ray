@@ -1,5 +1,5 @@
 import sys
-from typing import TypeVar, List, Generic, Any, Iterator, TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -31,15 +31,6 @@ class Block(Generic[T]):
         raise NotImplementedError
 
     def size_bytes(self) -> int:
-        raise NotImplementedError
-
-    def serialize(self) -> Any:
-        raise NotImplementedError
-
-    # TODO(ekl) should remove ser/de methods once ArrowBlock is natively
-    # serializable in Ray.
-    @staticmethod
-    def deserialize(serialized: Any) -> "Block[T]":
         raise NotImplementedError
 
     @staticmethod
@@ -80,13 +71,6 @@ class ListBlock(Block):
 
     def size_bytes(self) -> int:
         return sys.getsizeof(self._items)
-
-    def serialize(self) -> Any:
-        return self
-
-    @staticmethod
-    def deserialize(value: Any) -> Any:
-        return value
 
     @staticmethod
     def builder() -> ListBlockBuilder[T]:

@@ -16,6 +16,19 @@ def test_basic(ray_start_regular_shared):
     assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
 
 
+def test_convert_types(ray_start_regular_shared):
+    plain_ds = ray.experimental.data.range(1)
+    arrow_ds = plain_ds.map(lambda x: {"a": x})
+    assert arrow_ds.take() == [{"a": 0}]
+    assert "ArrowRow" in arrow_ds.map(lambda x: str(x)).take()[0]
+
+    arrow_ds = ray.experimental.data.range_arrow(1)
+    assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() \
+        == ["plain_0"]
+    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == \
+        [{"a": (0,)}]
+
+
 def test_from_items(ray_start_regular_shared):
     ds = ray.experimental.data.from_items(["hello", "world"])
     assert ds.take() == ["hello", "world"]

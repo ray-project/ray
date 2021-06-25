@@ -32,10 +32,10 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
         builder = ListBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
-        blocks.append(ray.put(builder.build().serialize()))
+        blocks.append(ray.put(builder.build()))
         i += block_size
 
-    return Dataset(blocks, ListBlock)
+    return Dataset(blocks)
 
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
@@ -56,14 +56,14 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         builder = ListBlock.builder()
         for value in builtins.range(start, start + count):
             builder.add(value)
-        return builder.build().serialize()
+        return builder.build()
 
     i = 0
     while i < n:
         blocks.append(gen_block.remote(i, min(block_size, n - i)))
         i += block_size
 
-    return Dataset(blocks, ListBlock)
+    return Dataset(blocks)
 
 
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
@@ -90,13 +90,13 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         return ArrowBlock(
             pyarrow.Table.from_pydict({
                 "value": list(builtins.range(start, start + count))
-            })).serialize()
+            }))
 
     while i < n:
         blocks.append(gen_block.remote(block_size * i, min(block_size, n - i)))
         i += block_size
 
-    return Dataset(blocks, ArrowBlock)
+    return Dataset(blocks)
 
 
 def read_parquet(paths: Union[str, List[str]],
@@ -141,9 +141,9 @@ def read_parquet(paths: Union[str, List[str]],
         print("Reading {} parquet pieces".format(len(pieces)))
         table = piece.read(
             columns=columns, use_threads=False, partitions=partitions)
-        return ArrowBlock(table).serialize()
+        return ArrowBlock(table)
 
-    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks], ArrowBlock)
+    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
 
 
 def read_json(paths: Union[str, List[str]],
