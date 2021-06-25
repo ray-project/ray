@@ -451,7 +451,7 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
 
     ray.client("localhost:10001").env(runtime_env).connect()
 
-...or specify per-actor or per-task using ``.options()``:
+...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
