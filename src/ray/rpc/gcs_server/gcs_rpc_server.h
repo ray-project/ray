@@ -576,22 +576,21 @@ class PublisherServiceHandler {
                                        PubsubLongPollingReply *reply,
                                        SendReplyCallback) = 0;
   virtual void HandlePubsubCommandBatch(const PubsubCommandBatchRequest &request,
-                                       PubsubCommandBatchReply *reply,
-                                       SendReplyCallback) = 0;
-
+                                        PubsubCommandBatchReply *reply,
+                                        SendReplyCallback) = 0;
 };
 
 class PublisherGrpcService : public GrpcService {
  public:
   explicit PublisherGrpcService(instrumented_io_context &io_service,
                                 PublisherServiceHandler &handler)
-    : GrpcService(io_service), service_handler_(handler) {}
+      : GrpcService(io_service), service_handler_(handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
   void InitServerCallFactories(
-                               const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-                               std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     PUBLISHER_SERVICE_RPC_HANDLER(PubsubLongPolling);
     PUBLISHER_SERVICE_RPC_HANDLER(PubsubCommandBatch);
   }

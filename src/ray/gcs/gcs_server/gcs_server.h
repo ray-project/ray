@@ -211,6 +211,8 @@ class GcsServer {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Grpc based pubsub.
   std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  /// Publisher service and handler.
+  std::unique_ptr<rpc::PublisherGrpcService> publisher_service_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.
