@@ -235,7 +235,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
 
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
-    RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
+    RAY_LOG(DEBUG) << "XXX A worker is dead. subscription_failure_callback will be invoked. "
                       "Publisher id: "
                    << publisher_id;
 
