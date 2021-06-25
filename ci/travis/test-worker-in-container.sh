@@ -15,11 +15,14 @@ podman build --cgroup-manager=cgroupfs -f /ray/docker/ray-nest-container/test-Do
 
 export RAY_BACKEND_LOG_LEVEL=debug
 "$HOME/anaconda3/bin/pip" install --no-cache-dir pytest
-/ray/ci/travis/install-bazel.sh
-if [ -f /etc/profile.d/bazel.sh ]; then
-  . /etc/profile.d/bazel.sh
-fi
+
+pushd /ray || true
+bash ./ci/travis/install-bazel.sh --system
+BAZEL_PATH=$HOME/bin/bazel
+
 # shellcheck disable=SC2046
-bazel test --config=ci $(/ray/scripts/bazel_export_options) \
+$BAZEL_PATH test --config=ci $(./scripts/bazel_export_options) \
 --test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
-/ray/python/ray/tests/...
+python/ray/tests/...
+
+popd || true
