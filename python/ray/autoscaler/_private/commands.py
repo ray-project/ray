@@ -989,6 +989,7 @@ def rsync(config_file: str,
           use_internal_ip: bool = False,
           no_config_cache: bool = False,
           all_nodes: bool = False,
+          do_config_bootstrap: bool = True,
           _runner: ModuleType = subprocess) -> None:
     """Rsyncs files.
 
@@ -1003,6 +1004,7 @@ def rsync(config_file: str,
         use_internal_ip (bool): Whether the provided ip_address is
             public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
+        do_config_bootstrap: whether to bootstrap cluster config before syncing
     """
     if bool(source) != bool(target):
         cli_logger.abort(
@@ -1017,7 +1019,8 @@ def rsync(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config, no_config_cache=no_config_cache)
+    if do_config_bootstrap:
+        config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
     if source and target:
