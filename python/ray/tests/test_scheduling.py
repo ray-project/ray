@@ -5,7 +5,6 @@ import platform
 import sys
 import time
 import unittest
-import os
 
 import numpy as np
 import pytest
@@ -44,7 +43,6 @@ def attempt_to_load_balance(remote_function,
 def test_many_args(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
-    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     cluster = ray_start_cluster
     object_size = int(1e6)
 
