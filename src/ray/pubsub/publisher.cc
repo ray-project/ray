@@ -258,9 +258,6 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,
                                const std::string &key_id_binary) {
-  if (channel_type == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
-    RAY_LOG(INFO) << "XXX Publishing failure " << ObjectID::FromBinary(key_id_binary);
-  }
   rpc::PubMessage pub_message;
   pub_message.set_key_id(key_id_binary);
   pub_message.set_channel_type(channel_type);

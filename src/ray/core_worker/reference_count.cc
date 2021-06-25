@@ -429,7 +429,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    RAY_LOG(INFO) << "[Unpin] The object id " << object_id
+    RAY_LOG(DEBUG) << "The object id " << object_id
                   << " is deleted because the object is explicitly deleted.";
     ReleasePlasmaObject(it);
   }
@@ -476,8 +476,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
-    RAY_LOG(DEBUG) << "The object id " << id
-                   << " is deleted because the reference goes out of scope.";
     ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);

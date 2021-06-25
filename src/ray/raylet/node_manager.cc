@@ -188,7 +188,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().max_command_batch_size(),
-          /*get_client=*/[this](const rpc::Address &address) {
+          /*get_client=*/
+          [this](const rpc::Address &address) {
             return worker_rpc_pool_.GetOrConnect(address);
           },
           &io_service_)),
@@ -1755,7 +1756,8 @@ void NodeManager::MarkObjectsAsFailed(
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to " << error_type;
+    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
+                   << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_.TryCreateImmediately(

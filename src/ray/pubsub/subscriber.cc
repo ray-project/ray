@@ -236,7 +236,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
     RAY_LOG(DEBUG)
-        << "XXX A worker is dead. subscription_failure_callback will be invoked. "
+        << "A worker is dead. subscription_failure_callback will be invoked. "
            "Publisher id: "
         << publisher_id;
 
@@ -254,12 +254,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // unsubscribe the publisher because there are other entries that subscribe from the
       // publisher.
       if (msg.has_failure_message()) {
-        RAY_LOG(DEBUG) << "XXX Failure message has published from a channel "
+        RAY_LOG(DEBUG) << "Failure message has published from a channel "
                        << channel_type;
-        if (channel_type == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
-          RAY_LOG(INFO) << "XXX Received error for object "
-                        << ObjectID::FromBinary(msg.key_id());
-        }
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
         continue;
       }
