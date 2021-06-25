@@ -47,7 +47,7 @@ class Dataset(Generic[T]):
         This is a blocking operation. Note that mapping individual records
         can be quite slow. Consider using `.map_batches()` for performance.
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record.
@@ -77,7 +77,7 @@ class Dataset(Generic[T]):
 
         This is a blocking operation.
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record batch.
@@ -101,7 +101,7 @@ class Dataset(Generic[T]):
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (the batch size can be altered in map_batches).
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record.
@@ -131,7 +131,7 @@ class Dataset(Generic[T]):
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (you can implement filter by dropping records).
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The predicate function to apply to each record.
@@ -158,7 +158,7 @@ class Dataset(Generic[T]):
         Args:
             num_blocks: The number of blocks.
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             The repartitioned dataset.
@@ -167,11 +167,8 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def truncate(self, limit: int) -> "Dataset[T]":
-        """Truncate the dataset to the given number of records.
-
-        This operation is useful to limit the size of the dataset during
-        development.
+    def limit(self, limit: int) -> "Dataset[T]":
+        """Limit the dataset to the first number of records specified.
 
         Time complexity: O(limit specified)
 
@@ -212,19 +209,6 @@ class Dataset(Generic[T]):
         for row in self.take(limit):
             print(row)
 
-    def to_local_iterator(self) -> Generator:
-        """Return an iterator that can be used to scan the dataset serially.
-
-        Time complexity: O(1)
-
-        Returns:
-            A local iterator over the entire dataset.
-        """
-        for b in self._blocks:
-            block = ray.get(b)
-            for row in block.iter_rows():
-                yield row
-
     def count(self) -> int:
         """Count the number of records in the dataset.
 
@@ -243,7 +227,7 @@ class Dataset(Generic[T]):
     def sum(self) -> int:
         """Sum up the elements of this dataset.
 
-        Time complexity: O(data size)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             The sum of the records in the dataset.
@@ -305,7 +289,7 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
-        Time complexity: O(dataset size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             path: The path in the filesystem to write to.
@@ -320,7 +304,7 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
-        Time complexity: O(dataset size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             path: The path in the filesystem to write to.
@@ -335,7 +319,7 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
-        Time complexity: O(dataset size)
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             path: The path in the filesystem to write to.
@@ -343,25 +327,18 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
-        """Return a dataset that can be used for Torch distributed training.
+    def to_local_iterator(self) -> Generator:
+        """Return an iterator that can be used to scan the dataset serially.
 
         Time complexity: O(1)
 
         Returns:
-            A TorchMLDataset.
+            A local iterator over the entire dataset.
         """
-        raise NotImplementedError  # P1
-
-    def to_tf(self, **todo) -> "ray.util.sgd.tf.TFMLDataset":
-        """Return a dataset that can be used for TF distributed training.
-
-        Time complexity: O(1)
-
-        Returns:
-            A TFMLDataset.
-        """
-        raise NotImplementedError  # P1
+        for b in self._blocks:
+            block = ray.get(b)
+            for row in block.iter_rows():
+                yield row
 
     def to_batch_iterators(
             self,
@@ -391,6 +368,26 @@ class Dataset(Generic[T]):
 
         Returns:
             A list of iterators over record batches.
+        """
+        raise NotImplementedError  # P1
+
+    def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
+        """Return a dataset that can be used for Torch distributed training.
+
+        Time complexity: O(1)
+
+        Returns:
+            A TorchMLDataset.
+        """
+        raise NotImplementedError  # P1
+
+    def to_tf(self, **todo) -> "ray.util.sgd.tf.TFMLDataset":
+        """Return a dataset that can be used for TF distributed training.
+
+        Time complexity: O(1)
+
+        Returns:
+            A TFMLDataset.
         """
         raise NotImplementedError  # P1
 
