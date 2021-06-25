@@ -1,7 +1,10 @@
 import collections
 from typing import Iterator, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
-import pyarrow as pa
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 from ray.experimental.data.impl.block import Block, BlockBuilder
 
@@ -42,6 +45,8 @@ class ArrowRow:
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
+        if pa is None:
+            raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
@@ -65,6 +70,8 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
 class ArrowBlock(Block):
     def __init__(self, table: pa.Table):
+        if pa is None:
+            raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._table = table
 
     def iter_rows(self) -> Iterator[ArrowRow]:

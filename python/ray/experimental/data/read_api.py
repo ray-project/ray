@@ -1,10 +1,8 @@
 import builtins
 from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
 
-import pyarrow.parquet as pq
-import pyarrow
-
 if TYPE_CHECKING:
+    import pyarrow
     import pandas
     import dask
     import modin
@@ -87,6 +85,8 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 
     @ray.remote
     def gen_block(start: int, count: int) -> "ArrowBlock":
+        import pyarrow
+
         return ArrowBlock(
             pyarrow.Table.from_pydict({
                 "value": list(builtins.range(start, start + count))
@@ -100,7 +100,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 
 def read_parquet(paths: Union[str, List[str]],
-                 filesystem: Optional[pyarrow.fs.FileSystem] = None,
+                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
                  parallelism: int = 200,
                  **arrow_parquet_args) -> Dataset[ArrowRow]:
@@ -116,6 +116,8 @@ def read_parquet(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
+    import pyarrow.parquet as pq
+
     pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
     pieces = pq_ds.pieces
     data_pieces = []
@@ -145,7 +147,7 @@ def read_parquet(paths: Union[str, List[str]],
 
 
 def read_json(paths: Union[str, List[str]],
-              filesystem: Optional[pyarrow.fs.FileSystem] = None,
+              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
               **arrow_json_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -163,7 +165,7 @@ def read_json(paths: Union[str, List[str]],
 
 
 def read_csv(paths: Union[str, List[str]],
-             filesystem: Optional[pyarrow.fs.FileSystem] = None,
+             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
              **arrow_csv_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
@@ -183,7 +185,7 @@ def read_csv(paths: Union[str, List[str]],
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
-        filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 

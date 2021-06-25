@@ -1,9 +1,8 @@
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
     Generator, Optional, Union, TYPE_CHECKING
 
-import pyarrow
-
 if TYPE_CHECKING:
+    import pyarrow
     import pandas
     import modin
     import dask
@@ -17,7 +16,7 @@ from ray.experimental.data.impl.block import ObjectRef, Block
 
 T = TypeVar("T")
 U = TypeVar("U")
-BatchType = Union["pandas.DataFrame", pyarrow.Table]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
 
 
 class Dataset(Generic[T]):
@@ -76,7 +75,7 @@ class Dataset(Generic[T]):
                     batch_size: int = None,
                     compute: str = "tasks",
                     batch_format: str = "pandas",
-                    **ray_remote_args) -> "Dataset[dict]":
+                    **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
 
         This is a blocking operation.
@@ -267,7 +266,7 @@ class Dataset(Generic[T]):
 
         return sum(ray.get([agg.remote(block) for block in self._blocks]))
 
-    def schema(self) -> Union[type, pyarrow.lib.Schema]:
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
         For datasets of Arrow records, this will return the Arrow schema.
@@ -311,7 +310,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P0
 
     def write_parquet(path: str,
-                      filesystem: Optional[pyarrow.fs.FileSystem] = None
+                      filesystem: Optional["pyarrow.fs.FileSystem"] = None
                       ) -> None:
         """Write the dataset to parquet.
 
@@ -326,7 +325,8 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P0
 
     def write_json(path: str,
-                   filesystem: Optional[pyarrow.fs.FileSystem] = None) -> None:
+                   filesystem: Optional["pyarrow.fs.FileSystem"] = None
+                   ) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -340,7 +340,8 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P0
 
     def write_csv(path: str,
-                  filesystem: Optional[pyarrow.fs.FileSystem] = None) -> None:
+                  filesystem: Optional["pyarrow.fs.FileSystem"] = None
+                  ) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
