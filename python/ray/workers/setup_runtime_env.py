@@ -85,6 +85,7 @@ def setup_worker(input_args):
     remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
 
     commands = []
+    py_executable: str = sys.executable
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
 
@@ -97,19 +98,25 @@ def setup_worker(input_args):
             runtime_env_context = RuntimeEnvContext.deserialize(
                 args.serialized_runtime_env_context)
 
-    py_executable: str = sys.executable
-
+    # activate conda
     if runtime_env_context and runtime_env_context.conda_env_name:
         py_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
         if (conda_activate_commands):
             commands += conda_activate_commands
+    elif runtime_env.get("conda"):
+        logger.warning(
+            "Conda env name is not found in context, "
+            "but conda exists in runtime env. The runtime env %s, "
+            "the context %s.", args.serialized_runtime_env,
+            args.serialized_runtime_env_context)
 
     commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 
+    # update env vars
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
