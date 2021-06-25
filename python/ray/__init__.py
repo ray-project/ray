@@ -69,6 +69,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
+# Replaced with the current commit when building the wheels.
+__commit__ = "{{RAY_COMMIT_SHA}}"
+__version__ = "2.0.0.dev0"
+
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (  # noqa: E402
@@ -96,10 +100,6 @@ from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
-
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "2.0.0.dev0"
 
 __all__ = [
     "__version__",

@@ -1,9 +1,11 @@
 import json
 import os
 import random
+import re
 import platform
 import subprocess
 import sys
+import time
 from collections import defaultdict
 
 import numpy as np
@@ -486,6 +488,49 @@ def test_multiple_directories(tmp_path, shutdown_only):
     ray.shutdown()
     for temp_dir in temp_dirs:
         wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
+
+
+def _check_spilled(num_objects_spilled=0):
+    def ok():
+        s = ray.internal.internal_api.memory_summary(stats_only=True)
+        if num_objects_spilled == 0:
+            return "Spilled " not in s
+
+        m = re.search(r"Spilled (\d+) MiB, (\d+) objects", s)
+        if m is not None:
+            actual_num_objects = int(m.group(2))
+            return actual_num_objects >= num_objects_spilled
+
+        return False
+
+    ray.test_utils.wait_for_condition(ok, timeout=30, retry_interval_ms=5000)
+
+
+def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
+    try:
+        ray.init(
+            object_store_memory=2_200_000_000,
+            _system_config={"object_spilling_threshold": thres}
+            if thres else {})
+        objs = []
+        for _ in range(num_objects):
+            objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
+        time.sleep(10)  # Wait for spilling to happen
+        _check_spilled(num_objects_spilled)
+    finally:
+        ray.shutdown()
+
+
+def test_object_spilling_threshold_default():
+    _test_object_spilling_threshold(None, 10, 0)
+
+
+def test_object_spilling_threshold_1_0():
+    _test_object_spilling_threshold(1.0, 10, 0)
+
+
+def test_object_spilling_threshold_0_1():
+    _test_object_spilling_threshold(0.1, 10, 5)
 
 
 if __name__ == "__main__":
