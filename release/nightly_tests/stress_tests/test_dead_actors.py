@@ -109,8 +109,9 @@ if __name__ == "__main__":
         result["max_iteration_time"] = max(loop_times)
         result["min_iteration_time"] = min(loop_times)
         result["success"] = 1
+        print("PASSED.")
     except Exception as e:
         logging.exception(e)
+        print("FAILED.")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps(result))
-    print("PASSED.")
