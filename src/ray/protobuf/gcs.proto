@@ -257,6 +257,11 @@ message GcsNodeInfo {
   int64 timestamp = 10;
 }
 
+message AllGcsNodeInfo {
+  // The info of all nodes in GCS.
+  repeated GcsNodeInfo nodes = 1;
+}
+
 message HeartbeatTableData {
   // Node id.
   bytes node_id = 1;

@@ -59,9 +59,6 @@ void GcsServer::Start() {
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
-  if (config_.grpc_pubsub_enabled) {
-  }
-
   // Init gcs table storage.
   gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
 
@@ -71,6 +68,11 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
+  if (config_.grpc_pubsub_enabled) {
+    // Init pubsub publisher
+    InitPublisherManager();
+  }
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 

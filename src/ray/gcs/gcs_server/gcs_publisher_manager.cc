@@ -10,13 +10,9 @@ GcsPublisherManager::GcsPublisherManager(instrumented_io_context &service)
           /*periodical_runner=*/&periodical_runner_,
           /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
           /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-          /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()
+          /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()) {}
 
-      ) {}
-
-GcsPublisherManager::~GcsPublisherManager() {
-  Stop();
-}
+GcsPublisherManager::~GcsPublisherManager() { Stop(); }
 
 void GcsPublisherManager::Start() {
   publisher_thread_.reset(new std::thread([this] {
@@ -36,6 +32,14 @@ void GcsPublisherManager::Stop() {
       publisher_thread_->join();
     }
   }
+}
+
+void GcsPublisherManager::Publish(const rpc::ChannelType channel_type,
+                                  const rpc::PubMessage pub_message,
+                                  const std::string key_id_binary) {
+  publisher_service_.post([this, channel_type, pub_message, key_id_binary]() {
+    grpc_publisher_.Publish(channel_type, pub_message, key_id_binary);
+  });
 }
 
 void GcsPublisherManager::HandlePubsubLongPolling(

@@ -186,7 +186,10 @@ python_grpc_compile(
 proto_library(
     name = "pubsub_proto",
     srcs = ["pubsub.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
 )
 
 cc_proto_library(

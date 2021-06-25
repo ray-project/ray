@@ -22,7 +22,6 @@ namespace ray {
 namespace gcs {
 
 /// This implementation class of `PublisherHandler`
-
 class GcsPublisherManager : public rpc::PublisherHandler {
  public:
   explicit GcsPublisherManager(instrumented_io_context &service);
@@ -32,6 +31,9 @@ class GcsPublisherManager : public rpc::PublisherHandler {
   /// Start and stop the io service's thread.
   void Start();
   void Stop();
+
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage pub_message,
+               const std::string key_id_binary);
 
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                rpc::PubsubLongPollingReply *reply,

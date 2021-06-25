@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
 
 /// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,
@@ -26,6 +27,8 @@ enum ChannelType {
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
+  /// Channel for gcs node changes.
+  GCS_NODE_CHANNEL = 2;
 }
 
 ///
@@ -41,6 +44,7 @@ message PubMessage {
   oneof pub_message_one_of {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
+    AllGcsNodeInfo all_nodes_message = 5;
   }
 }
 
