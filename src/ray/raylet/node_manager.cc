@@ -207,9 +207,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             GetLocalObjectManager().AsyncRestoreSpilledObject(object_id, object_url,
                                                               callback);
           },
+          /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
             return GetLocalObjectManager().GetSpilledObjectURL(object_id);
           },
+          /*spill_objects_callback=*/
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
@@ -218,6 +220,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                 "NodeManager.SpillObjects");
             return GetLocalObjectManager().IsSpillingInProgress();
           },
+          /*object_store_full_callback=*/
           [this]() {
             // Post on the node manager's event loop since this
             // callback is called from the plasma store thread.
@@ -227,7 +230,17 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*add_object_callback=*/
           [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
           /*delete_object_callback=*/
-          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }),
+          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); },
+          /*pin_object=*/
+          [this](const ObjectID &object_id) {
+            std::vector<ObjectID> object_ids = {object_id};
+            std::vector<std::unique_ptr<RayObject>> results;
+            std::unique_ptr<RayObject> result;
+            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+              result = std::move(results[0]);
+            }
+            return result;
+          }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -1411,7 +1424,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (worker && !worker->GetAssignedTaskId().IsNil()) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
-      dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
+      dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), refs);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
