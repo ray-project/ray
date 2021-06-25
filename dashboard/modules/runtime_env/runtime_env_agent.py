@@ -10,6 +10,7 @@ import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 import ray._private.runtime_env as runtime_env
 from ray._private.utils import import_attr
+from ray.workers.pluggable_runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +31,17 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env, runtime_env_dir):
+        async def _setup_runtime_env(serialized_runtime_env, session_dir):
             loop = asyncio.get_event_loop()
             runtime_env: dict = json.loads(serialized_runtime_env or "{}")
             return await loop.run_in_executor(None, self._setup, runtime_env,
-                                              runtime_env_dir)
+                                              session_dir)
 
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
         uris = runtime_env_dict.get("uris")
-        result = None
+        runtime_env_context: RuntimeEnvContext = None
         error_message = None
         for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
             try:
@@ -49,7 +50,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     # to download packages.
                     # But we don't initailize internal kv in agent now.
                     pass
-                result = await _setup_runtime_env(
+                runtime_env_context = await _setup_runtime_env(
                     request.serialized_runtime_env, self._session_dir)
                 break
             except Exception as ex:
@@ -66,13 +67,12 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
 
-        runtime_env_dict["result"] = result
-        new_serialized_runtime_env = json.dumps(runtime_env_dict)
-        logger.info("Successfully created runtime env: %s.",
-                    new_serialized_runtime_env)
+        serialized_context = runtime_env_context.serialize()
+        logger.info("Successfully created runtime env: %s, the context: %s",
+                    request.serialized_runtime_env, serialized_context)
         return runtime_env_agent_pb2.CreateRuntimeEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
-            serialized_runtime_env=new_serialized_runtime_env)
+            serialized_runtime_env_context=serialized_context)
 
     async def DeleteRuntimeEnv(self, request, context):
         # TODO(guyang.sgy): Delete runtime env local files.

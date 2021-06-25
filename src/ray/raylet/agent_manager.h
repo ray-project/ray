@@ -35,7 +35,8 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-typedef std::function<void(bool successful, const std::string &serialized_runtime_env)>
+typedef std::function<void(bool successful,
+                           const std::string &serialized_runtime_env_context)>
     CreateRuntimeEnvCallback;
 typedef std::function<void()> DeleteRuntimeEnvCallback;
 

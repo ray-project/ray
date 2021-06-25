@@ -16,6 +16,7 @@ from ray._private.conda import (get_conda_activate_commands,
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
+from ray.workers.pluggable_runtime_env import RuntimeEnvContext
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -24,6 +25,11 @@ parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
+
+parser.add_argument(
+    "--serialized-runtime-env-context",
+    type=str,
+    help="the serialized runtime env context")
 
 # The worker is not set up yet, so we can't get session_dir from the worker.
 parser.add_argument(
@@ -65,9 +71,9 @@ def setup_runtime_env(runtime_env: dict, session_dir):
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
 
-        return {"conda_env_name": conda_env_name}
+        return RuntimeEnvContext(conda_env_name)
 
-    return {}
+    return RuntimeEnvContext()
 
 
 def setup_worker(input_args):
@@ -80,20 +86,23 @@ def setup_worker(input_args):
 
     commands = []
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
+    runtime_env_context: RuntimeEnvContext = None
 
     # Ray client server setups runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
-        if "result" not in runtime_env:
-            result = setup_runtime_env(runtime_env, args.session_dir)
-            runtime_env["result"] = result
+        if not args.serialized_runtime_env_context:
+            runtime_env_context = setup_runtime_env(runtime_env,
+                                                    args.session_dir)
+        else:
+            runtime_env_context = RuntimeEnvContext.deserialize(
+                args.serialized_runtime_env_context)
 
     py_executable: str = sys.executable
 
-    result = runtime_env.get("result")
-    if result:
+    if runtime_env_context and runtime_env_context.conda_env_name:
         py_executable = "python"
-        conda_env_name = result.get("conda_env_name")
-        conda_activate_commands = get_conda_activate_commands(conda_env_name)
+        conda_activate_commands = get_conda_activate_commands(
+            runtime_env_context.conda_env_name)
         if (conda_activate_commands):
             commands += conda_activate_commands
 
