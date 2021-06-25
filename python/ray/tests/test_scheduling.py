@@ -467,18 +467,19 @@ def test_many_args(ray_start_cluster):
 
     @ray.remote
     def put():
-        return np.zeros(object_size // 10, dtype=np.uint8)
+        return np.zeros(object_size, dtype=np.uint8)
 
-    xs = [put.remote() for _ in range(1000)]
+    xs = [put.remote() for _ in range(100)]
     ray.wait(xs, num_returns=len(xs), fetch_local=False)
     tasks = []
-    for i in range(1000):
+    for i in range(100):
         args = [np.random.choice(xs) for _ in range(25)]
         tasks.append(f.remote(i, *args))
 
     try:
         ray.get(tasks, timeout=30)
     except Exception:
+        print("Failed!")
         for filename in os.listdir("/tmp/ray/session_latest/logs"):
             path = f"/tmp/ray/session_latest/logs/{filename}"
             if os.path.isdir(path):
@@ -488,6 +489,16 @@ def test_many_args(ray_start_cluster):
             print(f.read())
             print("XYZXYZXYZ\n\n\n\n")
         raise
+    print("Succeed!!")
+    for filename in os.listdir("/tmp/ray/session_latest/logs"):
+        path = f"/tmp/ray/session_latest/logs/{filename}"
+        if os.path.isdir(path):
+            continue
+        print(filename)
+        f = open(path, "r")
+        print(f.read())
+        print("XYZXYZXYZ\n\n\n\n")
+    raise Exception("Success logs are here")
 
 
 if __name__ == "__main__":
