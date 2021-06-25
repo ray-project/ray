@@ -117,7 +117,7 @@ def rsync(cluster_config: Union[dict, str],
           ip_address: str = None,
           use_internal_ip: bool = False,
           no_config_cache: bool = False,
-          do_config_bootstrap: bool = True):
+          should_bootstrap: bool = True):
     """Rsyncs files to or from the cluster.
 
     Args:
@@ -131,6 +131,7 @@ def rsync(cluster_config: Union[dict, str],
             public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+        should_bootstrap: whether to bootstrap cluster config before syncing
 
     Raises:
         RuntimeError if the cluster head node is not found.
@@ -146,7 +147,7 @@ def rsync(cluster_config: Union[dict, str],
             use_internal_ip=use_internal_ip,
             no_config_cache=no_config_cache,
             all_nodes=False,
-            do_config_bootstrap=do_config_bootstrap)
+            should_bootstrap=should_bootstrap)
 
 
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
