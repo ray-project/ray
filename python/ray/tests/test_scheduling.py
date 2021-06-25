@@ -10,12 +10,13 @@ import numpy as np
 import pytest
 
 import ray
+from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore, object_memory_usage)
+                            Semaphore, object_memory_usage, SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -497,8 +498,27 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
 
-    print(ray.available_resources())
-    print(ray.cluster_resources())
+    object_size = int(1e7)
+    refs = []
+    for _ in range(20):
+        refs.append(ray.put(np.zeros(object_size, dtype=np.uint8)))
+
+    def fetches_queued():
+        return "fetches queued" in memory_summary(stats_only=True)
+
+    assert not fetches_queued()
+
+    @ray.remote
+    def f(s, ref):
+        ray.get(s.wait.remote())
+
+    signal = SignalActor.remote()
+    xs = [f.remote(signal, ref) for ref in refs]
+    wait_for_condition(fetches_queued)
+
+    signal.send.remote()
+    ray.get(xs)
+    wait_for_condition(lambda: not fetches_queued())
 
 
 if __name__ == "__main__":

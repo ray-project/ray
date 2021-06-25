@@ -305,11 +305,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::ScheduleInfeasibleTasks() {
-  // Do nothing.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
-}
-
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   if (ready_ids.empty()) {
     return;
@@ -1125,14 +1120,14 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto task_request = allocated_instances->ToTaskRequest();
-      for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
-        if (task_request.predefined_resources[i] > 0) {
+      auto resource_request = allocated_instances->ToResourceRequest();
+      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
+        if (resource_request.predefined_resources[i] > 0) {
           total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              task_request.predefined_resources[i];
+              resource_request.predefined_resources[i];
         }
       }
-      for (auto &entry : task_request.custom_resources) {
+      for (auto &entry : resource_request.custom_resources) {
         if (entry.second > 0) {
           total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
         }

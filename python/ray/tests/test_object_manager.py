@@ -264,7 +264,6 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 # (4) Allow the local object to be evicted.
 # (5) Try to get the object again. Now the retry timer should kick in and
 #     successfuly pull the remote object.
-@pytest.mark.timeout(30)
 def test_pull_request_retry(shutdown_only):
     cluster = Cluster()
     cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
@@ -282,7 +281,7 @@ def test_pull_request_retry(shutdown_only):
 
         remote_ref = put.remote()
 
-        ready, _ = ray.wait([remote_ref], timeout=10)
+        ready, _ = ray.wait([remote_ref], timeout=30)
 
         if ray.worker.global_worker.core_worker.plasma_unlimited():
             # Sadly, the test cannot work in this mode.
@@ -301,7 +300,8 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
-@pytest.mark.timeout(30)
+# TODO(ekl) this sometimes takes much longer (10+s) due to a higher level
+# pull retry. We should try to resolve these hangs in the chunk transfer logic.
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -335,15 +335,39 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-@pytest.mark.timeout(30)
+# Will hang if RAY_pull_manager_pin_active_objects=0 due to an eviction loop.
+def test_pull_bundles_pinning(shutdown_only):
+    cluster = Cluster()
+    object_size = int(50e6)
+    num_objects = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(num_cpus=0, object_store_memory=1000e6)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node cannot even fit a single task.
+    cluster.add_node(num_cpus=1, object_store_memory=200e6)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    def foo(*args):
+        return
+
+    task_args = [
+        ray.put(np.zeros(object_size, dtype=np.uint8))
+        for _ in range(num_objects)
+    ]
+    ray.get(foo.remote(*task_args))
+
+
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
     # dynamically by concurrent workers.
     cluster = Cluster()
     object_size = int(6e6)
-    num_objects = 10
-    num_tasks = 10
+    num_objects = 20
+    num_tasks = 20
     # Head node can fit all of the objects at once.
     cluster.add_node(
         num_cpus=0,
@@ -374,13 +398,14 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
         ]
         args.append(task_args)
 
-    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     allocated = [allocate.remote(i) for i in range(num_objects)]
+    ray.get(allocated)
+
+    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     ray.get(tasks)
     del allocated
 
 
-@pytest.mark.timeout(30)
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -413,7 +438,6 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
-@pytest.mark.timeout(30)
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)

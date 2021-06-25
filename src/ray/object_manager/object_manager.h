@@ -204,7 +204,8 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   ~ObjectManager();
 
@@ -299,7 +300,7 @@ class ObjectManager : public ObjectManagerInterface,
     return static_cast<double>(used_memory_) / config_.object_store_memory;
   }
 
-  bool PullManagerAtCapacity() const { return pull_manager_->AtCapacity(); }
+  bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
 
  private:
   friend class TestObjectManager;
@@ -546,11 +547,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// The total number of chunks that we failed to receive because they were
   /// no longer needed by any worker or task on this node.
   size_t num_chunks_received_cancelled_ = 0;
-
-  /// The total number of chunks that we failed to receive because they are
-  /// still needed, but accepting them would put us over the pull manager's
-  /// threshold. The threshold is needed to throttle incoming objects.
-  size_t num_chunks_received_thrashed_ = 0;
 
   /// The total number of chunks that we failed to receive because we could not
   /// create the object in plasma. This is usually due to out-of-memory in
