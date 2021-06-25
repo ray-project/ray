@@ -76,6 +76,8 @@ class Trainable:
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
+        self._disable_ipython()
+
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
         self._stderr_logging_handler = None
@@ -491,6 +493,14 @@ class Trainable:
             True if reset was successful else False.
         """
         return False
+
+    def _disable_ipython(self):
+        """Disable output of IPython HTML objects."""
+        try:
+            from IPython.core.interactiveshell import InteractiveShell
+            InteractiveShell.clear_instance()
+        except Exception:
+            pass
 
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
