@@ -546,11 +546,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// no longer needed by any worker or task on this node.
   size_t num_chunks_received_cancelled_ = 0;
 
-  /// The total number of chunks that we failed to receive because they are
-  /// still needed, but accepting them would put us over the pull manager's
-  /// threshold. The threshold is needed to throttle incoming objects.
-  size_t num_chunks_received_thrashed_ = 0;
-
   /// The total number of chunks that we failed to receive because we could not
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.

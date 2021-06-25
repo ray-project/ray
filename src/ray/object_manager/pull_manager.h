@@ -30,6 +30,7 @@ enum BundlePriority {
   TASK_ARGS,
 };
 
+// Not thread-safe except for IsObjectActive().
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests
@@ -51,7 +52,7 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available, std::function<void()> object_store_full_callback,
+      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
 
@@ -79,7 +80,7 @@ class PullManager {
   ///
   /// \param num_bytes_available The number of bytes that are currently
   /// available to store objects pulled from another node.
-  void UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available);
+  void UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available);
 
   /// Called when the available locations for a given object change.
   ///
@@ -123,7 +124,9 @@ class PullManager {
   /// Returns whether the object is actively being pulled. object_required
   /// returns whether the object is still needed by some pull request on this
   /// node (but may not be actively pulled due to throttling).
-  bool IsObjectActive(const ObjectID &object_id, bool *object_required = nullptr) const;
+  ///
+  /// This method (and this method only) is thread-safe.
+  bool IsObjectActive(const ObjectID &object_id) const;
 
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
@@ -291,11 +294,11 @@ class PullManager {
   /// total size of the objects requested that we are actively pulling. To
   /// avoid starvation, this is always less than the available capacity in the
   /// local object store.
-  size_t num_bytes_being_pulled_ = 0;
+  int64_t num_bytes_being_pulled_ = 0;
 
   /// The total number of bytes that is available to store objects that we are
   /// pulling.
-  size_t num_bytes_available_;
+  int64_t num_bytes_available_;
 
   /// The number of currently active bundles.
   int64_t num_active_bundles_ = 0;
@@ -338,6 +341,8 @@ class PullManager {
       active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
 
   /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
+  /// We need to pin these objects so that parts of in-progress bundles aren't evicted
+  /// due to self-induced memory pressure.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   /// The total size of pinned objects.
@@ -346,7 +351,7 @@ class PullManager {
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 
-  size_t num_retries_total_ = 0;
+  int64_t num_retries_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

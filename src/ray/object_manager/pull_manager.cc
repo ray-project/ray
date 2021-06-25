@@ -10,7 +10,7 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &)> cancel_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
-    size_t num_bytes_available, std::function<void()> object_store_full_callback,
+    int64_t num_bytes_available, std::function<void()> object_store_full_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     int min_active_pulls)
     : self_node_id_(self_node_id),
@@ -113,7 +113,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     absl::MutexLock lock(&active_objects_mu_);
 
     // First calculate the bytes we need.
-    size_t bytes_to_pull = 0;
+    int64_t bytes_to_pull = 0;
     for (const auto &ref : next_request_it->second.objects) {
       auto obj_id = ObjectRefToId(ref);
       bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
@@ -122,25 +122,27 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
         // Add the size to the number of bytes being pulled.
         auto it = object_pull_requests_.find(obj_id);
         RAY_CHECK(it != object_pull_requests_.end());
+        // TODO(ekl) this overestimates bytes needed if it's already available
+        // locally.
         bytes_to_pull += it->second.object_size;
       }
     }
 
     // Quota check.
     if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
-        (num_bytes_being_pulled_ + bytes_to_pull - pinned_objects_size_ >
-         num_bytes_available_)) {
-      RAY_LOG(DEBUG) << "Bundle would exceed quota: "
-                     << "num_bytes_being_pulled(" << num_bytes_being_pulled_
-                     << ") + "
-                        "bytes_to_pull("
-                     << bytes_to_pull
-                     << ") - "
-                        "pinned_objects_size("
-                     << pinned_objects_size_
-                     << ") > "
-                        "num_bytes_available("
-                     << num_bytes_available_ << ")";
+        bytes_to_pull > RemainingQuota()) {
+      RAY_LOG(ERROR)
+          << "Bundle would exceed quota: "
+          << "num_bytes_being_pulled(" << num_bytes_being_pulled_
+          << ") + "
+             "bytes_to_pull("
+          << bytes_to_pull
+          << ") - "
+             "pinned_objects_size("
+          << pinned_objects_size_
+          << ") > "
+             "num_bytes_available("
+          << num_bytes_available_ << ")";
       return false;
     }
 
@@ -224,12 +226,14 @@ void PullManager::DeactivateUntilMarginAvailable(
 }
 
 int64_t PullManager::RemainingQuota() {
-  return num_bytes_available_ - (num_bytes_being_pulled_ - pinned_objects_size_);
+  // Note that plasma counts pinned bytes as used.
+  int64_t bytes_left_to_pull = num_bytes_being_pulled_ - pinned_objects_size_;
+  return num_bytes_available_ - bytes_left_to_pull;
 }
 
 bool PullManager::OverQuota() { return RemainingQuota() < 0L; }
 
-void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -637,10 +641,7 @@ void PullManager::UnpinObject(const ObjectID &object_id) {
 
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
 
-bool PullManager::IsObjectActive(const ObjectID &object_id, bool *object_required) const {
-  if (object_required) {
-    *object_required = object_pull_requests_.count(object_id) == 1;
-  }
+bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   absl::MutexLock lock(&active_objects_mu_);
   return active_object_pull_requests_.count(object_id) == 1;
 }
@@ -683,7 +684,7 @@ std::string PullManager::BundleInfo(const Queue &bundles,
     if (bundle.num_object_sizes_missing > 0) {
       result << " (inactive, waiting for object sizes)";
     } else {
-      result << " (inactive)";
+      result << " (inactive, waiting for capacity)";
     }
   }
   return result.str();
@@ -715,7 +716,7 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   absl::MutexLock lock(&active_objects_mu_);
 
   // Calculate the bytes we need.
-  size_t bytes_needed_calculated = 0;
+  int64_t bytes_needed_calculated = 0;
   for (const auto &ref : next_request_it->second.objects) {
     auto obj_id = ObjectRefToId(ref);
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
