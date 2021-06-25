@@ -135,12 +135,6 @@ class ArrowBlock(Block):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def __getstate__(self) -> dict:
-        return self._table.to_pydict()
-
-    def __setstate__(self, value: dict) -> None:
-        self._table = pyarrow.Table.from_pydict(value)
-
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()

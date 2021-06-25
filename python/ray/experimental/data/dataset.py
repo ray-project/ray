@@ -155,10 +155,10 @@ class Dataset(Generic[T]):
     def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
+        Time complexity: O(dataset size / parallelism)
+
         Args:
             num_blocks: The number of blocks.
-
-        Time complexity: O(dataset size / parallelism)
 
         Returns:
             The repartitioned dataset.
