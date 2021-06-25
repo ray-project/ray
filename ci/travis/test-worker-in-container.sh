@@ -18,10 +18,9 @@ export RAY_BACKEND_LOG_LEVEL=debug
 
 pushd /ray || true
 bash ./ci/travis/install-bazel.sh --system
-BAZEL_PATH=$HOME/bin/bazel
 
 # shellcheck disable=SC2046
-$BAZEL_PATH test --config=ci $(./scripts/bazel_export_options) \
+bazel test --config=ci $(./scripts/bazel_export_options) \
 --test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
 python/ray/tests/...
 
