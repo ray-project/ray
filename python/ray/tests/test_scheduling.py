@@ -5,6 +5,7 @@ import platform
 import sys
 import time
 import unittest
+import os
 
 import numpy as np
 import pytest
@@ -448,6 +449,7 @@ def test_lease_request_leak(shutdown_only):
 def test_many_args(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
+    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     cluster = ray_start_cluster
     object_size = int(1e6)
 
@@ -473,7 +475,19 @@ def test_many_args(ray_start_cluster):
     for i in range(1000):
         args = [np.random.choice(xs) for _ in range(25)]
         tasks.append(f.remote(i, *args))
-    ray.get(tasks, timeout=30)
+
+    try:
+        ray.get(tasks, timeout=30)
+    except Exception:
+        for filename in os.listdir("/tmp/ray/session_latest/logs"):
+            path = f"/tmp/ray/session_latest/logs/{filename}"
+            if os.path.isdir(path):
+                continue
+            print(filename)
+            f = open(path, "r")
+            print(f.read())
+            print("\n\n\n\n")
+        raise
 
 
 if __name__ == "__main__":
