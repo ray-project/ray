@@ -595,11 +595,8 @@ void PullManager::Tick() {
 }
 
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
-  bool active = false;
-  {
-    absl::MutexLock lock(&active_objects_mu_);
-    active = active_object_pull_requests_.count(object_id) > 0;
-  }
+  absl::MutexLock lock(&active_objects_mu_);
+  bool active = active_object_pull_requests_.count(object_id) > 0;
   if (active) {
     if (TryPinObject(object_id)) {
       RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
