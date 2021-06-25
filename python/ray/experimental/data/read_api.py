@@ -17,6 +17,9 @@ from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
+    Examples:
+        >>> ds.from_items([1, 2, 3, 4, 5])
+
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
@@ -40,6 +43,9 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
 
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
+
+    Examples:
+        >>> ds.range(10000).map(lambda x: x * 2).show()
 
     Args:
         n: The upper bound of the range of integers.
@@ -68,6 +74,9 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
 
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
+
+    Examples:
+        >>> ds.range_arrow(1000).map(lambda r: {"v2": r["value"] * 2}).show()
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -105,6 +114,13 @@ def read_parquet(paths: Union[str, List[str]],
                  parallelism: int = 200,
                  **arrow_parquet_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
+
+    Examples:
+        # Read a directory of files in remote storage.
+        >>> ds.read_parquet("s3://bucket/path")
+
+        # Read multiple local files.
+        >>> ds.read_parquet(["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -152,6 +168,13 @@ def read_json(paths: Union[str, List[str]],
               **arrow_json_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
 
+    Examples:
+        # Read a directory of files in remote storage.
+        >>> ds.read_json("s3://bucket/path")
+
+        # Read multiple local files.
+        >>> ds.read_json(["/path/to/file1", "/path/to/file2"])
+
     Args:
         paths: A single file path or a list of file paths (or directories).
         filesystem: The filesystem implementation to read from.
@@ -169,6 +192,13 @@ def read_csv(paths: Union[str, List[str]],
              parallelism: int = 200,
              **arrow_csv_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
+
+    Examples:
+        # Read a directory of files in remote storage.
+        >>> ds.read_csv("s3://bucket/path")
+
+        # Read multiple local files.
+        >>> ds.read_csv(["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -188,6 +218,13 @@ def read_binary_files(
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
+
+    Examples:
+        # Read a directory of files in remote storage.
+        >>> ds.read_binary_files("s3://bucket/path")
+
+        # Read multiple local files.
+        >>> ds.read_binary_files(["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).

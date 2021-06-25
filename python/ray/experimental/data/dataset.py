@@ -47,6 +47,13 @@ class Dataset(Generic[T]):
         This is a blocking operation. Note that mapping individual records
         can be quite slow. Consider using `.map_batches()` for performance.
 
+        Examples:
+            # Transform python objects.
+            >>> ds.map(lambda x: x * 2)
+
+            # Transform Arrow records.
+            >>> ds.map(lambda record: {"v2": record["value"] * 2})
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -77,6 +84,15 @@ class Dataset(Generic[T]):
 
         This is a blocking operation.
 
+        Examples:
+            # Transform batches in parallel.
+            >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+
+            # Transform batches in parallel on GPUs.
+            >>> ds.map_batches(
+            ...    batch_infer_fn,
+            ...    batch_size=256, compute="actors", num_gpus=1)
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -100,6 +116,9 @@ class Dataset(Generic[T]):
 
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (the batch size can be altered in map_batches).
+
+        Examples:
+            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
 
         Time complexity: O(dataset size / parallelism)
 
@@ -131,6 +150,9 @@ class Dataset(Generic[T]):
         This is a blocking operation. Consider using ``.map_batches()`` for
         better performance (you can implement filter by dropping records).
 
+        Examples:
+            >>> ds.flat_map(lambda x: x % 2 == 0)
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -155,6 +177,10 @@ class Dataset(Generic[T]):
     def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
+        Examples:
+            # Set the number of output partitions to write to disk.
+            >>> ds.repartition(100).write_parquet(...)
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -172,6 +198,16 @@ class Dataset(Generic[T]):
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key columns or key function.
 
+        Examples:
+            # Sort by a single column.
+            >>> ds.sort("field1")
+
+            # Sort by multiple columns.
+            >>> ds.sort(["field1", "field2"])
+
+            # Sort by a key function.
+            >>> ds.sort(lambda record: record["field1"] % 100)
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -188,6 +224,9 @@ class Dataset(Generic[T]):
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
 
+        Examples:
+            >>> ds.limit(100).map(lambda x: x * 2).take()
+
         Time complexity: O(limit specified)
 
         Args:
@@ -201,10 +240,10 @@ class Dataset(Generic[T]):
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
 
+        Time complexity: O(limit specified)
+
         Args:
             limit: The max number of records to return.
-
-        Time complexity: O(limit specified)
 
         Returns:
             A list of up to ``limit`` records from the dataset.
@@ -307,6 +346,9 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
+        Examples:
+            >>> ds.write_parquet("s3://bucket/path")
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -322,6 +364,9 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
 
+        Examples:
+            >>> ds.write_json("s3://bucket/path")
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -336,6 +381,9 @@ class Dataset(Generic[T]):
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
+
+        Examples:
+            >>> ds.write_csv("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
