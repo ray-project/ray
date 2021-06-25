@@ -60,6 +60,8 @@ def start_worker_in_container(container_option, args, remaining_args):
         "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
         "--ipc=host", "--env-host", "--entrypoint"
     ]
+    container_command.append("--env")
+    container_command.append("RAY_RAYLET_PID="+os.getppid())
     if container_option.get("run_options"):
         container_command.extend(container_option.get("run_options"))
 
