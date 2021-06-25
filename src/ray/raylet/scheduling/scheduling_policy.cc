@@ -52,8 +52,8 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
       // pulled.
       ignore_pull_manager_at_capacity = true;
     }
-    bool is_available =
-        node.GetLocalView().IsAvailable(resource_request, ignore_pull_manager_at_capacity);
+    bool is_available = node.GetLocalView().IsAvailable(resource_request,
+                                                        ignore_pull_manager_at_capacity);
     RAY_LOG(DEBUG) << "Node " << node_id << " is "
                    << (is_available ? "available" : "not available");
     float critical_resource_utilization =

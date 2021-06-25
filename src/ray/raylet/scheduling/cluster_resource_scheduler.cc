@@ -135,7 +135,6 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-
 bool ClusterResourceScheduler::IsFeasible(const ResourceRequest &resource_request,
                                           const NodeResources &resources) const {
   // First, check predefined resources.
@@ -326,10 +325,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources, bool requires_object_store_memory, bool actor_creation,
-    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
-  ResourceRequest resource_request =
-      ResourceMapToResourceRequest(string_to_int_map_, task_resources, requires_object_store_memory);
+    const std::unordered_map<std::string, double> &task_resources,
+    bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+    int64_t *total_violations, bool *is_infeasible) {
+  ResourceRequest resource_request = ResourceMapToResourceRequest(
+      string_to_int_map_, task_resources, requires_object_store_memory);
   int64_t node_id = GetBestSchedulableNode(
       resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
 
@@ -918,8 +918,8 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
-  ResourceRequest resource_request =
-      ResourceMapToResourceRequest(string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
+  ResourceRequest resource_request = ResourceMapToResourceRequest(
+      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
   return AllocateLocalTaskResources(resource_request, task_allocation);
 }
 
@@ -940,8 +940,8 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {
-  ResourceRequest resource_request =
-      ResourceMapToResourceRequest(string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
+  ResourceRequest resource_request = ResourceMapToResourceRequest(
+      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
   return SubtractRemoteNodeAvailableResources(node_id, resource_request);

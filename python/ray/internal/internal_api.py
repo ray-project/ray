@@ -142,7 +142,8 @@ def store_stats_summary(reply):
         store_summary += ("Objects consumed by Ray tasks: {} MiB.\n".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
     if reply.store_stats.object_pulls_queued:
-        store_summary += ("Object fetches queued, waiting for available memory.")
+        store_summary += (
+            "Object fetches queued, waiting for available memory.")
 
     return store_summary
 
