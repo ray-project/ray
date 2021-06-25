@@ -60,13 +60,6 @@ void GcsServer::Start() {
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
   if (config_.grpc_pubsub_enabled) {
-    // Init grpc based pubsub
-    // TODO(before merging): Make these constants configurable.
-    grpc_pubsub_publisher_.reset(new pubsub::Publisher(
-        /*periodical_runner=*/&pubsub_periodical_runner_,
-        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
   }
 
   // Init gcs table storage.
@@ -356,6 +349,14 @@ void GcsServer::InitKVManager() {
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
+}
+
+void GcsServer::InitPublisherManager() {
+  publisher_manager_ =
+      std::make_unique<GcsPublisherManager>(publisher_manager_io_service_);
+  publisher_service_.reset(
+      new rpc::PublisherGrpcService(publisher_manager_io_service_, *publisher_manager_));
+  rpc_server_.RegisterService(*publisher_service_);
 }
 
 void GcsServer::InitRuntimeEnvManager() {
