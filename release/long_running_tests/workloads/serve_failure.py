@@ -27,7 +27,7 @@ CPUS_PER_NODE = 10
 
 def update_progress(result):
     """
-    Write test result json to /tmp/, which will be read from 
+    Write test result json to /tmp/, which will be read from
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()

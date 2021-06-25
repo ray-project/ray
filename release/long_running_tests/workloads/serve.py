@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import subprocess
 from subprocess import PIPE
@@ -27,12 +28,12 @@ NUM_THREADS = 2
 # Smoke tests currently run 60m period and we need to ensure
 # each wrk run in subprocess is significantly shorter in order
 # to produce good intermediate results to json file.
-TIME_PER_CYCLE = "10m"
+TIME_PER_CYCLE = "5s"
 
 
 def update_progress(result):
     """
-    Write test result json to /tmp/, which will be read from 
+    Write test result json to /tmp/, which will be read from
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()
@@ -93,17 +94,43 @@ while True:
         stdout=PIPE,
         stderr=PIPE,
     )
-    print(f"Started load testing with the following config: ")
+    print("Started load testing with the following config: ")
     print(f"num_connections: {NUM_CONNECTIONS}")
     print(f"num_threads: {NUM_THREADS}")
     print(f"time_per_cycle: {TIME_PER_CYCLE}")
 
     proc.wait()
     out, err = proc.communicate()
+
+    # Sample wrk stdout:
+    #
+    # Running 10s test @ http://127.0.0.1:8000/echo
+    # 2 threads and 84 connections
+    # Thread Stats   Avg      Stdev     Max   +/- Stdev
+    #     Latency    59.33ms   13.51ms 113.83ms   64.20%
+    #     Req/Sec   709.16     61.73   848.00     78.50%
+    # 14133 requests in 10.02s, 2.08MB read
+    # Requests/sec:   1410.71
+    # Transfer/sec:    212.16KB
+    metrics_dict = {}
+    for line in out.decode().splitlines():
+        parsed = re.split(r"\s+", line.strip())
+        if parsed[0] == "Latency":
+            metrics_dict["latency_avg"] = parsed[1]
+            metrics_dict["latency_stdev"] = parsed[2]
+            metrics_dict["latency_max"] = parsed[3]
+            metrics_dict["latency_+/-_stdev"] = parsed[4]
+        elif parsed[0] == "Req/Sec":
+            metrics_dict["req/sec_avg"] = parsed[1]
+            metrics_dict["req/sec_stdev"] = parsed[2]
+            metrics_dict["req/sec_max"] = parsed[3]
+            metrics_dict["req/sec_+/-_stdev"] = parsed[4]
+        elif parsed[0] == "Requests/sec:":
+            metrics_dict["requests/sec"] = parsed[1]
+        elif parsed[0] == "Transfer/sec:":
+            metrics_dict["transfer/sec"] = parsed[1]
+
     print(out.decode())
     print(err.decode())
 
-    update_progress({
-        "stdout": out.decode(),
-        "stderr": err.decode(),
-    })
+    update_progress(metrics_dict)
