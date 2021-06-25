@@ -19,6 +19,7 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/protobuf/pubsub.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -51,6 +52,9 @@ namespace rpc {
 
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER)
+
+#define PUBLISHER_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(PublisherService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -565,6 +569,38 @@ class InternalKVGrpcService : public GrpcService {
   InternalKVGcsServiceHandler &service_handler_;
 };
 
+class PublisherServiceHandler {
+ public:
+  virtual ~PublisherServiceHandler() = default;
+  virtual void HandlePubsubLongPolling(const PubsubLongPollingRequest &request,
+                                       PubsubLongPollingReply *reply,
+                                       SendReplyCallback) = 0;
+  virtual void HandlePubsubCommandBatch(const PubsubCommandBatchRequest &request,
+                                       PubsubCommandBatchReply *reply,
+                                       SendReplyCallback) = 0;
+
+};
+
+class PublisherGrpcService : public GrpcService {
+ public:
+  explicit PublisherGrpcService(instrumented_io_context &io_service,
+                                PublisherServiceHandler &handler)
+    : GrpcService(io_service), service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+                               const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+                               std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    PUBLISHER_SERVICE_RPC_HANDLER(PubsubLongPolling);
+    PUBLISHER_SERVICE_RPC_HANDLER(PubsubCommandBatch);
+  }
+
+ private:
+  PublisherService::AsyncService service_;
+  PublisherServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
@@ -575,6 +611,7 @@ using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
+using PublisherHandler = PublisherServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
