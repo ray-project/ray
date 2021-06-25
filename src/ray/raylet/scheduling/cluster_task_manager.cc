@@ -302,11 +302,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::ScheduleInfeasibleTasks() {
-  // Do nothing.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
-}
-
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   if (ready_ids.empty()) {
     return;
