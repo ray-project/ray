@@ -1763,6 +1763,7 @@ void NodeManager::MarkObjectsAsFailed(
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
+    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_.TryCreateImmediately(
