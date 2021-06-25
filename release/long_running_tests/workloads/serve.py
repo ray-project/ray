@@ -25,10 +25,9 @@ NUM_NODES = 4
 # wrk setup constants (might want to make these configurable ?)
 NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
-# Smoke tests currently run 60m period and we need to ensure
-# each wrk run at least is able to show aggregated results
-# from the last iteration
-TIME_PER_CYCLE = "60m"
+# Append and print every 5mins for quick status polling as well
+# as time series plotting
+TIME_PER_CYCLE = "5m"
 
 
 def update_progress(result):
@@ -39,8 +38,9 @@ def update_progress(result):
     result["last_update"] = time.time()
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/release_test_output.json")
-    with open(test_output_json, "wt") as f:
+    with open(test_output_json, "at") as f:
         json.dump(result, f)
+        f.write("\n")
 
 
 cluster = Cluster()
@@ -79,6 +79,11 @@ for _ in range(5):
     print(resp)
     time.sleep(0.5)
 
+print("Started load testing with the following config: ")
+print(f"num_connections: {NUM_CONNECTIONS}")
+print(f"num_threads: {NUM_THREADS}")
+print(f"time_per_cycle: {TIME_PER_CYCLE}")
+
 while True:
     proc = subprocess.Popen(
         [
@@ -94,11 +99,6 @@ while True:
         stdout=PIPE,
         stderr=PIPE,
     )
-    print("Started load testing with the following config: ")
-    print(f"num_connections: {NUM_CONNECTIONS}")
-    print(f"num_threads: {NUM_THREADS}")
-    print(f"time_per_cycle: {TIME_PER_CYCLE}")
-
     proc.wait()
     out, err = proc.communicate()
 
