@@ -1665,7 +1665,7 @@ py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S", "flaky"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
@@ -2463,7 +2463,7 @@ py_test(
     name = "examples/two_step_game_qmix",
     main = "examples/two_step_game.py",
     tags = ["examples", "examples_T", "flaky"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
 )
