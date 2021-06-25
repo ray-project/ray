@@ -6,7 +6,7 @@ pendulum-cql:
     env: Pendulum-v0
     run: CQL
     stop:
-        evaluation/episode_reward_mean: -600
+        evaluation/episode_reward_mean: -900
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
@@ -21,19 +21,19 @@ pendulum-cql:
         horizon: 200
         soft_horizon: true
         Q_model:
-          fcnet_activation: relu
+          fcnet_activation: tanh
           fcnet_hiddens: [256, 256]
         policy_model:
-          fcnet_activation: relu
+          fcnet_activation: tanh
           fcnet_hiddens: [256, 256]
         train_batch_size: 2000
         bc_iters: 40
         no_done_at_end: true
         n_step: 3
         optimization:
-          actor_learning_rate: 0.0005
-          critic_learning_rate: 0.0005
-          entropy_learning_rate: 0.0005
+          actor_learning_rate: 0.0003
+          critic_learning_rate: 0.0003
+          entropy_learning_rate: 0.0003
         prioritized_replay: false
         timesteps_per_iteration: 1000
         learning_starts: 256
