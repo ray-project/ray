@@ -252,8 +252,6 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
-// Feature flag to use grpc instead of redis for resource broadcast.
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
