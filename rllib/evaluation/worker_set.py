@@ -136,7 +136,8 @@ class WorkerSet:
                 policy_cls=self._policy_class,
                 worker_index=i + 1,
                 num_workers=num_workers,
-                config=self._remote_config) for i in range(num_workers)
+                config=self._remote_config,
+            ) for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:

@@ -11,7 +11,7 @@ import ray.cloudpickle as pickle
 import os
 
 import ray
-from ray.tune.registry import parameter_registry
+from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from six import string_types
@@ -295,6 +295,9 @@ def with_parameters(trainable, **kwargs):
             f"`tune.with_parameters() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}.")
+
+    parameter_registry = _ParameterRegistry()
+    ray.worker._post_init_hooks.append(parameter_registry.flush)
 
     # Objects are moved into the object store
     prefix = f"{str(trainable)}_"
