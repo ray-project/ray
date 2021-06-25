@@ -99,9 +99,6 @@ class ClusterTaskManagerInterface {
   virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
-  /// Schedule infeasible tasks.
-  virtual void ScheduleInfeasibleTasks() = 0;
-
   /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[in] exemplar An example task that is deadlocking.
