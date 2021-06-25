@@ -75,7 +75,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
-        if pa is None:
+        if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
 
@@ -100,7 +100,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
 class ArrowBlock(Block):
     def __init__(self, table: "pyarrow.Table"):
-        if pa is None:
+        if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._table = table
 
