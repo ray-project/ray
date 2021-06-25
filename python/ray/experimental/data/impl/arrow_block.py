@@ -2,9 +2,9 @@ import collections
 from typing import Iterator, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
 try:
-    import pyarrow as pa
+    import pyarrow
 except ImportError:
-    pa = None
+    pyarrow = None
 
 from ray.experimental.data.impl.block import Block, BlockBuilder, \
     ListBlockBuilder
@@ -16,7 +16,7 @@ T = TypeVar("T")
 
 
 class ArrowRow:
-    def __init__(self, row: pa.Table):
+    def __init__(self, row: "pyarrow.Table"):
         self._row = row
 
     def as_pydict(self) -> dict:
@@ -56,7 +56,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     check.add(item)
                     check.build()
                     self._builder = ArrowBlockBuilder()
-                except (TypeError, pa.lib.ArrowInvalid):
+                except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = ListBlockBuilder()
             else:
                 self._builder = ListBlockBuilder()
@@ -95,11 +95,11 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[k].extend(vv)
 
     def build(self) -> "ArrowBlock[T]":
-        return ArrowBlock(pa.Table.from_pydict(self._columns))
+        return ArrowBlock(pyarrow.Table.from_pydict(self._columns))
 
 
 class ArrowBlock(Block):
-    def __init__(self, table: pa.Table):
+    def __init__(self, table: "pyarrow.Table"):
         if pa is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._table = table
@@ -139,7 +139,7 @@ class ArrowBlock(Block):
         return self._table.to_pydict()
 
     def __setstate__(self, value: dict) -> None:
-        self._table = pa.Table.from_pydict(value)
+        self._table = pyarrow.Table.from_pydict(value)
 
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
