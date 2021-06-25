@@ -855,10 +855,17 @@ class TrialProgressCallback(Callback):
 
 
 def detect_reporter(**kwargs):
-    """Detect progress reporter class. Will return"""
+    """Detect progress reporter class.
+
+    Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
+    session was detected, and a :class:`CLIReporter` otherwise.
+
+    Keyword arguments are passed on to the reporter class.
+    """
     if IS_NOTEBOOK:
-        progress_reporter = JupyterNotebookReporter(
-            overwrite=not has_verbosity(Verbosity.V2_TRIAL_NORM), **kwargs)
+        kwargs.setdefault("overwrite",
+                          not has_verbosity(Verbosity.V2_TRIAL_NORM))
+        progress_reporter = JupyterNotebookReporter(**kwargs)
     else:
         progress_reporter = CLIReporter(**kwargs)
     return progress_reporter
