@@ -325,7 +325,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                 },
                 /*core_worker_subscriber=*/subscriber_),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize("object_spilling_config,YQ==");
+    RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
 
   void TearDown() { unevictable_objects_.clear(); }
