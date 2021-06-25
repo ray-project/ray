@@ -161,8 +161,6 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
 
-        import pdb; pdb.set_trace()
-
         # Log the artifact if set_artifact is set to True.
         if self.save_artifact:
             self.client.log_artifacts(run_id, local_dir=trial.logdir)
