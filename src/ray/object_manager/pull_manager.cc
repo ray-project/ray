@@ -132,7 +132,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     // Quota check.
     if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
         bytes_to_pull > RemainingQuota()) {
-      RAY_LOG(ERROR) << "Bundle would exceed quota: "
+      RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
                         "bytes_to_pull("
@@ -595,11 +595,8 @@ void PullManager::Tick() {
 }
 
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
-  bool active = false;
-  {
-    absl::MutexLock lock(&active_objects_mu_);
-    active = active_object_pull_requests_.count(object_id) > 0;
-  }
+  absl::MutexLock lock(&active_objects_mu_);
+  bool active = active_object_pull_requests_.count(object_id) > 0;
   if (active) {
     if (TryPinObject(object_id)) {
       RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
