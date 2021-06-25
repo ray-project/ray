@@ -21,15 +21,15 @@ BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
 
 
 class Dataset(Generic[T]):
-    """A dataset represents a set of records in the Ray object store.
+    """Implements a distributed Arrow dataset.
 
     Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
-    also determines the unit of parallelism. The most common type of block is
-    the ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
+    also determines the unit of parallelism. The default block type is the
+    ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
     Python objects are represented with ``ListBlock`` (a plain Python list).
 
-    Since Datasets are just lists of Ray objects, they can be freely passed
-    between Ray tasks and actors just like any other value. Datasets support
+    Since Datasets are just lists of Ray object refs, they can be passed
+    between Ray tasks and actors just like any other object. Datasets support
     conversion to/from several more featureful dataframe libraries
     (e.g., Spark, Dask), and are also compatible with TensorFlow / PyTorch.
 
@@ -98,7 +98,7 @@ class Dataset(Generic[T]):
         Args:
             fn: The function to apply to each record batch.
             batch_size: Request a specific batch size, or leave unspecified
-                for the system to select a batch size.
+                to use entire blocks as batches.
             compute: The compute strategy, either "tasks" to use Ray tasks,
                 or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
@@ -177,6 +177,8 @@ class Dataset(Generic[T]):
     def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
+        This is a blocking operation.
+
         Examples:
             # Set the number of output partitions to write to disk.
             >>> ds.repartition(100).write_parquet(...)
@@ -197,6 +199,8 @@ class Dataset(Generic[T]):
              key: Union[str, List[str], Callable[[T], Any]],
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key columns or key function.
+
+        This is a blocking operation.
 
         Examples:
             # Sort by a single column.
