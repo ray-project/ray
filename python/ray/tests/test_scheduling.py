@@ -486,7 +486,7 @@ def test_many_args(ray_start_cluster):
             print(filename)
             f = open(path, "r")
             print(f.read())
-            print("\n\n\n\n")
+            print("XYZXYZXYZ\n\n\n\n")
         raise
 
 
