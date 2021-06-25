@@ -167,6 +167,24 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
+    def sort(self,
+             key: Union[str, List[str], Callable[[T], Any]],
+             descending: bool = False) -> "Dataset[T]":
+        """Sort the dataset by the specified key columns or key function.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            key: Either a single Arrow column name, a list of Arrow column
+                names, or a function that returns a sortable key given each
+                record as an input.
+            descending: Whether to sort in descending order.
+
+        Returns:
+            The sorted dataset.
+        """
+        raise NotImplementedError  # P2
+
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
 
