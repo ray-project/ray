@@ -177,6 +177,24 @@ class Tee(object):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
 
+    @property
+    def encoding(self):
+        if hasattr(self.stream1, "encoding"):
+            return self.stream1.encoding
+        return self.stream2.encoding
+
+    @property
+    def error(self):
+        if hasattr(self.stream1, "error"):
+            return self.stream1.error
+        return self.stream2.error
+
+    @property
+    def newlines(self):
+        if hasattr(self.stream1, "newlines"):
+            return self.stream1.newlines
+        return self.stream2.newlines
+
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
