@@ -277,8 +277,8 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     // `ray.wait` calls can now return the object as ready.
     object_entry->second.dependent_wait_requests.clear();
     if (object_entry->second.wait_request_id > 0) {
-      RAY_LOG(INFO) << "Canceling pull for wait request of object " << object_id
-                    << " request: " << object_entry->second.wait_request_id;
+      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
+                     << " request: " << object_entry->second.wait_request_id;
       object_manager_.CancelPull(object_entry->second.wait_request_id);
       object_entry->second.wait_request_id = 0;
     }

@@ -429,8 +429,6 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    RAY_LOG(DEBUG) << "The object id " << object_id
-                   << " is deleted because the object is explicitly deleted.";
     ReleasePlasmaObject(it);
   }
 }

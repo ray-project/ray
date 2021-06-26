@@ -2510,10 +2510,9 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   const auto object_id = ObjectID::FromBinary(message.object_id());
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(DEBUG) << "The SubscribeForObjectEviction message for object id " << object_id
-                   << " is for " << intended_worker_id
-                   << ", but the current worker id is " << worker_context_.GetWorkerID()
-                   << ".";
+    RAY_LOG(INFO) << "The SubscribeForObjectEviction message for object id " << object_id
+                  << " is for " << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ".";
     unpin_object(object_id);
     return;
   }
@@ -2626,9 +2625,9 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   const auto object_id = ObjectID::FromBinary(message.object_id());
 
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(ERROR) << "The ProcessSubscribeObjectLocations message is for "
-                   << intended_worker_id << ", but the current worker id is "
-                   << worker_context_.GetWorkerID() << ". This will be no-op.";
+    RAY_LOG(INFO) << "The ProcessSubscribeObjectLocations message is for "
+                  << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ". This will be no-op.";
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
