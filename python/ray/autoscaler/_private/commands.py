@@ -612,25 +612,16 @@ def get_or_create_head_node(config: Dict[str, Any],
         head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
-    launching_new_head = False
-    if _should_create_new_head(head_node,
-                               launch_hash,
-                               head_node_type,
-                               provider):
-        launching_new_head = True
+    creating_new_head = _should_create_new_head(head_node, launch_hash,
+                                                head_node_type, provider)
+    if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
                 CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
-                cli_logger.print(
-                    "Currently running head node is out-of-date with "
-                    "cluster configuration")
-                cli_logger.print(
-                    "hash is {}, expected {}",
-                    cf.bold(
-                        provider.node_tags(head_node)
-                        .get(TAG_RAY_LAUNCH_CONFIG)), cf.bold(launch_hash))
-                cli_logger.confirm(yes, "Relaunching it.", _abort=True)
+                cli_logger.confirm(yes,
+                                   "Relaunching the head node.",
+                                   _abort=True)
 
                 provider.terminate_node(head_node)
                 cli_logger.print("Terminated head node {}", head_node)
@@ -686,9 +677,9 @@ def get_or_create_head_node(config: Dict[str, Any],
             else:
                 setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
-        # If user passed in --no-restart and we're not launching a new head,
+        # If user passed in --no-restart and we're not creating a new head,
         # omit start commands.
-        elif no_restart and not launching_new_head:
+        elif no_restart and not creating_new_head:
             setup_commands = config["head_setup_commands"]
             ray_start_commands = []
         else:
@@ -768,7 +759,7 @@ def _should_create_new_head(head_node: Optional[str],
 
     We need a new head if at least one of the following holds:
     (a) There isn't an existing head node
-    (b) The user-submitted launch config differs from existing head config
+    (b) The user-submitted launch config differs from the existing head config
     (c) The user-submitted head node-type key differs from the existing head's
 
     Args:
@@ -782,13 +773,35 @@ def _should_create_new_head(head_node: Optional[str],
     if not head_node:
         # No head node exists, need to create it.
         return True
+
     # Pull existing head's data.
     head_tags = provider.node_tags(head_node)
-    # Compare to current head
-    hashes_mismatch = (launch_hash != head_tags.get(TAG_RAY_LAUNCH_CONFIG))
-    types_mismatch = (head_node_type != head_tags.get(TAG_RAY_USER_NODE_TYPE))
+    current_launch_hash = head_tags.get(TAG_RAY_LAUNCH_CONFIG)
+    current_head_type = head_tags.get(TAG_RAY_USER_NODE_TYPE)
 
-    return hashes_mismatch or types_mismatch
+    # Compare to current head
+    hashes_mismatch = launch_hash != current_launch_hash
+    types_mismatch = head_node_type != current_head_type
+
+    new_head_required = hashes_mismatch or types_mismatch
+
+    # Warn user
+    if new_head_required:
+        with cli_logger.group(
+            "Currently running head node is out-of-date with cluster "
+                "configuration."):
+
+            if hashes_mismatch:
+                cli_logger.print(
+                    "current hash is {}, expected {}",
+                    cf.bold(current_launch_hash), cf.bold(launch_hash))
+
+            if types_mismatch:
+                cli_logger.print(
+                    "current head node type is {}, expected {}",
+                    cf.bold(current_head_type), cf.bold(head_node_type))
+
+    return new_head_required
 
 
 def _set_up_config_for_head_node(config: Dict[str, Any],
