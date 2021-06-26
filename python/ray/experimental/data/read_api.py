@@ -14,6 +14,16 @@ from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 
 
+def autoinit_ray(f):
+    def wrapped(*a, **kw):
+        if not ray.is_initialized():
+            ray.client.connect()
+        return f(*a, **kw)
+
+    return wrapped
+
+
+@autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -41,6 +51,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     return Dataset(blocks)
 
 
+@autoinit_ray
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -72,6 +83,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     return Dataset(blocks)
 
 
+@autoinit_ray
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -108,6 +120,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     return Dataset(blocks)
 
 
+@autoinit_ray
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
@@ -162,6 +175,7 @@ def read_parquet(paths: Union[str, List[str]],
     return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
 
 
+@autoinit_ray
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
@@ -187,6 +201,7 @@ def read_json(paths: Union[str, List[str]],
     raise NotImplementedError  # P0
 
 
+@autoinit_ray
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
@@ -212,6 +227,7 @@ def read_csv(paths: Union[str, List[str]],
     raise NotImplementedError  # P0
 
 
+@autoinit_ray
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
