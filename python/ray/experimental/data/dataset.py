@@ -196,13 +196,16 @@ class Dataset(Generic[T]):
         return Dataset(new_blocks)
 
     def sort(self,
-             key: Union[str, List[str], Callable[[T], Any]],
+             key: Union[None, str, List[str], Callable[[T], Any]],
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key columns or key function.
 
         This is a blocking operation.
 
         Examples:
+            # Sort using the entire record as the key.
+            >>> ds.sort()
+
             # Sort by a single column.
             >>> ds.sort("field1")
 
@@ -216,8 +219,8 @@ class Dataset(Generic[T]):
 
         Args:
             key: Either a single Arrow column name, a list of Arrow column
-                names, or a function that returns a sortable key given each
-                record as an input.
+                names, a function that returns a sortable key given each
+                record as an input, or None to sort by the entire record.
             descending: Whether to sort in descending order.
 
         Returns:
