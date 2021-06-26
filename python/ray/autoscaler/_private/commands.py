@@ -601,8 +601,8 @@ def get_or_create_head_node(config: Dict[str, Any],
     # The above `head_node` field is deprecated in favor of per-node-type
     # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
-    if "head_node_type" in config:
-        head_node_type = config["head_node_type"]
+    head_node_type = config.get("head_node_type")
+    if head_node_type:
         head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
         head_config = config["available_node_types"][head_node_type]
         head_node_config.update(head_config["node_config"])
@@ -613,8 +613,10 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     launching_new_head = False
-    if head_node is None or provider.node_tags(head_node).get(
-            TAG_RAY_LAUNCH_CONFIG) != launch_hash:
+    if _should_create_new_head(head_node,
+                               launch_hash,
+                               head_node_type,
+                               provider):
         launching_new_head = True
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
@@ -755,6 +757,38 @@ def get_or_create_head_node(config: Dict[str, Any],
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
         cli_logger.print("  {}", remote_shell_str.strip())
+
+
+def _should_create_new_head(head_node: Optional[str],
+                            launch_hash: str,
+                            head_node_type: str,
+                            provider: NodeProvider) -> bool:
+    """
+    Decides whether a new head node needs to be created.
+
+    We need a new head if at least one of the following holds:
+    (a) There isn't an existing head node
+    (b) The user-submitted launch config differs from existing head config
+    (c) The user-submitted head node-type key differs from the existing head's
+
+    Args:
+        head_node (Optional[str]): head node id if a head exists, else None
+        launch_hash (str): hash of current user-submitted head configuration
+        head_node_type (str): current user-submitted head node-type key
+
+    Returns:
+        bool: True if a new Ray head node should be launched, False otherwise
+    """
+    if not head_node:
+        # No head node exists, need to create it.
+        return True
+    # Pull existing head's data.
+    head_tags = provider.node_tags(head_node)
+    # Compare to current head
+    hashes_mismatch = (launch_hash != head_tags.get(TAG_RAY_LAUNCH_CONFIG))
+    types_mismatch = (head_node_type != head_tags.get(TAG_RAY_USER_NODE_TYPE))
+
+    return hashes_mismatch or types_mismatch
 
 
 def _set_up_config_for_head_node(config: Dict[str, Any],
