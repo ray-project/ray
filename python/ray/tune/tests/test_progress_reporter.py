@@ -11,53 +11,50 @@ from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
                                         best_trial_str, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
-Number of trials: 7 (1 PENDING, 3 RUNNING, 3 TERMINATED)
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+------------+
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
-|        00004 | RUNNING    | here  |   4 |   8 |        2   |
-|        00003 | PENDING    | here  |   3 |   6 |        1.5 |
+|        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00000 | TERMINATED | here  |   0 |   0 |        0   |
 +--------------+------------+-------+-----+-----+------------+
-... 4 more trials not shown (2 RUNNING, 2 TERMINATED)"""
+... 2 more trials not shown (2 RUNNING)"""
 
 EXPECTED_RESULT_2 = """Result logdir: /foo
-Number of trials: 7 (1 PENDING, 3 RUNNING, 3 TERMINATED)
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+---------+---------+
 |   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
 |--------------+------------+-------+-----+-----+---------+---------|
+|        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
+|        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
 |        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
-|        00005 | RUNNING    | here  |   5 |  10 |       5 |      10 |
-|        00006 | RUNNING    | here  |   6 |  12 |       6 |      12 |
-|        00003 | PENDING    | here  |   3 |   6 |       3 |       6 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
 |        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
-|        00001 | TERMINATED | here  |   1 |   2 |       1 |       2 |
-|        00002 | TERMINATED | here  |   2 |   4 |       2 |       4 |
 +--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
-Number of trials: 7 (1 PENDING, 3 RUNNING, 3 TERMINATED)
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----------+------------+
 |   Trial name | status     | loc   |   A |   NestSub |   Metric 2 |
 |--------------+------------+-------+-----+-----------+------------|
-|        00004 | RUNNING    | here  |   4 |       2   |       1    |
-|        00003 | PENDING    | here  |   3 |       1.5 |       0.75 |
+|        00002 | RUNNING    | here  |   2 |       1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |       0.5 |       0.25 |
 |        00000 | TERMINATED | here  |   0 |       0   |       0    |
 +--------------+------------+-------+-----+-----------+------------+
-... 4 more trials not shown (2 RUNNING, 2 TERMINATED)"""
+... 2 more trials not shown (2 RUNNING)"""
 
 EXPECTED_RESULT_4 = """Result logdir: /foo
-Number of trials: 7 (1 PENDING, 3 RUNNING, 3 TERMINATED)
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+------------+
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
+|        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00003 | RUNNING    | here  |   3 |   6 |        1.5 |
 |        00004 | RUNNING    | here  |   4 |   8 |        2   |
-|        00005 | RUNNING    | here  |   5 |  10 |        2.5 |
-|        00003 | PENDING    | here  |   3 |   6 |        1.5 |
-|        00002 | TERMINATED | here  |   2 |   4 |        1   |
-|        00001 | TERMINATED | here  |   1 |   2 |        0.5 |
-+--------------+------------+-------+-----+-----+------------+
-... 2 more trials not shown (1 RUNNING, 1 TERMINATED)"""
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
+|        00000 | TERMINATED | here  |   0 |   0 |        0   |
++--------------+------------+-------+-----+-----+------------+"""
 
 END_TO_END_COMMAND = """
 import ray
@@ -327,11 +324,11 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testProgressStr(self):
         trials = []
-        for i in range(7):
+        for i in range(5):
             t = Mock()
-            if i <= 2:
+            if i == 0:
                 t.status = "TERMINATED"
-            elif i == 3:
+            elif i == 1:
                 t.status = "PENDING"
             else:
                 t.status = "RUNNING"
@@ -388,14 +385,15 @@ class ProgressReporterTest(unittest.TestCase):
         print(prog3)
         assert prog3 == EXPECTED_RESULT_3
 
-        #
+        # test sort_by_metric
         prog4 = trial_progress_str(
             trials, ["metric_1"], ["a", "b"],
             fmt="psql",
             max_rows=5,
             force_table=True,
             metric="metric_1",
-            mode="max")
+            mode="max",
+            sort_by_metric=True)
         print(prog4)
         assert prog4 == EXPECTED_RESULT_4
 
