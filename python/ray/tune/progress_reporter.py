@@ -101,6 +101,7 @@ class TuneReporterBase(ProgressReporter):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        sort_by_metric (bool): TODO add description
     """
 
     # Truncated representations of column names (to accommodate small screens).
@@ -128,7 +129,8 @@ class TuneReporterBase(ProgressReporter):
             infer_limit: int = 3,
             print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
-            mode: Optional[str] = None):
+            mode: Optional[str] = None,
+            sort_by_metric: bool = False):
         self._total_samples = total_samples
         self._metrics_override = metric_columns is not None
         self._inferred_metrics = {}
@@ -149,6 +151,7 @@ class TuneReporterBase(ProgressReporter):
 
         self._metric = metric
         self._mode = mode
+        self._sort_by_metric = sort_by_metric
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]):
@@ -277,7 +280,8 @@ class TuneReporterBase(ProgressReporter):
                     max_rows=max_progress,
                     done=done,
                     metric=self._metric,
-                    mode=self._mode))
+                    mode=self._mode,
+                    sort_by_metric=self._sort_by_metric))
             messages.append(
                 trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
@@ -363,6 +367,7 @@ class JupyterNotebookReporter(TuneReporterBase):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        sort_by_metric (bool): TODO add description
     """
 
     def __init__(
@@ -377,11 +382,12 @@ class JupyterNotebookReporter(TuneReporterBase):
             infer_limit: int = 3,
             print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
-            mode: Optional[str] = None):
+            mode: Optional[str] = None,
+            sort_by_metric: bool = False):
         super(JupyterNotebookReporter, self).__init__(
             metric_columns, parameter_columns, total_samples,
             max_progress_rows, max_error_rows, max_report_frequency,
-            infer_limit, print_intermediate_tables, metric, mode)
+            infer_limit, print_intermediate_tables, metric, mode, sort_by_metric)
         self._overwrite = overwrite
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
@@ -426,6 +432,7 @@ class CLIReporter(TuneReporterBase):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        sort_by_metric (str): TODO add description
     """
 
     def __init__(
@@ -439,12 +446,13 @@ class CLIReporter(TuneReporterBase):
             infer_limit: int = 3,
             print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
-            mode: Optional[str] = None):
+            mode: Optional[str] = None,
+            sort_by_metric: bool = False):
 
         super(CLIReporter, self).__init__(
             metric_columns, parameter_columns, total_samples,
             max_progress_rows, max_error_rows, max_report_frequency,
-            infer_limit, print_intermediate_tables, metric, mode)
+            infer_limit, print_intermediate_tables, metric, mode, sort_by_metric)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         print(self._progress_str(trials, done, *sys_info))
@@ -489,7 +497,8 @@ def trial_progress_str(
         max_rows: Optional[int] = None,
         done: bool = False,
         metric: Optional[str] = None,
-        mode: Optional[str] = None):
+        mode: Optional[str] = None,
+        sort_by_metric: bool = False):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -517,6 +526,7 @@ def trial_progress_str(
         metric (str): Metric used to sort trials.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        sort_by_metric (bool): False # TODO add description
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -544,7 +554,7 @@ def trial_progress_str(
     if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
         messages += trial_progress_table(trials, metric_columns,
                                          parameter_columns, fmt, max_rows,
-                                         metric, mode)
+                                         metric, mode, sort_by_metric)
 
     return delim.join(messages)
 
@@ -556,13 +566,14 @@ def trial_progress_table(
         fmt: str = "psql",
         max_rows: Optional[int] = None,
         metric: Optional[str] = None,
-        mode: Optional[str] = None):
+        mode: Optional[str] = None,
+        sort_by_metric: bool = False):
     messages = []
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
 
     # Sort terminated trials by metric and mode, descending if mode is "max"
-    if mode and metric:
+    if sort_by_metric:
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
@@ -575,9 +586,7 @@ def trial_progress_table(
     max_rows = max_rows or float("inf")
     if num_trials > max_rows:
         # TODO(ujvl): suggestion for users to view more rows.
-        sorted_by_metric = mode and metric
-        trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows,
-                                                    sorted_by_metric)
+        trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows, sort_by_metric)
         trials = []
         overflow_strs = []
         for state in state_tbl_order:
@@ -694,7 +703,7 @@ def best_trial_str(
 
 def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
                         max_trials: int,
-                        sorted_by_metric: bool = False):
+                        sort_by_metric: bool = False):
     """Filters trials such that each state is represented fairly.
 
     The oldest trials are truncated if necessary.
@@ -718,7 +727,7 @@ def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
     # Sort by start time, descending if the trails is not sorted by metric.
     sorted_trials_by_state = dict()
     for state in sorted(trials_by_state):
-        if state == Trial.TERMINATED and sorted_by_metric:
+        if state == Trial.TERMINATED and sort_by_metric:
             sorted_trials_by_state[state] = trials_by_state[state]
         else:
             sorted_trials_by_state[state] = sorted(
