@@ -172,6 +172,28 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
+EXPECTED_SORT_RESULT_1 = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |        0.8 |
+|        00003 | PENDING    | here  |   3 |        0.6 |
+|        00000 | TERMINATED | here  |   0 |        0   |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_2 = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |        0.8 |
+|        00003 | PENDING    | here  |   3 |        0.6 |
+|        00002 | TERMINATED | here  |   2 |        0.4 |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
 VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
@@ -385,18 +407,6 @@ class ProgressReporterTest(unittest.TestCase):
         print(prog3)
         assert prog3 == EXPECTED_RESULT_3
 
-        # test sort_by_metric
-        prog4 = trial_progress_str(
-            trials, ["metric_1"], ["a", "b"],
-            fmt="psql",
-            max_rows=5,
-            force_table=True,
-            metric="metric_1",
-            mode="max",
-            sort_by_metric=True)
-        print(prog4)
-        assert prog4 == EXPECTED_RESULT_4
-
         # Current best trial
         best1 = best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
@@ -428,8 +438,63 @@ class ProgressReporterTest(unittest.TestCase):
 
         reporter = TestReporter(mode="max")
         reporter.report(trials, done=False)
-
         assert EXPECTED_BEST_2 in reporter._output[0]
+
+    def testSortByMetric(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            if i < 3:
+                t.status = "TERMINATED"
+            elif i == 3:
+                t.status = "PENDING"
+            else:
+                t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}, "metric_1": i / 5}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        class TestReporter(CLIReporter):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+                self._output = ""
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output = progress_str
+
+        # Default reporter
+        reporter1 = TestReporter(
+            max_progress_rows=4, mode="max", metric="metric_1")
+        reporter1.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_1 in reporter1._output
+
+        # Sort by metric
+        reporter2 = TestReporter(
+            max_progress_rows=4,
+            mode="max",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter2.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_2 in reporter2._output
+
+        # Sort by metric when mode is None
+        reporter3 = TestReporter(
+            max_progress_rows=4, metric="metric_1", sort_by_metric=True)
+        reporter3.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_1 in reporter3._output
+
+        # Sort by metric when metric is None
+        reporter4 = TestReporter(
+            max_progress_rows=4, mode="max", sort_by_metric=True)
+        reporter4.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_1 in reporter4._output
 
     def testEndToEndReporting(self):
         try:
