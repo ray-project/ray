@@ -463,7 +463,7 @@ class StandardAutoscaler:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
-            bool: True if the node is to be kept.
+            bool: True if the node should be kept. False otherwise.
         """
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
