@@ -1024,16 +1024,16 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       // Resource usage report tick should reset the remote node's resources.
       resource_scheduler.FillResourceUsage(data);
       for (int j = 0; j < num_slots_available; j++) {
-        ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false, &t,
-                                                            &is_infeasible),
+        ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
+                                                            false, &t, &is_infeasible),
                   "remote");
         // Allocate remote resources.
         ASSERT_TRUE(resource_scheduler.AllocateRemoteTaskResources("remote", task_spec));
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
-      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false, &t,
-                                                          &is_infeasible),
+      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false,
+                                                          &t, &is_infeasible),
                 "");
       ASSERT_FALSE(
           resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
@@ -1056,23 +1056,23 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
 
   resource_scheduler.AddLocalResourceInstances("custom123", {0., 1.0, 1.0});
 
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_FALSE(result.empty()) << resource_scheduler.DebugString();
 
   resource_request["custom123"] = 3;
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 
   resource_scheduler.AddLocalResourceInstances("custom123", {1.0});
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_FALSE(result.empty());
 
   resource_scheduler.DeleteLocalResource("custom123");
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 }
 
