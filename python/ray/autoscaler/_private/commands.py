@@ -787,15 +787,15 @@ def _should_create_new_head(head_node: Optional[str], launch_hash: str,
     if new_head_required:
         with cli_logger.group(
                 "Currently running head node is out-of-date with cluster "
-                "configuration."):
+                "configuration"):
 
             if hashes_mismatch:
-                cli_logger.print("current hash is {}, expected {}",
+                cli_logger.print("Current hash is {}, expected {}",
                                  cf.bold(current_launch_hash),
                                  cf.bold(launch_hash))
 
             if types_mismatch:
-                cli_logger.print("current head node type is {}, expected {}",
+                cli_logger.print("Current head node type is {}, expected {}",
                                  cf.bold(current_head_type),
                                  cf.bold(head_node_type))
 
