@@ -469,7 +469,8 @@ class StandardAutoscaler:
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             if node_type not in self.available_node_types:
-                # The user has deleted this node type - don't keep the node.
+                # The node type has been deleted from the cluster config.
+                # Don't keep the node.
                 return False
             node_type_counts[node_type] += 1
             min_workers = self.available_node_types[node_type].get(
@@ -583,7 +584,7 @@ class StandardAutoscaler:
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
         if node_type not in self.available_node_types:
-            # User has deleted the node type.
+            # The node type has been deleted from the cluster config.
             return False
 
         # The `worker_nodes` field is deprecated in favor of per-node-type
