@@ -22,7 +22,7 @@ import ray
 import setproctitle  # noqa
 
 
-@pytest.mark.parametrize("disable_auto_connect", ["1", "0"])
+@pytest.mark.parametrize("set_disable_auto_connect", ["1", "0"], indirect=True)
 def test_caching_actors(shutdown_only, set_disable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
