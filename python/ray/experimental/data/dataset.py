@@ -37,8 +37,8 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block[T]]]):
-        self._blocks: List[ObjectRef[Block[T]]] = blocks
+    def __init__(self, blocks: Iterator[ObjectRef[Block[T]]]):
+        self._blocks: Iterator[ObjectRef[Block[T]]] = blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":

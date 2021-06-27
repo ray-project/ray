@@ -1,4 +1,4 @@
-from typing import TypeVar, List, Any
+from typing import TypeVar, Iterator, Any
 
 import ray
 from ray.experimental.data.impl.block import Block, ObjectRef
@@ -9,13 +9,14 @@ U = TypeVar("U")
 
 
 class ComputePool:
-    def apply(self, fn: Any, blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
+    def apply(self, fn: Any,
+              blocks: Iterator[Block[T]]) -> Iterator[ObjectRef[Block]]:
         raise NotImplementedError
 
 
 class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
+              blocks: Iterator[Block[T]]) -> Iterator[ObjectRef[Block]]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if remote_args:
@@ -30,7 +31,7 @@ class TaskPool(ComputePool):
 
 class ActorPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
+              blocks: Iterator[Block[T]]) -> Iterator[ObjectRef[Block]]:
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
