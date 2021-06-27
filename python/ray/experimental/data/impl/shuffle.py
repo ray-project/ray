@@ -1,4 +1,4 @@
-from typing import TypeVar, List, Iterator
+from typing import TypeVar, List, Iterable
 
 import ray
 from ray.experimental.data.impl.block import Block, ObjectRef
@@ -8,7 +8,7 @@ from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 T = TypeVar("T")
 
 
-def simple_shuffle(input_blocks: Iterator[ObjectRef[Block[T]]],
+def simple_shuffle(input_blocks: Iterable[ObjectRef[Block[T]]],
                    output_num_blocks: int) -> List[ObjectRef[Block[T]]]:
     input_num_blocks = len(input_blocks)
 

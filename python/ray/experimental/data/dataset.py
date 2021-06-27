@@ -1,4 +1,4 @@
-from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
+from typing import List, Any, Callable, Iterable, Iterator, Generic, TypeVar, \
     Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,8 +37,8 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: Iterator[ObjectRef[Block[T]]]):
-        self._blocks: Iterator[ObjectRef[Block[T]]] = blocks
+    def __init__(self, blocks: Iterable[ObjectRef[Block[T]]]):
+        self._blocks: Iterable[ObjectRef[Block[T]]] = blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -109,7 +109,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P0
 
     def flat_map(self,
-                 fn: Callable[[T], Iterator[U]],
+                 fn: Callable[[T], Iterable[U]],
                  compute="tasks",
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
@@ -517,7 +517,7 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P1
 
-    def to_pandas(self) -> Iterator[ObjectRef["pandas.DataFrame"]]:
+    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a set of Pandas dataframes.
 
         Time complexity: O(1)
