@@ -468,7 +468,7 @@ class StandardAutoscaler:
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
-            if not node_type in self.available_node_types:
+            if node_type not in self.available_node_types:
                 # The user has deleted this node type - don't keep the node.
                 return False
             node_type_counts[node_type] += 1
@@ -582,7 +582,7 @@ class StandardAutoscaler:
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
-        if not node_type in self.available_node_types:
+        if node_type not in self.available_node_types:
             # User has deleted the node type.
             return False
 

@@ -579,10 +579,12 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                   NODE_KIND_HEAD})[0]
-        worker = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                     NODE_KIND_WORKER})[0]
+        head = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })[0]
+        worker = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })[0]
         # Confirm node type tags
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.old"
@@ -609,10 +611,12 @@ class AutoscalingTest(unittest.TestCase):
             _provider=self.provider,
             _runner=runner)
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                   NODE_KIND_HEAD})[0]
-        worker = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                     NODE_KIND_WORKER})[0]
+        head = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })[0]
+        worker = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })[0]
         # Confirm new head
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.new"
@@ -621,10 +625,12 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE) == "ray.worker.old"
         autoscaler.update()
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                   NODE_KIND_HEAD})[0]
-        worker = self.provider.non_terminated_nodes({TAG_RAY_NODE_KIND:
-                                                     NODE_KIND_WORKER})[0]
+        head = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })[0]
+        worker = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })[0]
         # After the autoscaler update, new head and new worker.
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.new"

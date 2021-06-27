@@ -619,9 +619,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             global_event_system.execute_callback(
                 CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
-                cli_logger.confirm(yes,
-                                   "Relaunching the head node.",
-                                   _abort=True)
+                cli_logger.confirm(
+                    yes, "Relaunching the head node.", _abort=True)
 
                 provider.terminate_node(head_node)
                 cli_logger.print("Terminated head node {}", head_node)
@@ -750,8 +749,7 @@ def get_or_create_head_node(config: Dict[str, Any],
         cli_logger.print("  {}", remote_shell_str.strip())
 
 
-def _should_create_new_head(head_node: Optional[str],
-                            launch_hash: str,
+def _should_create_new_head(head_node: Optional[str], launch_hash: str,
                             head_node_type: str,
                             provider: NodeProvider) -> bool:
     """
@@ -788,18 +786,18 @@ def _should_create_new_head(head_node: Optional[str],
     # Warn user
     if new_head_required:
         with cli_logger.group(
-            "Currently running head node is out-of-date with cluster "
+                "Currently running head node is out-of-date with cluster "
                 "configuration."):
 
             if hashes_mismatch:
-                cli_logger.print(
-                    "current hash is {}, expected {}",
-                    cf.bold(current_launch_hash), cf.bold(launch_hash))
+                cli_logger.print("current hash is {}, expected {}",
+                                 cf.bold(current_launch_hash),
+                                 cf.bold(launch_hash))
 
             if types_mismatch:
-                cli_logger.print(
-                    "current head node type is {}, expected {}",
-                    cf.bold(current_head_type), cf.bold(head_node_type))
+                cli_logger.print("current head node type is {}, expected {}",
+                                 cf.bold(current_head_type),
+                                 cf.bold(head_node_type))
 
     return new_head_required
 
