@@ -252,6 +252,10 @@ class RAY_EXPORT Status {
 
   std::string message() const { return ok() ? "" : state_->msg; }
 
+  bool operator==(const Status &other) const {
+    return code() == other.code() && message() == other.message();
+  }
+
  private:
   struct State {
     StatusCode code;
