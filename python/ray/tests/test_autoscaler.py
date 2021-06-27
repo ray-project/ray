@@ -545,6 +545,13 @@ class AutoscalingTest(unittest.TestCase):
         Specifically if we change the key from "old-type" to "new-type", nodes
         of type "old-type" are deleted and (if required by the config) replaced
         by nodes of type "new-type".
+
+        Strategy:
+            1. launch a test cluster with a head and one `min_worker`
+            2. change node type keys for both head and worker in cluster yaml
+            3. update cluster with new yaml
+            4. verify graceful replacement of the two nodes with old node types
+                with two nodes with new node types.
         """
 
         # Default config with renamed node types, min_worker 1, docker off.
@@ -578,13 +585,19 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0)
         autoscaler.update()
+
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({
+        head_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-        })[0]
-        worker = self.provider.non_terminated_nodes({
+        })
+        worker_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-        })[0]
+        })
+        # One head (as always)
+        # One worker (min_workers 1 with no resource demands)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
+
         # Confirm node type tags
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.old"
@@ -610,27 +623,38 @@ class AutoscalingTest(unittest.TestCase):
             override_cluster_name=None,
             _provider=self.provider,
             _runner=runner)
+
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({
+        head_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-        })[0]
-        worker = self.provider.non_terminated_nodes({
+        })
+        worker_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-        })[0]
+        })
+        # One head (as always)
+        # One worker (maintained from previous autoscaler update)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
         # Confirm new head
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.new"
         # Still old worker, as we haven't made an autoscaler update yet.
         assert self.provider.node_tags(worker).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.worker.old"
+
         autoscaler.update()
         self.waitForNodes(2)
-        head = self.provider.non_terminated_nodes({
+        head_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-        })[0]
-        worker = self.provider.non_terminated_nodes({
+        })
+        worker_list = self.provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-        })[0]
+        })
+        # One head (as always)
+        # One worker (min_workers 1 with no resource demands)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
+
         # After the autoscaler update, new head and new worker.
         assert self.provider.node_tags(head).get(
             TAG_RAY_USER_NODE_TYPE) == "ray.head.new"

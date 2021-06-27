@@ -603,8 +603,11 @@ class AutoscalingConfigTest(unittest.TestCase):
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"), reason="Fails on Windows.")
-    def testResourceValidationFailure(self):
-        """Validates that resource field is correctly validated."""
+    def testFaultyResourceValidation(self):
+        """Checks that schema validation catches invalid node type resource
+        field.
+
+        Demonstrates a fix in https://github.com/ray-project/ray/pull/16691."""
         path = os.path.join(RAY_PATH, "autoscaler", "aws", "example-full.yaml")
         config = yaml.safe_load(open(path).read())
         node_type = config["available_node_types"]["ray.head.default"]
