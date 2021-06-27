@@ -1,5 +1,5 @@
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
-    Generator, Optional, Union, TYPE_CHECKING
+    Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -195,6 +195,32 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
+    def split(self, n: int,
+              locality_hints: List[Any] = None) -> List["Dataset[T]"]:
+        """Split the dataset into ``n`` disjoint pieces.
+
+        This returns a list of sub-datasets that can be passed to Ray tasks
+        and actors and used to read the dataset records in parallel.
+
+        Examples:
+            >>> # Split up a dataset to process over `n` worker actors.
+            >>> shards = ds.split(len(workers), locality_hints=workers)
+            >>> for shard, worker in zip(shards, workers):
+            ...     worker.consume.remote(shard)
+
+        Time complexity: O(1)
+
+        Args:
+            n: Number of child datasets to return.
+            locality_hints: A list of Ray actor handles of size ``n``. The
+                system will try to co-locate the blocks of the ith dataset
+                with the ith actor to maximize data locality.
+
+        Returns:
+            A list of ``n`` disjoint dataset splits.
+        """
+        raise NotImplementedError  # P1
+
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]],
              descending: bool = False) -> "Dataset[T]":
@@ -256,7 +282,7 @@ class Dataset(Generic[T]):
             A list of up to ``limit`` records from the dataset.
         """
         output = []
-        for row in self.to_local_iterator():
+        for row in self.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
@@ -276,7 +302,7 @@ class Dataset(Generic[T]):
     def count(self) -> int:
         """Count the number of records in the dataset.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism), O(1) for parquet
 
         Returns:
             The number of records in the dataset.
@@ -329,7 +355,7 @@ class Dataset(Generic[T]):
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism), O(1) for parquet
 
         Returns:
             The in-memory size of the dataset in bytes.
@@ -354,7 +380,7 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
-            >>> ds.write_parquet("s3://bucket/path")
+            >>> ds.repartition(num_files).write_parquet("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -372,7 +398,7 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
-            >>> ds.write_json("s3://bucket/path")
+            >>> ds.repartition(num_files).write_json("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -390,7 +416,7 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
-            >>> ds.write_csv("s3://bucket/path")
+            >>> ds.repartition(num_files).write_csv("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -400,49 +426,56 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def to_local_iterator(self) -> Generator:
-        """Return an iterator that can be used to scan the dataset serially.
+    def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
+        """Return a local row iterator over the dataset.
 
-        Time complexity: O(1)
-
-        Returns:
-            A local iterator over the entire dataset.
-        """
-        for b in self._blocks:
-            block = ray.get(b)
-            for row in block.iter_rows():
-                yield row
-
-    def to_batch_iterators(
-            self,
-            num_shards: int,
-            batch_size: int = None,
-            output_location_prefs: List[Any] = None,
-            batch_format: str = "pandas",
-            repeatable: bool = False) -> List[Iterator[BatchType]]:
-        """Return a list of distributed iterators over record batches.
-
-        This returns a list of iterators that can be passed to Ray tasks
-        and actors, and used to read the dataset records in parallel.
+        Examples:
+            >>> for i in ray.data.range(1000000).iter_rows():
+            ...     print(i)
 
         Time complexity: O(1)
 
         Args:
-            num_shards: Number of iterators to return.
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            A local iterator over the entire dataset.
+        """
+
+        for block in self.iter_batches(prefetch_blocks=prefetch_blocks):
+            for row in block.iter_rows():
+                yield row
+
+    def iter_batches(self,
+                     prefetch_blocks: int = 0,
+                     batch_size: int = None,
+                     batch_format: str = "pandas") -> Iterator[BatchType]:
+        """Return a local batched iterator over the dataset.
+
+        Examples:
+            >>> for pandas_df in ray.data.range(1000000).iter_batches():
+            ...     print(pandas_df)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
-            output_location_prefs: A list of Ray actor handles of size
-                ``num_shards``. The system will try to co-locate the objects
-                given to the ith iterator with the ith actor to maximize data
-                locality.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
-            repeatable: Whether each iterator should loop over data forever
-                or stop after reading all records of the shard.
 
         Returns:
             A list of iterators over record batches.
         """
-        raise NotImplementedError  # P1
+
+        if prefetch_blocks > 0:
+            raise NotImplementedError  # P1
+
+        for b in self._blocks:
+            block = ray.get(b)
+            yield block
 
     def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
         """Return a dataset that can be used for Torch distributed training.

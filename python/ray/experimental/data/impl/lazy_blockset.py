@@ -35,6 +35,6 @@ class LazyBlockSet:
         if i >= len(self._blocks):
             start = len(self._blocks)
             # Exponentially increase the number of blocks computed per batch.
-            for c in self._calls[start : max(i + 1, start*2)]:
+            for c in self._calls[start:max(i + 1, start * 2)]:
                 self._blocks.append(c())
         return self._blocks[i]

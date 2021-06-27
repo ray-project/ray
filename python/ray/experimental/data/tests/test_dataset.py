@@ -13,7 +13,7 @@ def test_basic(ray_start_regular_shared):
     ds = ray.experimental.data.range(5)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
-    assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
+    assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
 def test_convert_types(ray_start_regular_shared):

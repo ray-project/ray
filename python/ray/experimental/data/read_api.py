@@ -328,3 +328,9 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
+
+
+@autoinit_ray
+def from_source(source: Any) -> Dataset[Any]:
+    """Create a dataset from a generic data source."""
+    raise NotImplementedError  # P0
