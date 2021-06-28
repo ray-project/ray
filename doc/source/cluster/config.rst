@@ -137,9 +137,10 @@ Provider
 Node types
 ~~~~~~~~~~
 
-The nodes types object's keys represent the names of the different node types.
+The ``available_nodes_types`` object's keys represent the names of the different node types.
 
-Deleting a node type from the cluster config and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all nodes of that type. In particular, changing the key of a node type object will
+Deleting a node type from ``available_node_types`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
+In particular, changing the key of a node type object will
 result in removal of nodes corresponding to the old key; nodes with the new key name will then be
 created according to cluster configuration and Ray resource demands.
 
@@ -166,8 +167,8 @@ Node config
 
 Cloud-specific configuration for nodes of a given node type.
 
-Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type; nodes with the newly applied configuration will then be
-created according to cluster configuration and Ray resource demands.
+Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
+nodes with the newly applied configuration will then be created according to cluster configuration and Ray resource demands.
 
 .. tabs::
     .. group-tab:: AWS
@@ -373,7 +374,7 @@ The key for one of the node types in :ref:`available_node_types <cluster-configu
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
 
-.. _cluster-configuration-worker-nodes:
+.. _cluster-configuration-file-mounts:
 
 ``file_mounts``
 ~~~~~~~~~~~~~~~
