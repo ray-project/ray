@@ -7,7 +7,7 @@ import pytest
 import inspect
 import requests
 from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
-                     APIRouter, BackgroundTasks)
+                     APIRouter, BackgroundTasks, Response)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -444,6 +444,27 @@ def test_doc_generation(serve_instance, route_prefix):
 
     r = requests.get(f"http://localhost:8000{prefix}docs")
     assert r.status_code == 200
+
+
+def test_fastapi_multiple_headers(serve_instance):
+    # https://fastapi.tiangolo.com/advanced/response-cookies/
+    app = FastAPI()
+
+    @app.get("/")
+    def func(resp: Response):
+        resp.set_cookie(key="a", value="b")
+        resp.set_cookie(key="c", value="d")
+        return "hello"
+
+    @serve.deployment(name="f")
+    @serve.ingress(app)
+    class FastAPIApp:
+        pass
+
+    FastAPIApp.deploy()
+
+    resp = requests.get("http://localhost:8000/f")
+    assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
 
 
 if __name__ == "__main__":

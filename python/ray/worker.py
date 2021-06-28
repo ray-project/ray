@@ -1144,7 +1144,8 @@ def connect(node,
             job_id=None,
             namespace=None,
             job_config=None,
-            runtime_env_hash=0):
+            runtime_env_hash=0,
+            worker_shim_pid=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1159,6 +1160,8 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
+        worker_shim_pid (int): The PID of the process for setup worker
+            runtime env.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1266,7 +1269,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
+        worker_shim_pid)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
@@ -1749,6 +1753,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
+                   runtime_env=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1778,7 +1783,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries)
+                num_returns, max_calls, max_retries, runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1800,7 +1805,7 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
                                         accelerator_type, max_restarts,
-                                        max_task_retries)
+                                        max_task_retries, runtime_env)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1905,7 +1910,6 @@ def remote(*args, **kwargs):
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
-            Note: can only be set via `.options()`.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
@@ -1923,29 +1927,20 @@ def remote(*args, **kwargs):
         return make_decorator(worker=worker)(args[0])
 
     # Parse the keyword arguments from the decorator.
+    valid_kwargs = [
+        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
+        "resources", "accelerator_type", "max_calls", "max_restarts",
+        "max_task_retries", "max_retries", "runtime_env"
+    ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
-                    "'memory', 'object_store_memory', 'resources', "
-                    "'max_calls', or 'max_restarts', like "
+                    f"the arguments in the list {valid_kwargs}, for example "
                     "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
-        assert key in [
-            "num_returns",
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "accelerator_type",
-            "max_calls",
-            "max_restarts",
-            "max_task_retries",
-            "max_retries",
-        ], error_string
+        assert key in valid_kwargs, error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
@@ -1967,6 +1962,7 @@ def remote(*args, **kwargs):
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
+    runtime_env = kwargs.get("runtime_env")
 
     return make_decorator(
         num_returns=num_returns,
@@ -1980,4 +1976,5 @@ def remote(*args, **kwargs):
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,
         max_retries=max_retries,
+        runtime_env=runtime_env,
         worker=worker)

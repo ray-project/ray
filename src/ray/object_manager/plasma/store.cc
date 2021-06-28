@@ -43,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
@@ -50,8 +51,6 @@
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/util.h"
-
-#include "absl/container/flat_hash_set.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -135,6 +134,7 @@ GetRequest::GetRequest(instrumented_io_context &io_context,
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          std::string fallback_directory, bool hugepages_enabled,
                          const std::string &socket_name, uint32_t delay_on_oom_ms,
+                         float object_spilling_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -148,6 +148,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
+      object_spilling_threshold_(object_spilling_threshold),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
       create_request_queue_(
@@ -243,17 +244,9 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     EvictObjects(objects_to_evict);
     // More space is still needed.
     if (space_needed > 0) {
-      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need " << space_needed
-                     << " num bytes unsealed: " << num_bytes_unsealed_;
-      space_needed -= num_bytes_unsealed_;
-      if (space_needed > 0) {
-        // Even if all unsealed objects were sealed and spilled, there would
-        // not be enough space.
-        *error = PlasmaError::OutOfMemory;
-      } else {
-        // There will be enough space once there are no more unsealed objects.
-        *error = PlasmaError::TransientOutOfMemory;
-      }
+      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need "
+                     << space_needed;
+      *error = PlasmaError::OutOfMemory;
       break;
     }
 
@@ -277,6 +270,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     if (pointer == nullptr) {
       RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
+  } else if (!fallback_allocator) {
+    RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
   }
 
   if (pointer != nullptr) {
@@ -298,7 +293,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
-                                                   PlasmaObject *object) {
+                                                   PlasmaObject *object,
+                                                   bool *spilling_required) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -320,6 +316,21 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
+  }
+
+  // Trigger object spilling if current usage is above the specified threshold.
+  if (spilling_required != nullptr) {
+    const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
+    if (footprint_limit != 0) {
+      const float allocated_percentage =
+          static_cast<float>(PlasmaAllocator::Allocated()) / footprint_limit;
+      if (allocated_percentage > object_spilling_threshold_) {
+        RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
+                       << allocated_percentage << "% is above threshold "
+                       << object_spilling_threshold_ << "%.";
+        *spilling_required = true;
+      }
+    }
   }
   return error;
 }
@@ -818,9 +829,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    auto handle_create = [this, client, message](PlasmaObject *result,
-                                                 bool fallback_allocator) {
-      return HandleCreateObjectRequest(client, message, fallback_allocator, result);
+    auto handle_create = [this, client, message](bool fallback_allocator,
+                                                 PlasmaObject *result,
+                                                 bool *spilling_required) {
+      return HandleCreateObjectRequest(client, message, fallback_allocator, result,
+                                       spilling_required);
     };
 
     if (request->try_immediately()) {
