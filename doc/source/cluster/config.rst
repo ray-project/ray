@@ -166,7 +166,7 @@ Node config
 Cloud-specific configuration for nodes of a given node type.
 
 Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
-nodes with the newly applied configuration will then be created according to cluster configuration and Ray resource demands.
+nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
 
 .. tabs::
     .. group-tab:: AWS
