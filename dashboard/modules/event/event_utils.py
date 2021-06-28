@@ -66,7 +66,7 @@ ReadFileResult = collections.namedtuple(
 
 def _read_file(file,
                pos,
-               n_lines=event_consts.READ_LINE_COUNT_LIMIT,
+               n_lines=event_consts.EVENT_READ_LINE_COUNT_LIMIT,
                closefd=True):
     with open(file, "rb", closefd=closefd) as f:
         # The ino may be 0 on Windows.
@@ -79,11 +79,11 @@ def _read_file(file,
                 sep = mm.find(b"\n", start)
                 if sep == -1:
                     break
-                if sep - start <= event_consts.READ_LINE_LENGTH_LIMIT:
+                if sep - start <= event_consts.EVENT_READ_LINE_LENGTH_LIMIT:
                     lines.append(mm[start:sep].decode("utf-8"))
                 else:
-                    truncated_size = min(100,
-                                         event_consts.READ_LINE_LENGTH_LIMIT)
+                    truncated_size = min(
+                        100, event_consts.EVENT_READ_LINE_LENGTH_LIMIT)
                     logger.warning(
                         "Ignored long string: %s...(%s chars)",
                         mm[start:start + truncated_size].decode("utf-8"),

@@ -72,7 +72,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
     source_type_gcs = event_pb2.Event.SourceType.Name(event_pb2.Event.GCS)
     source_type_raylet = event_pb2.Event.SourceType.Name(
         event_pb2.Event.RAYLET)
-    test_count = 200
+    test_count = 20
 
     for source_type in [source_type_gcs, source_type_raylet]:
         test_log_file = os.path.join(event_dir, f"event_{source_type}.log")
@@ -112,7 +112,9 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
     wait_for_condition(_check_events, timeout=15)
 
 
-def test_event_message_limit(disable_aiohttp_cache, ray_start_with_dashboard):
+def test_event_message_limit(small_event_line_limit, disable_aiohttp_cache,
+                             ray_start_with_dashboard):
+    event_read_line_length_limit = small_event_line_limit
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     session_dir = ray_start_with_dashboard["session_dir"]
@@ -121,23 +123,21 @@ def test_event_message_limit(disable_aiohttp_cache, ray_start_with_dashboard):
     events = []
     # Sample event equals with limit.
     sample_event = _get_event("", job_id=job_id)
-    message_len = event_consts.READ_LINE_LENGTH_LIMIT - len(
-        json.dumps(sample_event))
+    message_len = event_read_line_length_limit - len(json.dumps(sample_event))
     for i in range(10):
         sample_event = copy.deepcopy(sample_event)
         sample_event["event_id"] = binary_to_hex(np.random.bytes(18))
         sample_event["message"] = str(i) * message_len
-        assert len(
-            json.dumps(sample_event)) == event_consts.READ_LINE_LENGTH_LIMIT
+        assert len(json.dumps(sample_event)) == event_read_line_length_limit
         events.append(sample_event)
     # Sample event longer than limit.
     sample_event = copy.deepcopy(sample_event)
     sample_event["event_id"] = binary_to_hex(np.random.bytes(18))
     sample_event["message"] = "2" * (message_len + 1)
-    assert len(json.dumps(sample_event)) > event_consts.READ_LINE_LENGTH_LIMIT
+    assert len(json.dumps(sample_event)) > event_read_line_length_limit
     events.append(sample_event)
 
-    for i in range(event_consts.READ_LINE_COUNT_LIMIT):
+    for i in range(event_consts.EVENT_READ_LINE_COUNT_LIMIT):
         events.append(_get_event(str(i), job_id=job_id))
 
     with open(os.path.join(event_dir, "tmp.log"), "w") as f:
@@ -157,13 +157,14 @@ def test_event_message_limit(disable_aiohttp_cache, ray_start_with_dashboard):
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
-            assert len(
-                all_events[job_id]) >= event_consts.READ_LINE_COUNT_LIMIT + 10
+            assert len(all_events[job_id]
+                       ) >= event_consts.EVENT_READ_LINE_COUNT_LIMIT + 10
             messages = [e["message"] for e in all_events[job_id]]
             for i in range(10):
                 assert str(i) * message_len in messages
             assert "2" * (message_len + 1) not in messages
-            assert str(event_consts.READ_LINE_COUNT_LIMIT - 1) in messages
+            assert str(event_consts.EVENT_READ_LINE_COUNT_LIMIT -
+                       1) in messages
             return True
         except Exception as ex:
             logger.exception(ex)
@@ -197,7 +198,7 @@ async def test_monitor_events():
                     while str(x) not in read_events:
                         await asyncio.sleep(0.01)
 
-        async def _check_events(expect_events, timeout=5):
+        async def _check_events(expect_events, timeout=10):
             start_time = time.time()
             while True:
                 sorted_events = sorted(int(i) for i in read_events)

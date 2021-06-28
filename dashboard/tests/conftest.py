@@ -38,3 +38,10 @@ def set_http_proxy():
         os.environ["https_proxy"] = https_proxy
     else:
         del os.environ["https_proxy"]
+
+
+@pytest.fixture
+def small_event_line_limit():
+    os.environ["EVENT_READ_LINE_LENGTH_LIMIT"] = "1024"
+    yield 1024
+    os.environ.pop("EVENT_READ_LINE_LENGTH_LIMIT", None)
