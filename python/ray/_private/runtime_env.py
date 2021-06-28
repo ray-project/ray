@@ -81,8 +81,13 @@ class RuntimeEnvDict:
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
+            if not isinstance(self._dict["working_dir"], str):
+                raise TypeError("`working_dir` must be a string. Type "
+                                f"{type(self._dict['working_dir'])} received.")
+            working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
+            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -94,11 +99,14 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 yaml_file = Path(conda)
                 if yaml_file.suffix in (".yaml", ".yml"):
+                    if working_dir and not yaml_file.is_absolute():
+                        yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
                     try:
-                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                        self._dict["conda"] = yaml.safe_load(
+                            yaml_file.read_text())
                     except Exception as e:
                         raise ValueError(
                             f"Invalid conda file {yaml_file} with error {e}")
@@ -135,6 +143,8 @@ class RuntimeEnvDict:
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
+                if working_dir and not pip_file.is_absolute():
+                    pip_file = working_dir / pip_file
                 if not pip_file.is_file():
                     raise ValueError(f"{pip_file} is not a valid file")
                 self._dict["pip"] = pip_file.read_text()
