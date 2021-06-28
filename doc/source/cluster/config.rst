@@ -375,18 +375,6 @@ The key for one of the node types in :ref:`available_node_types <cluster-configu
 
 .. _cluster-configuration-worker-nodes:
 
-``worker_nodes``
-~~~~~~~~~~~~~~~~
-
-The configuration to be used to launch worker nodes on the cloud service provider. Generally, node configs are set in the :ref:`node config of each node type <cluster-configuration-node-config>`. Setting this property allows propagation of a default value to all the node types when they launch as workers (e.g., using spot instances across all workers can be configured here so that it doesn't have to be set across all instance types).
-
-* **Required:** No
-* **Importance:** Low
-* **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
-* **Default:** ``{}``
-
-.. _cluster-configuration-file-mounts:
-
 ``file_mounts``
 ~~~~~~~~~~~~~~~
 
