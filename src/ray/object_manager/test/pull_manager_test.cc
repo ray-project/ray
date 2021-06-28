@@ -485,12 +485,20 @@ TEST_P(PullManagerTest, TestPinActiveObjects) {
 
   // Check do not pin objects belonging to inactive bundles.
   auto refs2 = CreateObjectRefs(1);
-  auto oids2 = ObjectRefsToIds(refs);
+  auto oids2 = ObjectRefsToIds(refs2);
+  auto req_id2 = pull_manager_.Pull(refs2, BundlePriority::TASK_ARGS, &objects_to_locate);
+  for (size_t i = 0; i < oids2.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids2[i]));
+    pull_manager_.OnLocationChange(oids2[i], client_ids, "", NodeID::Nil(), 1000);
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids2[i]));
+  }
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(4);
   pull_manager_.PinNewObjectIfNeeded(oids2[0]);
   ASSERT_EQ(NumPinnedObjects(), 1);
 
   // The object is unpinned on cancel.
   pull_manager_.CancelPull(req_id);
+  pull_manager_.CancelPull(req_id2);
   ASSERT_EQ(NumPinnedObjects(), 0);
   ASSERT_EQ(pull_manager_.RemainingQuota(), 4);
 

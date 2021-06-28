@@ -12,6 +12,10 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
+        external_addresses (str): The address of external Redis server to
+            connect to, in format of "ip1:port1,ip2:port2,...".  If this
+            address is provided, then ray won't start Redis instances in the
+            head node but use external Redis server(s) instead.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -114,6 +118,7 @@ class RayParams:
     """
 
     def __init__(self,
+                 external_addresses=None,
                  redis_address=None,
                  num_cpus=None,
                  num_gpus=None,
@@ -165,6 +170,7 @@ class RayParams:
                  no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
+        self.external_addresses = external_addresses
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
