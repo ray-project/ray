@@ -30,7 +30,10 @@ def simple_shuffle(input_blocks: BlockList[T],
             builder.add_block(block)
         new_block = builder.build()
         new_metadata = BlockMetadata(
-            num_rows=new_block.num_rows(), size_bytes=new_block.size_bytes())
+            num_rows=new_block.num_rows(),
+            size_bytes=new_block.size_bytes(),
+            schema=new_block.schema(),
+            input_files=None)
         return new_block, new_metadata
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)

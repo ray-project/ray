@@ -1,16 +1,14 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Any
 
 from ray.experimental.data.impl.block import Block, ObjectRef, T
 
 
 class BlockMetadata:
-    def __init__(self,
-                 *,
-                 num_rows: Optional[int],
-                 size_bytes: Optional[int],
-                 input_files: List[str] = None):
+    def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
+                 schema: Any, input_files: List[str]):
         self.num_rows: Optional[int] = num_rows
         self.size_bytes: Optional[int] = size_bytes
+        self.schema: Optional[Any] = schema
         self.input_files: List[str] = input_files or []
 
 

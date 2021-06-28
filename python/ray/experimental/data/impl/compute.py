@@ -29,6 +29,7 @@ class TaskPool(ComputePool):
             new_meta = BlockMetadata(
                 num_rows=new_block.num_rows(),
                 size_bytes=new_block.size_bytes(),
+                schema=new_block.schema(),
                 input_files=meta.input_files)
             return new_block, new_meta
 
@@ -61,6 +62,7 @@ class ActorPool(ComputePool):
                 new_metadata = BlockMetadata(
                     num_rows=new_block.num_rows(),
                     size_bytes=new_block.size_bytes(),
+                    schema=new_block.schema(),
                     input_files=meta.input_files)
                 return new_block, new_metadata
 

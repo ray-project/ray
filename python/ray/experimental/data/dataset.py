@@ -347,7 +347,12 @@ class Dataset(Generic[T]):
         Returns:
             The Python type or Arrow schema of the records.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        # Some blocks could be empty, in which case we cannot get their schema.
+        for m in metadata:
+            if m.schema:
+                return m.schema
+        raise ValueError("Could not get the schema for this dataset.")
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.

@@ -52,7 +52,10 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
         blocks.append(ray.put(block))
         metadata.append(
             BlockMetadata(
-                num_rows=block.num_rows(), size_bytes=block.size_bytes()))
+                num_rows=block.num_rows(),
+                size_bytes=block.size_bytes(),
+                schema=type(items[0]),
+                input_files=None))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata))
@@ -91,7 +94,12 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
 
         count = min(block_size, n - i)
         calls.append(make_call(i, count))
-        metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
+        metadata.append(
+            BlockMetadata(
+                num_rows=count,
+                size_bytes=8 * count,
+                schema=int,
+                input_files=None))
         i += block_size
 
     return Dataset(LazyBlockList(calls, metadata))
@@ -114,6 +122,8 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
+    import pyarrow
+
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
     block_size = max(1, n // parallelism)
@@ -121,8 +131,6 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 
     @ray.remote
     def gen_block(start: int, count: int) -> "ArrowBlock":
-        import pyarrow
-
         return ArrowBlock(
             pyarrow.Table.from_pydict({
                 "value": list(builtins.range(start, start + count))
@@ -136,7 +144,13 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         start = block_size * i
         count = min(block_size, n - i)
         calls.append(make_call(start, count))
-        metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
+        schema = pyarrow.Table.from_pydict({"value": [0]}).schema
+        metadata.append(
+            BlockMetadata(
+                num_rows=count,
+                size_bytes=8 * count,
+                schema=schema,
+                input_files=None))
         i += block_size
 
     return Dataset(LazyBlockList(calls, metadata))
@@ -209,6 +223,7 @@ def read_parquet(paths: Union[str, List[str]],
             BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
                 size_bytes=sum(m.serialized_size for m in piece_metadata),
+                schema=piece_metadata[0].schema,
                 input_files=[p.path for p in pieces]))
 
     return Dataset(LazyBlockList(calls, metadata))

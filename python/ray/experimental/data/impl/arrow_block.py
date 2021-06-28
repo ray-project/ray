@@ -126,6 +126,9 @@ class ArrowBlock(Block):
     def slice(self, start: int, end: int) -> "ArrowBlock[T]":
         return ArrowBlock(self._table.slice(start, end - start))
 
+    def schema(self) -> "pyarrow.lib.Schema":
+        return self._table.schema
+
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 

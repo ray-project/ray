@@ -1,5 +1,5 @@
 import sys
-from typing import TypeVar, List, Generic, Iterator, TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -31,6 +31,9 @@ class Block(Generic[T]):
         raise NotImplementedError
 
     def size_bytes(self) -> int:
+        raise NotImplementedError
+
+    def schema(self) -> Any:
         raise NotImplementedError
 
     @staticmethod
@@ -71,6 +74,12 @@ class ListBlock(Block):
 
     def size_bytes(self) -> int:
         return sys.getsizeof(self._items)
+
+    def schema(self) -> Any:
+        if self._items:
+            return type(self._items[0])
+        else:
+            return None
 
     @staticmethod
     def builder() -> ListBlockBuilder[T]:
