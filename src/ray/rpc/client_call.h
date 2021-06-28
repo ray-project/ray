@@ -18,13 +18,13 @@
 
 #include <boost/asio.hpp>
 
+#include <boost/fiber/all.hpp>
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
-#include <boost/fiber/all.hpp>
 
 namespace ray {
 namespace rpc {
@@ -36,8 +36,7 @@ namespace rpc {
 /// template as well.
 class ClientCall {
  public:
-  ClientCall(bool run_inline = false)
-      : run_inline_(run_inline) {}
+  ClientCall(bool run_inline = false) : run_inline_(run_inline) {}
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
   virtual void OnReplyReceived() = 0;
@@ -50,9 +49,7 @@ class ClientCall {
 
   virtual ~ClientCall() = default;
 
-  bool ShouldRunInline() const {
-    return run_inline_;
-  }
+  bool ShouldRunInline() const { return run_inline_; }
 
  private:
   bool run_inline_;
@@ -66,10 +63,9 @@ class ClientCallManager;
 template <class Reply>
 using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
 
-
-template<typename Reply>
+template <typename Reply>
 using PromiseType = boost::fibers::promise<std::pair<Reply, Status>>;
-template<typename Reply>
+template <typename Reply>
 using FutureType = boost::fibers::future<std::pair<Reply, Status>>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
@@ -88,8 +84,7 @@ class ClientCallImpl : public ClientCall {
       : ClientCall(promise != absl::nullopt),
         callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)),
-        promise_(std::move(promise)) {
-  }
+        promise_(std::move(promise)) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -108,7 +103,7 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
 
-    if(promise_) {
+    if (promise_) {
       RAY_CHECK(callback_ == nullptr);
       promise_->set_value(std::make_pair(std::move(reply_), status));
       return;
@@ -171,8 +166,7 @@ class ClientCallTag {
   /// Constructor.
   ///
   /// \param call A `ClientCall` that represents a request.
-  explicit ClientCallTag(std::shared_ptr<ClientCall> call) :
-      call_(std::move(call)) {}
+  explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
@@ -245,11 +239,10 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
-      std::string call_name,
-      absl::optional<PromiseType<Reply>> promise = absl::nullopt) {
+      std::string call_name, absl::optional<PromiseType<Reply>> promise = absl::nullopt) {
     auto stats_handle = main_service_.RecordStart(call_name);
-    auto call =
-        std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle), std::move(promise));
+    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
+                                                        std::move(promise));
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -296,7 +289,7 @@ class ClientCallManager {
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
-          if(tag->GetCall()->ShouldRunInline()) {
+          if (tag->GetCall()->ShouldRunInline()) {
             tag->GetCall()->OnReplyReceived();
             delete tag;
           } else {

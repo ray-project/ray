@@ -251,7 +251,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
                          override)
   FIBER_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
-                         override)
+                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 

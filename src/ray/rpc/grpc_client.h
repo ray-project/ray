@@ -18,7 +18,6 @@
 
 #include <boost/asio.hpp>
 
-
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -35,20 +34,18 @@ namespace rpc {
       #SERVICE ".grpc_client." #METHOD))
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)      \
-  void METHOD(const METHOD##Request &request,                           \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {    \
-    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client);    \
-  }                                                                     \
-                                                                        \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
+  void METHOD(const METHOD##Request &request,                        \
+              const ClientCallback<METHOD##Reply> &callback) SPECS { \
+    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
+  }
 
-#define FIBER_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)     \
-  FutureType<METHOD##Reply> METHOD(                                     \
-      const METHOD##Request &request) SPECS {                           \
-    PromiseType<METHOD##Reply> promise;                                 \
-    auto future = promise.get_future();                                 \
+#define FIBER_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)            \
+  FutureType<METHOD##Reply> METHOD(const METHOD##Request &request) SPECS {     \
+    PromiseType<METHOD##Reply> promise;                                        \
+    auto future = promise.get_future();                                        \
     INVOKE_RPC_CALL(SERVICE, METHOD, request, std::move(promise), rpc_client); \
-    return future;                                                      \
+    return future;                                                             \
   }
 
 template <class GrpcService>
@@ -108,11 +105,11 @@ class GrpcClient {
   template <class Request, class Reply>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request,
-      PromiseType<Reply> promise,
+      const Request &request, PromiseType<Reply> promise,
       std::string call_name = "UNKNOWN_RPC") {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_, prepare_async_function, request, nullptr, std::move(call_name), std::move(promise));
+        *stub_, prepare_async_function, request, nullptr, std::move(call_name),
+        std::move(promise));
     RAY_CHECK(call != nullptr);
   }
 

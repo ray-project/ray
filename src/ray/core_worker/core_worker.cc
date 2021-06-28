@@ -1402,9 +1402,9 @@ Status CoreWorker::GetLocationFromOwner(
     }
     for (size_t i = 0; i < replies.size(); ++i) {
       auto reply = replies[i].get();
-      if(reply.second.ok()) {
-        location_by_id.emplace(
-            object_ids[i], std::make_shared<ObjectLocation>(CreateObjectLocation(reply.first)));
+      if (reply.second.ok()) {
+        location_by_id.emplace(object_ids[i], std::make_shared<ObjectLocation>(
+                                                  CreateObjectLocation(reply.first)));
       } else {
         RAY_LOG(WARNING) << "Failed to query location information for " << object_ids[i]
                          << " with error: " << reply.second.ToString();
@@ -1420,9 +1420,9 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::OK();
   }));
 
-  if(timeout_ms > 0) {
-    auto wait_status = f.wait_for( std::chrono::milliseconds(timeout_ms));
-    if(wait_status != boost::fibers::future_status::ready) {
+  if (timeout_ms > 0) {
+    auto wait_status = f.wait_for(std::chrono::milliseconds(timeout_ms));
+    if (wait_status != boost::fibers::future_status::ready) {
       std::ostringstream stream;
       stream << "Failed querying object locations within " << timeout_ms
              << " milliseconds.";
