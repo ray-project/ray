@@ -106,9 +106,7 @@ def test_pyarrow(ray_start_regular_shared):
 
 def test_read_binary_files(ray_start_regular_shared):
     ds = ray.experimental.data.read_binary_files(
-        [f"data/{i}.bin" for i in range(10)],
-        parallelism=10
-    )
+        [f"data/{i}.bin" for i in range(10)], parallelism=10)
     for i, item in enumerate(ds.to_local_iterator()):
         # The files happen to be 685 bytes each.
         assert len(item) == 685
