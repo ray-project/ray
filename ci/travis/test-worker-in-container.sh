@@ -20,10 +20,10 @@ pushd /ray || true
 bash ./ci/travis/install-bazel.sh --system
 
 # shellcheck disable=SC2046
-#bazel test --config=ci $(./scripts/bazel_export_options) \
-#--test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
-#python/ray/tests/...
+bazel test --config=ci $(./scripts/bazel_export_options) \
+--test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
+python/ray/tests/...
 
-pytest python/ray/tests/test_actor_in_container.py  -s
+#pytest python/ray/tests/test_actor_in_container.py  -s
 
 popd || true
