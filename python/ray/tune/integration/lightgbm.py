@@ -8,8 +8,8 @@ from lightgbm.callback import CallbackEnv
 
 
 def tune_report_callback(
-        metrics: Union[None, str, List[str], Dict[str,
-                                                  str]] = None) -> Callable:
+        metrics: Union[None, str, List[str], Dict[str, str]] = None
+) -> Callable:
     """Create a callback that reports metrics to Ray Tune.
 
     Args:
@@ -74,10 +74,10 @@ def tune_report_callback(
     return _callback
 
 
-def tune_report_checkpoint_callback(metrics: Union[None, str, List[str],
-                                                   Dict[str, str]] = None,
-                                    filename: str = "checkpoint",
-                                    frequency: int = 5):
+def tune_report_checkpoint_callback(
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        filename: str = "checkpoint",
+        frequency: int = 5):
     """Creates a callback that reports metrics and checkpoints model.
 
     Saves checkpoints after each validation step. Also reports metrics to Tune,
