@@ -854,7 +854,7 @@ class TrialProgressCallback(Callback):
         return print_result_str
 
 
-def detect_reporter(**kwargs):
+def detect_reporter(**kwargs) -> TuneReporterBase:
     """Detect progress reporter class.
 
     Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
