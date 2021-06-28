@@ -385,14 +385,17 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # No Env will be used in this particular worker (not needed).
-        if worker_index == 0 and num_workers > 0 and \
-                policy_config["create_env_on_driver"] is False:
-            self.env = None
+        self.env = None
+
         # Create an env for this worker.
-        else:
-            self.env = _validate_env(env_creator(env_context))
-            # Validate environment, if validation function provided.
+        if not (worker_index == 0 and num_workers > 0
+                and policy_config["create_env_on_driver"] is False):
+            # Run the `env_creator` function passing the EnvContext.
+            self.env = env_creator(env_context)
+        if self.env is not None:
+            # Validate environment (general validation function).
+            self.env = _validate_env(self.env)
+            # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
@@ -441,8 +444,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 # framestacking via trajectory view API is enabled.
                 num_framestacks = model_config.get("num_framestacks", 0)
 
-                # Trajectory view API is on and num_framestacks=auto: Only
-                # stack traj. view based if old `framestack=[invalid value]`.
+                # Trajectory view API is on and num_framestacks=auto:
+                # Only stack traj. view based if old
+                # `framestack=[invalid value]`.
                 if num_framestacks == "auto":
                     if framestack == DEPRECATED_VALUE:
                         model_config["num_framestacks"] = num_framestacks = 4
@@ -467,6 +471,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return record_env_wrapper(env, record_env, log_dir,
                                               policy_config)
 
+            # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):
@@ -481,11 +486,12 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.tf_sess = None
         policy_dict = _determine_spaces_for_multi_agent_dict(
-            policy_spec, self.env, spaces=spaces)
+            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
-        self.policies_to_train: List[PolicyID] = list(policy_dict.keys())
-        self.set_policies_to_train(policies_to_train)
+        self.policies_to_train: List[PolicyID] = policies_to_train or list(
+            policy_dict.keys())
+        self.set_policies_to_train(self.policies_to_train)
 
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
@@ -1253,7 +1259,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def stop(self) -> None:
-        if self.env:
+        if self.env is not None:
             self.async_env.stop()
 
     @DeveloperAPI
@@ -1362,9 +1368,10 @@ class RolloutWorker(ParallelIteratorWorker):
 def _determine_spaces_for_multi_agent_dict(
         multi_agent_dict: MultiAgentPolicyConfigDict,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[
-            gym.spaces.Space, gym.spaces.Space]]] = None) -> \
-        MultiAgentPolicyConfigDict:
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]] = None,
+        policy_config: Optional[PartialTrainerConfigDict] = None,
+) -> MultiAgentPolicyConfigDict:
 
     # Try extracting spaces from env.
     env_obs_space = None
@@ -1382,6 +1389,8 @@ def _determine_spaces_for_multi_agent_dict(
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
+            elif "observation_space" in policy_config:
+                obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
                     "`observation_space` not provided in PolicySpec for "
@@ -1396,6 +1405,8 @@ def _determine_spaces_for_multi_agent_dict(
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
+            elif "action_space" in policy_config:
+                act_space = policy_config["action_space"]
             else:
                 raise ValueError(
                     "`action_space` not provided in PolicySpec for "

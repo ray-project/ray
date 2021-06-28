@@ -548,7 +548,7 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # type: Policy
+        # types: Policy
         for p in worker.policy_map.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
@@ -572,7 +572,7 @@ def _env_runner(
         perf_stats.iters += 1
         t0 = time.time()
         # Get observations from all ready agents.
-        # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
+        # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
@@ -584,7 +584,7 @@ def _env_runner(
 
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
-        # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
+        # types: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = \
             _process_observations(
@@ -609,7 +609,7 @@ def _env_runner(
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
-        # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
+        # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
         eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=worker.policy_map,
@@ -736,7 +736,7 @@ def _process_observations(
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
     # For each (vectorized) sub-environment.
-    # type: EnvID, Dict[AgentID, EnvObsType]
+    # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
@@ -791,7 +791,7 @@ def _process_observations(
                     "observe() must return a dict of agent observations")
 
         # For each agent in the environment.
-        # type: AgentID, EnvObsType
+        # types: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
 
@@ -937,7 +937,7 @@ def _process_observations(
                         base_env=base_env,
                         policies=worker.policy_map,
                         episode=new_episode)
-                # type: AgentID, EnvObsType
+                # types: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = new_episode.policy_for(agent_id)
                     prep_obs: EnvObsType = _get_or_raise(
@@ -1022,7 +1022,7 @@ def _do_policy_eval(
                 episodes=[active_episodes[t.env_id] for t in eval_data])
 
     if builder:
-        # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]
+        # types: PolicyID, Tuple[TensorStructType, StateBatch, dict]
         for pid, v in pending_fetches.items():
             eval_results[pid] = builder.get(v)
 
@@ -1071,11 +1071,11 @@ def _process_policy_eval_results(
     actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
         defaultdict(dict)
 
-    # type: int
+    # types: int
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
-    # type: PolicyID, List[PolicyEvalData]
+    # types: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)
@@ -1095,7 +1095,7 @@ def _process_policy_eval_results(
         policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.
         actions: List[EnvActionType] = unbatch(actions)
-        # type: int, EnvActionType
+        # types: int, EnvActionType
         for i, action in enumerate(actions):
             # Clip if necessary.
             if clip_actions:
