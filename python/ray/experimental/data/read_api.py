@@ -12,7 +12,8 @@ import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.lazy_blockset import LazyBlockSet
+from ray.experimental.data.impl.block_list import BlockMetadata
+from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
 
 def autoinit_ray(f):
@@ -41,15 +42,20 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     block_size = max(1, len(items) // parallelism)
 
     blocks: List[ObjectRef[Block]] = []
+    metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
         builder = ListBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
-        blocks.append(ray.put(builder.build()))
+        block = builder.build()
+        blocks.append(ray.put(block))
+        metadata.append(
+            BlockMetadata(
+                num_rows=block.num_rows(), size_bytes=block.size_bytes()))
         i += block_size
 
-    return Dataset(blocks)
+    return Dataset(blocks, metadata)
 
 
 @autoinit_ray
@@ -67,6 +73,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
     block_size = max(1, n // parallelism)
 
     @ray.remote
@@ -79,13 +86,15 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     i = 0
     while i < n:
 
-        def make_call(i: int) -> ObjectRef[Block]:
-            return lambda: gen_block.remote(i, min(block_size, n - i))
+        def make_call(start: int, count: int) -> ObjectRef[Block]:
+            return lambda: gen_block.remote(start, count)
 
-        calls.append(make_call(i))
+        count = min(block_size, n - i)
+        calls.append(make_call(i, count))
+        metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
         i += block_size
 
-    return Dataset(LazyBlockSet(calls))
+    return Dataset(LazyBlockList(calls))
 
 
 @autoinit_ray
@@ -106,6 +115,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         Dataset holding the integers as Arrow records.
     """
     calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
     block_size = max(1, n // parallelism)
     i = 0
 
@@ -120,15 +130,16 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 
     while i < n:
 
-        def make_call(i: int) -> ObjectRef[Block]:
-            start = block_size * i
-            end = min(block_size, n - i)
-            return lambda: gen_block.remote(start, end)
+        def make_call(start: int, count: int) -> ObjectRef[Block]:
+            return lambda: gen_block.remote(start, count)
 
-        calls.append(make_call(i))
+        start = block_size * i
+        count = min(block_size, n - i)
+        calls.append(make_call(start, count))
+        metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
         i += block_size
 
-    return Dataset(LazyBlockSet(calls))
+    return Dataset(LazyBlockList(calls))
 
 
 @autoinit_ray
@@ -171,8 +182,9 @@ def read_parquet(paths: Union[str, List[str]],
                                        piece.partition_keys))
 
     read_tasks = [[] for _ in builtins.range(parallelism)]
+    # TODO(ekl) bin pack this better
     for i, piece in enumerate(pieces):
-        read_tasks[i].append(piece)
+        read_tasks[i % len(read_tasks)].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
     partitions = pq_ds.partitions
 
@@ -184,14 +196,22 @@ def read_parquet(paths: Union[str, List[str]],
         return ArrowBlock(table)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
-    for ps in nonempty_tasks:
+    metadata: List[BlockMetadata] = []
+    for pieces in nonempty_tasks:
 
-        def make_call(ps: pq.ParquetDatasetPiece) -> ObjectRef[Block]:
-            return lambda: gen_read.remote(ps)
+        def make_call(
+                pieces: List[pq.ParquetDatasetPiece]) -> ObjectRef[Block]:
+            return lambda: gen_read.remote(pieces)
 
-        calls.append(make_call(ps))
+        calls.append(make_call(pieces))
+        piece_metadata = [p.get_metadata() for p in pieces]
+        metadata.append(
+            BlockMetadata(
+                num_rows=sum(m.num_rows for m in piece_metadata),
+                size_bytes=sum(m.serialized_size for m in piece_metadata),
+                input_files=[p.path for p in pieces]))
 
-    return Dataset(LazyBlockSet(calls))
+    return Dataset(LazyBlockList(calls), metadata)
 
 
 @autoinit_ray

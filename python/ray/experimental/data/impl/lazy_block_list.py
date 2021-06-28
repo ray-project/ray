@@ -1,12 +1,15 @@
-from typing import Callable
+from typing import Callable, List
 
-from ray.experimental.data.impl.block import Block, ObjectRef
+from ray.experimental.data.impl.block import Block, ObjectRef, T
+from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 
-class LazyBlockSet:
-    def __init__(self, calls: Callable[[], ObjectRef[Block]]):
+class LazyBlockList(BlockList[T]):
+    def __init__(self, calls: Callable[[], ObjectRef[Block]], metadata: List[BlockMetadata]):
+        assert len(calls) == len(metadata), (calls, metadata)
         self._calls = calls
         self._blocks = [calls[0]()]
+        self._metadata = metadata
 
     def __len__(self):
         return len(self._calls)
