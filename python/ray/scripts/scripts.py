@@ -6,7 +6,6 @@ from datetime import datetime
 import json
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -31,6 +30,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
 
@@ -1783,58 +1783,50 @@ def install_nightly(verbose, dryrun):
 
 @cli.command()
 @click.option(
-    "--copy-sample-to",
-    "-cp",
+    "--show-library-path",
+    "-show",
+    required=False,
+    is_flag=True,
+    help="Show the cpp include path and library path, if provided.")
+@click.option(
+    "--generate-bazel-project-template-to",
+    "-gen",
     required=False,
     type=str,
-    help="The directory to copy the sample application to, if provided.")
+    help="The directory to generate the bazel project template to,"
+    " if provided.")
 @add_click_options(logging_options)
-def get_cpp_library(copy_sample_to, log_style, log_color, verbose):
-    """Get the paths of cpp library and sample application."""
+def cpp(show_library_path, generate_bazel_project_template_to, log_style,
+        log_color, verbose):
+    """Show the cpp library path and generate the bazel project template."""
+    if not show_library_path and not generate_bazel_project_template_to:
+        raise ValueError(
+            "Please input at least one option of '--show-library-path'"
+            " and '--generate-bazel-project-template-to'.")
     cli_logger.configure(log_style, log_color, verbose)
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    cpp_sample_dir = os.path.join(raydir, "core/src/ray/cpp/example")
-    cpp_library_dir = os.path.join(cpp_sample_dir, "thirdparty")
-    welcome_msg = "Welcome to use the Ray C++ API."
-    cli_logger.success("-" * len(welcome_msg))
-    cli_logger.success(welcome_msg)
-    cli_logger.success("-" * len(welcome_msg))
-    cli_logger.newline()
-    cli_logger.print(
-        "You can find the Ray C++ headers and the Ray C++ library file in ")
-    cli_logger.print(cf.bold(f"    {cpp_library_dir}"))
-    cli_logger.newline()
-    cli_logger.print(
-        "Please integrate the headers and link the library file in your "
-        "project manually. Only '<ray/api.h>' must be included in your "
-        "application.")
-    cli_logger.newline()
-    cli_logger.print(
-        "Or, you can create a new Ray C++ application starting from "
-        "our bazel sample application located in ")
-    cli_logger.print(cf.bold(f"    {cpp_sample_dir}"))
-    if copy_sample_to:
-        if not os.path.isdir(copy_sample_to):
-            cli_logger.abort("The provided directory "
-                             f"{copy_sample_to} doesn't exist.")
-        input = os.path.join(raydir, "core/src/ray/cpp/example")
-        output_pro = os.path.join(copy_sample_to, "ray-cpp-sample")
-        if os.path.exists(output_pro):
+    cpp_templete_dir = os.path.join(raydir, "core/src/ray/cpp/example")
+    cpp_library_dir = os.path.join(cpp_templete_dir, "thirdparty")
+    include_dir = os.path.join(cpp_library_dir, "include")
+    lib_dir = os.path.join(cpp_library_dir, "lib")
+    if show_library_path:
+        cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
+        cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
+    if generate_bazel_project_template_to:
+        if not os.path.isdir(generate_bazel_project_template_to):
             cli_logger.abort(
-                f"The sample application {output_pro} already exists. "
-                "Please remove this or try another directory.")
-        shutil.copytree(input, output_pro)
-        cli_logger.newline()
+                "The provided directory "
+                f"{generate_bazel_project_template_to} doesn't exist.")
+        input = os.path.join(raydir, "core/src/ray/cpp/example")
+        copy_tree(input, generate_bazel_project_template_to)
         cli_logger.print(
-            "The sample application of a Ray C++ application has been "
-            "copied to ")
-        cli_logger.print(cf.bold(f"    {os.path.abspath(output_pro)}"))
-        cli_logger.newline()
+            "Project template generated to {}",
+            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"))
         cli_logger.print("To build and run this template, run")
         cli_logger.print(
             cf.bold(
-                f"    cd {os.path.abspath(output_pro)} && bazel run //:example"
-            ))
+                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
+                " && bazel run //:example"))
 
 
 def add_command_alias(command, name, hidden):
@@ -1869,7 +1861,7 @@ cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
-cli.add_command(get_cpp_library)
+cli.add_command(cpp)
 
 try:
     from ray.serve.scripts import serve_cli
