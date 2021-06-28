@@ -162,6 +162,16 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     with pytest.raises(ValueError):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
+       
+
+def test_split(ray_start_regular_shared):
+    ds = ray.experimental.data.range(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_sizes() == [2] * 10
+
+    datasets = ds.split(5)
+    assert [2, 2, 2, 2, 2] == [len(dataset._blocks) for dataset in datasets]
 
 
 if __name__ == "__main__":

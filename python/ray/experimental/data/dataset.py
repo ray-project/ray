@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     import pyspark
     import ray.util.sgd
 
+import builtins
+import math
 import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
@@ -240,6 +242,40 @@ class Dataset(Generic[T]):
 
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
+
+
+    def split(self, n: int,
+              locality_hints: List[Any] = None) -> List["Dataset[T]"]:
+        """Split the dataset into ``n`` disjoint pieces.
+
+        This returns a list of sub-datasets that can be passed to Ray tasks
+        and actors and used to read the dataset records in parallel.
+
+        Examples:
+            >>> # Split up a dataset to process over `n` worker actors.
+            >>> shards = ds.split(len(workers), locality_hints=workers)
+            >>> for shard, worker in zip(shards, workers):
+            ...     worker.consume.remote(shard)
+
+        Time complexity: O(1)
+
+        Args:
+            n: Number of child datasets to return.
+            locality_hints: A list of Ray actor handles of size ``n``. The
+                system will try to co-locate the blocks of the ith dataset
+                with the ith actor to maximize data locality.
+
+        Returns:
+            A list of ``n`` disjoint dataset splits.
+        """
+        assert n <= len(self._blocks)
+        chunk_size = math.ceil(len(self._blocks) / n)
+        chunks = [
+            self._blocks.slice(i, min(i + chunk_size, len(self._blocks)))
+            for i in builtins.range(0, len(self._blocks), chunk_size)
+        ]
+        return [Dataset(blocks) for blocks in chunks]
+
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]],
