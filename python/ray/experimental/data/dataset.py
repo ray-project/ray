@@ -1,5 +1,5 @@
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
-    Generator, Optional, Union, TYPE_CHECKING
+    Generator, Optional, Union, TYPE_CHECKING, Dict
 
 if TYPE_CHECKING:
     import pyarrow
@@ -9,9 +9,10 @@ if TYPE_CHECKING:
     import pyspark
     import ray.util.sgd
 
-import builtins
-import math
+import collections
+import itertools
 import ray
+import numpy as np
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
@@ -243,7 +244,6 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
@@ -268,14 +268,115 @@ class Dataset(Generic[T]):
         Returns:
             A list of ``n`` disjoint dataset splits.
         """
-        assert n <= len(self._blocks)
-        chunk_size = math.ceil(len(self._blocks) / n)
-        chunks = [
-            self._blocks.slice(i, min(i + chunk_size, len(self._blocks)))
-            for i in builtins.range(0, len(self._blocks), chunk_size)
-        ]
-        return [Dataset(blocks) for blocks in chunks]
+        if n <= 0:
+            raise ValueError(f"The num of splits {n} is not positive.")
 
+        if locality_hints and len(locality_hints) != n:
+            raise ValueError(
+                f"The length of locality_hints {len(locality_hints)} "
+                "doesn't equal the number of splits {n}.")
+
+        block_refs = list(self._blocks)
+
+        if locality_hints is None:
+            return [
+                Dataset(list(blocks))
+                for blocks in np.array_split(block_refs, n)
+            ]
+
+        # If the locality_hints is set, we use a two-round greedy algorithm
+        # to co-locate the blocks with the actors based on block
+        # and actor's location (node_id).
+        #
+        # The split algorithm tries to allocate equally-sized blocks regardless
+        # of locality. Thus we first calculate the expected number of blocks
+        # for each split.
+        #
+        # In the first round, for each actor, we look for all blocks that
+        # match the actor's node_id, then allocate those matched blocks to
+        # this actor until we reach the limit(expected number).
+        #
+        # In the second round: fill each actor's allocation with
+        # remaining unallocated blocks until we reach the limit.
+
+        ray.wait(block_refs, num_returns=len(block_refs))
+
+        def build_allocation_size_map(num_blocks: int,
+                                      actors: List[Any]) -> Dict[Any, int]:
+            """Given the total number of blocks and a list of actors, calcuate
+            the expected number of blocks to allocate for each actor.
+            """
+            num_actors = len(actors)
+            num_blocks_per_actor = num_blocks // num_actors
+            num_blocks_left = num_blocks - num_blocks_per_actor * n
+            num_blocks_by_actor = {}
+            for i, actor in enumerate(actors):
+                num_blocks_by_actor[actor] = num_blocks_per_actor
+                if i < num_blocks_left:
+                    num_blocks_by_actor[actor] += 1
+            return num_blocks_by_actor
+
+        def build_block_refs_by_node_id(blocks: List[ObjectRef[Block]]
+                                        ) -> Dict[str, List[ObjectRef[Block]]]:
+            """Build the reverse index from node_id to block_refs. For
+            simplicity, if the block is stored on multiple nodes we
+            only pick the first one.
+            """
+            block_ref_locations = ray.experimental.get_object_locations(blocks)
+            block_refs_by_node_id = collections.defaultdict(list)
+            for block_ref in blocks:
+                node_ids = block_ref_locations.get(block_ref, {}).get(
+                    "node_ids", [])
+                node_id = node_ids[0] if node_ids else None
+                block_refs_by_node_id[node_id].append(block_ref)
+            return block_refs_by_node_id
+
+        def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
+            """Build a map from a actor to its node_id.
+            """
+            actors_state = ray.state.actors()
+            return {
+                actor: actors_state.get(actor._actor_id.hex(), {}).get(
+                    "Address", {}).get("NodeID")
+                for actor in actors
+            }
+
+        # expected number of blocks to be allocated for each actor
+        expected_block_count_by_actor = build_allocation_size_map(
+            len(block_refs), locality_hints)
+        # the reverse index from node_id to block_refs
+        block_refs_by_node_id = build_block_refs_by_node_id(block_refs)
+        # the map from actor to its node_id
+        node_id_by_actor = build_node_id_by_actor(locality_hints)
+
+        allocation_per_actor = collections.defaultdict(list)
+
+        # In the first round, for each actor, we look for all blocks that
+        # match the actor's node_id, then allocate those matched blocks to
+        # this actor until we reach the limit(expected number)
+        for actor in locality_hints:
+            node_id = node_id_by_actor[actor]
+            matching_blocks = block_refs_by_node_id[node_id]
+            expected_block_count = expected_block_count_by_actor[actor]
+            allocation = []
+            while matching_blocks and len(allocation) < expected_block_count:
+                allocation.append(matching_blocks.pop())
+            allocation_per_actor[actor] = allocation
+
+        # In the second round: fill each actor's allocation with
+        # remaining unallocated blocks until we reach the limit
+        remaining_block_refs = list(
+            itertools.chain.from_iterable(block_refs_by_node_id.values()))
+        for actor in locality_hints:
+            while len(allocation_per_actor[actor]
+                      ) < expected_block_count_by_actor[actor]:
+                allocation_per_actor[actor].append(remaining_block_refs.pop())
+
+        assert len(remaining_block_refs) == 0, len(remaining_block_refs)
+
+        return [
+            Dataset(allocation_per_actor[actor]) for actor in locality_hints
+        ]
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]],
