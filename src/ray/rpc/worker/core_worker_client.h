@@ -160,6 +160,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const GetObjectLocationsOwnerRequest &request,
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
+  virtual rpc::FutureType<GetObjectLocationsOwnerReply> GetObjectLocationsOwner(
+      const GetObjectLocationsOwnerRequest &request) = 0;
+
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
                          const ClientCallback<KillActorReply> &callback) {}
@@ -246,6 +249,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
+                         override)
+  FIBER_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)

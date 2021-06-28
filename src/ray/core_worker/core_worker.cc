@@ -1382,60 +1382,54 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
     std::vector<std::shared_ptr<ObjectLocation>> *results) {
-  results->resize(object_ids.size());
-  if (object_ids.empty()) {
-    return Status::OK();
-  }
-
-  auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  auto ready_promise = std::make_shared<std::promise<void>>();
-  auto location_by_id =
-      std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
-
-  for (const auto &object_id : object_ids) {
-    auto owner_address = GetOwnerAddress(object_id);
-    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
-    rpc::GetObjectLocationsOwnerRequest request;
-    request.set_intended_worker_id(owner_address.worker_id());
-    request.set_object_id(object_id.Binary());
-    request.set_last_version(-1);
-    client->GetObjectLocationsOwner(
-        request,
-        [object_id, mutex, num_remaining, ready_promise, location_by_id](
-            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(mutex.get());
-          if (status.ok()) {
-            location_by_id->emplace(
-                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
-          } else {
-            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                             << " with error: " << status.ToString();
-          }
-          (*num_remaining)--;
-          if (*num_remaining == 0) {
-            ready_promise->set_value();
-          }
-        });
-  }
-  if (timeout_ms < 0) {
-    ready_promise->get_future().wait();
-  } else if (ready_promise->get_future().wait_for(
-                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
-    std::ostringstream stream;
-    stream << "Failed querying object locations within " << timeout_ms
-           << " milliseconds.";
-    return Status::TimedOut(stream.str());
-  }
-
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    auto pair = location_by_id->find(object_ids[i]);
-    if (pair == location_by_id->end()) {
-      continue;
+  boost::fibers::future<Status> f(boost::fibers::async([&]() mutable {
+    results->resize(object_ids.size());
+    if (object_ids.empty()) {
+      return Status::OK();
     }
-    (*results)[i] = pair->second;
+
+    absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>> location_by_id;
+    boost::fibers::future<rpc::GetObjectLocationsOwnerReply> replies;
+    for (const auto &object_id : object_ids) {
+      auto owner_address = GetOwnerAddress(object_id);
+      auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+      rpc::GetObjectLocationsOwnerRequest request;
+      request.set_intended_worker_id(owner_address.worker_id());
+      request.set_object_id(object_id.Binary());
+      request.set_last_version(-1);
+      client->GetObjectLocationsOwner(request);
+      replies.emplace_back(client->GetObjectLocationsOwner(request));
+    }
+    for (auto& reply_future :  replies) {
+      auto reply = reply_future.get();
+      if(reply.second.ok()) {
+        location_by_id->emplace(
+            object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply.first)));
+      } else {
+        RAY_LOG(WARNING) << "Failed to query location information for " << object_id
+                         << " with error: " << status.ToString();
+      }
+    }
+    for (size_t i = 0; i < object_ids.size(); i++) {
+      auto pair = location_by_id->find(object_ids[i]);
+      if (pair == location_by_id->end()) {
+        continue;
+      }
+      (*results)[i] = pair->second;
+    }
+    return Status::OK();
+  }));
+
+  if(timeout_ms > 0) {
+    auto wait_status = f.wait_for( std::chrono::milliseconds(timeout_ms));
+    if(wait_status != boost::fibers::future_status::ready) {
+      std::ostringstream stream;
+      stream << "Failed querying object locations within " << timeout_ms
+             << " milliseconds.";
+      return Status::TimedOut(stream.str());
+    }
   }
-  return Status::OK();
+  return f.get();
 }
 
 void CoreWorker::TriggerGlobalGC() {
