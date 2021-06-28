@@ -3,7 +3,9 @@ cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/uploa
 
 set -exo pipefail
 
-export STORAGE_DRIVER=vfs
+# option metacopy doesn't work on xfs
+sed -i 's/nodev,metacopy=on/nodev/' /etc/containers/storage.conf
+
 podman load --input /var/lib/containers/images.tar
 
 cat > /ray/docker/ray-nest-container/test-Dockerfile << EOF
@@ -20,9 +22,9 @@ pushd /ray || true
 bash ./ci/travis/install-bazel.sh --system
 
 # shellcheck disable=SC2046
-bazel test --config=ci $(./scripts/bazel_export_options) \
+bazel test --test_timeout 60 --config=ci $(./scripts/bazel_export_options) \
 --test_tag_filters=-kubernetes,-jenkins_only,worker-nest-container,-flaky \
-python/ray/tests/...
+python/ray/tests/...  --test_output=all
 
 #pytest python/ray/tests/test_actor_in_container.py  -s
 

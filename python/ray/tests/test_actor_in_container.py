@@ -13,10 +13,12 @@ import ray.cluster_utils
 
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_container():
-    job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
-        "image": "rayproject/ray-nest-container:nightly-py36-cpu",
-        "worker_path": "/root/anaconda3/lib/python3.6/site-packages/ray/workers/default_worker.py",
-    }})
+    job_config = ray.job_config.JobConfig(
+        runtime_env={
+            "container_option": {
+                "image": "rayproject/ray-nest-container:nightly-py36-cpu",
+            }
+        })
     ray.init(job_config=job_config)
 
     @ray.remote
@@ -42,10 +44,13 @@ def test_actor_in_container():
 # Ray job run in container image "ray-nest-container:nightly-py36-cpu-pandas"
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_heterogeneous_image():
-    job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
-        "image": "rayproject/ray-nest-container:nightly-py36-cpu-pandas",
-        "worker_path": "/root/anaconda3/lib/python3.6/site-packages/ray/workers/default_worker.py",
-    }})
+    job_config = ray.job_config.JobConfig(
+        runtime_env={
+            "container_option": {
+                "image": "rayproject/ray-nest-container:"
+                "nightly-py36-cpu-pandas",
+            }
+        })
     ray.init(job_config=job_config)
 
     @ray.remote
@@ -66,4 +71,4 @@ def test_actor_in_heterogeneous_image():
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__, "-s"]))

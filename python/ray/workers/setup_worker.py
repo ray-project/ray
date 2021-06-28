@@ -45,6 +45,8 @@ def start_worker_in_container(container_option, args, remaining_args):
     # serialized-runtime-env, so add this argument
     entrypoint_args.append("--serialized-runtime-env")
     entrypoint_args.append(args.serialized_runtime_env or "{}")
+    # now we will start a container, add argument worker-shim-pid
+    entrypoint_args.append("--worker-shim-pid={}".format(os.getpid()))
 
     tmp_dir = get_tmp_dir(remaining_args)
     if not tmp_dir:
@@ -74,12 +76,12 @@ def start_worker_in_container(container_option, args, remaining_args):
 
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
-    # add worker-shim-pid argument
-    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     container_option = runtime_env.get("container_option")
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
+        remaining_args.append("--serialized-runtime-env")
+        remaining_args.append(args.serialized_runtime_env or "{}")
         setup = import_attr(args.worker_setup_hook)
         setup(remaining_args)
