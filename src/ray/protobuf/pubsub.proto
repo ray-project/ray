@@ -117,3 +117,27 @@ message WorkerRefRemovedSubMessage {
   // The ID of the worker that waits for the ref removed message.
   bytes subscriber_worker_id = 4;
 }
+
+///
+/// Events
+///
+
+message PubsubLongPollingRequest {
+  /// The address of the subscriber that sends a long polling request.
+  Address subscriber_address = 1;
+}
+
+message PubsubLongPollingReply {
+  /// The object ids that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message PubsubCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message PubsubCommandBatchReply {
+}
