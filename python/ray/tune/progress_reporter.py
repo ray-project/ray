@@ -101,8 +101,8 @@ class TuneReporterBase(ProgressReporter):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the result
-            table. Defaults to False.
+        sort_by_metric (bool): Sort terminated trials by metric in the
+            intermediate table. Defaults to False.
     """
 
     # Truncated representations of column names (to accommodate small screens).
@@ -372,8 +372,8 @@ class JupyterNotebookReporter(TuneReporterBase):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the result
-            table. Defaults to False.
+        sort_by_metric (bool): Sort terminated trials by metric in the
+            intermediate table. Defaults to False.
     """
 
     def __init__(
@@ -439,8 +439,8 @@ class CLIReporter(TuneReporterBase):
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the result
-            table. Defaults to False.
+        sort_by_metric (bool): Sort terminated trials by metric in the
+            intermediate table. Defaults to False.
     """
 
     def __init__(
@@ -535,8 +535,8 @@ def trial_progress_str(
         metric (str): Metric used to sort trials.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the result
-            table. Defaults to False.
+        sort_by_metric (bool): Sort terminated trials by metric in the
+            intermediate table. Defaults to False.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
