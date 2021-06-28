@@ -128,8 +128,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                     NoisyLayer(ins, self.num_atoms, sigma0, activation=None))
             elif q_hiddens:
                 value_module.add_module(
-                        "V", 
-                        SlimFC(ins, self.num_atoms, activation_fn=None))
+                    "V", SlimFC(ins, self.num_atoms, activation_fn=None))
             self.value_module = value_module
 
     def get_q_value_distributions(self, model_out):
