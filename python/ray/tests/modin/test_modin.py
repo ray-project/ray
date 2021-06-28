@@ -408,3 +408,7 @@ def test_to_pandas_indices():
 def test_empty_dataframe():
     df = pd.DataFrame(columns=["a", "b"])
     df[(df.a == 1) & (df.b == 2)]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
