@@ -12,8 +12,11 @@ from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
 from ray.tune.syncer import SyncerCallback
 
 try:
-    import torch  # pylint: disable=unused-import
-    _HAS_TORCH = True
+    if "TUNE_TEST_NO_IMPORT_TORCH" in os.environ:
+        _HAS_TORCH = False
+    else:
+        import torch  # noqa: F401
+        _HAS_TORCH = True
 except ImportError:
     _HAS_TORCH = False
 
