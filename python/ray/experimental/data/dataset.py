@@ -458,7 +458,7 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_csv(path: str,
+    def write_csv(self, paths: Union[str, List[str]],
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None
                   ) -> None:
         """Write the dataset to csv.
@@ -466,15 +466,45 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
+            # Write to a single file.
             >>> ds.write_csv("s3://bucket/path")
+
+            # Write to multiple files.
+            >>> ds.write_csv(["/path/to/file1", "/path/to/file2"])
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path in the filesystem to write to.
+            paths: A single file path or a list of file paths (or directories).
             filesystem: The filesystem implementation to write to.
         """
-        raise NotImplementedError  # P0
+        import numpy as np
+
+        if isinstance(paths, str):
+            paths = [paths]
+        elif (
+                not isinstance(paths, list) or
+                any(not isinstance(p, str) for p in paths)):
+            raise ValueError(
+                "paths must be a path string or a list of path strings.")
+
+        @ray.remote
+        def csv_write(writer_path, *blocks):
+            print(f"Writing {len(blocks)} blocks to {writer_path}.")
+            include_header = True
+            for block in blocks:
+                block.to_pandas().to_csv(
+                    writer_path, mode="a", header=include_header)
+                include_header = False
+
+        refs = [
+            csv_write.remote(writer_path, *blocks)
+            for writer_path, blocks in zip(
+                paths, np.array_split(self._blocks, len(paths)))
+            if len(blocks) > 0]
+
+        # Block until writing is done.
+        ray.get(refs)
 
     def to_local_iterator(self) -> Generator:
         """Return an iterator that can be used to scan the dataset serially.
