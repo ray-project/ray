@@ -4,14 +4,19 @@ from ray.experimental.data.impl.block import Block, ObjectRef, T
 
 
 class BlockMetadata:
-    def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int], input_files: List[str] = None):
+    def __init__(self,
+                 *,
+                 num_rows: Optional[int],
+                 size_bytes: Optional[int],
+                 input_files: List[str] = None):
         self.num_rows: Optional[int] = num_rows
         self.size_bytes: Optional[int] = size_bytes
         self.input_files: List[str] = input_files or []
 
 
 class BlockList(Iterable[ObjectRef[Block[T]]]):
-    def __init__(self, blocks: List[ObjectRef[Block[T]]], metadata: List[BlockMetadata]):
+    def __init__(self, blocks: List[ObjectRef[Block[T]]],
+                 metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks = blocks
         self._metadata = metadata

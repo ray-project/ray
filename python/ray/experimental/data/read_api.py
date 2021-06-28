@@ -12,7 +12,7 @@ import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block_list import BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
 
@@ -55,7 +55,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
                 num_rows=block.num_rows(), size_bytes=block.size_bytes()))
         i += block_size
 
-    return Dataset(blocks, metadata)
+    return Dataset(BlockList(blocks, metadata))
 
 
 @autoinit_ray
@@ -94,7 +94,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
         i += block_size
 
-    return Dataset(LazyBlockList(calls))
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray
@@ -139,7 +139,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         metadata.append(BlockMetadata(num_rows=count, size_bytes=8 * count))
         i += block_size
 
-    return Dataset(LazyBlockList(calls))
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray
@@ -211,7 +211,7 @@ def read_parquet(paths: Union[str, List[str]],
                 size_bytes=sum(m.serialized_size for m in piece_metadata),
                 input_files=[p.path for p in pieces]))
 
-    return Dataset(LazyBlockList(calls), metadata)
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray

@@ -13,6 +13,7 @@ import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
@@ -37,8 +38,9 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: Iterable[ObjectRef[Block[T]]]):
-        self._blocks: Iterable[ObjectRef[Block[T]]] = blocks
+    def __init__(self, blocks: BlockList[T]):
+        assert isinstance(blocks, BlockList), blocks
+        self._blocks: BlockList[T] = blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -308,6 +310,11 @@ class Dataset(Generic[T]):
             The number of records in the dataset.
         """
 
+        # For parquet, we can return the count directly from metadata.
+        metadata = self._blocks.get_metadata()
+        if metadata[0].num_rows is not None:
+            return sum(m.num_rows for m in metadata)
+
         @ray.remote
         def count(block: Block[T]) -> int:
             return block.num_rows()
@@ -355,12 +362,16 @@ class Dataset(Generic[T]):
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
-        Time complexity: O(dataset size / parallelism), O(1) for parquet
+        Time complexity: O(1)
 
         Returns:
-            The in-memory size of the dataset in bytes.
+            The in-memory size of the dataset in bytes, or an error if the
+            in-memory size is not known.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        if metadata[0].size_bytes is None:
+            raise ValueError("Could not estimate the size of this dataset.")
+        return sum(m.size_bytes for m in metadata)
 
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
@@ -370,7 +381,12 @@ class Dataset(Generic[T]):
         Returns:
             The list of input files used to create the dataset.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        files = set()
+        for m in metadata:
+            for f in m.input_files:
+                files.add(f)
+        return list(files)
 
     def write_parquet(path: str,
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None

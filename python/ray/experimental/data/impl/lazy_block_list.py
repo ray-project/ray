@@ -5,7 +5,8 @@ from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 
 class LazyBlockList(BlockList[T]):
-    def __init__(self, calls: Callable[[], ObjectRef[Block]], metadata: List[BlockMetadata]):
+    def __init__(self, calls: Callable[[], ObjectRef[Block]],
+                 metadata: List[BlockMetadata]):
         assert len(calls) == len(metadata), (calls, metadata)
         self._calls = calls
         self._blocks = [calls[0]()]
