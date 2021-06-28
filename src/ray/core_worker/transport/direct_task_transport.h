@@ -97,7 +97,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   int64_t GetNumTasksSubmitted() const { return num_tasks_submitted_; }
 
-  int64_t GetNumLeasesRequested() const {
+  int64_t GetNumLeasesRequested() {
     absl::MutexLock lock(&mu_);
     return num_leases_requested_;
   }
