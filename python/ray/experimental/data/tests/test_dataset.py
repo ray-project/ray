@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+import pathlib
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -107,6 +108,34 @@ def test_pyarrow(ray_start_regular_shared):
 def test_read_binary_files(ray_start_regular_shared):
     ds = ray.experimental.data.read_binary_files(
         [f"data/{i}.bin" for i in range(10)], parallelism=10)
+    for i, item in enumerate(ds.to_local_iterator()):
+        # The files happen to be 685 bytes each.
+        assert len(item) == 685
+        # The data files are b64 encoded so they end in '='
+        assert item[-2] == ord("="), item
+        # Each file begins with its index (i.e. 0.bin begins with '0')
+        assert item[0] == ord(str(i))
+
+
+def test_read_binary_files_with_paths(ray_start_regular_shared):
+    paths = [f"data/{i}.bin" for i in range(10)]
+    ds = ray.experimental.data.read_binary_files(
+        paths, include_paths=True, parallelism=10)
+    for i, (path, item) in enumerate(ds.to_local_iterator()):
+        assert path == paths[i]
+        # The files happen to be 685 bytes each.
+        assert len(item) == 685
+        # The data files are b64 encoded so they end in '='
+        assert item[-2] == ord("="), item
+        # Each file begins with its index (i.e. 0.bin begins with '0')
+        assert item[0] == ord(str(i))
+
+
+def test_read_binary_files_with_fs(ray_start_regular_shared):
+    fs, _ = pa.fs.FileSystem.from_uri(pathlib.Path("data/"))
+    ds = ray.experimental.data.read_binary_files(
+        [f"data/{i}.bin" for i in range(10)],
+        filesystem= fs, parallelism=10)
     for i, item in enumerate(ds.to_local_iterator()):
         # The files happen to be 685 bytes each.
         assert len(item) == 685
