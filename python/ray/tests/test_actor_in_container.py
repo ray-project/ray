@@ -15,6 +15,7 @@ import ray.cluster_utils
 def test_actor_in_container():
     job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
         "image": "rayproject/ray-nest-container:nightly-py36-cpu",
+        "worker_path": "/root/anaconda3/lib/python3.7/site-packages/ray/workers/default_worker.py",
     }})
     ray.init(job_config=job_config)
 
@@ -43,6 +44,7 @@ def test_actor_in_container():
 def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(runtime_env={"container_option": {
         "image": "rayproject/ray-nest-container:nightly-py36-cpu-pandas",
+        "worker_path": "/root/anaconda3/lib/python3.7/site-packages/ray/workers/default_worker.py",
     }})
     ray.init(job_config=job_config)
 
