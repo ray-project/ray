@@ -594,7 +594,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "medium",
+    size = "large",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
@@ -839,6 +839,20 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+# --------------------------------------------------------------------
+# Tune related tests from the ../../../../release directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "medium",
+    srcs = ["examples/horovod_cifar_pbt_example.py"],
+    tags = ["exlusive", "pytorch", "example", "release", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
