@@ -12,7 +12,7 @@ from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
 from ray.tune.syncer import SyncerCallback
 
 try:
-    if "TUNE_TEST_NO_IMPORT_TORCH" in os.environ:
+    if "TUNE_TEST_NO_TORCH_IMPORT" in os.environ:
         _HAS_TORCH = False
     else:
         import torch  # noqa: F401
