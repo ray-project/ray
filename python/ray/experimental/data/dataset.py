@@ -386,7 +386,11 @@ class Dataset(Generic[T]):
         for m in metadata:
             for f in m.input_files:
                 files.add(f)
-        return list(files)
+        if files:
+            return list(files)
+        else:
+            raise ValueError(
+                "Could not retrieve the input files of this dataset.")
 
     def write_parquet(path: str,
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None

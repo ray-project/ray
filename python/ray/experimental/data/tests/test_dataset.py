@@ -9,6 +9,13 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
+def test_basic_actors(shutdown_only):
+    ray.init(num_cpus=2)
+    ds = ray.experimental.data.range(5)
+    assert sorted(ds.map(lambda x: x + 1,
+                         compute="actors").take()) == [1, 2, 3, 4, 5]
+
+
 def test_basic(ray_start_regular_shared):
     ds = ray.experimental.data.range(5)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
