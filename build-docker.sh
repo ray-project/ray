@@ -17,7 +17,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"

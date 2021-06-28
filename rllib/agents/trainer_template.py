@@ -12,8 +12,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
+    PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -124,9 +124,6 @@ def build_trainer(
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
-            # Validate config via custom validation function.
-            if validate_config:
-                validate_config(config)
 
             # No `get_policy_class` function.
             if get_policy_class is None:
@@ -176,17 +173,22 @@ def build_trainer(
                 # No parallelism.
                 if not self.config["evaluation_parallel_to_training"]:
                     res = next(self.train_exec_impl)
+
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    eval_future = executor.submit(self.evaluate)
-                    # Parallelism.
-                    if self.config["evaluation_parallel_to_training"]:
+                # Parallel eval + training.
+                if self.config["evaluation_parallel_to_training"]:
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        eval_future = executor.submit(self.evaluate)
                         res = next(self.train_exec_impl)
-                    evaluation_metrics = eval_future.result()
-                    assert isinstance(evaluation_metrics, dict), \
-                        "_evaluate() needs to return a dict."
-                    res.update(evaluation_metrics)
+                        evaluation_metrics = eval_future.result()
+                # Sequential: train (already done above), then eval.
+                else:
+                    evaluation_metrics = self.evaluate()
+
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.
             if self.config["env_task_fn"] is not None:
@@ -205,6 +207,16 @@ def build_trainer(
                 self.workers.foreach_env_with_context(fn)
 
             return res
+
+        @staticmethod
+        @override(Trainer)
+        def _validate_config(config: PartialTrainerConfigDict,
+                             trainer_obj_or_none: Optional["Trainer"] = None):
+            # Call super (Trainer) validation method first.
+            Trainer._validate_config(config, trainer_obj_or_none)
+            # Then call user defined one, if any.
+            if validate_config is not None:
+                validate_config(config)
 
         @override(Trainer)
         def _before_evaluate(self):

@@ -53,24 +53,13 @@ struct ResourceInstanceCapacities {
   std::vector<FixedPoint> available;
 };
 
-struct ResourceRequest {
-  /// Amount of resource being requested.
-  FixedPoint demand;
-};
-
-/// Resource request, including resource ID. This is used for custom resources.
-struct ResourceRequestWithId : ResourceRequest {
-  /// Resource ID.
-  int64_t id;
-};
-
 // Data structure specifying the capacity of each resource requested by a task.
 class TaskRequest {
  public:
   /// List of predefined resources required by the task.
-  std::vector<ResourceRequest> predefined_resources;
+  std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::vector<ResourceRequestWithId> custom_resources;
+  std::unordered_map<int64_t, FixedPoint> custom_resources;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.

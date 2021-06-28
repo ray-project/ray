@@ -61,6 +61,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool enable_timeline() const
 
-        c_bool automatic_object_deletion_enabled() const
+        c_bool plasma_unlimited() const
 
         uint32_t max_grpc_message_size() const

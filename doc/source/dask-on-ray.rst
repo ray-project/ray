@@ -21,6 +21,9 @@ the underlying tasks on a Ray cluster.
 specify any callable as the scheduler that you would like Dask to use to execute your
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
+.. note::
+  As of Ray 1.4.1, Dask versions 2021.6.1 or lower are supported.
+
 Scheduler
 ---------
 
@@ -31,33 +34,8 @@ any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
-.. code-block:: python
-
-   import ray
-   from ray.util.dask import ray_dask_get
-   import dask
-   import dask.array as da
-   import dask.dataframe as dd
-   import numpy as np
-   import pandas as pd
-
-   # Start Ray.
-   # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
-   ray.init()
-
-   d_arr = da.from_array(np.random.randint(0, 1000, size=(256, 256)))
-
-   # The Dask scheduler submits the underlying task graph to Ray.
-   d_arr.mean().compute(scheduler=ray_dask_get)
-
-   # Set the scheduler to ray_dask_get in your config so you don't have to specify it on
-   # each compute call.
-   dask.config.set(scheduler=ray_dask_get)
-
-   df = dd.from_pandas(pd.DataFrame(
-       np.random.randint(0, 100, size=(1024, 2)),
-       columns=["age", "grade"]), npartitions=2)
-   df.groupby(["age"]).mean().compute()
+.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
+    :language: python
 
 .. note::
   For execution on a Ray cluster, you should *not* use the
@@ -80,19 +58,19 @@ Dask-on-Ray is an ongoing project and is not expected to achieve the same perfor
 Best Practice for Large Scale workloads
 ---------------------------------------
 For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible.
-It is more desirable to load balance tasks if you run a large scale / memory intensive Dask on Ray workloads.
+It is more desirable to spread tasks if you run a large scale / memory intensive Dask on Ray workloads.
 
 In this case, there are two recommended setup.
-- Setting an internal config flag `scheduler_loadbalance_spillback` to change the scheduler to load balance tasks. 
+- Reducing the config flag `scheduler_spread_threshold` to tell the scheduler to prefer spreading tasks across the cluster instead of packing.
 - Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
 
 .. code-block:: bash
 
   # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
-  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --head --num-cpus=0
+  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --head --num-cpus=0
 
   # Worker node. 
-  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --address=[head-node-address]
+  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------
@@ -121,42 +99,8 @@ aggregations): those downstream computations will be faster since that base coll
 computation was kicked off early and referenced by all downstream computations, often
 via shared memory.
 
-.. code-block:: python
-
-   import ray
-   from ray.util.dask import ray_dask_get
-   import dask
-   import dask.array as da
-   import numpy as np
-   # Start Ray.
-   # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
-   ray.init()
-
-   # Set the scheduler to ray_dask_get in your config so you don't have to specify it on
-   # each compute call.
-   dask.config.set(scheduler=ray_dask_get)
-
-   d_arr = da.ones(100)
-   print(dask.base.collections_to_dsk([d_arr]))
-   # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
-   #   0): (functools.partial(<function _broadcast_trick_inner at 0x7f27f1a71f80>,
-   #   dtype=dtype('float64')), (5,))}
-
-   # This submits all underlying Ray tasks to the cluster and returns a Dask array with
-   # the Ray futures inlined.
-   d_arr_p = d_arr.persist()
-
-   # Notice that the Ray ObjectRef is inlined. The dask.ones() task has been submitted
-   # to and is running on the Ray cluster.
-   dask.base.collections_to_dsk([d_arr_p])
-   # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
-   #   0): ObjectRef(8b4e50dc1ddac855ffffffffffffffffffffffff0100000001000000)}
-
-   # Future computations on this persisted Dask Array will be fast since we already
-   # started computing d_arr_p in the background.
-   d_arr_p.sum().compute()
-   d_arr_p.min().compute()
-   d_arr_p.max().compute()
+.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_persist_example.py
+    :language: python
 
 
 Custom optimization for Dask DataFrame shuffling
@@ -168,31 +112,8 @@ Dask on Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
-.. code-block:: python
-
-   import ray
-   from ray.util.dask import ray_dask_get, dataframe_optimize
-   import dask
-   import dask.dataframe as dd
-   import numpy as np
-   import pandas as pd
-
-   # Start Ray.
-   # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
-   ray.init()
-
-   # Set the scheduler to ray_dask_get, and set the Dask DataFrame optimizer to our
-   # custom optimization function, this time using the config setter as a context manager.
-   with dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize):
-       npartitions = 100
-       df = dd.from_pandas(pd.DataFrame(
-           np.random.randint(0, 100, size=(10000, 2)),
-           columns=["age", "grade"]), npartitions=npartitions)
-       # We set max_branch to infinity in order to ensure that the task-based shuffle
-       # happens in a single stage, which is required in order for our optimization to
-       # work.
-       df.set_index(
-           ["age"], shuffle="tasks", max_branch=float("inf")).head(10, npartitions=-1)
+.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
+    :language: python
 
 Callbacks
 ---------

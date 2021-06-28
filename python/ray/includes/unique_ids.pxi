@@ -234,6 +234,9 @@ cdef class JobID(BaseID):
     def size(cls):
         return CJobID.Size()
 
+    def int(self):
+        return self.data.ToInt()
+
     def binary(self):
         return self.data.Binary()
 

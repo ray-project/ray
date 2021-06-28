@@ -46,7 +46,7 @@ class DynamicTFPolicy(TFPolicy):
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
         config (dict): config of the policy
-        model (TorchModel): TF model instance
+        model (ModelV2): TF model instance
         dist_class (type): TF action distribution class
     """
 
