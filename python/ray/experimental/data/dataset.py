@@ -13,7 +13,7 @@ import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block
-from ray.experimental.data.impl.block_list import BlockList
+from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
@@ -270,7 +270,46 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-        raise NotImplementedError  # P1
+
+        @ray.remote
+        def get_num_rows(block: Block[T]) -> int:
+            return block.num_rows()
+
+        @ray.remote(num_returns=2)
+        def truncate(block: Block[T], meta: BlockMetadata,
+                     count: int) -> (Block[T], BlockMetadata):
+            print("Truncating last block to size:", count)
+            new_block = block.slice(0, count)
+            new_meta = BlockMetadata(
+                num_rows=new_block.num_rows(),
+                size_bytes=new_block.size_bytes(),
+                schema=meta.schema,
+                input_files=meta.input_files)
+            return new_block, new_meta
+
+        count = 0
+        out_blocks = []
+        out_metadata = []
+        for b, m in zip(self._blocks, self._blocks.get_metadata()):
+            if m.num_rows is None:
+                num_rows = ray.get(get_num_rows.remote(b))
+            else:
+                num_rows = m.num_rows
+            if count + num_rows < limit:
+                out_blocks.append(b)
+                out_metadata.append(m)
+            elif count + num_rows == limit:
+                out_blocks.append(b)
+                out_metadata.append(m)
+                break
+            else:
+                new_block, new_metadata = truncate.remote(b, m, limit - count)
+                out_blocks.append(new_block)
+                out_metadata.append(ray.get(new_metadata))
+                break
+            count += num_rows
+
+        return Dataset(BlockList(out_blocks, out_metadata))
 
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
