@@ -81,11 +81,11 @@ if __name__ == "__main__":
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
         for t in trials:
-            experiment = t.trainable_name.lower() + "-" + \
-                t.config["framework"] + "-" + t.config["env"].lower()
+            exp_key = t.trainable_name.lower() + "-" + \
+                      t.config["framework"] + "-" + t.config["env"].lower()
 
-            if experiment not in checks:
-                checks[experiment] = {
+            if exp_key not in checks:
+                checks[exp_key] = {
                     "time_total_s": t.last_result["time_total_s"],
                     "timesteps_total": t.last_result["timesteps_total"],
                     "failures": 0,
@@ -93,7 +93,7 @@ if __name__ == "__main__":
                 }
 
             if t.status == "ERROR":
-                checks[experiment]["failures"] += 1
+                checks[exp_key]["failures"] += 1
             else:
                 desired_reward = t.stopping_criterion.get(
                     "episode_reward_mean")
@@ -110,10 +110,12 @@ if __name__ == "__main__":
                 if (desired_reward and t.last_result["episode_reward_mean"] <
                         desired_reward) or (desired_throughput and
                                             throughput < desired_throughput):
-                    checks[experiment]["failures"] += 1
+                    checks[exp_key]["failures"] += 1
                 else:
-                    checks[experiment]["passed"] = True
-                    del experiments_to_run[experiment]
+                    checks[exp_key]["passed"] = True
+                    # Todo: Delete from `experiments_to_run`
+                    # Disabled here because we only try once at the moment
+                    # del experiments_to_run[FIX]
 
     ray.shutdown()
 
