@@ -481,10 +481,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
-    redis_address = None
-    if address is not None:
-        (redis_address, redis_address_ip,
-         redis_address_port) = services.validate_redis_address(address)
     try:
         resources = json.loads(resources)
     except Exception:
@@ -553,14 +549,36 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if redis_address is not None:
-            cli_logger.abort(
-                "`{}` starts a new Redis server, `{}` should not be set.",
-                cf.bold("--head"), cf.bold("--address"))
-
-            raise Exception("If --head is passed in, a Redis server will be "
-                            "started, so a Redis address should not be "
-                            "provided.")
+        if address is not None:
+            cli_logger.print(
+                "Will use value of `{}` as remote Redis server address(es). "
+                "If the primary one is not reachable, we starts new one(s) "
+                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
+            external_addresses = address.split(",")
+            reachable = False
+            try:
+                [primary_redis_ip, port] = external_addresses[0].split(":")
+                ray._private.services.wait_for_redis_to_start(
+                    primary_redis_ip, port, password=redis_password)
+                reachable = True
+            # We catch a generic Exception here in case someone later changes
+            # the type of the exception.
+            except Exception:
+                cli_logger.print(
+                    "The primary external redis server `{}` is not reachable. "
+                    "Will starts new one(s) with `{}` in local.",
+                    cf.bold(external_addresses[0]), cf.bold("--port"))
+            if reachable:
+                ray_params.update_if_absent(
+                    external_addresses=external_addresses)
+                if len(external_addresses) > 1:
+                    num_redis_shards = len(external_addresses) - 1
+                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                    cli_logger.warning(
+                        "`{}` should not be specified as empty string if "
+                        "external redis server(s) `{}` points to requires "
+                        "password.", cf.bold("--redis-password"),
+                        cf.bold("--address"))
 
         node_ip_address = services.get_node_ip_address()
 
@@ -640,6 +658,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(cf.bold("  ray stop"))
     else:
         # Start Ray on a non-head node.
+        redis_address = None
+        if address is not None:
+            (redis_address, redis_address_ip,
+             redis_address_port) = services.validate_redis_address(address)
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
