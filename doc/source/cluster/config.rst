@@ -22,8 +22,6 @@ Syntax
         :ref:`auth <cluster-configuration-auth-type>`
     :ref:`available_node_types <cluster-configuration-available-node-types>`:
         :ref:`node_types <cluster-configuration-node-types-type>`
-    :ref:`worker_nodes <cluster-configuration-worker-nodes>`:
-        :ref:`node_config <cluster-configuration-node-config-type>`
     :ref:`head_node_type <cluster-configuration-head-node-type>`: str
     :ref:`file_mounts <cluster-configuration-file-mounts>`:
         :ref:`file_mounts <cluster-configuration-file-mounts-type>`
