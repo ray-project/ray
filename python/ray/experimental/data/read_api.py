@@ -250,7 +250,33 @@ def read_csv(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    import pyarrow as pa
+    from pyarrow import csv
+    import numpy as np
+
+    if isinstance(paths, str):
+        paths = [paths]
+    elif (
+            not isinstance(paths, list) or
+            any(not isinstance(p, str) for p in paths)):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+
+    @ray.remote
+    def csv_read(reader_paths):
+        print(f"Reading {len(reader_paths)} files.")
+        tables = []
+        for p in reader_paths:
+            tables.append(
+                csv.read_csv(
+                    p, read_options=csv.ReadOptions(use_threads=False),
+                    **arrow_csv_args))
+        return ArrowBlock(pa.concat_tables(tables))
+
+    return Dataset([
+        csv_read.remote(reader_paths)
+        for reader_paths in np.array_split(paths, parallelism)
+        if len(reader_paths) > 0])
 
 
 @autoinit_ray
