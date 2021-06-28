@@ -12,7 +12,7 @@ from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
 from ray.tune.syncer import SyncerCallback
 
 try:
-    import torch
+    import torch  # pylint: disable=unused-import
     _HAS_TORCH = True
 except ImportError:
     _HAS_TORCH = False
