@@ -328,7 +328,7 @@ Authentication credentials that Ray will use to launch nodes.
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tells the autoscaler the allowed node types and the resources they provide.
-The user-specified key is the name of the node type.
+Node types are identified by user-specified key.
 
 * **Required:** No
 * **Importance:** High
