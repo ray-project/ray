@@ -1388,8 +1388,8 @@ Status CoreWorker::GetLocationFromOwner(
       return Status::OK();
     }
 
-    absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>> location_by_id;
-    boost::fibers::future<rpc::GetObjectLocationsOwnerReply> replies;
+    absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>> location_by_id;
+    std::vector<rpc::FutureType<rpc::GetObjectLocationsOwnerReply>> replies;
     for (const auto &object_id : object_ids) {
       auto owner_address = GetOwnerAddress(object_id);
       auto client = core_worker_client_pool_->GetOrConnect(owner_address);
@@ -1400,19 +1400,19 @@ Status CoreWorker::GetLocationFromOwner(
       client->GetObjectLocationsOwner(request);
       replies.emplace_back(client->GetObjectLocationsOwner(request));
     }
-    for (auto& reply_future :  replies) {
-      auto reply = reply_future.get();
+    for (size_t i = 0; i < replies.size(); ++i) {
+      auto reply = replies[i].get();
       if(reply.second.ok()) {
-        location_by_id->emplace(
-            object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply.first)));
+        location_by_id.emplace(
+            object_ids[i], std::make_shared<ObjectLocation>(CreateObjectLocation(reply.first)));
       } else {
-        RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                         << " with error: " << status.ToString();
+        RAY_LOG(WARNING) << "Failed to query location information for " << object_ids[i]
+                         << " with error: " << reply.second.ToString();
       }
     }
     for (size_t i = 0; i < object_ids.size(); i++) {
-      auto pair = location_by_id->find(object_ids[i]);
-      if (pair == location_by_id->end()) {
+      auto pair = location_by_id.find(object_ids[i]);
+      if (pair == location_by_id.end()) {
         continue;
       }
       (*results)[i] = pair->second;
