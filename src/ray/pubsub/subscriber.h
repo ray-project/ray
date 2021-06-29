@@ -333,8 +333,7 @@ class Subscriber : public SubscriberInterface {
   /// \param publisher_address The address of the publisher that publishes
   /// objects.
   /// \param subscriber_address The address of the subscriber.
-  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address
-                                       )
+  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Private method to handle long polling responses. Long polling responses contain the

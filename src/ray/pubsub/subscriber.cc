@@ -187,8 +187,7 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
   }
 }
 
-void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address
-                                                 ) {
+void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
   auto publisher_client = get_client_(publisher_address);
@@ -196,8 +195,8 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
 
   publisher_client->PubsubLongPolling(
-      long_polling_request, [this, publisher_address](
-                                Status status, const rpc::PubsubLongPollingReply &reply) {
+      long_polling_request,
+      [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
         absl::MutexLock lock(&mutex_);
         HandleLongPollingResponse(publisher_address, status, reply);
       });
