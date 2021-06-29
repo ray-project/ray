@@ -103,8 +103,7 @@ class Worker:
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
-            logger.info("Env doesn't support env.seed(): {}".format(
-                self.env))
+            logger.info("Env doesn't support env.seed(): {}".format(self.env))
         # Gym.env.
         else:
             self.env.seed(seed)

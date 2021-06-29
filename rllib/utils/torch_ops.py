@@ -211,8 +211,7 @@ def set_torch_seed(seed):
         torch.manual_seed(seed)
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
-        if cuda_version is not None and float(
-            torch.version.cuda) >= 10.2:
+        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
         else:
             # Not all Operations support this.
