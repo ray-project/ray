@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import starlette.requests
 
@@ -119,14 +119,13 @@ class ASGIHTTPSender:
 
     def __init__(self) -> None:
         self.status_code: Optional[int] = 200
-        self.header: Dict[str, str] = {}
+        self.headers: List[Tuple[bytes, bytes]] = []
         self.buffer: List[bytes] = []
 
     async def __call__(self, message):
         if (message["type"] == "http.response.start"):
             self.status_code = message["status"]
-            for key, value in message["headers"]:
-                self.header[key.decode()] = value.decode()
+            self.headers = message["headers"]
         elif (message["type"] == "http.response.body"):
             self.buffer.append(message["body"])
         else:
@@ -134,10 +133,10 @@ class ASGIHTTPSender:
                              "http.responses.{body,start}.")
 
     def build_starlette_response(self) -> starlette.responses.Response:
-        return starlette.responses.Response(
-            b"".join(self.buffer),
-            status_code=self.status_code,
-            headers=dict(self.header))
+        resp = starlette.responses.Response(
+            b"".join(self.buffer), status_code=self.status_code)
+        resp.raw_headers.extend(self.headers)
+        return resp
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:

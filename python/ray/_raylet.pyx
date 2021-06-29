@@ -991,6 +991,10 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker()
             .GetCurrentPlacementGroupId().Binary())
 
+    def get_worker_id(self):
+        return WorkerID(
+            CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
+
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
@@ -1810,16 +1814,31 @@ cdef class CoreWorker:
         JobConfig.  Otherwise, we are running in a worker for an actor or
         task, and the current runtime env comes from the current TaskSpec.
 
+        The child's runtime env dict is merged with the parents via a simple
+        dict update, except for runtime_env["env_vars"], which is merged
+        with runtime_env["env_vars"] of the parent rather than overwriting it.
+        This is so that env vars set in the parent propagate to child actors
+        and tasks even if a new env var is set in the child.
+
         Args:
             runtime_env_dict (dict): A runtime env for a child actor or task.
         Returns:
             The resulting merged JSON-serialized runtime env.
         """
+
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
+
+        result_env_vars = copy.deepcopy(result_dict.get("env_vars") or {})
+        child_env_vars = runtime_env_dict.get("env_vars") or {}
+        result_env_vars.update(child_env_vars)
+
         result_dict.update(runtime_env_dict)
+        result_dict["env_vars"] = result_env_vars
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to
         # check if a runtime env is empty without deserializing it.
+        if result_dict["env_vars"] == {}:
+            result_dict["env_vars"] = None
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 

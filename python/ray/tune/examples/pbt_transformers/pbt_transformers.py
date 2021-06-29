@@ -80,9 +80,8 @@ def tune_transformer(num_samples=8,
         warmup_steps=0,
         weight_decay=0.1,  # config
         logging_dir="./logs",
-    )
-
-    training_args._n_gpu = gpus_per_trial
+        skip_memory_metrics=True,
+        report_to="none")
 
     trainer = Trainer(
         model_init=get_model,

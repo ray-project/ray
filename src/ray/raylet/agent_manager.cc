@@ -117,11 +117,11 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
                    Status status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true);
+            callback(true, reply.serialized_runtime_env_context());
           } else {
             RAY_LOG(ERROR) << "Failed to create runtime env: " << serialized_runtime_env
                            << ", error message: " << reply.error_message();
-            callback(false);
+            callback(false, reply.serialized_runtime_env_context());
           }
 
         } else {

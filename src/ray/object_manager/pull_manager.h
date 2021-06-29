@@ -11,6 +11,7 @@
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
@@ -29,6 +30,7 @@ enum BundlePriority {
   TASK_ARGS,
 };
 
+// Not thread-safe except for IsObjectActive().
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests
@@ -50,7 +52,9 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available, std::function<void()> object_store_full_callback);
+      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -76,7 +80,7 @@ class PullManager {
   ///
   /// \param num_bytes_available The number of bytes that are currently
   /// available to store objects pulled from another node.
-  void UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available);
+  void UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available);
 
   /// Called when the available locations for a given object change.
   ///
@@ -103,6 +107,10 @@ class PullManager {
   /// existing objects from other nodes if necessary.
   void Tick();
 
+  /// Called when a new object appears locally. This gives a chance for the pull manager
+  /// to pin the object as soon as it is available.
+  void PinNewObjectIfNeeded(const ObjectID &object_id);
+
   /// Call to reset the retry timer for an object that is actively being
   /// pulled. This should be called for objects that were evicted but that may
   /// still be needed on this node.
@@ -116,7 +124,9 @@ class PullManager {
   /// Returns whether the object is actively being pulled. object_required
   /// returns whether the object is still needed by some pull request on this
   /// node (but may not be actively pulled due to throttling).
-  bool IsObjectActive(const ObjectID &object_id, bool *object_required = nullptr) const;
+  ///
+  /// This method (and this method only) is thread-safe.
+  bool IsObjectActive(const ObjectID &object_id) const;
 
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
@@ -125,6 +135,10 @@ class PullManager {
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
   std::string DebugString() const;
+
+  /// Returns the number of bytes of quota remaining. When this is less than zero,
+  /// we are OverQuota(). Visible for testing.
+  int64_t RemainingQuota();
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.
@@ -175,6 +189,17 @@ class PullManager {
   void TryToMakeObjectLocal(const ObjectID &object_id)
       EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
+  /// Returns whether the set of active pull requests exceeds the memory allowance
+  /// for pulls. Note that exceeding the quota is allowed in certain situations,
+  /// e.g., for get requests and to ensure at least one active request.
+  bool OverQuota();
+
+  /// Pin the object if possible. Only actively pulled objects should be pinned.
+  bool TryPinObject(const ObjectID &object_id);
+
+  /// Unpin the given object if pinned.
+  void UnpinObject(const ObjectID &object_id);
+
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
   /// will try each of the other clients in succession.
@@ -186,7 +211,8 @@ class PullManager {
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
   ///
   /// \param request The request to update the retry time of.
-  void UpdateRetryTimer(ObjectPullRequest &request);
+  /// \param object_id The object id for the request.
+  void UpdateRetryTimer(ObjectPullRequest &request, const ObjectID &object_id);
 
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
@@ -194,9 +220,12 @@ class PullManager {
   /// Returns whether the request was successfully activated. If this returns
   /// false, then there are no more requests in the queue that can be activated
   /// (because we have reached the end of the queue or because there is missing
-  /// size information).
+  /// size information), or activating the request would exceed memory quota.
+  ///
+  /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
   bool ActivateNextPullBundleRequest(const Queue &bundles,
                                      uint64_t *highest_req_id_being_pulled,
+                                     bool respect_quota,
                                      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
@@ -208,9 +237,15 @@ class PullManager {
 
   /// Helper method that deactivates requests from the given queue until the pull
   /// memory usage is within quota.
-  void DeactivateUntilWithinQuota(const std::string &debug_name, Queue &bundles,
-                                  uint64_t *highest_id_for_bundle,
-                                  std::unordered_set<ObjectID> *objects_to_cancel);
+  ///
+  /// \param retain_min Don't deactivate if this would drop the total number of active
+  ///                   bundles (in any queue) below this threshold.
+  /// \param quota_margin Keep deactivating bundles until this amount of quota margin
+  ///                     becomes available.
+  void DeactivateUntilMarginAvailable(const std::string &debug_name, Queue &bundles,
+                                      int retain_min, int64_t quota_margin,
+                                      uint64_t *highest_id_for_bundle,
+                                      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
@@ -218,7 +253,12 @@ class PullManager {
   void TriggerOutOfMemoryHandlingIfNeeded();
 
   /// Return debug info about this bundle queue.
-  std::string BundleInfo(const Queue &bundles) const;
+  std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
+
+  /// Return the incremental space required to pull the next bundle, if available.
+  /// If the next bundle is not ready for pulling, 0L will be returned.
+  int64_t NextRequestBundleSize(const Queue &bundles,
+                                uint64_t highest_id_being_pulled) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -227,6 +267,8 @@ class PullManager {
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
+  /// The minimum number of pull bundles to keep active.
+  const int min_active_pulls_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
@@ -256,15 +298,21 @@ class PullManager {
   /// total size of the objects requested that we are actively pulling. To
   /// avoid starvation, this is always less than the available capacity in the
   /// local object store.
-  size_t num_bytes_being_pulled_ = 0;
+  int64_t num_bytes_being_pulled_ = 0;
 
   /// The total number of bytes that is available to store objects that we are
   /// pulling.
-  size_t num_bytes_available_;
+  int64_t num_bytes_available_;
+
+  /// The number of currently active bundles.
+  int64_t num_active_bundles_ = 0;
 
   /// Triggered when the first request in the queue can't be pulled due to
   /// out-of-memory. This callback should try to make more bytes available.
   std::function<void()> object_store_full_callback_;
+
+  /// Callback to pin plasma objects.
+  std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
 
   /// The last time OOM was reported. Track this so we don't spam warnings when
   /// the object store is full.
@@ -296,10 +344,19 @@ class PullManager {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
 
+  /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
+  /// We need to pin these objects so that parts of in-progress bundles aren't evicted
+  /// due to self-induced memory pressure.
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+
+  /// The total size of pinned objects.
+  int64_t pinned_objects_size_ = 0;
+
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
-
-  size_t num_retries_total_ = 0;
+  int64_t max_timeout_ = 0;
+  ObjectID max_timeout_object_id_;
+  int64_t num_retries_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;
