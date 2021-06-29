@@ -1384,6 +1384,7 @@ def start_raylet(redis_address,
                  worker_path,
                  setup_worker_path,
                  worker_setup_hook,
+                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1425,6 +1426,8 @@ def start_raylet(redis_address,
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
+        runtime_env_setup_hook (str): The module path to a Python function that
+            will be imported and run to set up the runtime env in agent.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1557,7 +1560,9 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
         f"--runtime-env-dir={resource_dir}",
+        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
