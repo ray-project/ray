@@ -225,7 +225,7 @@ def test_module_lacks_client_builder():
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
-def test_disconnect(call_ray_stop_only):
+def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True)
     with ray.client("localhost:25555").namespace("n1").connect():
