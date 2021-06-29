@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import ray
 import requests
@@ -177,7 +178,9 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     args = parser.parse_args()
 
-    ray.client("anyscale://").connect()
+    job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
+    ray.client().job_name(job_name).connect()
+
     num_workers = 2
     use_gpu = True
 
@@ -186,7 +189,8 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint
-    model_id = get_best_model(best_checkpoint)
+    get_best_model_remote = ray.remote(get_best_model)
+    model_id = ray.get(get_best_model_remote.remote(best_checkpoint))
 
     print("Setting up Serve.")
     setup_serve(model_id)
