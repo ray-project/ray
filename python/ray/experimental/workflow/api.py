@@ -14,10 +14,6 @@ from ray.experimental.workflow.workflow_access import workflow_output_cache
 
 logger = logging.getLogger(__name__)
 
-# TODO(suquark): some readability improvements:
-# Better logging message during workflow.run and workflow.resume
-# e.g., print information about storage.
-
 
 def step(func) -> WorkflowStepFunction:
     """
@@ -50,7 +46,12 @@ def run(entry_workflow: Workflow, storage_url=None,
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
-    logger.info(f"Workflow job {workflow_id} created.")
+    if storage_url is None:
+        storage_url = storage.get_global_storage().storage_url
+    else:
+        storage.set_global_storage(storage_url)
+    logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
+                f"\"{storage_url}\"].")
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
         rref = postprocess_workflow_step(entry_workflow)
@@ -83,6 +84,8 @@ def resume(workflow_id: str, storage_url=None) -> ray.ObjectRef:
     else:
         store = storage.get_global_storage()
     r = recovery.resume_workflow_job(workflow_id, store)
+    logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
+                f"\"{store.storage_url}\"].")
     if isinstance(r, ray.ObjectRef):
         return r
     # skip saving the DAG of a recovery workflow

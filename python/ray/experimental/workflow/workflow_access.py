@@ -1,6 +1,9 @@
+import logging
 from typing import Any
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionError(Exception):
@@ -28,6 +31,7 @@ def workflow_output_cache(workflow_id: str, output: ray.ObjectRef) -> Any:
             output = ray.get(output)
     except Exception as e:
         raise WorkflowExecutionError(workflow_id) from e
+    logger.info(f"Workflow job {workflow_id} completes successfully.")
     return output
 
 

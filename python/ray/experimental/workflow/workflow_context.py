@@ -1,5 +1,4 @@
 from typing import Optional, List
-from ray.experimental.workflow import storage
 
 
 class WorkflowStepContext:
@@ -38,8 +37,6 @@ def init_workflow_step_context(workflow_id, storage_url) -> None:
         storage_url: The storage the workflow is using.
     """
     global _context
-    if storage_url is not None:
-        storage.set_global_storage(storage_url)
     assert workflow_id is not None
     _context = WorkflowStepContext(workflow_id, storage_url)
 
