@@ -24,7 +24,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes, std::shared_ptr<gcs::GcsClient> gcs_client)
+    size_t max_pinned_task_arguments_bytes)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -38,7 +38,6 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      gcs_client_(gcs_client),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0) {}
@@ -558,7 +557,9 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
@@ -723,12 +724,16 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
     }
   }
 
-  // Check whether resources have been changed.
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  std::unordered_map<std::string, double> local_resource_map(data.resource_load().begin(),
-                                                             data.resource_load().end());
-  ResourceSet local_resource(local_resource_map);
-  if (!last_heartbeat_resources->GetLoadResources().IsEqual(local_resource)) {
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
+    // Check whether resources have been changed.
+    std::unordered_map<std::string, double> local_resource_map(
+        data.resource_load().begin(), data.resource_load().end());
+    ResourceSet local_resource(local_resource_map);
+    if (last_reported_resources == nullptr ||
+        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+      data.set_resource_load_changed(true);
+    }
+  } else {
     data.set_resource_load_changed(true);
   }
 }

@@ -65,7 +65,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      size_t max_pinned_task_arguments_bytes, std::shared_ptr<gcs::GcsClient> gcs_client);
+      size_t max_pinned_task_arguments_bytes);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
@@ -116,7 +116,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &data) override;
+  void FillResourceUsage(rpc::ResourcesData &data,
+                         const std::shared_ptr<SchedulingResources>
+                             &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -291,9 +293,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
-
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Metrics collected since the last report.
   uint64_t metric_tasks_queued_;

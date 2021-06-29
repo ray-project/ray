@@ -1318,6 +1318,25 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
+  // When scheduling_resources is null, resource is always marked as changed
+  rpc::ResourcesData resource_data;
+  task_manager_.FillResourceUsage(resource_data, nullptr);
+  ASSERT_TRUE(resource_data.resource_load_changed());
+  auto scheduling_resources = std::make_shared<SchedulingResources>();
+  // Same resources(empty), not changed.
+  resource_data.set_resource_load_changed(false);
+  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  ASSERT_FALSE(resource_data.resource_load_changed());
+  // Resource changed.
+  resource_data.set_resource_load_changed(false);
+  ResourceSet res;
+  res.AddOrUpdateResource("CPU", 100);
+  scheduling_resources->SetLoadResources(std::move(res));
+  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  ASSERT_TRUE(resource_data.resource_load_changed());
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
