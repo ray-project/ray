@@ -13,7 +13,7 @@ Scaling Up a FastAPI Application
 
 .. warning::
 
-  With the introduction of the new Deployments API in Ray 1.4.0, this tutorial is no longer describes the best practice for integrating Ray Serve with FastAPI, and will soon be removed.
+  With the introduction of the new Deployments API in Ray 1.4.0, this tutorial no longer describes the best practice for integrating Ray Serve with FastAPI, and will soon be removed.
   For details on the new and improved FastAPI integration, please see :ref:`serve-fastapi-http`.
 
 For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Tensorflow <https://www.tensorflow.org/>`_ installed, as well as `Huggingface Transformers <https://github.com/huggingface/transformers>`_ and `FastAPI <https://fastapi.tiangolo.com/>`_.  For example:
