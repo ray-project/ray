@@ -101,8 +101,10 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         tables.extend(self._tables)
         if len(tables) > 1:
             return ArrowBlock(pyarrow.concat_tables(tables))
-        else:
+        elif len(tables) > 0:
             return ArrowBlock(tables[0])
+        else:
+            return ArrowBlock(pyarrow.Table.from_pydict({}))
 
 
 class ArrowBlock(Block):

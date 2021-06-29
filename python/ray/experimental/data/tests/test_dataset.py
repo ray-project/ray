@@ -23,6 +23,27 @@ def test_basic(ray_start_regular_shared):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
+def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
+    ds = ray.experimental.data.range(100, parallelism=20)
+    assert len(ds._blocks._blocks) == 1
+    assert ds.take(10) == list(range(10))
+    assert len(ds._blocks._blocks) == 2
+    assert ds.take(20) == list(range(20))
+    assert len(ds._blocks._blocks) == 4
+    assert ds.take(30) == list(range(30))
+    assert len(ds._blocks._blocks) == 8
+    assert ds.take(50) == list(range(50))
+    assert len(ds._blocks._blocks) == 16
+    assert ds.take(100) == list(range(100))
+    assert len(ds._blocks._blocks) == 20
+
+
+def test_limit(ray_start_regular_shared):
+    ds = ray.experimental.data.range(100, parallelism=20)
+    for i in range(100):
+        assert ds.limit(i).take(200) == list(range(i))
+
+
 def test_convert_types(ray_start_regular_shared):
     plain_ds = ray.experimental.data.range(1)
     arrow_ds = plain_ds.map(lambda x: {"a": x})
@@ -95,7 +116,7 @@ def test_parquet(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_parquet(tmp_path)
     values = [[s["one"], s["two"]] for s in ds.take()]
 
-    assert sorted(values) == [[4, "e"], [4, "e"], [5, "f"], [5, "f"], [6, "g"],
+    assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
 
