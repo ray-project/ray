@@ -1,10 +1,13 @@
 import os
 
+import dask.dataframe as dd
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import ray
+
+from ray.util.dask import ray_dask_get
 
 from ray.tests.conftest import *  # noqa
 
@@ -77,7 +80,32 @@ def test_repartition_arrow(ray_start_regular_shared):
     assert large._block_sizes() == [500] * 20
 
 
-def test_parquet(ray_start_regular_shared, tmp_path):
+def test_from_pandas(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
+def test_to_pandas(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_pandas_roundtrip(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    dfds = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dfds)
+
+
+def test_parquet_read(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
@@ -90,6 +118,20 @@ def test_parquet(ray_start_regular_shared, tmp_path):
 
     assert sorted(values) == [[4, "e"], [4, "e"], [5, "f"], [5, "f"], [6, "g"],
                               [6, "g"]]
+
+
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.write_parquet(path)
+    path1 = os.path.join(path, "data0.parquet")
+    path2 = os.path.join(path, "data1.parquet")
+    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    assert df.equals(dfds)
 
 
 def test_pyarrow(ray_start_regular_shared):
@@ -162,6 +204,174 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     with pytest.raises(ValueError):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
+
+
+def test_from_dask(ray_start_regular_shared):
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+    ds = ray.experimental.data.from_dask(ddf)
+    dfds = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dfds)
+
+
+def test_to_dask(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ddf = ds.to_dask()
+    # Explicit Dask-on-Ray
+    assert df.equals(ddf.compute(scheduler=ray_dask_get))
+    # Implicit Dask-on-Ray.
+    assert df.equals(ddf.compute())
+
+
+def test_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json")
+    df2.to_json(path2, orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+
+    # Three files, parallelism=2.
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    path3 = os.path.join(tmp_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True)
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    ds = ray.experimental.data.read_json([path1, path2, path3], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
+    assert df.equals(dsdf)
+
+
+def test_json_write(ray_start_regular_shared, tmp_path):
+    # Single block, single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1)])
+    path1 = os.path.join(tmp_path, "test1.json")
+    ds.write_json(path1)
+    assert df1.equals(pd.read_json(path1))
+    os.remove(path1)
+
+    # Two blocks, two files.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path2 = os.path.join(tmp_path, "test2.json")
+    ds.write_json([path1, path2])
+    assert pd.concat([
+        df1, df2]).equals(
+            pd.concat([pd.read_json(path1), pd.read_json(path2)]))
+    os.remove(path1)
+    os.remove(path2)
+
+    # Three blocks, two files.
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    ds = ray.experimental.data.from_pandas([
+        ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds.write_json([path1, path2])
+    assert pd.concat([
+        df1, df2, df3], ignore_index=True).equals(
+            pd.concat([pd.read_json(path1), pd.read_json(path2)],
+                      ignore_index=True))
+    os.remove(path1)
+    os.remove(path2)
+
+    # Two blocks, three files.
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path3 = os.path.join(tmp_path, "test3.json")
+    ds.write_json([path1, path2, path3])
+    # path3 should never be written since there are only 2 blocks.
+    with pytest.raises(ValueError):
+        pd.read_json(path3)
+    assert pd.concat([
+        df1, df2]).equals(
+            pd.concat([
+                pd.read_json(path1), pd.read_json(path2)]))
+    os.remove(path1)
+    os.remove(path2)
+
+
+def test_csv_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.csv")
+    df1.to_csv(path1, index=False)
+    ds = ray.experimental.data.read_csv(path1)
+    dsdf = ray.get(ds.to_pandas())[0]
+    assert df1.equals(dsdf)
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.csv")
+    df2.to_csv(path2, index=False)
+    ds = ray.experimental.data.read_csv([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    df = pd.concat([df1, df2])
+    assert df.equals(dsdf)
+
+    # Three files, parallelism=2.
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    path3 = os.path.join(tmp_path, "test3.csv")
+    df3.to_csv(path3, index=False)
+    ds = ray.experimental.data.read_csv([path1, path2, path3], parallelism=2)
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
+    assert df.equals(dsdf)
+
+
+def test_csv_write(ray_start_regular_shared, tmp_path):
+    # Single block, single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1)])
+    path1 = os.path.join(tmp_path, "test1.csv")
+    ds.write_csv(path1)
+    dsdf = pd.read_csv(path1)
+    assert df1.equals(dsdf)
+    os.remove(path1)
+
+    # Two blocks, two files.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path2 = os.path.join(tmp_path, "test2.csv")
+    ds.write_csv([path1, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
+    assert df.equals(dsdf)
+    os.remove(path1)
+    os.remove(path2)
+
+    # Three blocks, two files.
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    ds = ray.experimental.data.from_pandas([
+        ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds.write_csv([path1, path2])
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    dsdf = pd.concat(
+        [pd.read_csv(path1), pd.read_csv(path2)], ignore_index=True)
+    assert df.equals(dsdf)
+    os.remove(path1)
+    os.remove(path2)
+
+    # Two blocks, three files.
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path3 = os.path.join(tmp_path, "test3.csv")
+    ds.write_csv([path1, path2, path3])
+    # path3 should never be written since there are only 2 blocks.
+    with pytest.raises(FileNotFoundError):
+        pd.read_csv(path3)
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
+    assert df.equals(dsdf)
+    os.remove(path1)
+    os.remove(path2)
 
 
 if __name__ == "__main__":
