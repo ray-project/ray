@@ -947,6 +947,13 @@ class TrainableFunctionApiTest(unittest.TestCase):
         """Check custom sync functions in durable trainables"""
 
         class TestDurable(DurableTrainable):
+            def __init__(self, *args, **kwargs):
+                # Mock distutils.spawn.find_executable
+                # so `aws` command is found
+                import distutils.spawn
+                distutils.spawn.find_executable = lambda *_, **__: True
+                super(TestDurable, self).__init__(*args, **kwargs)
+
             def check(self):
                 return bool(self.sync_function_tpl) and isinstance(
                     self.storage_client, CommandBasedClient
