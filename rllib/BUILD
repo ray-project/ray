@@ -160,7 +160,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_cql_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -174,7 +174,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_cql_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
