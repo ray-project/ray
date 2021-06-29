@@ -631,14 +631,41 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_dask(self) -> "dask.DataFrame":
-        """Convert this dataset into a Dask dataframe.
+        """Convert this dataset into a Dask DataFrame.
 
         Time complexity: O(1)
 
         Returns:
-            A Dask dataframe created from this dataset.
+            A Dask DataFrame created from this dataset.
         """
-        raise NotImplementedError  # P1
+        import dask
+        import dask.dataframe as dd
+        from ray.util.client.common import ClientObjectRef
+
+        def _block_to_df(block):
+            return block._table.to_pandas()
+
+        _remote_block_to_df = ray.remote(_block_to_df)
+
+        @dask.delayed
+        def block_to_df(block):
+            if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
+                # The block Ray future hasn't been resolved to a concrete
+                # value, so the end-user isn't using Dask-on-Ray. We therefore
+                # launch a converting Ray task and block here to get the
+                # underlying dataframe.
+                df = ray.get(_remote_block_to_df.remote(block))
+            else:
+                # The block Ray future has been resolved, so the end-user is
+                # using Dask-on-Ray. We therefore directly convert the block to
+                # a dataframe since we're already running in a Ray task.
+                df = _block_to_df(block)
+
+            return df
+
+        # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
+        # once that's implemented.
+        return dd.from_delayed([block_to_df(block) for block in self._blocks])
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
