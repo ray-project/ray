@@ -5,6 +5,7 @@ import tempfile
 
 import pytest
 import inspect
+from ray.serve.utils import ensure_serialization_context
 import requests
 from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
                      APIRouter, BackgroundTasks, Response)
@@ -465,6 +466,29 @@ def test_fastapi_multiple_headers(serve_instance):
 
     resp = requests.get("http://localhost:8000/f")
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
+    # https://github.com/ray-project/ray/issues/16757
+    class TestModel(BaseModel):
+        a: str
+        b: List[str]
+
+    app = FastAPI()
+
+    @app.get("/", response_model=TestModel)
+    def test_endpoint():
+        test_model = TestModel(a="a", b=["b"])
+        return test_model
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        pass
+
+    TestDeployment.deploy()
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
 
 
 if __name__ == "__main__":
