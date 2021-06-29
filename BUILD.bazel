@@ -249,9 +249,9 @@ cc_library(
     name = "pubsub_rpc",
     copts = COPTS,
     deps = [
+        "pubsub_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
-        "pubsub_cc_grpc",
     ],
 )
 
