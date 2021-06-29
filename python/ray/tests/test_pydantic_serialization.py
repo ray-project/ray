@@ -13,6 +13,32 @@ def start_ray():
     ray.init(ignore_reinit_error=True)
 
 
+# This test needs to run first because it tests capturing a pydantic model
+# in a closure, ray should still be able to serialize the function.
+def test_serialize_nested_field(start_ray):
+    class B(BaseModel):
+        v: List[int]
+
+    # this shouldn't error
+    B(v=[1])
+
+    @ray.remote
+    class A:
+        def func(self):
+            # this shouldn't error
+            return B(v=[1])
+
+    a = A.remote()
+    ray.get(a.func.remote())
+
+    @ray.remote
+    def func():
+        # this shouldn't error
+        return B(v=[1])
+
+    ray.get(func.remote())
+
+
 def test_serialize_cls(start_ray):
     class User(BaseModel):
         name: str
@@ -162,21 +188,6 @@ def test_serialize_serve_dataclass(start_ray):
         pass
 
     ray.get(consume.remote(BackendConfig()))
-
-
-def test_serialize_nested_field(start_ray):
-    class B(BaseModel):
-        v: List[int]
-
-    # this shouldn't error
-    B(v=[1])
-
-    @ray.remote
-    def func():
-        # this shouldn't error
-        return B(v=[1])
-
-    ray.get(func.remote())
 
 
 if __name__ == "__main__":

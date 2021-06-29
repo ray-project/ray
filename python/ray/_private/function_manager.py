@@ -355,6 +355,11 @@ class FunctionActorManager:
             "task, please make sure the thread finishes before the "
             "task finishes.")
         job_id = self._worker.current_job_id
+
+        # Perform a lookup to register any serializer addons. This makes sure
+        # Ray's serialization addons are enabled for actor serialization.
+        self._worker.get_serialization_context()
+
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {

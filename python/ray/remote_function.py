@@ -224,6 +224,10 @@ class RemoteFunction:
         if not self._is_cross_language and \
                 self._last_export_session_and_job != \
                 worker.current_session_and_job:
+            # Perform a lookup to register any serializer addons. This makes sure
+            # Ray's serialization addons are enabled for function serialization.
+            worker.get_serialization_context()
+
             # There is an interesting question here. If the remote function is
             # used by a subsequent driver (in the same script), should the
             # second driver pickle the function again? If yes, then the remote

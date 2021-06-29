@@ -1216,6 +1216,11 @@ def connect(node,
     # after it is created.
     worker.node = node
     worker.set_mode(mode)
+    worker.lock = threading.RLock()
+
+    # Perform a lookup to register any serializer addons. This makes sure
+    # Ray's serialization addons are enabled for any function serialization.
+    worker.get_serialization_context()
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1231,8 +1236,6 @@ def connect(node,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 job_id=None)
-
-    worker.lock = threading.RLock()
 
     driver_name = ""
     log_stdout_file_path = ""
