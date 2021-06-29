@@ -150,11 +150,10 @@ class ServerUnpickler(pickle.Unpickler):
 
 
 def dumps_from_client(obj: Any, client_id: str, protocol=None) -> bytes:
-    with disable_client_hook():
-        with io.BytesIO() as file:
-            cp = ClientPickler(client_id, file, protocol=protocol)
-            cp.dump(obj)
-            return file.getvalue()
+    with io.BytesIO() as file:
+        cp = ClientPickler(client_id, file, protocol=protocol)
+        cp.dump(obj)
+        return file.getvalue()
 
 
 def loads_from_server(data: bytes,
