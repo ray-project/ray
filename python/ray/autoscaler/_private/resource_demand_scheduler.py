@@ -737,7 +737,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 def _utilization_score(node_resources: ResourceDict,
                        resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources
+    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] != 0
     any_gpu_task = any("GPU" in r for r in resources)
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
