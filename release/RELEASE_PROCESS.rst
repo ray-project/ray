@@ -309,6 +309,11 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
+7. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow version as
+``requirements.txt`` and Torch version as minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
+version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
+versions. If there is no CUDA version that is compatible, then downgrade either Tensorflow or Torch. Ping @ijrsvt or @amogkam for assistance.
+
 7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
    ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
