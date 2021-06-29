@@ -352,9 +352,9 @@ class Dataset(Generic[T]):
         """
 
         # For parquet, we can return the count directly from metadata.
-        metadata = self._blocks.get_metadata()
-        if metadata[0].num_rows is not None:
-            return sum(m.num_rows for m in metadata)
+        meta_count = self._meta_count()
+        if meta_count is not None:
+            return meta_count
 
         @ray.remote
         def count(block: Block[T]) -> int:
@@ -607,7 +607,25 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P2
 
     def __repr__(self) -> str:
-        return "Dataset({} blocks)".format(len(self._blocks))
+        try:
+            schema = self.schema()
+        except ValueError:
+            schema = "Unknown schema"
+        if hasattr(schema, "names"):
+            schema_str = []
+            for n, t in zip(schema.names, schema.types):
+                if hasattr(t, "__name__"):
+                    t = t.__name__
+                schema_str.append("{}: {}".format(n, t))
+            schema_str = ", ".join(schema_str)
+            schema_str = "{" + schema_str + "}"
+        else:
+            schema_str = str(schema)
+        count = self._meta_count()
+        if count is None:
+            count = "?"
+        return "Dataset(num_rows={}, num_blocks={}, schema={})".format(
+            count, len(self._blocks), schema_str)
 
     def __str__(self) -> str:
         return repr(self)
@@ -618,3 +636,10 @@ class Dataset(Generic[T]):
             return block.num_rows()
 
         return ray.get([query.remote(b) for b in self._blocks])
+
+    def _meta_count(self) -> Optional[int]:
+        metadata = self._blocks.get_metadata()
+        if metadata[0].num_rows is not None:
+            return sum(m.num_rows for m in metadata)
+        else:
+            return None

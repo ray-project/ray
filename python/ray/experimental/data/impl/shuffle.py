@@ -40,12 +40,13 @@ def simple_shuffle(input_blocks: BlockList[T],
         return new_block, new_metadata
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
-    reduce_bar = ProgressBar(
-        "Shuffle Reduce", position=1, total=output_num_blocks)
 
     shuffle_map_out = [shuffle_map.remote(block) for block in input_blocks]
     map_bar.block_until_complete([x[0] for x in shuffle_map_out])
+    map_bar.close()
 
+    reduce_bar = ProgressBar(
+        "Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
         shuffle_reduce.remote(
             *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
@@ -55,7 +56,6 @@ def simple_shuffle(input_blocks: BlockList[T],
     new_metadata = [s[1] for s in shuffle_reduce_out]
     reduce_bar.block_until_complete(new_blocks)
     new_metadata = ray.get(new_metadata)
-
-    map_bar.close()
     reduce_bar.close()
+
     return BlockList(new_blocks, new_metadata)
