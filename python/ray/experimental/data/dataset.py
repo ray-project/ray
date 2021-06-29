@@ -685,7 +685,11 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Pandas dataframes created from this dataset.
         """
-        raise NotImplementedError  # P1
+        @ray.remote
+        def block_to_df(block):
+            return block._table.to_pandas()
+
+        return [block_to_df.remote(block) for block in self._blocks]
 
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
