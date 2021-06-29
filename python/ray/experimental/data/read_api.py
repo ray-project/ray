@@ -358,7 +358,13 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
-    raise NotImplementedError  # P1
+    import pyarrow as pa
+
+    @ray.remote
+    def df_to_block(df):
+        return ArrowBlock(pa.table(df))
+
+    return Dataset([df_to_block.remote(df) for df in dfs])
 
 
 def from_spark(df: "pyspark.sql.DataFrame",
