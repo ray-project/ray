@@ -515,7 +515,7 @@ class Dataset(Generic[T]):
             include_header = True
             for block in blocks:
                 block.to_pandas().to_csv(
-                    writer_path, mode="a", header=include_header)
+                    writer_path, mode="a", header=include_header, index=False)
                 include_header = False
 
         refs = [
