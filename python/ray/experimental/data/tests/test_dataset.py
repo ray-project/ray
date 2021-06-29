@@ -266,21 +266,21 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
     path2 = os.path.join(tmp_path, "test2.json")
     ds.write_json([path1, path2])
-    assert pd.concat([
-        df1, df2]).equals(
-            pd.concat([pd.read_json(path1), pd.read_json(path2)]))
+    assert pd.concat([df1, df2]).equals(
+        pd.concat([pd.read_json(path1),
+                   pd.read_json(path2)]))
     os.remove(path1)
     os.remove(path2)
 
     # Three blocks, two files.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    ds = ray.experimental.data.from_pandas([
-        ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
     ds.write_json([path1, path2])
-    assert pd.concat([
-        df1, df2, df3], ignore_index=True).equals(
-            pd.concat([pd.read_json(path1), pd.read_json(path2)],
-                      ignore_index=True))
+    assert pd.concat(
+        [df1, df2, df3], ignore_index=True).equals(
+            pd.concat(
+                [pd.read_json(path1), pd.read_json(path2)], ignore_index=True))
     os.remove(path1)
     os.remove(path2)
 
@@ -291,10 +291,9 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     # path3 should never be written since there are only 2 blocks.
     with pytest.raises(ValueError):
         pd.read_json(path3)
-    assert pd.concat([
-        df1, df2]).equals(
-            pd.concat([
-                pd.read_json(path1), pd.read_json(path2)]))
+    assert pd.concat([df1, df2]).equals(
+        pd.concat([pd.read_json(path1),
+                   pd.read_json(path2)]))
     os.remove(path1)
     os.remove(path2)
 
@@ -350,8 +349,8 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
 
     # Three blocks, two files.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    ds = ray.experimental.data.from_pandas([
-        ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
     ds.write_csv([path1, path2])
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = pd.concat(

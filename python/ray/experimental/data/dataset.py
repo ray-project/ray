@@ -394,10 +394,10 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def write_parquet(
-            self,
-            path: str,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_parquet(self,
+                      path: str,
+                      filesystem: Optional["pyarrow.fs.FileSystem"] = None
+                      ) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -417,8 +417,7 @@ class Dataset(Generic[T]):
         @ray.remote
         def parquet_write(write_path, block):
             print(f"Writing {block.num_rows()} records to {write_path}.")
-            with pq.ParquetWriter(write_path,
-                                  block._table.schema) as writer:
+            with pq.ParquetWriter(write_path, block._table.schema) as writer:
                 writer.write_table(block._table)
 
         refs = [
