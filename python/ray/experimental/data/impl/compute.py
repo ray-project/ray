@@ -1,5 +1,4 @@
-from typing import TypeVar, List, Any, Iterable
-import itertools
+from typing import TypeVar, List, Any
 
 import ray
 from ray.experimental.data.impl.block import Block, ObjectRef
@@ -18,7 +17,6 @@ class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
-
         if remote_args:
             fn = ray.remote(**remote_args)(fn)
         else:
@@ -27,42 +25,6 @@ class TaskPool(ComputePool):
 
         map_bar.block_until_complete(blocks)
         return blocks
-
-    def apply_batch(self, fn: Any, remote_args: dict,
-                    blocks: List[ObjectRef[Block]],
-                    batch_size: int) -> List[ObjectRef[Block]]:
-        """Apply a given fn to the list of blocks with a given batch size."""
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
-
-        if remote_args:
-            fn = ray.remote(**remote_args)(fn)
-        else:
-            fn = ray.remote(fn)
-
-        def chunks(iterable: Iterable[Any], size: int):
-            it = iter(iterable)
-            chunk = list(itertools.islice(it, size))
-            while chunk:
-                yield chunk
-                chunk = list(itertools.islice(it, size))
-
-        chunk_size = int(len(blocks) // (max(1, len(blocks) // batch_size)))
-        # Return type is a nested list: List[ObjectRef[List[ObjectRef[Block]]]]
-        # because we batch process them.
-        blocks = [fn.remote(*chunk) for chunk in chunks(blocks, chunk_size)]
-
-        # unflatten it. It is okay to ray.get because the nested type is
-        # object ref which are light to fetch.
-        blocks = ray.get(blocks)
-        result_blocks = []
-        for nested_block in blocks:
-            if isinstance(nested_block, list):
-                result_blocks.extend(nested_block)
-            else:
-                result_blocks.append(nested_block)
-
-        map_bar.block_until_complete(result_blocks, chunk_size=chunk_size)
-        return result_blocks
 
 
 class ActorPool(ComputePool):

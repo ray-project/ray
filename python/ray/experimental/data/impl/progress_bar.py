@@ -27,20 +27,10 @@ class ProgressBar:
                 needs_warning = False
             self._bar = None
 
-    def block_until_complete(self, remaining: List[ObjectRef],
-                             chunk_size=1) -> None:
-        done_total = 0
+    def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         while remaining:
             done, remaining = ray.wait(remaining, fetch_local=False)
-            done_size = len(done) * chunk_size
-            # If the next chunk exceeds the total, we need to only
-            # update the offset of it.
-            # e.g., current done: 198 + 6, total: 200.
-            # We need to update only 2 instead of 6 in this case.
-            if done_total + done_size > self._total:
-                done_size = self._total - done_total
-            done_total += done_size
-            self.update(done_size)
+            self.update(len(done))
 
     def set_description(self, name: str) -> None:
         if self._bar:

@@ -1,5 +1,5 @@
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
-    Generator, Optional, Union, TYPE_CHECKING, Iterable
+    Generator, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -12,8 +12,9 @@ if TYPE_CHECKING:
 import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block
+from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.transform_util import concat_batches
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -106,48 +107,50 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def transform_builder(
-                build_block: Callable[[Block[T]], Block[U]]
-        ) -> Callable[[Iterable[Block[T]]], Iterable[ObjectRef[Block[U]]]]:
-            def transform(*blocks: Iterable[Block[T]]
-                          ) -> Iterable[ObjectRef[Block[U]]]:
-                # Need to ray.put so that the caller side
-                # can unflatten it without additional overhead.
-                return [ray.put(build_block(block)) for block in blocks]
+        def pandas_batch_transform(block: Block[T]) -> Block[U]:
+            total_rows = block.num_rows()
+            max_batch_size = total_rows if batch_size is None else batch_size
 
-            return transform
-
-        def build_pandas_block(block: Block[T]) -> Block[U]:
-            builder = DelegatingArrowBlockBuilder()
             df = block.to_pandas()
-            builder.add(fn(df))
-            return builder.build()
 
-        def build_arrow_block(block: Block[T]) -> Block[U]:
-            builder = DelegatingArrowBlockBuilder()
-            for row in block.iter_rows():
-                builder.add(fn(row))
-            return builder.build()
+            batches = []
+            for start in range(0, total_rows, max_batch_size):
+                end = min(total_rows, start + max_batch_size)
+                view = df.iloc[start:end]
+                batches.append(fn(view))
+            return concat_batches(batches)
 
-        def get_batch_transform(batch_format: str) -> Any:
-            if batch_format == "pandas":
-                return transform_builder(build_pandas_block)
-            elif batch_format == "arrow":
-                return transform_builder(build_arrow_block)
+        def arrow_batch_transform(block: Block[T]) -> Block[U]:
+            if isinstance(block, ListBlock):
+                raise ValueError(
+                    "Pyarrow batch format is currently not supported for "
+                    "list-based Dataset. e.g., data.range(5)")
+            total_rows = block.num_rows()
+            max_batch_size = total_rows if batch_size is None else batch_size
+            batches = []
+            for start in range(0, total_rows, max_batch_size):
+                end = min(total_rows, start + max_batch_size)
+                view = block.slice(start, end)
+                batches.append(fn(view.table))
+
+            return concat_batches(batches)
+
+        def get_batch_transform(transform_format: str) -> Any:
+            if transform_format == "pandas":
+                return pandas_batch_transform
+            elif transform_format == "pyarrow":
+                return arrow_batch_transform
             else:
                 raise ValueError(
-                    f"The given batch format: {batch_format} "
-                    f"is not supported. Supported types: {BatchType}")
+                    f"The given batch format: {transform_format} is invalid. "
+                    f"Supported batch type: {BatchType}")
 
         transform = get_batch_transform(batch_format)
         compute = get_compute(compute)
-        batch_size = 1 if batch_size is None else batch_size
-        if batch_size < 1:
+        if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
 
-        return Dataset(
-            compute.apply_batch(transform, ray_remote_args, self._blocks,
-                                batch_size))
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
                  fn: Callable[[T], Iterator[U]],

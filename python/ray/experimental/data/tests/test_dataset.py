@@ -109,21 +109,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.range(5)
     with pytest.raises(ValueError):
         ds.map_batches(
-            lambda x: x + 1, batch_format="arrow", batch_size=-1).take()
-
-    # Test the chunk size calculation doesn't have division by 0
-    ds = ray.experimental.data.range(5)
-    assert sorted(
-        ds.map_batches(lambda x: x + 1, batch_format="arrow",
-                       batch_size=6).take()) == [1, 2, 3, 4, 5]
-
-    # Test Pyarrow
-    ds = ray.experimental.data.range(5)
-    assert sorted(
-        ds.map_batches(lambda x: x + 1, batch_format="arrow",
-                       batch_size=2).take()) == [1, 2, 3, 4, 5]
-    assert ds.count() == 5
-    assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
+            lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
 
     # Test pandas
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -136,35 +122,47 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     values = [s["two"] for s in ds_list]
     assert values == [3, 4, 5]
 
-    # Test pandas format & return python type uses list block
-    ds = ray.experimental.data.range(10)
-    ds_list = ds.map_batches(lambda df: 1, batch_size=3).take()
-    assert ds_list == [1] * 10
+    # Test Pyarrow
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(
+        lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
+    values = [s["one"] for s in ds_list]
+    assert values == [1, 2, 3]
+    values = [s["two"] for s in ds_list]
+    assert values == [2, 3, 4]
 
-    # Test pandas large batch
-    size = 600
-    parallelism = 200
-    ds = ray.experimental.data.range(size, parallelism=parallelism)
-    # Choose a value that cannot divide cleanly to test the edge case.
-    # Add 1 to each row at the dataframe.
-    ds = ds.map_batches(lambda df: df + 1, batch_size=21)
+    # Test batch
+    size = 300
+    ds = ray.experimental.data.range(size)
+    ds_list = ds.map_batches(lambda df: df + 1, batch_size=17).take(limit=size)
+    for i in range(size):
+        # The pandas column is "0", and it originally has rows from 0~299.
+        # After the map batch, it should have 1~300.
+        row = ds_list[i]
+        assert row["0"] == i + 1
+    assert ds.count() == 300
 
-    # Make sure the total rows are correctly set.
-    assert ds.count() == size
-    # Make sure the block size is correctly set. When parallelism is 200,
-    # there are 600 // 200 rows per block, meaning there are 200 blocks.
-    assert ds.num_blocks() == size // (size // parallelism)
+    # Test the lambda returns different types than the batch_format
+    # pandas => list block
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    # Q(sang): Should we just now allow this? The return ds_list sizes
+    # is changed depending on the batch size.
+    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
+    assert ds_list == [1, 1, 1]
+    assert ds.count() == 3
 
-    # Check all rows have added 1 to it.
-    ds = ds.take(limit=size)
-    for i in range(600):
-        dict_row = ds[i]
-        row = list(dict_row.values())[0]
-        assert row == i + 1
-    assert len(ds) == size
-    # Q: Although the original dataset has Dataset[T], the return
-    # values conatain Dataset[ArrowRow[T]] due to the pandas conversion.
-    # Do we need to recover the original type?
+    # pyarrow => list block
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(
+        lambda df: [1], batch_size=1, batch_format="pyarrow").take()
+    assert ds_list == [1, 1, 1]
+    assert ds.count() == 3
+
+    # Test the wrong return value raises an exception.
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    with pytest.raises(ValueError):
+        ds_list = ds.map_batches(
+            lambda df: 1, batch_size=2, batch_format="pyarrow").take()
 
 
 if __name__ == "__main__":
