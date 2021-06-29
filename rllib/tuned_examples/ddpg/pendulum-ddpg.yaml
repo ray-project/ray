@@ -53,7 +53,3 @@ pendulum-ddpg:
         num_gpus_per_worker: 0
         #per_worker_exploration: False
         worker_side_prioritization: False
-
-        # === Evaluation ===
-        evaluation_interval: 5
-        evaluation_num_episodes: 10
