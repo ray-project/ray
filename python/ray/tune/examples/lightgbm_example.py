@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.integration.lightgbm import tune_report_callback
+from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
 
 
 def train_breast_cancer(config):
@@ -22,7 +22,7 @@ def train_breast_cancer(config):
         valid_names=["eval"],
         verbose_eval=False,
         callbacks=[
-            tune_report_callback({
+            TuneReportCheckpointCallback({
                 "binary_error": "eval-binary_error",
                 "binary_logloss": "eval-binary_logloss"
             })
