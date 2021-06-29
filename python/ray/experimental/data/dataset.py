@@ -462,7 +462,7 @@ class Dataset(Generic[T]):
                 "paths must be a path string or a list of path strings.")
 
         @ray.remote
-        def json_write(writer_path, *blocks):
+        def json_write(writer_path: str, *blocks: List[ArrowBlock]):
             print(f"Writing {len(blocks)} blocks to {writer_path}.")
             dfs = []
             for block in blocks:
@@ -510,7 +510,7 @@ class Dataset(Generic[T]):
                 "paths must be a path string or a list of path strings.")
 
         @ray.remote
-        def csv_write(writer_path, *blocks):
+        def csv_write(writer_path: str, *blocks: List[ArrowBlock]):
             print(f"Writing {len(blocks)} blocks to {writer_path}.")
             include_header = True
             for block in blocks:
@@ -595,6 +595,9 @@ class Dataset(Generic[T]):
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
+        Note that this function will set the Dask scheduler to Dask-on-Ray
+        globally, via the config.
+
         Time complexity: O(1)
 
         Returns:
@@ -603,31 +606,23 @@ class Dataset(Generic[T]):
         import dask
         import dask.dataframe as dd
         from ray.util.client.common import ClientObjectRef
+        from ray.util.dask import ray_dask_get
 
-        def _block_to_df(block):
-            return block._table.to_pandas()
-
-        _remote_block_to_df = ray.remote(_block_to_df)
+        dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block):
+        def block_to_df(block: ArrowBlock):
             if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
-                # The block Ray future hasn't been resolved to a concrete
-                # value, so the end-user isn't using Dask-on-Ray. We therefore
-                # launch a converting Ray task and block here to get the
-                # underlying dataframe.
-                df = ray.get(_remote_block_to_df.remote(block))
-            else:
-                # The block Ray future has been resolved, so the end-user is
-                # using Dask-on-Ray. We therefore directly convert the block to
-                # a dataframe since we're already running in a Ray task.
-                df = _block_to_df(block)
-
-            return df
+                raise ValueError(
+                    "Dataset.to_dask() must be used with Dask-on-Ray, please "
+                    "set the Dask scheduler to ray_dask_get (located in "
+                    "ray.util.dask).")
+            return block._table.to_pandas()
 
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
-        return dd.from_delayed([block_to_df(block) for block in self._blocks])
+        ddf = dd.from_delayed([block_to_df(block) for block in self._blocks])
+        return ddf
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
