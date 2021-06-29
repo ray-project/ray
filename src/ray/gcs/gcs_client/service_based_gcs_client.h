@@ -29,8 +29,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
   explicit ServiceBasedGcsClient(const GcsClientOptions &options,
                                  std::function<bool(std::pair<std::string, int> *)>
-                                 get_gcs_server_address_func = {}
-                                 );
+                                     get_gcs_server_address_func = {});
 
   Status Connect(instrumented_io_context &io_service) override;
 
@@ -38,9 +37,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
 
-  pubsub::SubscriberInterface &GetGcsSubscriber() {
-    return *subscriber_;
-  }
+  pubsub::SubscriberInterface &GetGcsSubscriber() { return *subscriber_; }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 

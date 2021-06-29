@@ -26,14 +26,12 @@ namespace gcs {
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(
     const GcsClientOptions &options,
-    std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func
-                                            )
+    std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func)
     : GcsClient(options),
       subscriber_id_(UniqueID::FromRandom()),
       get_server_address_func_(get_gcs_server_address_func),
       last_reconnect_timestamp_ms_(0),
-      last_reconnect_address_(std::make_pair("", -1))
-{}
+      last_reconnect_address_(std::make_pair("", -1)) {}
 
 Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
@@ -82,9 +80,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
       // TODO: This needs to be self address
       subscriber_id_, current_gcs_server_address_.first,
       current_gcs_server_address_.second, /*TODO*/ 10,
-      [this](const rpc::Address &address) {
-        return gcs_rpc_client_;
-      }, &io_service);
+      [this](const rpc::Address &address) { return gcs_rpc_client_; }, &io_service);
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -98,7 +94,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(
-                                              // TODO This needs to be our own address.
+      // TODO This needs to be our own address.
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
       [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); }));
