@@ -22,7 +22,9 @@ def autoinit_ray(f):
 
     return wrapped
 
-def _parse_paths(paths: Union[str, List[str]]) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
+
+def _parse_paths(paths: Union[str, List[str]]
+                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
     from pyarrow import fs
     if isinstance(paths, str):
         return fs.FileSystem.from_uri(paths)
@@ -32,6 +34,7 @@ def _parse_paths(paths: Union[str, List[str]]) -> Tuple["pyarrow.fs.FileSystem",
         filesystem = parsed_results[0][0]
         paths = [path[1] for path in parsed_results]
         return filesystem, paths
+
 
 @autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
@@ -164,6 +167,7 @@ def read_parquet(paths: Union[str, List[str]],
     for i, piece in enumerate(pieces):
         read_tasks[i].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
+
     @ray.remote
     def gen_read(pieces: List['pyarrow._dataset.ParquetFileFragment']):
         print("Reading {} parquet pieces".format(len(pieces)))
