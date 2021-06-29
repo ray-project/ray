@@ -1447,6 +1447,10 @@ def get(object_refs, *, timeout=None):
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
 
+    Ordering for an input list of object refs is preserved for each object
+    returned. That is, if an object ref to A precedes an object ref to B in the
+    input list, then A will precede B in the returned list.
+
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
