@@ -392,7 +392,7 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def write_parquet(path: str,
+    def write_parquet(self, paths: Union[str, List[str]],
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None
                       ) -> None:
         """Write the dataset to parquet.
@@ -400,15 +400,45 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
+            # Write to a single file.
             >>> ds.write_parquet("s3://bucket/path")
+
+            # Write to multiple files.
+            >>> ds.write_parquet(["/path/to/file1", "/path/to/file2"])
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path in the filesystem to write to.
+            paths: A single file path or a list of file paths (or directories).
             filesystem: The filesystem implementation to write to.
         """
-        raise NotImplementedError  # P0
+        import pyarrow.parquet as pq
+        import numpy as np
+
+        if isinstance(paths, str):
+            paths = [paths]
+        elif (
+                not isinstance(paths, list) or
+                any(not isinstance(p, str) for p in paths)):
+            raise ValueError(
+                "paths must be a path string or a list of path strings.")
+
+        @ray.remote
+        def parquet_write(writer_path, *blocks):
+            print(f"Writing {len(blocks)} blocks to {writer_path}.")
+            with pq.ParquetWriter(
+                    writer_path, blocks[0]._table.schema) as writer:
+                for block in blocks:
+                    writer.write_table(block._table)
+
+        refs = [
+            parquet_write.remote(writer_path, *blocks)
+            for writer_path, blocks in zip(
+                paths, np.array_split(self._blocks, len(paths)))
+            if len(blocks) > 0]
+
+        # Block until writing is done.
+        ray.get(refs)
 
     def write_json(self, paths: Union[str, List[str]],
                    filesystem: Optional["pyarrow.fs.FileSystem"] = None
