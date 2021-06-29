@@ -185,7 +185,7 @@ if __name__ == "__main__":
     if args.nbytes // npartitions > args.max_partition_size:
         npartitions = args.nbytes // args.max_partition_size
 
-    success = True
+    success = 1
     duration = []
     try:
         output = trial(
@@ -202,7 +202,7 @@ if __name__ == "__main__":
         import traceback
         print(traceback.format_exc())
         print(e)
-        success = False
+        success = 0
         duration = []
 
     print(ray.internal.internal_api.memory_summary(stats_only=True))

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 #include "ray/object_manager/plasma/compat.h"
 #include "ray/util/macros.h"

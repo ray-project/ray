@@ -280,10 +280,10 @@ def convert_to_numpy(x, reduce_floats=False):
     def mapping(item):
         if torch and isinstance(item, torch.Tensor):
             ret = item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
-        elif tf and isinstance(item, tf.Tensor):
+                item.detach().cpu().numpy()
+        elif tf and isinstance(item, (tf.Tensor, tf.Variable)):
             assert tf.executing_eagerly()
-            ret = item.cpu().numpy()
+            ret = item.numpy()
         else:
             ret = item
         if reduce_floats and isinstance(ret, np.ndarray) and \

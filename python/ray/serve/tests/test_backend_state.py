@@ -394,7 +394,7 @@ def test_create_delete_single_replica(mock_backend_state):
     backend_state.update()
     assert len(backend_state._replicas) == 0
     assert goal_manager.check_complete(delete_goal)
-    replica._actor.cleaned_up
+    assert replica._actor.cleaned_up
 
 
 def test_force_kill(mock_backend_state):
@@ -1421,6 +1421,52 @@ def test_health_check(mock_backend_state):
 
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+
+
+def test_shutdown(mock_backend_state):
+    """
+    Test that shutdown waits for all backends to be deleted and the backends
+    are force-killed without a grace period.
+    """
+    backend_state, timer, goal_manager = mock_backend_state
+
+    b_info_1 = backend_info()
+    create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+
+    # Single replica should be created.
+    backend_state.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    backend_state._replicas[TEST_TAG].get()[0]._actor.set_ready()
+
+    # Now the replica should be marked running.
+    backend_state.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+
+    # Test shutdown flow
+    assert not backend_state._replicas[TEST_TAG].get()[0]._actor.stopped
+
+    shutdown_goal = backend_state.shutdown()[0]
+
+    backend_state.update()
+
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
+    assert backend_state._replicas[TEST_TAG].get()[0]._actor.stopped
+    assert backend_state._replicas[TEST_TAG].get()[
+        0]._actor.force_stopped_counter == 1
+    assert not backend_state._replicas[TEST_TAG].get()[0]._actor.cleaned_up
+    assert not goal_manager.check_complete(shutdown_goal)
+
+    # Once it's done stopping, replica should be removed.
+    replica = backend_state._replicas[TEST_TAG].get()[0]
+    replica._actor.set_done_stopping()
+    backend_state.update()
+    check_counts(backend_state, total=0)
+
+    # TODO(edoakes): can we remove this extra update period for completing it?
+    backend_state.update()
+    assert len(backend_state._replicas) == 0
+    assert goal_manager.check_complete(shutdown_goal)
+    assert replica._actor.cleaned_up
 
 
 if __name__ == "__main__":

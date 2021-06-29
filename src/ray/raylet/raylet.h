@@ -87,9 +87,6 @@ class Raylet {
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The object table. This is shared between the object manager and node
-  /// manager.
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
   /// The name of the socket this raylet listens on.

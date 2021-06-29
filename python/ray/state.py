@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 import logging
+import os
 
 import ray
 
@@ -47,6 +48,10 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+                ray.client().connect()
+                # Retry connect!
+                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -276,6 +281,16 @@ class GlobalState:
             results.append(job_info)
 
         return results
+
+    def next_job_id(self):
+        """Get next job id from GCS.
+
+        Returns:
+            Next job id in the cluster.
+        """
+        self._check_connected()
+
+        return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
     def profile_table(self):
         self._check_connected()
@@ -771,6 +786,15 @@ def jobs():
     return state.job_table()
 
 
+def next_job_id():
+    """Get next job id from GCS.
+
+    Returns:
+        Next job id in integer representation in the cluster.
+    """
+    return state.next_job_id()
+
+
 @client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
@@ -832,19 +856,6 @@ def actors(actor_id=None):
         Information about the actors.
     """
     return state.actor_table(actor_id=actor_id)
-
-
-def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
-
-    Args:
-        object_ref: An object ref to fetch information about. If this is None,
-            then the entire object table is fetched.
-
-    Returns:
-        Information from the object table.
-    """
-    return state.object_table(object_ref=object_ref)
 
 
 @client_mode_hook

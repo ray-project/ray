@@ -54,7 +54,7 @@ if __name__ == "__main__":
             # the first tuple value is None -> uses default policy
             "av": (None, obs_space, act_space, {}),
         },
-        "policy_mapping_fn": lambda agent_id: "av"
+        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
     }
 
     # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

@@ -21,12 +21,10 @@ import org.slf4j.LoggerFactory;
 /** An implementation of GcsClient. */
 public class GcsClient {
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
-  private RedisClient primary;
 
   private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
-    primary = new RedisClient(redisAddress, redisPassword);
     globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
   }
 
@@ -145,8 +143,7 @@ public class GcsClient {
   }
 
   public JobId nextJobId() {
-    int jobCounter = (int) primary.incr("JobCounter".getBytes());
-    return JobId.fromInt(jobCounter);
+    return JobId.fromBytes(globalStateAccessor.getNextJobID());
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */

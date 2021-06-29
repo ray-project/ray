@@ -231,11 +231,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // double-acquiring when the next invocation of this function tries to schedule
           // this task.
           cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-          // No worker available, we won't be able to schedule any kind of task.
-          // Worker processes spin up pretty quickly, so it's not worth trying to spill
-          // this task.
           ReleaseTaskArgs(task_id);
-          return;
+          // It may be that no worker was available with the correct runtime env or
+          // correct job ID.  However, another task with a different env or job ID
+          // might have a worker available, so continue iterating through the queue.
+          work_it++;
+          continue;
         }
 
         RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
@@ -299,11 +300,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   }
   AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
-}
-
-void ClusterTaskManager::ScheduleInfeasibleTasks() {
-  // Do nothing.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
 }
 
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
@@ -1039,7 +1035,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue";
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1095,6 +1090,41 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
+  std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
+  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
+  for (auto &entry : leased_workers_) {
+    std::shared_ptr<WorkerInterface> worker = entry.second;
+    auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
+    if (!task_spec.PlacementGroupBundleId().first.IsNil()) {
+      continue;
+    }
+
+    auto task_id = worker->GetAssignedTaskId();
+    auto actor_id = task_id.ActorId();
+    if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
+      // This task ID corresponds to an actor creation task.
+      continue;
+    }
+
+    if (auto allocated_instances = worker->GetAllocatedInstances()) {
+      auto resource_request = allocated_instances->ToResourceRequest();
+      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
+        if (resource_request.predefined_resources[i] > 0) {
+          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
+              resource_request.predefined_resources[i];
+        }
+      }
+      for (auto &entry : resource_request.custom_resources) {
+        if (entry.second > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
+        }
+      }
+    }
+  }
+  return total_normal_task_resources;
 }
 
 }  // namespace raylet
