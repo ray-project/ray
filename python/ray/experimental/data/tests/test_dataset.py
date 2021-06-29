@@ -114,8 +114,23 @@ def test_parquet(ray_start_regular_shared, tmp_path):
     pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
 
     ds = ray.experimental.data.read_parquet(tmp_path)
-    values = [[s["one"], s["two"]] for s in ds.take()]
 
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    assert str(ds) == \
+        "Dataset(num_rows=6, num_blocks=2, " \
+        "schema={one: int64, two: string})", ds
+    assert repr(ds) == \
+        "Dataset(num_rows=6, num_blocks=2, " \
+        "schema={one: int64, two: string})", ds
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
