@@ -32,18 +32,16 @@ def step(func) -> WorkflowStepFunction:
 
 # TODO(suquark): Raise an error when calling run() on an existing workflow.
 # Maybe we can also add a run_or_resume() call.
-# TODO(suquark): Rename "workflow_root_dir" to "storage_url".
 
 
-def run(entry_workflow: Workflow, workflow_root_dir=None,
+def run(entry_workflow: Workflow, storage_url=None,
         workflow_id=None) -> ray.ObjectRef:
     """
     Run a workflow asynchronously.
 
     Args:
         entry_workflow: The workflow to run.
-        workflow_root_dir: The path of an external storage used for
-            checkpointing.
+        storage_url: The URL of an external storage used for checkpointing.
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
 
@@ -58,8 +56,7 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
         workflow_id = f"{uuid.uuid4().hex}.{time.time():.9f}"
     logger.info(f"Workflow job {workflow_id} created.")
     try:
-        workflow_context.init_workflow_step_context(workflow_id,
-                                                    workflow_root_dir)
+        workflow_context.init_workflow_step_context(workflow_id, storage_url)
         rref = postprocess_workflow_step(entry_workflow)
         logger.info(f"Workflow job {workflow_id} started.")
         output = workflow_output_cache.remote(workflow_id, rref)
@@ -71,22 +68,22 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
 # TODO(suquark): support recovery with ObjectRef inputs.
 
 
-def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
+def resume(workflow_id: str, storage_url=None) -> ray.ObjectRef:
     """
     Resume a workflow asynchronously. This workflow maybe fail previously.
 
     Args:
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
-        workflow_root_dir: The path of an external storage used for
+        storage_url: The path of an external storage used for
             checkpointing.
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     assert ray.is_initialized()
-    if workflow_root_dir is not None:
-        store = storage.create_storage(workflow_root_dir)
+    if storage_url is not None:
+        store = storage.create_storage(storage_url)
     else:
         store = storage.get_global_storage()
     r = recovery.resume_workflow_job(workflow_id, store)
@@ -94,7 +91,7 @@ def resume(workflow_id: str, workflow_root_dir=None) -> ray.ObjectRef:
         return r
     # skip saving the DAG of a recovery workflow
     r.skip_saving_workflow_dag = True
-    return run(r, workflow_root_dir, workflow_id)
+    return run(r, storage_url, workflow_id)
 
 
 __all__ = ("step", "run")
