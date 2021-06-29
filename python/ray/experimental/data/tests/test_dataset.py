@@ -136,6 +136,11 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     values = [s["two"] for s in ds_list]
     assert values == [3, 4, 5]
 
+    # Test pandas format & return python type uses list block
+    ds = ray.experimental.data.range(10)
+    ds_list = ds.map_batches(lambda df: 1, batch_size=3).take()
+    assert ds_list == [1] * 10
+
     # Test pandas large batch
     size = 600
     parallelism = 200
