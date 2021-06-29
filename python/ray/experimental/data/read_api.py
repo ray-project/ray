@@ -1,3 +1,4 @@
+import logging
 import builtins
 from typing import List, Any, Union, Optional, Tuple, Callable, TYPE_CHECKING
 
@@ -14,6 +15,8 @@ from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
+
+logger = logging.getLogger(__name__)
 
 
 def autoinit_ray(f):
@@ -204,7 +207,7 @@ def read_parquet(paths: Union[str, List[str]],
 
     @ray.remote
     def gen_read(pieces: List[pq.ParquetDatasetPiece]):
-        print("Reading {} parquet pieces".format(len(pieces)))
+        logger.info("Reading {} parquet pieces".format(len(pieces)))
         table = piece.read(
             columns=columns, use_threads=False, partitions=partitions)
         return ArrowBlock(table)

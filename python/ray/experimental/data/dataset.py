@@ -1,3 +1,4 @@
+import logging
 from typing import List, Any, Callable, Iterable, Iterator, Generic, TypeVar, \
     Optional, Union, TYPE_CHECKING
 
@@ -20,6 +21,8 @@ T = TypeVar("T")
 U = TypeVar("U")
 BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
 
+logger = logging.getLogger(__name__)
+
 
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
@@ -39,7 +42,6 @@ class Dataset(Generic[T]):
     """
 
     def __init__(self, blocks: BlockList[T]):
-        assert isinstance(blocks, BlockList), blocks
         self._blocks: BlockList[T] = blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
@@ -278,7 +280,7 @@ class Dataset(Generic[T]):
         @ray.remote(num_returns=2)
         def truncate(block: Block[T], meta: BlockMetadata,
                      count: int) -> (Block[T], BlockMetadata):
-            print("Truncating last block to size:", count)
+            logger.info("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count)
             new_meta = BlockMetadata(
                 num_rows=new_block.num_rows(),
