@@ -441,36 +441,6 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_parquet_partitions(
-            self,
-            path: str,
-            partition_cols: List[str],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
-        """Write the dataset to parquet as a partitioned dataset, consisting of
-        multiple files.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        Examples:
-            >>> ds.write_parquet_partitions(
-                    "s3://bucket/path", partition_cols=["foo", "bar"]))
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            path: The root path to the parent directory in the filesystem to
-                write to.
-            partition_cols: Column names by which to partition the dataset.
-            filesystem: The filesystem implementation to write to.
-        """
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-
-        table = pa.concat_tables(
-            [block._table for block in ray.get(self._blocks)])
-        pq.write_to_dataset(
-            table, path, partition_cols=partition_cols, filesystem=filesystem)
-
     def write_json(
             self,
             paths: Union[str, List[str]],
