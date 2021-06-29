@@ -693,6 +693,7 @@ class Node:
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
+             external_addresses=self._ray_params.external_addresses,
              port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
