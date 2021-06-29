@@ -595,6 +595,8 @@ class Dataset(Generic[T]):
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
+        This is only supported for datasets convertible to Arrow records.
+
         Note that this function will set the Dask scheduler to Dask-on-Ray
         globally, via the config.
 
@@ -637,6 +639,8 @@ class Dataset(Generic[T]):
     def to_pandas(self) -> Iterator[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a set of Pandas dataframes.
 
+        This is only supported for datasets convertible to Arrow records.
+
         Time complexity: O(1)
 
         Returns:
@@ -644,7 +648,7 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def block_to_df(block):
+        def block_to_df(block: ArrowBlock):
             return block._table.to_pandas()
 
         return [block_to_df.remote(block) for block in self._blocks]

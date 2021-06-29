@@ -210,7 +210,7 @@ def read_json(paths: Union[str, List[str]],
             "paths must be a path string or a list of path strings.")
 
     @ray.remote
-    def json_read(reader_paths):
+    def json_read(reader_paths: List[str]):
         print(f"Reading {len(reader_paths)} files.")
         tables = []
         for p in reader_paths:
@@ -263,7 +263,7 @@ def read_csv(paths: Union[str, List[str]],
             "paths must be a path string or a list of path strings.")
 
     @ray.remote
-    def csv_read(reader_paths):
+    def csv_read(reader_paths: List[str]):
         print(f"Reading {len(reader_paths)} files.")
         tables = []
         for p in reader_paths:
@@ -356,7 +356,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     import pyarrow as pa
 
     @ray.remote
-    def df_to_block(df):
+    def df_to_block(df: "pandas.DataFrame"):
         return ArrowBlock(pa.table(df))
 
     return Dataset([df_to_block.remote(df) for df in dfs])
