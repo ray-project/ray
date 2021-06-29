@@ -9,7 +9,7 @@ class LazyBlockList(BlockList[T]):
                  metadata: List[BlockMetadata]):
         assert len(calls) == len(metadata), (calls, metadata)
         self._calls = calls
-        self._blocks = [calls[0]()]
+        self._blocks = [calls[0]()] if calls else []
         self._metadata = metadata
 
     def __len__(self):

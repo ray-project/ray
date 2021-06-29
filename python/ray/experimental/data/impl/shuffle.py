@@ -22,7 +22,11 @@ def simple_shuffle(input_blocks: BlockList[T],
             slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
         num_rows = sum(s.num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        return slices
+        # Needed to handle num_returns=1 edge case in Ray API.
+        if len(slices) == 1:
+            return slices[0]
+        else:
+            return slices
 
     @ray.remote(num_returns=2)
     def shuffle_reduce(
@@ -42,6 +46,9 @@ def simple_shuffle(input_blocks: BlockList[T],
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
     shuffle_map_out = [shuffle_map.remote(block) for block in input_blocks]
+    if output_num_blocks == 1:
+        # Handle the num_returns=1 edge case which doesn't return a list.
+        shuffle_map_out = [[x] for x in shuffle_map_out]
     map_bar.block_until_complete([x[0] for x in shuffle_map_out])
     map_bar.close()
 

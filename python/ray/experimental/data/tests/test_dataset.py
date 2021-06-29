@@ -23,6 +23,35 @@ def test_basic(ray_start_regular_shared):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
+def test_empty_dataset(ray_start_regular_shared):
+    ds = ray.experimental.data.range(0)
+    assert ds.count() == 0
+    with pytest.raises(ValueError):
+        ds.size_bytes()
+    with pytest.raises(ValueError):
+        ds.schema()
+
+    ds = ray.experimental.data.range(1)
+    ds = ds.filter(lambda x: x > 1)
+    assert str(ds) == \
+        "Dataset(num_rows=0, num_blocks=1, schema=Unknown schema)"
+
+
+def test_schema(ray_start_regular_shared):
+    ds = ray.experimental.data.range(10)
+    ds2 = ray.experimental.data.range_arrow(10)
+    ds3 = ds2.repartition(5)
+    ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
+    assert str(ds) == \
+        "Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)"
+    assert str(ds2) == \
+        "Dataset(num_rows=10, num_blocks=10, schema={value: int64})"
+    assert str(ds3) == \
+        "Dataset(num_rows=10, num_blocks=5, schema={value: int64})"
+    assert str(ds4) == \
+        "Dataset(num_rows=5, num_blocks=1, schema={a: string, b: double})"
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.experimental.data.range(100, parallelism=20)
     assert len(ds._blocks._blocks) == 1

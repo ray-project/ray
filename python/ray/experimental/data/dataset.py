@@ -415,7 +415,7 @@ class Dataset(Generic[T]):
             in-memory size is not known.
         """
         metadata = self._blocks.get_metadata()
-        if metadata[0].size_bytes is None:
+        if not metadata or metadata[0].size_bytes is None:
             raise ValueError("Could not estimate the size of this dataset.")
         return sum(m.size_bytes for m in metadata)
 
@@ -639,7 +639,7 @@ class Dataset(Generic[T]):
 
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()
-        if metadata[0].num_rows is not None:
+        if metadata and metadata[0].num_rows is not None:
             return sum(m.num_rows for m in metadata)
         else:
             return None
