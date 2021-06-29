@@ -1,17 +1,30 @@
-class Datasource(Generic[T]):
-    def prepare_read(self, parallelism: int = 200,
-                     **read_args) -> List[ReadTask[T]]:
+import builtins
+from typing import Any, Generic, List, Callable, Union, TypeVar
+
+import ray
+from ray.experimental.data.impl.arrow_block import ArrowRow, \
+    DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.block import Block, ListBlock
+from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
+
+T = TypeVar("T")
+W = TypeVar("WriteResult")
+
+
+class Datasource(Generic[T, W]):
+    def prepare_read(self, parallelism: int,
+                     **read_args) -> List["ReadTask[T]"]:
         raise NotImplementedError
 
     def prepare_write(self, blocks: BlockList,
-                      **write_args) -> List[WriteTask[T]]:
+                      **write_args) -> List["WriteTask[T, W]"]:
         raise NotImplementedError
 
-    def on_write_complete(self, write_tasks: List[WriteTask[T]],
-                          write_task_outputs: List[Any]) -> None:
+    def on_write_complete(self, write_tasks: List["WriteTask[T, W]"],
+                          write_task_outputs: List[W]) -> None:
         pass
 
-    def on_write_failed(self, write_tasks: List[WriteTask[T]],
+    def on_write_failed(self, write_tasks: List["WriteTask[T, W]"],
                         error: Exception) -> None:
         pass
 
@@ -29,31 +42,28 @@ class ReadTask(Callable[[], Block[T]]):
         return self._read_fn()
 
 
-class WriteTask(Callable[[Block[T]], Any]):
-    def __init__(self, write_fn: Callable[[Block[T]], Any]):
-        self.write_fn = write_fn
+class WriteTask(Callable[[Block[T]], W]):
+    def __init__(self, write_fn: Callable[[Block[T]], W]):
+        self._write_fn = write_fn
 
-    def __call__(self) -> Any:
+    def __call__(self) -> W:
         self._write_fn()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
-    def prepare_read(self, parallelism: int = 200, n: int,
+    def prepare_read(self, parallelism: int, n: int,
                      use_arrow: bool) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
 
-        def make_py_block(start: int, count: int) -> ListBlock:
-            builder = ListBlock.builder()
+        def make_block(start: int, count: int) -> ListBlock:
+            builder = DelegatingArrowBlockBuilder.builder()
             for value in builtins.range(start, start + count):
-                builder.add(value)
+                if use_arrow:
+                    builder.add(value)
+                else:
+                    builder.add({"value": value})
             return builder.build()
-
-        def make_arrow_block(start: int, count: int) -> "ArrowBlock":
-            return ArrowBlock(
-                pyarrow.Table.from_pydict({
-                    "value": list(builtins.range(start, start + count))
-                }))
 
         i = 0
         while i < n:
@@ -63,9 +73,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
 
             count = min(block_size, n - i)
             read_tasks.append(
-                bind_lambda_args(
-                    make_arrow_block
-                    if use_arrow else make_py_block, i, count),
+                bind_lambda_args(make_block, i, count),
                 BlockMetadata(
                     num_rows=count,
                     size_bytes=8 * count,
@@ -74,10 +82,3 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             i += block_size
 
         return read_tasks
-
-
-if __name__ == "__main__":
-    ds = ray.experimental.data.from_datasource(
-        RangeDatasource(), n=10000, use_arrow=True)
-    print(ds)
-    print(ds.take(10))

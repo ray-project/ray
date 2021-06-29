@@ -11,7 +11,9 @@ if TYPE_CHECKING:
     import ray.util.sgd
 
 import ray
+from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.compute import get_compute
+from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata

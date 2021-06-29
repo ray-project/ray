@@ -1,6 +1,7 @@
 import logging
 import builtins
-from typing import List, Any, Union, Optional, Tuple, Callable, TYPE_CHECKING
+from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
+    TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -11,11 +12,14 @@ if TYPE_CHECKING:
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.datasource import Datasource, RangeDatasource
+from ray.experimental.data.datasource import Datasource, RangeDatasource, \
+    ReadTask
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +83,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     Returns:
         Dataset holding the integers.
     """
-    return from_datasource(
+    return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
@@ -100,16 +104,17 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
-    return from_datasource(
+    return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
 
 @autoinit_ray
-def from_datasource(datasource: DataSource[T],
-                    parallelism: int = 200) -> Dataset[T]:
+def read_datasource(datasource: Datasource[T],
+                    parallelism: int = 200,
+                    **read_args) -> Dataset[T]:
     """Create a dataset from a custom data source."""
 
-    read_tasks = datasource.prepare_read(parallelism)
+    read_tasks = datasource.prepare_read(parallelism, **read_args)
 
     @ray.remote
     def remote_read(task: ReadTask) -> Block[T]:
