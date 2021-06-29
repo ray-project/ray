@@ -6,7 +6,7 @@ pendulum-cql:
     env: Pendulum-v0
     run: CQL
     stop:
-        evaluation/episode_reward_mean: -700
+        evaluation/episode_reward_mean: -600
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
@@ -17,30 +17,20 @@ pendulum-cql:
         # Our input file above comes from an SAC run. Actions in there
         # are already normalized (produced by SquashedGaussian).
         actions_in_input_normalized: true
+        clip_actions: true
 
-        horizon: 200
-        soft_horizon: true
-        Q_model:
-          fcnet_activation: tanh
-          fcnet_hiddens: [256, 256]
-        policy_model:
-          fcnet_activation: tanh
-          fcnet_hiddens: [256, 256]
+        twin_q: true
         train_batch_size: 2000
-        bc_iters: 0
-        no_done_at_end: true
-        n_step: 3
-        optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
-        prioritized_replay: false
-        timesteps_per_iteration: 1000
-        learning_starts: 256
-        evaluation_num_workers: 1
-        evaluation_interval: 1
+        learning_starts: 0
+        bc_iters: 100
+
         metrics_smoothing_episodes: 5
+
         # Evaluate in an actual environment.
+        evaluation_interval: 1
+        evaluation_num_workers: 2
+        evaluation_num_episodes: 10
+        evaluation_parallel_to_training: true
         evaluation_config:
             input: sampler
             explore: False
