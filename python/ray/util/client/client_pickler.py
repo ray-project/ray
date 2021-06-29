@@ -40,7 +40,6 @@ from ray.util.client.common import ClientRemoteMethod
 from ray.util.client.common import OptionWrapper
 from ray.util.client.common import InProgressSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
-from ray._private.client_mode_hook import disable_client_hook
 
 if sys.version_info < (3, 8):
     try:
