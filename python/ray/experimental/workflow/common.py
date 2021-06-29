@@ -35,15 +35,16 @@ def slugify(value: str, allow_unicode=False):
     https://github.com/django/django/blob/master/django/utils/text.py
     Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
     dashes to single dashes. Remove characters that aren't alphanumerics,
-    underscores, or hyphens. Convert to lowercase. Also strip leading and
-    trailing whitespace, dashes, and underscores.
+    underscores, dots or hyphens. Also strip leading and
+    trailing whitespace.
     """
     if allow_unicode:
         value = unicodedata.normalize("NFKC", value)
     else:
         value = unicodedata.normalize("NFKD", value).encode(
             "ascii", "ignore").decode("ascii")
-    return re.sub(r"[^\w.\-]", "", value)
+    value = re.sub(r"[^\w.\-]", "", value).strip()
+    return re.sub(r"[-\s]+", "-", value)
 
 
 class Workflow:
