@@ -8,8 +8,7 @@ import threading
 import ray
 
 from ray.test_utils import (
-    wait_for_pid_to_exit,
-)
+    wait_for_pid_to_exit, )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -20,7 +19,7 @@ def check_result(path):
         s = f.read()
         assert len(s) > 0
         print(s)
-        assert "SIGTERM" in s   
+        assert "SIGTERM" in s
 
 
 class check_thread(threading.Thread):
@@ -28,12 +27,12 @@ class check_thread(threading.Thread):
         threading.Thread.__init__(self)
         self._daemonic = True
         self.raylet_out_path = raylet_out_path
+
     def run(self):
         check_result(self.raylet_out_path)
 
 
 def test_kill_raylet_signal_log(shutdown_only):
-
     @ray.remote
     def f():
         return os.getpid()
