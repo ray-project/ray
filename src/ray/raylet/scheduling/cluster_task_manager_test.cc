@@ -74,38 +74,6 @@ class MockWorkerPool : public WorkerPoolInterface {
   int num_pops;
 };
 
-// class MockWorkerPoolWithRuntimeEnvs : public WorkerPoolInterface {
-//  public:
-//   MockWorkerPoolWithRuntimeEnvs() {}
-
-//   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
-//     const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-//                                 task_spec.SerializedRuntimeEnv()};
-//     const int runtime_env_hash = env.IntHash();
-//     std::shared_ptr<WorkerInterface> worker = nullptr;
-
-//     for (auto it = workers.begin(); it != workers.end();
-//          it++) {
-//       // Skip if the runtime env doesn't match.
-//       if (runtime_env_hash != (*it)->GetRuntimeEnvHash()) {
-//         continue;
-//       }
-
-//       worker = std::move(*it);
-//       workers.erase(it);
-//       break;
-//     }
-
-//     return worker;
-//   }
-
-//   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
-//     workers.push_front(worker);
-//   }
-
-//   std::list<std::shared_ptr<WorkerInterface>> workers;
-// };
-
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     const std::string &id) {
   std::unordered_map<std::string, double> local_node_resources;
