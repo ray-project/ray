@@ -1,5 +1,4 @@
 import os
-import psutil
 import signal
 import sys
 import time
