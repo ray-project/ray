@@ -280,7 +280,7 @@ class Dataset(Generic[T]):
         @ray.remote(num_returns=2)
         def truncate(block: Block[T], meta: BlockMetadata,
                      count: int) -> (Block[T], BlockMetadata):
-            logger.info("Truncating last block to size: {}".format(count))
+            logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count)
             new_meta = BlockMetadata(
                 num_rows=new_block.num_rows(),

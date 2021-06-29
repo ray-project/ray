@@ -187,29 +187,27 @@ def read_parquet(paths: Union[str, List[str]],
     import pyarrow.parquet as pq
 
     pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
-    pieces = pq_ds.pieces
-    data_pieces = []
-
-    for piece in pieces:
-        num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
-        for i in builtins.range(num_row_groups):
-            data_pieces.append(
-                pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
-                                       piece.file_options, i,
-                                       piece.partition_keys))
 
     read_tasks = [[] for _ in builtins.range(parallelism)]
-    # TODO(ekl) bin pack this better
-    for i, piece in enumerate(pieces):
+    # TODO(ekl) support reading row groups (maybe as an option)
+    for i, piece in enumerate(pq_ds.pieces):
         read_tasks[i % len(read_tasks)].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
     partitions = pq_ds.partitions
 
     @ray.remote
     def gen_read(pieces: List[pq.ParquetDatasetPiece]):
-        logger.info("Reading {} parquet pieces".format(len(pieces)))
-        table = piece.read(
-            columns=columns, use_threads=False, partitions=partitions)
+        import pyarrow
+        logger.debug("Reading {} parquet pieces".format(len(pieces)))
+        tables = [
+            piece.read(
+                columns=columns, use_threads=False, partitions=partitions)
+            for piece in pieces
+        ]
+        if len(tables) > 1:
+            table = pyarrow.concat_tables(tables)
+        else:
+            table = tables[0]
         return ArrowBlock(table)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
@@ -225,7 +223,11 @@ def read_parquet(paths: Union[str, List[str]],
         metadata.append(
             BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
-                size_bytes=sum(m.serialized_size for m in piece_metadata),
+                size_bytes=sum(
+                    sum(
+                        m.row_group(i).total_byte_size
+                        for i in builtins.range(m.num_row_groups))
+                    for m in piece_metadata),
                 schema=piece_metadata[0].schema.to_arrow_schema(),
                 input_files=[p.path for p in pieces]))
 

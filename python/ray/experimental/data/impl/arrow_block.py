@@ -1,5 +1,5 @@
 import collections
-from typing import Iterator, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
 try:
     import pyarrow
@@ -78,6 +78,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
+        self._tables: List["pyarrow.Table"] = []
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -90,12 +91,18 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[key].append(value)
 
     def add_block(self, block: "ArrowBlock[T]") -> None:
-        other_cols = block._table.to_pydict()
-        for k, vv in other_cols.items():
-            self._columns[k].extend(vv)
+        self._tables.append(block._table)
 
     def build(self) -> "ArrowBlock[T]":
-        return ArrowBlock(pyarrow.Table.from_pydict(self._columns))
+        if self._columns:
+            tables = [pyarrow.Table.from_pydict(self._columns)]
+        else:
+            tables = []
+        tables.extend(self._tables)
+        if len(tables) > 1:
+            return ArrowBlock(pyarrow.concat_tables(tables))
+        else:
+            return ArrowBlock(tables[0])
 
 
 class ArrowBlock(Block):
@@ -124,7 +131,10 @@ class ArrowBlock(Block):
         return Iter()
 
     def slice(self, start: int, end: int) -> "ArrowBlock[T]":
-        return ArrowBlock(self._table.slice(start, end - start))
+        view = self._table.slice(start, end - start)
+        copy = [c.to_pandas() for c in view.itercolumns()]
+        return ArrowBlock(
+            pyarrow.Table.from_arrays(copy, schema=self._table.schema))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema

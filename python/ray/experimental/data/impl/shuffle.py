@@ -1,3 +1,4 @@
+import math
 from typing import TypeVar, List
 
 import ray
@@ -15,10 +16,12 @@ def simple_shuffle(input_blocks: BlockList[T],
 
     @ray.remote(num_returns=output_num_blocks)
     def shuffle_map(block: Block[T]) -> List[Block[T]]:
-        slice_sz = max(1, block.num_rows() // output_num_blocks)
+        slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
             slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
+        num_rows = sum(s.num_rows() for s in slices)
+        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         return slices
 
     @ray.remote(num_returns=2)
