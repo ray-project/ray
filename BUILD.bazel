@@ -1274,6 +1274,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
+        ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
     ],

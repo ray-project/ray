@@ -60,7 +60,10 @@ void GcsServer::Start() {
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
   // Init gcs table storage.
-  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
+      redis_client_,
+      [](const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
+         const std::string &key_id_binary) {});
 
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);

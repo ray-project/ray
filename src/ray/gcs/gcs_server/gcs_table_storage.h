@@ -20,6 +20,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -52,8 +53,12 @@ using rpc::WorkerTableData;
 template <typename Key, typename Data>
 class GcsTable {
  public:
-  explicit GcsTable(std::shared_ptr<StoreClient> &store_client)
-      : store_client_(store_client) {}
+  explicit GcsTable(std::shared_ptr<StoreClient> &store_client,
+                    std::function<void(const rpc::ChannelType channel_type,
+                                       const rpc::PubMessage &pub_message,
+                                       const std::string &key_id_binary)>
+                        publish_change)
+      : store_client_(store_client), publish_change_(publish_change) {}
 
   virtual ~GcsTable() = default;
 
@@ -96,6 +101,10 @@ class GcsTable {
  protected:
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
+  std::function<void(const rpc::ChannelType channel_type,
+                     const rpc::PubMessage &pub_message,
+                     const std::string &key_id_binary)>
+      publish_change_;
 };
 
 /// \class GcsTableWithJobId
@@ -107,8 +116,12 @@ class GcsTable {
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
-  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable<Key, Data>(store_client) {}
+  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> &store_client,
+                             std::function<void(const rpc::ChannelType channel_type,
+                                                const rpc::PubMessage &pub_message,
+                                                const std::string &key_id_binary)>
+                                 publish_change)
+      : GcsTable<Key, Data>(store_client, publish_change) {}
 
   /// Write data to the table asynchronously.
   ///
@@ -116,7 +129,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// from the key. \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  virtual Status Put(const Key &key, const Data &value,
+                     const StatusCallback &callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///
@@ -154,17 +168,21 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
   explicit GcsJobTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::JOB);
   }
 };
 
 class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
-  explicit GcsActorTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
-  }
+  explicit GcsActorTable(std::shared_ptr<StoreClient> &store_client,
+                         std::function<void(const rpc::ChannelType channel_type,
+                                            const rpc::PubMessage &pub_message,
+                                            const std::string &key_id_binary)>
+                             publish_change);
+
+  Status Put(const ActorID &key, const ActorTableData &value,
+             const StatusCallback &callback) override;
 
  private:
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
@@ -174,7 +192,7 @@ class GcsPlacementGroupTable
     : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
   explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
   }
 };
@@ -182,7 +200,7 @@ class GcsPlacementGroupTable
 class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+      : GcsTableWithJobId(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK);
   }
 
@@ -193,7 +211,7 @@ class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
 class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
  public:
   explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+      : GcsTableWithJobId(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
   }
 
@@ -205,7 +223,7 @@ class GcsTaskReconstructionTable
     : public GcsTableWithJobId<TaskID, TaskReconstructionData> {
  public:
   explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+      : GcsTableWithJobId(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
   }
 
@@ -216,7 +234,7 @@ class GcsTaskReconstructionTable
 class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
  public:
   explicit GcsObjectTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+      : GcsTableWithJobId(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
   }
 
@@ -227,7 +245,7 @@ class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE);
   }
 };
@@ -235,7 +253,7 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
 class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
  public:
   explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE_RESOURCE);
   }
 };
@@ -243,7 +261,7 @@ class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
 class GcsHeartbeatTable : public GcsTable<NodeID, HeartbeatTableData> {
  public:
   explicit GcsHeartbeatTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::HEARTBEAT);
   }
 };
@@ -251,7 +269,7 @@ class GcsHeartbeatTable : public GcsTable<NodeID, HeartbeatTableData> {
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
   explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
   }
 };
@@ -259,7 +277,7 @@ class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, Schedul
 class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchData> {
  public:
   explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
   }
 };
@@ -267,7 +285,7 @@ class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchDat
 class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
   explicit GcsProfileTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::PROFILE);
   }
 };
@@ -275,7 +293,7 @@ class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
   }
 };
@@ -283,7 +301,7 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
 class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
  public:
   explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+      : GcsTable(store_client, nullptr) {
     table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
   }
 };
@@ -294,10 +312,15 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
-  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
+  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client,
+                           std::function<void(const rpc::ChannelType channel_type,
+                                              const rpc::PubMessage &pub_message,
+                                              const std::string &key_id_binary)>
+                               publish_change)
       : store_client_(store_client),
+        publish_change_(publish_change),
         job_table_(std::make_unique<GcsJobTable>(store_client_)),
-        actor_table_(std::make_unique<GcsActorTable>(store_client_)),
+        actor_table_(std::make_unique<GcsActorTable>(store_client_, publish_change)),
         placement_group_table_(std::make_unique<GcsPlacementGroupTable>(store_client_)),
         task_table_(std::make_unique<GcsTaskTable>(store_client_)),
         task_lease_table_(std::make_unique<GcsTaskLeaseTable>(store_client_)),
@@ -397,6 +420,10 @@ class GcsTableStorage {
 
  protected:
   std::shared_ptr<StoreClient> store_client_;
+  std::function<void(const rpc::ChannelType channel_type,
+                     const rpc::PubMessage &pub_message,
+                     const std::string &key_id_binary)>
+      publish_change_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
@@ -419,8 +446,13 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client)) {}
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client,
+                                std::function<void(const rpc::ChannelType channel_type,
+                                                   const rpc::PubMessage &pub_message,
+                                                   const std::string &key_id_binary)>
+                                    publish_change)
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client),
+                        publish_change) {}
 };
 
 /// \class InMemoryGcsTableStorage
@@ -428,8 +460,13 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
+  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service,
+                                   std::function<void(const rpc::ChannelType channel_type,
+                                                      const rpc::PubMessage &pub_message,
+                                                      const std::string &key_id_binary)>
+                                       publish_change)
+      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service),
+                        publish_change) {}
 };
 
 }  // namespace gcs

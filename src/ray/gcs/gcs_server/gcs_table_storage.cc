@@ -152,5 +152,26 @@ template class GcsTableWithJobId<ObjectID, ObjectLocationInfo>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
 
+GcsActorTable::GcsActorTable(std::shared_ptr<StoreClient> &store_client,
+                             std::function<void(const rpc::ChannelType channel_type,
+                                                const rpc::PubMessage &pub_message,
+                                                const std::string &key_id_binary)>
+                                 publish_change)
+    : GcsTableWithJobId(store_client, publish_change) {
+  table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
+}
+
+Status GcsActorTable::Put(const ActorID &key, const ActorTableData &value,
+                          const StatusCallback &callback) {
+  return GcsTableWithJobId::Put(key, value, [this, key, value, callback](Status status) {
+    callback(status);
+    if (status.ok()) {
+      rpc::PubMessage message;
+      message.mutable_actor_table_data()->CopyFrom(value);
+      publish_change_(rpc::ChannelType::GCS_ACTOR_CHANNEL, message, key.Binary());
+    }
+  });
+}
+
 }  // namespace gcs
 }  // namespace ray

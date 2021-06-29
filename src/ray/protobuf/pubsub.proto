@@ -28,7 +28,7 @@ enum ChannelType {
   /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
   /// Channel for gcs node changes.
-  GCS_NODE_CHANNEL = 2;
+  GCS_ACTOR_CHANNEL = 2;
 }
 
 ///
@@ -44,7 +44,7 @@ message PubMessage {
   oneof pub_message_one_of {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
-    AllGcsNodeInfo all_nodes_message = 5;
+    ActorTableData actor_table_data = 5;
   }
 }
 
