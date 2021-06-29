@@ -116,7 +116,7 @@ def train_fn(data_dir=None,
 
 
 def main(num_workers, use_gpu, **kwargs):
-    settings = RayExecutor.create_settings()
+    settings = RayExecutor.create_settings(timeout_s=30)
     executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
     executor.run(train_fn, kwargs=kwargs)
 
