@@ -23,6 +23,8 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
+    output = os.environ["TEST_OUTPUT_JSON"]
+    state = os.environ["TEST_STATE_JSON"]
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
@@ -30,8 +32,12 @@ if __name__ == "__main__":
         cpus_per_actor=4,
         gpus_per_actor=0)
 
+    start = time.time()
+
     @ray.remote
     def train():
+        os.environ["TEST_OUTPUT_JSON"] = output
+        os.environ["TEST_STATE_JSON"] = state
         train_ray(
             path="/data/classification.parquet",
             num_workers=4,
@@ -43,7 +49,6 @@ if __name__ == "__main__":
             xgboost_params=None,
         )
 
-    start = time.time()
     ray.get(train.remote())
     taken = time.time() - start
 

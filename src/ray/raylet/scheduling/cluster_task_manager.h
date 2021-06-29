@@ -76,9 +76,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Schedule infeasible tasks.
-  void ScheduleInfeasibleTasks() override;
-
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///

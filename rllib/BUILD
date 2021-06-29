@@ -46,7 +46,7 @@
 py_test(
     name = "run_regression_tests_cartpole_a2c_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
@@ -66,7 +66,7 @@ py_test(
 py_test(
     name = "run_regression_tests_cartpole_a3c_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
@@ -192,7 +192,7 @@ py_test(
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
@@ -448,7 +448,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_sac_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -458,7 +458,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_sac_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -494,6 +494,14 @@ py_test(
 #
 # Tag: agents_dir
 # --------------------------------------------------------------------
+
+# Generic (all Trainers)
+py_test(
+    name = "test_trainer",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_trainer.py"]
+)
 
 # A2/3CTrainer
 py_test(
@@ -1229,13 +1237,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "evaluation/tests/test_evaluation",
-    tags = ["evaluation"],
-    size = "medium",
-    srcs = ["evaluation/tests/test_evaluation.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["evaluation"],
     size = "medium",
@@ -1309,7 +1310,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils"],
+    tags = ["utils", "flaky"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1515,7 +1516,7 @@ py_test(
 
 py_test(
     name = "tests/test_model_imports",
-    tags = ["tests_dir", "tests_dir_M", "model_imports"],
+    tags = ["tests_dir", "tests_dir_M", "model_imports", "flaky"],
     size = "small",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
@@ -1663,8 +1664,8 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
-    tags = ["tests_dir", "tests_dir_S"],
-    size = "medium",
+    tags = ["tests_dir", "tests_dir_S", "flaky"],
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
@@ -2366,6 +2367,26 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
+# Deactivated for now due to open-spiel's dependency on an outdated
+# tensorflow-probability version.
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
 py_test(
     name = "examples/trajectory_view_api_tf",
     main = "examples/trajectory_view_api.py",
@@ -2441,8 +2462,8 @@ py_test(
 py_test(
     name = "examples/two_step_game_qmix",
     main = "examples/two_step_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
+    tags = ["examples", "examples_T", "flaky"],
+    size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
 )

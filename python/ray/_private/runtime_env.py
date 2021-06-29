@@ -78,7 +78,10 @@ class RuntimeEnvDict:
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
+            if not isinstance(self._dict["working_dir"], str):
+                raise TypeError("`working_dir` must be a string. Type "
+                                f"{type(self._dict['working_dir'])} received.")
+            working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
             working_dir = None
@@ -99,7 +102,8 @@ class RuntimeEnvDict:
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
                     try:
-                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                        self._dict["conda"] = yaml.safe_load(
+                            yaml_file.read_text())
                     except Exception as e:
                         raise ValueError(
                             f"Invalid conda file {yaml_file} with error {e}")
@@ -162,12 +166,15 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        if self._dict.get("working_dir"):
+        # Used by Ray's experimental package loading feature.
+        # TODO(architkulkarni): This should be unified with existing fields
+        if "_packaging_uri" in runtime_env_json:
+            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
             if self._dict["env_vars"] is None:
                 self._dict["env_vars"] = {}
             # TODO(ekl): env vars is probably not the right long term impl.
             self._dict["env_vars"].update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]

@@ -1,0 +1,15 @@
+- name: pytorch_pbt_failure
+  owner:
+    mail: "amog@anyscale.com"
+    slack: "@tune-team"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: cluster.yaml
+
+  run:
+    timeout: 54000 # 15 hours.
+    script: python workloads/pytorch_pbt_failure.py
+    time_key: last_update
+    max_update_delay: 60
+
