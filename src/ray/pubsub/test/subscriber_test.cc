@@ -94,9 +94,9 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ = std::make_shared<Subscriber>(
-        self_node_id_,
-        /*max_command_batch_size*/ 3, client_pool, &callback_service_);
+    subscriber_ = std::make_shared<Subscriber>(self_node_id_,
+                                               /*max_command_batch_size*/ 3, client_pool,
+                                               &callback_service_);
   }
 
   const rpc::Address GenerateOwnerAddress(
