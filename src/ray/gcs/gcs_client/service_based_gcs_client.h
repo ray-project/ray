@@ -65,8 +65,9 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   void ReconnectGcsServer();
 
   std::shared_ptr<RedisClient> redis_client_;
-
+  /// Redis based subscriber.
   std::unique_ptr<GcsPubSub> gcs_pub_sub_;
+  /// Grpc based subscriber.
 
   // Gcs rpc client
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;

@@ -165,7 +165,7 @@ Status GcsActorTable::Put(const ActorID &key, const ActorTableData &value,
                           const StatusCallback &callback) {
   return GcsTableWithJobId::Put(key, value, [this, key, value, callback](Status status) {
     callback(status);
-    if (status.ok()) {
+    if (status.ok() && publish_change_) {
       rpc::PubMessage message;
       message.mutable_actor_table_data()->CopyFrom(value);
       publish_change_(rpc::ChannelType::GCS_ACTOR_CHANNEL, message, key.Binary());

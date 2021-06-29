@@ -46,13 +46,21 @@ void GcsPublisherManager::HandlePubsubLongPolling(
     const rpc::PubsubLongPollingRequest &request, rpc::PubsubLongPollingReply *reply,
     rpc::SendReplyCallback callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  grpc_publisher_.ConnectToSubscriber(subscriber_id, reply, std::move(callback));
+  auto wrapped_callback = [callback = std::move(callback), reply](
+                                                          Status status, std::function<void()> success,
+                                                          std::function<void(void)> failure) {
+                    GCS_RPC_SEND_REPLY(callback, reply, status);
+                  };
+
+  grpc_publisher_.ConnectToSubscriber(subscriber_id, reply, wrapped_callback);
 }
 
 void GcsPublisherManager::HandlePubsubCommandBatch(
     const rpc::PubsubCommandBatchRequest &request, rpc::PubsubCommandBatchReply *reply,
     rpc::SendReplyCallback callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+
+  Status status = Status::OK();
 
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
@@ -62,15 +70,18 @@ void GcsPublisherManager::HandlePubsubCommandBatch(
       grpc_publisher_.RegisterSubscription(command.channel_type(), subscriber_id,
                                            command.key_id());
     } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
+      RAY_LOG(ERROR) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
                      << ". If you see this message, please "
                         "report to Ray "
                         "Github.";
+      std::stringstream stream;
+      stream << "Invalid pubsub command received: " << request.DebugString();
+      status = Status::Invalid(stream.str());
     }
   }
 
-  callback(Status::OK(), nullptr, nullptr);
+  GCS_RPC_SEND_REPLY(callback, reply, Status::OK());
 }
 
 }  // namespace gcs

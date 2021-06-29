@@ -320,6 +320,7 @@ class GcsTableStorage {
       : store_client_(store_client),
         publish_change_(publish_change),
         job_table_(std::make_unique<GcsJobTable>(store_client_)),
+        // TODO before merging, feature flag this.
         actor_table_(std::make_unique<GcsActorTable>(store_client_, publish_change)),
         placement_group_table_(std::make_unique<GcsPlacementGroupTable>(store_client_)),
         task_table_(std::make_unique<GcsTaskTable>(store_client_)),

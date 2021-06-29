@@ -15,8 +15,10 @@
 #pragma once
 
 #include "ray/common/network_util.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/protobuf/pubsub.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -73,7 +75,7 @@ class Executor {
   }
 
 /// Client used for communicating with gcs server.
-class GcsRpcClient {
+class GcsRpcClient : public pubsub::SubscriberClientInterface {
  public:
   /// Constructor.
   ///
@@ -112,6 +114,8 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
                                                                    client_call_manager);
     internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
+        address, port, client_call_manager);
+    subscriber_grpc_client_ = std::make_unique<GrpcClient<PublisherService>>(
         address, port, client_call_manager);
   }
 
@@ -266,6 +270,12 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
                              internal_kv_grpc_client_, )
 
+  /// Grpc based pubsub API.
+  VOID_GCS_RPC_CLIENT_METHOD(PublisherService, PubsubLongPolling,
+                             subscriber_grpc_client_, );
+  VOID_GCS_RPC_CLIENT_METHOD(PublisherService, PubsubCommandBatch,
+                             subscriber_grpc_client_, );
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -281,6 +291,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
+  std::unique_ptr<GrpcClient<PublisherService>> subscriber_grpc_client_;
 };
 
 }  // namespace rpc
