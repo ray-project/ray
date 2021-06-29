@@ -170,9 +170,9 @@ def read_parquet(paths: Union[str, List[str]],
         return ArrowBlock(table)
 
     return Dataset([
-        gen_read.remote(ps)
-        for ps in np.array_split(pieces, parallelism)
-        if len(ps) > 0])
+        gen_read.remote(ps) for ps in np.array_split(pieces, parallelism)
+        if len(ps) > 0
+    ])
 
 
 @autoinit_ray
