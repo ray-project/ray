@@ -132,12 +132,15 @@ class ArrowBlock(Block):
 
         return Iter()
 
-    def slice(self, start: int, end: int) -> "ArrowBlock[T]":
-        # TODO(ekl) there must be a cleaner way to force a copy of a table.
+    def slice(self, start: int, end: int, copy: bool) -> "ArrowBlock[T]":
         view = self._table.slice(start, end - start)
-        copy = [c.to_pandas() for c in view.itercolumns()]
-        return ArrowBlock(
-            pyarrow.Table.from_arrays(copy, schema=self._table.schema))
+        if copy:
+            # TODO(ekl) there must be a cleaner way to force a copy of a table.
+            copy = [c.to_pandas() for c in view.itercolumns()]
+            return ArrowBlock(
+                pyarrow.Table.from_arrays(copy, schema=self._table.schema))
+        else:
+            return ArrowBlock(view)
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema

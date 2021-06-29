@@ -19,7 +19,8 @@ def simple_shuffle(input_blocks: BlockList[T],
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
+            slices.append(
+                block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
         num_rows = sum(s.num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         # Needed to handle num_returns=1 edge case in Ray API.

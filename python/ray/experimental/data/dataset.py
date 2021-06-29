@@ -281,7 +281,7 @@ class Dataset(Generic[T]):
         def truncate(block: Block[T], meta: BlockMetadata,
                      count: int) -> (Block[T], BlockMetadata):
             logger.debug("Truncating last block to size: {}".format(count))
-            new_block = block.slice(0, count)
+            new_block = block.slice(0, count, copy=True)
             new_meta = BlockMetadata(
                 num_rows=new_block.num_rows(),
                 size_bytes=new_block.size_bytes(),
