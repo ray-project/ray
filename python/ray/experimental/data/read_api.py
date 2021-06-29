@@ -308,17 +308,29 @@ def read_binary_files(
     raise NotImplementedError  # P0
 
 
-def from_dask(df: "dask.DataFrame",
-              parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create a dataset from a Dask dataframe.
+def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
+    """Create a dataset from a Dask DataFrame.
 
     Args:
-        df: A Dask dataframe, which must be executed by Dask-on-Ray.
+        df: A Dask DataFrame.
 
     Returns:
-        Dataset holding Arrow records read from the dataframe.
+        Dataset holding Arrow records read from the DataFrame.
     """
-    raise NotImplementedError  # P1
+    import dask
+    import pyarrow as pa
+    from ray.util.dask import ray_dask_get
+
+    partitions = df.to_delayed()
+    persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
+
+    @ray.remote
+    def df_to_block(df):
+        return ArrowBlock(pa.table(df))
+
+    return Dataset([
+        df_to_block.remote(next(iter(part.dask.values())))
+        for part in persisted_partitions])
 
 
 def from_modin(df: "modin.DataFrame",
