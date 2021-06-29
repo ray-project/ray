@@ -58,7 +58,7 @@ steps:
   <<: *common
   commands:
     - *prelude_commands
-    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,flaky,flaky-mac
       --test_env=CONDA_EXE
@@ -66,7 +66,7 @@ steps:
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
+      python/ray/tests/... python/ray/serve/...
 
     # The follow is running in Travis for now.
     # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
