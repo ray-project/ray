@@ -1,11 +1,15 @@
-from typing import Iterable, List, Optional, Any
+from typing import Iterable, List, Optional, Any, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pyarrow
 
 from ray.experimental.data.impl.block import Block, ObjectRef, T
 
 
 class BlockMetadata:
     def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
-                 schema: Any, input_files: List[str]):
+                 schema: Union[type, "pyarrow.lib.Schema"],
+                 input_files: List[str]):
         self.num_rows: Optional[int] = num_rows
         self.size_bytes: Optional[int] = size_bytes
         self.schema: Optional[Any] = schema

@@ -223,7 +223,7 @@ def read_parquet(paths: Union[str, List[str]],
             BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
                 size_bytes=sum(m.serialized_size for m in piece_metadata),
-                schema=piece_metadata[0].schema,
+                schema=piece_metadata[0].schema.to_arrow_schema(),
                 input_files=[p.path for p in pieces]))
 
     return Dataset(LazyBlockList(calls, metadata))
