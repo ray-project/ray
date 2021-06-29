@@ -35,14 +35,20 @@ def get_args():
         help="partition size in bytes",
     )
     parser.add_argument(
-        "--num_tasks",
+        "--num_mappers",
+        default=512,
+        type=int,
+        help="number of map tasks",
+    )
+    parser.add_argument(
+        "--num_reducers",
         default=512,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_reduce_partitions",
-        default=512,
+        default=None,
         type=int,
         help="number of reduce tasks",
     )
@@ -81,9 +87,11 @@ def get_args():
 
     args = parser.parse_args()
     # Derive additional arguments.
-    args.input_part_size = ByteCount(args.total_data_size / args.num_tasks)
-    args.num_partitions_per_mapper = int(args.num_reduce_partitions /
-                                         args.num_tasks)
+    args.input_part_size = ByteCount(args.total_data_size / args.num_mappers)
+    if args.num_reduce_partitions is None:
+        args.num_reduce_partitions = args.num_reducers
+    args.num_partitions_per_reducer = max(
+        int(args.num_reduce_partitions / args.num_reducers), 1)
     args.mount_points = _get_mount_points()
     # If no tasks are specified, run all tasks.
     args_dict = vars(args)
@@ -144,7 +152,7 @@ def generate_input():
     size = constants.bytes_to_records(args.input_part_size)
     offset = 0
     tasks = []
-    for part_id in range(args.num_tasks):
+    for part_id in range(args.num_mappers):
         tasks.append(generate_part.remote(part_id, size, offset))
         offset += size
     assert offset == constants.bytes_to_records(args.total_data_size), args
@@ -172,7 +180,7 @@ def _load_manifest(path: Path) -> List[PartitionInfo]:
 
 
 def _load_dummy_manifest() -> List[PartitionInfo]:
-    return [PartitionInfo(i, "", "") for i in range(args.num_tasks)]
+    return [PartitionInfo(i, "", "") for i in range(args.num_mappers)]
 
 
 def _load_partition(path: Path) -> np.ndarray:
@@ -230,11 +238,11 @@ def _dummy_merge(
 @ray.remote
 @tracing_utils.timeit("reducer")
 def reducer(reducer_id: PartId,
-            all_blocks: List[ray.ObjectRef]) -> PartitionInfo:
+            *all_blocks: List[ray.ObjectRef]) -> PartitionInfo:
     logging_utils.init()
 
     all_blocks = np.array(all_blocks).reshape(
-        (-1, args.num_partitions_per_mapper))
+        (-1, args.num_partitions_per_reducer))
     M, D = all_blocks.shape
 
     wait_dict = {}
@@ -246,8 +254,8 @@ def reducer(reducer_id: PartId,
             ray.wait(all_blocks[:, d].tolist(),
                      timeout=0)  # Trigger prefetching
             wait_dict[d] = True
-        # return np.copy(ray.get(all_blocks[i, d]))
-        return np.copy(ray.get(ray.get(all_blocks[i, d])))
+        return np.copy(ray.get(all_blocks[i, d]))
+        # return np.copy(ray.get(ray.get(all_blocks[i, d])))
 
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(M, args.reducer_batch_num_records, get_block)
@@ -266,12 +274,12 @@ def reducer(reducer_id: PartId,
 def sort_main():
     partitions = _load_manifest(constants.INPUT_MANIFEST_FILE)
     boundaries = sortlib.get_boundaries(args.num_reduce_partitions)
-    mapper_results = np.empty((args.num_tasks, args.num_reduce_partitions),
+    mapper_results = np.empty((args.num_mappers, args.num_reduce_partitions),
                               dtype=object)
     for part_id, node, path in partitions:
         opt = {} if args.skip_input else {
             "resources": {
-                f"node:{node}": 1 / args.num_tasks
+                f"node:{node}": 1 / args.num_mappers
             },
             "memory": args.input_part_size * 1.1,
         }
@@ -280,17 +288,17 @@ def sort_main():
             part_id, boundaries, path)
 
     reducer_results = []
-    for r in range(args.num_tasks):
+    for r in range(args.num_reducers):
         opt = {
             "memory": ByteCount(
                 args.total_data_size / args.num_reduce_partitions) * 1.1,
         }
-        start = r * args.num_partitions_per_mapper
-        end = start + args.num_partitions_per_mapper
+        start = r * args.num_partitions_per_reducer
+        end = start + args.num_partitions_per_reducer
         all_blocks = mapper_results[:, start:end].flatten().tolist()
-        # ret = reducer.options(**opt).remote(r, *all_blocks)
+        ret = reducer.options(**opt).remote(r, *all_blocks)
         # all_blocks = mapper_results[:, start:end]
-        ret = reducer.options(**opt).remote(r, all_blocks)
+        # ret = reducer.options(**opt).remote(r, all_blocks)
         reducer_results.append(ret)
 
     reducer_results = ray.get(reducer_results)
@@ -325,7 +333,7 @@ def validate_output():
     for _, node, path in partitions:
         tasks.append(
             validate_part.options(resources={
-                f"node:{node}": 1 / args.num_tasks
+                f"node:{node}": 1 / args.num_reducers
             }).remote(path))
     logging.info(f"Validating {len(tasks)} partitions")
     ray.get(tasks)
