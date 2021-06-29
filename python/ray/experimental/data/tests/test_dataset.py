@@ -1,4 +1,5 @@
 import os
+import shutil
 
 import dask.dataframe as dd
 import pandas as pd
@@ -253,49 +254,27 @@ def test_json_read(ray_start_regular_shared, tmp_path):
 
 
 def test_json_write(ray_start_regular_shared, tmp_path):
-    # Single block, single file.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.experimental.data.from_pandas([ray.put(df1)])
-    path1 = os.path.join(tmp_path, "test1.json")
-    ds.write_json(path1)
-    assert df1.equals(pd.read_json(path1))
-    os.remove(path1)
+    path = os.path.join(tmp_path, "test_json_dir")
 
-    # Two blocks, two files.
+    # Single block.
+    os.mkdir(path)
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds.write_json(path)
+    file_path = os.path.join(path, "data0.json")
+    assert df.equals(pd.read_json(file_path))
+    shutil.rmtree(path)
+
+    # Two blocks.
+    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path2 = os.path.join(tmp_path, "test2.json")
-    ds.write_json([path1, path2])
-    assert pd.concat([df1, df2]).equals(
-        pd.concat([pd.read_json(path1),
-                   pd.read_json(path2)]))
-    os.remove(path1)
-    os.remove(path2)
-
-    # Three blocks, two files.
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    ds = ray.experimental.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
-    ds.write_json([path1, path2])
-    assert pd.concat(
-        [df1, df2, df3], ignore_index=True).equals(
-            pd.concat(
-                [pd.read_json(path1), pd.read_json(path2)], ignore_index=True))
-    os.remove(path1)
-    os.remove(path2)
-
-    # Two blocks, three files.
-    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path3 = os.path.join(tmp_path, "test3.json")
-    ds.write_json([path1, path2, path3])
-    # path3 should never be written since there are only 2 blocks.
-    with pytest.raises(ValueError):
-        pd.read_json(path3)
-    assert pd.concat([df1, df2]).equals(
-        pd.concat([pd.read_json(path1),
-                   pd.read_json(path2)]))
-    os.remove(path1)
-    os.remove(path2)
+    ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds.write_json(path)
+    file_path2 = os.path.join(path, "data1.json")
+    assert pd.concat([df, df2]).equals(
+        pd.concat([pd.read_json(file_path),
+                   pd.read_json(file_path2)]))
+    shutil.rmtree(path)
 
 
 def test_csv_read(ray_start_regular_shared, tmp_path):
