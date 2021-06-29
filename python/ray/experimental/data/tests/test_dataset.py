@@ -149,6 +149,10 @@ def test_parquet(ray_start_regular_shared, tmp_path):
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
     assert str(ds) == \
         "Dataset(num_rows=6, num_blocks=2, " \
         "schema={one: int64, two: string})", ds
