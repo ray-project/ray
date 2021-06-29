@@ -318,19 +318,12 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
         Dataset holding Arrow records read from the DataFrame.
     """
     import dask
-    import pyarrow as pa
     from ray.util.dask import ray_dask_get
 
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-
-    @ray.remote
-    def df_to_block(df):
-        return ArrowBlock(pa.table(df))
-
-    return Dataset([
-        df_to_block.remote(next(iter(part.dask.values())))
-        for part in persisted_partitions])
+    return from_pandas([
+        next(iter(part.dask.values())) for part in persisted_partitions])
 
 
 def from_modin(df: "modin.DataFrame",
