@@ -293,6 +293,22 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
   }
   return subscribe_operation(
       [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
+
+  auto &subscriber = client_impl_->GetGcsSubscriber();
+  auto sub_message = make_unique<rpc::SubMessage>();
+  rpc::Address gcs_address;
+  gcs_address.set_ip_address(client_impl_->GetGcsServerAddress.first);
+  gcs_address.set_port(client_impl_->GetGcsServerAddress.second);
+  auto subscription_callback; // TODO
+  auto callback_callback; // TODO
+  subscriber->Subscribe(
+                        sub_message,
+                        rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                        gcs_address,
+                        actor_id.Binary(),
+                        subscription_callback,
+                        failure_callback
+                        );
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {

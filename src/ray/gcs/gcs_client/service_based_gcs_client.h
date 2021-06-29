@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
@@ -28,13 +29,18 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
   explicit ServiceBasedGcsClient(const GcsClientOptions &options,
                                  std::function<bool(std::pair<std::string, int> *)>
-                                     get_gcs_server_address_func = {});
+                                 get_gcs_server_address_func = {}
+                                 );
 
   Status Connect(instrumented_io_context &io_service) override;
 
   void Disconnect() override;
 
   GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
+
+  pubsub::SubscriberInterface &GetGcsSubscriber() {
+    return *subscriber_;
+  }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -64,13 +70,16 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   /// Reconnect to GCS RPC server.
   void ReconnectGcsServer();
 
+  const UniqueID subscriber_id_;
+
   std::shared_ptr<RedisClient> redis_client_;
   /// Redis based subscriber.
   std::unique_ptr<GcsPubSub> gcs_pub_sub_;
   /// Grpc based subscriber.
+  std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 
   // Gcs rpc client
-  std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
+  std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   // The runner to run function periodically.

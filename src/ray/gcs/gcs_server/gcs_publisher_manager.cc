@@ -47,10 +47,10 @@ void GcsPublisherManager::HandlePubsubLongPolling(
     rpc::SendReplyCallback callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   auto wrapped_callback = [callback = std::move(callback), reply](
-                                                          Status status, std::function<void()> success,
-                                                          std::function<void(void)> failure) {
-                    GCS_RPC_SEND_REPLY(callback, reply, status);
-                  };
+                              Status status, std::function<void()> success,
+                              std::function<void(void)> failure) {
+    GCS_RPC_SEND_REPLY(callback, reply, status);
+  };
 
   grpc_publisher_.ConnectToSubscriber(subscriber_id, reply, wrapped_callback);
 }
