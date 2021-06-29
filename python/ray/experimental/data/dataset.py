@@ -444,9 +444,10 @@ class Dataset(Generic[T]):
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
-            >>> ds.repartition(num_files).write_parquet("s3://bucket/path")
+            >>> ds.write_parquet("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -462,9 +463,10 @@ class Dataset(Generic[T]):
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
-            >>> ds.repartition(num_files).write_json("s3://bucket/path")
+            >>> ds.write_json("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -480,9 +482,10 @@ class Dataset(Generic[T]):
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
-            >>> ds.repartition(num_files).write_csv("s3://bucket/path")
+            >>> ds.write_csv("s3://bucket/path")
 
         Time complexity: O(dataset size / parallelism)
 
