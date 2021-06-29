@@ -88,9 +88,14 @@ def test_train(ray_start_4_cpus):
 
 @pytest.mark.skipif(
     not gloo_built(), reason="Gloo is required for Ray integration")
-def test_tensorflow_mnist_example(ray_start_4_cpus):
-    from ray.util.horovod.tensorflow_mnist_ray import main
-    main()
+def test_horovod_example(ray_start_4_cpus):
+    from ray.util.horovod.horovod_example import main
+    kwargs = {
+        "data_dir": "./data",
+        "num_epochs": 1,
+    }
+
+    main(num_workers=1, use_gpu=False, kwargs=kwargs)
 
 if __name__ == "__main__":
     import pytest

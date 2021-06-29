@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 import torch.utils.data.distributed
+
 import horovod.torch as hvd
 from horovod.ray import RayExecutor
 
@@ -36,8 +37,9 @@ class Net(nn.Module):
         return F.log_softmax(x)
 
 
-def train_fn(data_dir, seed, use_cuda, batch_size, use_adasum, lr, momentum,
-             num_epochs, log_interval):
+def train_fn(data_dir=None, seed=42, use_cuda=False, batch_size=64,
+             use_adasum=False, lr=0.01, momentum=0.5,
+             num_epochs=10, log_interval=10):
     # Horovod: initialize library.
     hvd.init()
     torch.manual_seed(seed)
@@ -109,9 +111,9 @@ def train_fn(data_dir, seed, use_cuda, batch_size, use_adasum, lr, momentum,
                     epoch, batch_idx * len(data), len(train_sampler),
                            100. * batch_idx / len(train_loader), loss.item()))
 
-def main(num_hosts, num_workers, use_gpu, **kwargs):
+def main(num_workers, use_gpu, **kwargs):
     settings = RayExecutor.create_settings()
-    executor = RayExecutor(settings, use_gpu=use_cuda, num_ho)
+    executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
     executor.run(train_fn, kwargs=kwargs)
 
 if __name__ == '__main__':
@@ -125,12 +127,6 @@ if __name__ == '__main__':
         default=64,
         metavar='N',
         help='input batch size for training (default: 64)')
-    parser.add_argument(
-        '--test-batch-size',
-        type=int,
-        default=1000,
-        metavar='N',
-        help='input batch size for testing (default: 1000)')
     parser.add_argument(
         '--epochs',
         type=int,
@@ -167,20 +163,15 @@ if __name__ == '__main__':
         metavar='N',
         help='how many batches to wait before logging training status')
     parser.add_argument(
-        '--fp16-allreduce',
-        action='store_true',
-        default=False,
-        help='use fp16 compression during allreduce')
-    parser.add_argument(
         '--use-adasum',
         action='store_true',
         default=False,
         help='use adasum algorithm to do reduction')
     parser.add_argument(
-        '--num-batches-per-commit',
+        "--num-workers",
         type=int,
-        default=1,
-        help='number of batches per commit of the elastic state object'
+        default=4,
+        help="Number of Ray workers to use for training."
     )
     parser.add_argument(
         '--data-dir',
@@ -211,5 +202,20 @@ if __name__ == '__main__':
         ray.util.connect(args.server_address)
     else:
         ray.init()
-    main(data_dir=args.data_dir, )
+
+    kwargs = {
+        "data_dir": args.data_dir,
+        "seed": args.seed,
+        "use_cuda": args.use_cuda if args.use_cuda else False,
+        "batch_size": args.batch_size,
+        "use_adasum": args.use_adasum if args.use_adasum else False,
+        "lr": args.lr,
+        "momentum": args.momentum,
+        "num_epochs": args.num_epochs,
+        "log_interval": args.log_interval
+
+    }
+
+    main(num_workers=args.num_workers, use_gpu=args.use_cuda if
+    args.use_cuda else False, kwargs=kwargs)
 
