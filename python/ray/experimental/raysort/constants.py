@@ -7,6 +7,9 @@ __DIR__ = os.path.dirname(os.path.abspath(__file__))
 # Basics
 RECORD_SIZE = 100  # bytes
 
+# Progress Tracker Actor
+PROGRESS_TRACKER_ACTOR = "ProgressTrackerActor"
+
 # Executable locations
 GENSORT_PATH = os.path.join(__DIR__, "bin/gensort/64/gensort")
 VALSORT_PATH = os.path.join(__DIR__, "bin/gensort/64/valsort")
