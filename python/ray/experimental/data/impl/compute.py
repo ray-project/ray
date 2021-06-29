@@ -51,7 +51,8 @@ class TaskPool(ComputePool):
         # because we batch process them.
         blocks = [fn.remote(*chunk) for chunk in chunks(blocks, chunk_size)]
 
-        # unflatten it.
+        # unflatten it. It is okay to ray.get because the nested type is
+        # object ref which are light to fetch.
         blocks = ray.get(blocks)
         result_blocks = []
         for nested_block in blocks:
