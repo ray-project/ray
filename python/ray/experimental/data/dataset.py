@@ -106,6 +106,8 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
 
         def pandas_batch_transform(block: Block[T]) -> Block[U]:
             total_rows = block.num_rows()
@@ -147,8 +149,6 @@ class Dataset(Generic[T]):
 
         transform = get_batch_transform(batch_format)
         compute = get_compute(compute)
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("Batch size cannot be negative or 0")
 
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 

@@ -89,16 +89,6 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         for key, value in item.items():
             self._columns[key].append(value)
 
-    def add_dict(self, item: Union[dict, ArrowRow]) -> None:
-        if isinstance(item, ArrowRow):
-            item = item.as_pydict()
-        if not isinstance(item, dict):
-            raise ValueError(
-                "Returned elements of an ArrowBlock must be of type `dict`, "
-                "got {} (type {}).".format(item, type(item)))
-        for key, value in item.items():
-            self._columns[key].append(value)
-
     def add_pandas_df(self, df: "pandas.DataFrame") -> None:
         self.add_block(ArrowBlock(pyarrow.Table.from_pandas(df)))
 

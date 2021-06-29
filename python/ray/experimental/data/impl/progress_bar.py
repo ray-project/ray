@@ -18,7 +18,6 @@ class ProgressBar:
         if tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
             self._bar.set_description(name)
-            self._total = total
         else:
             global needs_warning
             if needs_warning:
