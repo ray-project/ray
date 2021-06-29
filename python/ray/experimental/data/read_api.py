@@ -30,7 +30,7 @@ def _parse_paths(paths: Union[str, List[str]]
         return fs.FileSystem.from_uri(paths)
     else:
         parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
-        assert len(parsed_result) != 0
+        assert len(parsed_results) != 0
         filesystem = parsed_results[0][0]
         paths = [path[1] for path in parsed_results]
         return filesystem, paths
@@ -169,7 +169,7 @@ def read_parquet(paths: Union[str, List[str]],
     nonempty_tasks = [r for r in read_tasks if r]
 
     @ray.remote
-    def gen_read(pieces: List['pyarrow._dataset.ParquetFileFragment']):
+    def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
         print("Reading {} parquet pieces".format(len(pieces)))
         from pyarrow import concat_tables
         tables = [piece.to_table() for piece in pieces]
