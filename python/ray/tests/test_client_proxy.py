@@ -31,7 +31,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
     pm = proxier.ProxyManager(ray_instance["redis_address"],
                               ray_instance["session_dir"])
-    port_one, port_two =  random.choices(range(45000, 45100), k=2)
+    port_one, port_two = random.choices(range(45000, 45100), k=2)
     pm._free_ports = [port_one, port_two]
     client = "client1"
 
