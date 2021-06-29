@@ -4,12 +4,14 @@ import types
 import uuid
 
 import ray
-from ray.experimental.workflow.workflow_manager import (
-    WorkflowStepFunction, Workflow, resolve_object_ref,
-    postprocess_workflow_step)
+
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
+from ray.experimental.workflow.common import Workflow
+from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
+from ray.experimental.workflow.step_executor import postprocess_workflow_step
+from ray.experimental.workflow.workflow_access import workflow_output_cache
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +62,7 @@ def run(entry_workflow: Workflow, workflow_root_dir=None,
                                                     workflow_root_dir)
         rref = postprocess_workflow_step(entry_workflow)
         logger.info(f"Workflow job {workflow_id} started.")
-        # TODO(suquark): although we do not return the resolved object to user,
-        # the object was resolved temporarily to the driver script.
-        # We may need a helper step for storing the resolved object
-        # instead later.
-        output = resolve_object_ref(rref)[1]
+        output = workflow_output_cache.remote(workflow_id, rref)
     finally:
         workflow_context.set_workflow_step_context(None)
     return output
