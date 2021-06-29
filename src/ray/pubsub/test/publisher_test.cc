@@ -948,6 +948,38 @@ TEST_F(PublisherTest, TestRegistrationIdempotency) {
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
 }
 
+TEST_F(PublisherTest, TestPublishFailure) {
+  ///
+  /// Test the publish failure API.
+  ///
+  std::vector<ObjectID> failed_ids;
+  rpc::PubsubLongPollingReply reply;
+  rpc::SendReplyCallback send_reply_callback =
+      [&reply, &failed_ids](Status status, std::function<void()> success,
+                            std::function<void()> failure) {
+        for (int i = 0; i < reply.pub_messages_size(); i++) {
+          const auto &msg = reply.pub_messages(i);
+          RAY_LOG(ERROR) << "ha";
+          if (msg.has_failure_message()) {
+            const auto oid = ObjectID::FromBinary(msg.key_id());
+            failed_ids.push_back(oid);
+          }
+        }
+        reply = rpc::PubsubLongPollingReply();
+      };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
+                                                send_reply_callback);
+  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                           oid.Binary());
+  ASSERT_EQ(failed_ids[0], oid);
+}
+
 }  // namespace pubsub
 
 }  // namespace ray
