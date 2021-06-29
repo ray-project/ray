@@ -5,7 +5,6 @@ import tempfile
 
 import pytest
 import inspect
-from ray.serve.utils import ensure_serialization_context
 import requests
 from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
                      APIRouter, BackgroundTasks, Response)
