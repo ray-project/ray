@@ -104,6 +104,46 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
+def test_map_batch(ray_start_regular_shared):
+    # Test Pyarrow
+    ds = ray.experimental.data.range(5)
+    assert sorted(
+        ds.map_batches(lambda x: x + 1,
+                       batch_format="arrow").take()) == [1, 2, 3, 4, 5]
+    assert ds.count() == 5
+    assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
+
+    # Test pandas
+    ds = ray.experimental.data.range(5)
+    ds = ds.map_batches(lambda df: df.count()).take()
+    for d in ds:
+        # count of each data frame is always 1 in this test example.
+        assert d.values == [1]
+    assert len(ds) == 5
+
+    # Test pandas batch
+    size = 600
+    parallelism = 200
+    ds = ray.experimental.data.range(size, parallelism=parallelism)
+    # Choose a value that cannot divide cleanly to test the edge case.
+    # Add 1 to each row at the dataframe.
+    ds = ds.map_batches(lambda df: df + 1, batch_size=7)
+
+    # Make sure the total rows are correctly set.
+    assert ds.count() == size
+    # Make sure the block size is correctly set. When parallelism is 200,
+    # there are 600 // 200 rows per block, meaning there are 200 blocks.
+    assert ds.num_blocks() == size // (size // parallelism)
+
+    # Check all rows have added 1 to it.
+    ds = ds.take(limit=size)
+    for i in range(600):
+        dict_row = ds[i]
+        row = list(dict_row.values())[0]
+        assert row == i + 1
+    assert len(ds) == size
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

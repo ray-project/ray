@@ -1,5 +1,5 @@
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
-    Generator, Optional, Union, TYPE_CHECKING
+    Generator, Optional, Union, TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     import pyarrow
@@ -71,7 +71,6 @@ class Dataset(Generic[T]):
             return builder.build()
 
         compute = get_compute(compute)
-
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def map_batches(self,
@@ -106,7 +105,49 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        raise NotImplementedError  # P0
+
+        def transform_builder(
+                build_block: Callable[[Block[T]], Block[U]]
+        ) -> Callable[[Iterable[Block[T]]], Iterable[ObjectRef[Block[U]]]]:
+            def transform(*blocks: Iterable[Block[T]]
+                          ) -> Iterable[ObjectRef[Block[U]]]:
+                # Need to ray.put so that the caller side
+                # can unflatten it without additional overhead.
+                return [ray.put(build_block(block)) for block in blocks]
+
+            return transform
+
+        def build_pandas_block(block: Block[T]) -> Block[U]:
+            builder = DelegatingArrowBlockBuilder()
+            df = block.to_pandas()
+            builder.add(fn(df))
+            return builder.build()
+
+        def build_arrow_block(block: Block[T]) -> Block[U]:
+            builder = DelegatingArrowBlockBuilder()
+            for row in block.iter_rows():
+                builder.add(fn(row))
+            return builder.build()
+
+        def get_batch_transform(batch_format: str) -> Any:
+            if batch_format == "pandas":
+                return transform_builder(build_pandas_block)
+            elif batch_format == "arrow":
+                return transform_builder(build_arrow_block)
+            else:
+                raise ValueError(
+                    f"The given batch format: {batch_format} "
+                    f"is not supported. Supported types: {BatchType}")
+
+        transform = get_batch_transform(batch_format)
+        compute = get_compute(compute)
+        batch_size = 1 if batch_size is None else batch_size
+        if batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
+
+        return Dataset(
+            compute.apply_batch(transform, ray_remote_args, self._blocks,
+                                batch_size))
 
     def flat_map(self,
                  fn: Callable[[T], Iterator[U]],

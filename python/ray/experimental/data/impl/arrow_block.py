@@ -1,5 +1,7 @@
 import collections
-from typing import Iterator, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+from typing import Iterator, Union, Tuple, Any, TypeVar
+
+import pandas
 
 try:
     import pyarrow
@@ -9,8 +11,10 @@ except ImportError:
 from ray.experimental.data.impl.block import Block, BlockBuilder, \
     ListBlockBuilder
 
-if TYPE_CHECKING:
-    import pandas
+# Q: Need pandas Dataframe to be imported so that we can detect the
+# dataframe type. Is it okay?
+# if TYPE_CHECKING:
+#     import pandas
 
 T = TypeVar("T")
 
@@ -50,7 +54,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
 
     def add(self, item: Any) -> None:
         if self._builder is None:
-            if isinstance(item, dict):
+            if isinstance(item, (dict, pandas.core.frame.DataFrame)):
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
@@ -79,7 +83,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
 
-    def add(self, item: Union[dict, ArrowRow]) -> None:
+    def add(self, item: Union[dict, ArrowRow, "pandas.DataFrame"]) -> None:
+        if isinstance(item, (ArrowRow, dict)):
+            self.add_dict(item)
+        elif isinstance(item, pandas.core.frame.DataFrame):
+            self.add_pandas_df(item)
+
+    def add_dict(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
             item = item.as_pydict()
         if not isinstance(item, dict):
@@ -88,6 +98,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
                 "got {} (type {}).".format(item, type(item)))
         for key, value in item.items():
             self._columns[key].append(value)
+
+    def add_pandas_df(self, item: "pandas.DataFrame"):
+        item = pyarrow.Table.from_pandas(item).to_pydict()
+        # Pandas has a column: List[Row] structure.
+        for col, rows in item.items():
+            for row in rows:
+                self._columns[col].append(row)
 
     def add_block(self, block: "ArrowBlock[T]") -> None:
         other_cols = block._table.to_pydict()
