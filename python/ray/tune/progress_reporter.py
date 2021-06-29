@@ -9,7 +9,7 @@ import numpy as np
 import time
 
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print
+from ray.tune.logger import pretty_print, logger
 from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
                              MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
                              TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
@@ -28,6 +28,12 @@ except ImportError:
     raise ImportError("ray.tune in ray > 0.7.5 requires 'tabulate'. "
                       "Please re-run 'pip install ray[tune]' or "
                       "'pip install ray[rllib]'.")
+
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
 
 
 class ProgressReporter:
@@ -380,6 +386,16 @@ class JupyterNotebookReporter(TuneReporterBase):
             metric_columns, parameter_columns, total_samples,
             max_progress_rows, max_error_rows, max_report_frequency,
             infer_limit, print_intermediate_tables, metric, mode)
+
+        if not IS_NOTEBOOK:
+            logger.warning(
+                "You are using the `JupyterNotebookReporter`, but not "
+                "IPython/Jupyter-compatible environment was detected. "
+                "If this leads to unformatted output (e.g. like "
+                "<IPython.core.display.HTML object>), consider passing "
+                "a `CLIReporter` as the `progress_reporter` argument "
+                "to `tune.run()` instead.")
+
         self._overwrite = overwrite
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
@@ -836,3 +852,20 @@ class TrialProgressCallback(Callback):
         print_result_str = ",".join(
             [f"{k}={v}" for k, v in print_result.items()])
         return print_result_str
+
+
+def detect_reporter(**kwargs) -> TuneReporterBase:
+    """Detect progress reporter class.
+
+    Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
+    session was detected, and a :class:`CLIReporter` otherwise.
+
+    Keyword arguments are passed on to the reporter class.
+    """
+    if IS_NOTEBOOK:
+        kwargs.setdefault("overwrite",
+                          not has_verbosity(Verbosity.V2_TRIAL_NORM))
+        progress_reporter = JupyterNotebookReporter(**kwargs)
+    else:
+        progress_reporter = CLIReporter(**kwargs)
+    return progress_reporter

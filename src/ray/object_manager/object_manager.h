@@ -198,13 +198,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
       instrumented_io_context &main_service, const NodeID &self_node_id,
-      const ObjectManagerConfig &config,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   ~ObjectManager();
 
@@ -460,8 +460,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  // Object store runner.
+  /// The object directory interface to access object information.
+  ObjectDirectoryInterface *object_directory_;
+
+  /// Object store runner.
   ObjectStoreRunner object_store_internal_;
 
   ObjectBufferPool buffer_pool_;
@@ -544,11 +546,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// The total number of chunks that we failed to receive because they were
   /// no longer needed by any worker or task on this node.
   size_t num_chunks_received_cancelled_ = 0;
-
-  /// The total number of chunks that we failed to receive because they are
-  /// still needed, but accepting them would put us over the pull manager's
-  /// threshold. The threshold is needed to throttle incoming objects.
-  size_t num_chunks_received_thrashed_ = 0;
 
   /// The total number of chunks that we failed to receive because we could not
   /// create the object in plasma. This is usually due to out-of-memory in
