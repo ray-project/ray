@@ -1510,13 +1510,21 @@ def status(address, redis_password):
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def local_dump(stream: bool = False,
                output: Optional[str] = None,
                logs: bool = True,
                debug_state: bool = True,
                pip: bool = True,
                processes: bool = True,
-               processes_verbose: bool = False):
+               processes_verbose: bool = False,
+               tempfile: Optional[str] = None):
     """Collect local data and package into an archive.
 
     Usage:
@@ -1533,7 +1541,8 @@ def local_dump(stream: bool = False,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
 
 
 @cli.command()
@@ -1605,6 +1614,13 @@ def local_dump(stream: bool = False,
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def cluster_dump(cluster_config_file: Optional[str] = None,
                  host: Optional[str] = None,
                  ssh_user: Optional[str] = None,
@@ -1616,7 +1632,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
                  debug_state: bool = True,
                  pip: bool = True,
                  processes: bool = True,
-                 processes_verbose: bool = False):
+                 processes_verbose: bool = False,
+                 tempfile: Optional[str] = None):
     """Get log data from one or more nodes.
 
     Best used with Ray cluster configs:
@@ -1643,7 +1660,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
     if archive_path:
         click.echo(f"Created archive: {archive_path}")
     else:
