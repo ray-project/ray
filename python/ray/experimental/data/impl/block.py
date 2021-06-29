@@ -60,7 +60,7 @@ class ListBlock(Block):
         return len(self._items)
 
     def iter_rows(self) -> Iterator[T]:
-        return self._items.__iter__()
+        return iter(self._items)
 
     def slice(self, start: int, end: int) -> "ListBlock[T]":
         return ListBlock(self._items[start:end])
