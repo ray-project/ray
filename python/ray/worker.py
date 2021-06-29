@@ -219,6 +219,9 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+                ray.client().connect()
+                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 

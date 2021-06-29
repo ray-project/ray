@@ -223,6 +223,15 @@ def enable_pickle_debug():
     del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
 
 
+@pytest.fixture
+def set_enable_auto_connect(enable_auto_connect: str = "0"):
+    try:
+        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        yield enable_auto_connect
+    finally:
+        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+
+
 @pytest.fixture()
 def two_node_cluster():
     system_config = {
