@@ -51,12 +51,6 @@ class ReferenceCounterInterface {
   virtual ~ReferenceCounterInterface() {}
 };
 
-// Callback for location subscriptions.
-using LocationSubscriptionCallback = std::function<void(
-    const absl::flat_hash_set<NodeID> & /* node_ids */, int64_t /* object_size */,
-    const std::string & /* spilled_url */, const NodeID & /* spilled_node_id */,
-    int64_t /* current_version */, const absl::optional<NodeID> & /* primary_node_id */)>;
-
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -69,15 +63,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
-                   pubsub::PublisherInterface *object_status_publisher,
-                   pubsub::SubscriberInterface *object_status_subscriber,
+                   pubsub::PublisherInterface *object_info_publisher,
+                   pubsub::SubscriberInterface *object_info_subscriber,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         borrower_pool_(client_factory),
-        object_status_publisher_(object_status_publisher),
-        object_status_subscriber_(object_status_subscriber) {}
+        object_info_publisher_(object_info_publisher),
+        object_info_subscriber_(object_info_subscriber) {}
 
   ~ReferenceCounter() {}
 
@@ -406,17 +400,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Subscribe to object location changes that are more recent than the given version.
-  /// The provided callback will be invoked when new locations become available.
+  /// Publish the snapshot of the object location for the given object id.
+  /// Publish the empty locations if object is already evicted or not owned by this
+  /// worker.
   ///
   /// \param[in] object_id The object whose locations we want.
-  /// \param[in] last_location_version The version of the last location update the
-  /// caller received. Only more recent location updates will be returned.
-  /// \param[in] callback The callback to invoke with the location update.
-  /// \return The status of the location get.
-  Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version,
-                                  const LocationSubscriptionCallback &callback)
+  void PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Fill up the object information.
+  ///
+  /// \param[in] object_id The object id
+  /// \param[out] The object information that will be filled by a given object id.
+  /// \return OK status if object information is filled. Non OK status otherwise.
+  /// It can return non-OK status, for example, if the object for the object id
+  /// doesn't exist.
+  Status FillObjectInformation(const ObjectID &object_id,
+                               rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get an object's size. This will return 0 if the object is out of scope.
@@ -543,10 +542,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// A logical counter for object location updates, used for object location
-    /// subscriptions. Subscribers use -1 to indicate that they want us to
-    /// immediately send them the current location data.
-    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -620,9 +615,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
-    /// Location subscription callbacks registered by async location get requests.
-    /// These will be invoked whenever locations or object_size are changed.
-    std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -754,12 +746,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Pushes location updates to subscribers of a particular reference, invoking all
-  /// callbacks registered for the reference by GetLocationsAsync calls. This method
-  /// also increments the reference's location version counter.
+  /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Fill up the object information for the given iterator.
+  void FillObjectInformationInternal(ReferenceTable::iterator it,
+                                     rpc::WorkerObjectLocationsPubMessage *object_info)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Clean up borrowers and references when the reference is removed from borrowers.
@@ -810,11 +805,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status publisher. It is used to publish the ref removed message for the
   /// reference counting protocol. It is not guarded by a lock because the class itself is
   /// thread-safe.
-  pubsub::PublisherInterface *object_status_publisher_;
+  pubsub::PublisherInterface *object_info_publisher_;
 
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
-  pubsub::SubscriberInterface *object_status_subscriber_;
+  pubsub::SubscriberInterface *object_info_subscriber_;
 };
 
 }  // namespace ray

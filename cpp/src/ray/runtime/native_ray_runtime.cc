@@ -11,7 +11,7 @@ namespace ray {
 namespace api {
 
 NativeRayRuntime::NativeRayRuntime() {
-  object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore(*this));
+  object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore());
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
   task_executor_ = std::make_unique<TaskExecutor>(*this);
 }
