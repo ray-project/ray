@@ -1,6 +1,7 @@
 import builtins
-from typing import Any, Generic, List, Callable, Union, TypeVar
+from typing import Generic, List, Callable, Union, TypeVar
 
+import ray
 from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block import Block, ListBlock
@@ -10,7 +11,7 @@ T = TypeVar("T")
 R = TypeVar("WriteResult")
 
 
-class Datasource(Generic[T, R]):
+class Datasource(Generic[T]):
     def prepare_read(self, parallelism: int,
                      **read_args) -> List["ReadTask[T]"]:
         raise NotImplementedError
@@ -56,28 +57,70 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         block_size = max(1, n // parallelism)
 
         def make_block(start: int, count: int) -> ListBlock:
-            builder = DelegatingArrowBlockBuilder.builder()
+            builder = DelegatingArrowBlockBuilder()
             for value in builtins.range(start, start + count):
                 if use_arrow:
-                    builder.add(value)
-                else:
                     builder.add({"value": value})
+                else:
+                    builder.add(value)
             return builder.build()
 
         i = 0
         while i < n:
-
-            def bind_lambda_args(fn: Any, start: int, count: int) -> Any:
-                return lambda: fn(start, count)
-
             count = min(block_size, n - i)
+            if use_arrow:
+                import pyarrow
+                schema = pyarrow.Table.from_pydict({"value": [0]}).schema
+            else:
+                schema = int
             read_tasks.append(
-                bind_lambda_args(make_block, i, count),
-                BlockMetadata(
-                    num_rows=count,
-                    size_bytes=8 * count,
-                    schema=int,
-                    input_files=None))
+                ReadTask(
+                    lambda i=i, count=count: make_block(i, count),
+                    BlockMetadata(
+                        num_rows=count,
+                        size_bytes=8 * count,
+                        schema=schema,
+                        input_files=None)))
             i += block_size
 
         return read_tasks
+
+
+class DebugOutput(Datasource[Union[ArrowRow, int]]):
+    def __init__(self):
+        @ray.remote
+        class DataSink:
+            def __init__(self):
+                self.rows_written = 0
+                self.enabled = True
+
+            def write(self, block: Block[T]) -> None:
+                if not self.enabled:
+                    raise ValueError("disabled")
+                self.rows_written += block.num_rows()
+
+            def get_rows_written(self):
+                return self.rows_written
+
+            def set_enabled(self, enabled):
+                self.enabled = enabled
+
+        self.data_sink = DataSink.remote()
+        self.num_ok = 0
+        self.num_failed = 0
+
+    def prepare_write(self, blocks: BlockList,
+                      **write_args) -> List["WriteTask[T, R]"]:
+        tasks = []
+        for b in blocks:
+            tasks.append(
+                WriteTask(lambda b=b: ray.get(self.data_sink.write.remote(b))))
+        return tasks
+
+    def on_write_complete(self, write_tasks: List["WriteTask[T, R]"],
+                          write_task_outputs: List[R]) -> None:
+        self.num_ok += 1
+
+    def on_write_failed(self, write_tasks: List["WriteTask[T, R]"],
+                        error: Exception) -> None:
+        self.num_failed += 1

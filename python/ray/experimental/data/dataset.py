@@ -525,6 +525,7 @@ class Dataset(Generic[T]):
                                          ray.get(write_task_outputs))
         except Exception as e:
             datasource.on_write_failed(write_tasks, e)
+            raise
         finally:
             progress.close()
 

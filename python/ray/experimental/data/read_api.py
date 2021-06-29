@@ -124,12 +124,7 @@ def read_datasource(datasource: Datasource[T],
     metadata: List[BlockMetadata] = []
 
     for task in read_tasks:
-
-        def bind_lambda_args(
-                task: ReadTask) -> Callable[[], ObjectRef[Block[T]]]:
-            return lambda: remote_read.remote(task)
-
-        calls.append(bind_lambda_args(task))
+        calls.append(lambda task=task: remote_read.remote(task))
         metadata.append(task.get_metadata())
 
     return Dataset(LazyBlockList(calls, metadata))
@@ -189,12 +184,7 @@ def read_parquet(paths: Union[str, List[str]],
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
     for pieces in nonempty_tasks:
-
-        def make_call(
-                pieces: List[pq.ParquetDatasetPiece]) -> ObjectRef[Block]:
-            return lambda: gen_read.remote(pieces)
-
-        calls.append(make_call(pieces))
+        calls.append(lambda pieces=pieces: gen_read.remote(pieces))
         piece_metadata = [p.get_metadata() for p in pieces]
         metadata.append(
             BlockMetadata(
