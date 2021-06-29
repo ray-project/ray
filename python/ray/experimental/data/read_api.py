@@ -29,10 +29,15 @@ def _parse_paths(paths: Union[str, List[str]]
     if isinstance(paths, str):
         return fs.FileSystem.from_uri(paths)
     else:
+        if len(paths) == 0:
+            raise ValueError("No data provided")
         parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
-        assert len(parsed_results) != 0
         filesystem = parsed_results[0][0]
-        paths = [path[1] for path in parsed_results]
+        paths = []
+        for (fs, path) in parsed_results:
+            if type(fs) != type(filesystem):
+                raise ValueError("Paths contains multiple filesystem")
+            paths.append(path)
         return filesystem, paths
 
 
