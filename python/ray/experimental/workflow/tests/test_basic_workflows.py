@@ -1,3 +1,5 @@
+import time
+
 import ray
 from ray.experimental import workflow
 
@@ -67,6 +69,12 @@ def fork_join():
     return join.step(y, z)
 
 
+@workflow.step
+def blocking():
+    time.sleep(10)
+    return 314
+
+
 def test_basic_workflows():
     ray.init()
 
@@ -84,5 +92,17 @@ def test_basic_workflows():
 
     output = workflow.run(fork_join.step())
     assert ray.get(output) == "join([source1][append1], [source1][append2])"
+
+    ray.shutdown()
+
+
+def test_async_execution():
+    ray.init()
+
+    start = time.time()
+    output = workflow.run(blocking.step())
+    duration = time.time() - start
+    assert duration < 5  # workflow.run is not blocked
+    assert ray.get(output) == 314
 
     ray.shutdown()

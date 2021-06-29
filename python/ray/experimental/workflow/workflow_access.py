@@ -13,8 +13,8 @@ class WorkflowExecutionError(Exception):
 
 
 @ray.remote
-def workflow_output_cache(workflow_id: str, output: ray.ObjectRef) -> Any:
-    """Cache the output of a workflow.
+def resolve_workflow_outputs(workflow_id: str, output: ray.ObjectRef) -> Any:
+    """Resolve the output of a workflow.
 
     This function returns an object ref to an object ref. This enables us to
     check if the workflow finished correctly without fetching the whole output.

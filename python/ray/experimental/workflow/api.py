@@ -11,7 +11,7 @@ from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
 from ray.experimental.workflow.step_executor import postprocess_workflow_step
-from ray.experimental.workflow.workflow_access import workflow_output_cache
+from ray.experimental.workflow.workflow_access import resolve_workflow_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def run(entry_workflow: Workflow,
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
         rref = postprocess_workflow_step(entry_workflow)
         logger.info(f"Workflow job {workflow_id} started.")
-        output = workflow_output_cache.remote(workflow_id, rref)
+        output = resolve_workflow_outputs.remote(workflow_id, rref)
     finally:
         workflow_context.set_workflow_step_context(None)
     return output
