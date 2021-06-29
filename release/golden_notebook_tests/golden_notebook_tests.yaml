@@ -15,3 +15,17 @@
   run:
     timeout: 900
     script: python workloads/modin_xgboost_test.py
+
+- name: torch_tune_serve_test
+  owner:
+    mail: "matt@anyscale.com"
+    slack: "@team_ml"
+
+  cluster:
+    app_config: torch_tune_serve_app_config.yaml
+    compute_template: gpu_tpl.yaml
+
+  run:
+    timeout: 1800
+    script: python workloads/torch_tune_serve_test.py
+
