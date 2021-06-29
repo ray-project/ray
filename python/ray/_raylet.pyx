@@ -960,10 +960,6 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker()
             .GetCurrentPlacementGroupId().Binary())
 
-    def get_worker_id(self):
-        return WorkerID(
-            CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
-
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()

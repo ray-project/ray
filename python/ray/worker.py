@@ -52,7 +52,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import check_oversized_pickle
+from ray._private.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -168,10 +168,6 @@ class Worker:
     @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
-
-    @property
-    def worker_id(self):
-        return self.core_worker.get_worker_id().binary()
 
     @property
     def should_capture_child_tasks_in_placement_group(self):
@@ -1186,10 +1182,20 @@ def connect(node,
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
+        worker.worker_id = _random_string()
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = ray.state.next_job_id()
+            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+            job_id = JobID.from_int(
+                int(worker.redis_client.incr("JobCounter")))
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = ray._private.utils.compute_driver_id_from_job(
+            job_id).binary()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
