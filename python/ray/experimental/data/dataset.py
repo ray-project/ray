@@ -495,18 +495,36 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def write_datasource(self, datasource: Datasource[T]) -> None:
+    def write_datasource(self, datasource: Datasource[T],
+                         **write_args) -> None:
         """Write the dataset to a custom datasource.
 
         Examples:
-            >>> ds.write_datasource(CustomDatasourceClass())
+            >>> ds.write_datasource(CustomDatasourceImpl(...))
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             datasource: The datasource to write to.
+            write_args: Additional write args to pass to the datasource.
         """
-        raise NotImplementedError  # P0
+
+        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        progress = ProgressBar("Write Progress", len(write_tasks))
+
+        @ray.remote
+        def remote_write(task: WriteTask) -> Any:
+            return task()
+
+        write_task_outputs = [remote_write.remote(w) for w in write_tasks]
+        try:
+            progress.block_until_complete(write_task_outputs)
+            datasource.on_write_complete(write_tasks,
+                                         ray.get(write_task_outputs))
+        except Exception as e:
+            datasource.on_write_failed(write_tasks, e)
+        finally:
+            progress.close()
 
     def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
         """Return a local row iterator over the dataset.

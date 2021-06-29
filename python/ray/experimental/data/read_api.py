@@ -80,7 +80,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     return from_datasource(
-        RangeDatasource(n, use_arrow=False), parallelism=parallelism)
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
 @autoinit_ray
@@ -101,7 +101,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         Dataset holding the integers as Arrow records.
     """
     return from_datasource(
-        RangeDatasource(n, use_arrow=True), parallelism=parallelism)
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
 
 @autoinit_ray
