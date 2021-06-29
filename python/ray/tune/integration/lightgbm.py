@@ -68,13 +68,16 @@ class TuneReportCallback(TuneCallback):
                 report_dict[key] = result_dict[metric]
         return report_dict
 
-    def __call__(self, env: CallbackEnv) -> None:
+    def _get_eval_result(self, env: CallbackEnv) -> dict:
         eval_result = {}
         for data_name, eval_name, result, _ in env.evaluation_result_list:
             if data_name not in eval_result:
                 eval_result[data_name] = {}
             eval_result[data_name][eval_name] = result
+        return eval_result
 
+    def __call__(self, env: CallbackEnv) -> None:
+        eval_result = self._get_eval_result(env)
         report_dict = self._get_report_dict(eval_result)
         tune.report(**report_dict)
 
