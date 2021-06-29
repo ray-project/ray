@@ -58,8 +58,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 - [ ] Scalability Envelope Tests
 - [ ] ASAN Test
 - [ ] K8s Test
-	- [ ] K8s cluster launcher test
-	- [ ] K8s operator test
+	- [ ] K8s operator and helm tests
 - [ ] Data processing tests
     - [ ] streaming_shuffle
 	- [ ] dask on ray test

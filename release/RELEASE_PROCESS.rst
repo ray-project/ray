@@ -146,7 +146,7 @@ is generally the easiest way to run release tests.
 
 7. **K8s operator tests**
 
-   Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
+   Refer to ``kubernetes_tests/README.md``. These tests verify basic functionality of the Ray Operator and Helm chart.
 
 8. **Data processing tests**
 
