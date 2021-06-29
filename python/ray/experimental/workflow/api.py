@@ -1,6 +1,7 @@
 import logging
 import time
 import types
+from typing import Union, Optional
 
 import ray
 
@@ -28,14 +29,16 @@ def step(func) -> WorkflowStepFunction:
 # Maybe we can also add a run_or_resume() call.
 
 
-def run(entry_workflow: Workflow, storage_url=None,
-        workflow_id=None) -> ray.ObjectRef:
+def run(entry_workflow: Workflow,
+        storage_or_url: Optional[Union[str, storage.Storage]] = None,
+        workflow_id: Optional[str] = None) -> ray.ObjectRef:
     """
     Run a workflow asynchronously.
 
     Args:
         entry_workflow: The workflow to run.
-        storage_url: The URL of an external storage used for checkpointing.
+        storage_or_url: The storage or the URL of an external storage used for
+            checkpointing.
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
 
@@ -46,10 +49,13 @@ def run(entry_workflow: Workflow, storage_url=None,
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
-    if storage_url is None:
-        storage_url = storage.get_global_storage().storage_url
-    else:
-        storage.set_global_storage(storage_url)
+    if isinstance(storage_or_url, str):
+        storage.set_global_storage(storage.create_storage(storage_or_url))
+    elif isinstance(storage_or_url, storage.Storage):
+        storage.set_global_storage(storage_or_url)
+    elif storage_or_url is not None:
+        raise TypeError("storage_or_url should be None, str, or Storage type.")
+    storage_url = storage.get_global_storage().storage_url
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{storage_url}\"].")
     try:
@@ -65,24 +71,30 @@ def run(entry_workflow: Workflow, storage_url=None,
 # TODO(suquark): support recovery with ObjectRef inputs.
 
 
-def resume(workflow_id: str, storage_url=None) -> ray.ObjectRef:
+def resume(workflow_id: str,
+           storage_or_url: Optional[Union[str, storage.Storage]] = None
+           ) -> ray.ObjectRef:
     """
     Resume a workflow asynchronously. This workflow maybe fail previously.
 
     Args:
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
-        storage_url: The path of an external storage used for
+        storage_or_url: The storage or the URL of an external storage used for
             checkpointing.
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     assert ray.is_initialized()
-    if storage_url is not None:
-        store = storage.create_storage(storage_url)
-    else:
+    if isinstance(storage_or_url, str):
+        store = storage.create_storage(storage_or_url)
+    elif isinstance(storage_or_url, storage.Storage):
+        store = storage_or_url
+    elif storage_or_url is None:
         store = storage.get_global_storage()
+    else:
+        raise TypeError("storage_or_url should be None, str, or Storage type.")
     r = recovery.resume_workflow_job(workflow_id, store)
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
@@ -90,7 +102,7 @@ def resume(workflow_id: str, storage_url=None) -> ray.ObjectRef:
         return r
     # skip saving the DAG of a recovery workflow
     r.skip_saving_workflow_dag = True
-    return run(r, storage_url, workflow_id)
+    return run(r, store, workflow_id)
 
 
 __all__ = ("step", "run")
