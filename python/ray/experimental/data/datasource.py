@@ -1,30 +1,29 @@
 import builtins
 from typing import Any, Generic, List, Callable, Union, TypeVar
 
-import ray
 from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block import Block, ListBlock
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 T = TypeVar("T")
-W = TypeVar("WriteResult")
+R = TypeVar("WriteResult")
 
 
-class Datasource(Generic[T, W]):
+class Datasource(Generic[T, R]):
     def prepare_read(self, parallelism: int,
                      **read_args) -> List["ReadTask[T]"]:
         raise NotImplementedError
 
     def prepare_write(self, blocks: BlockList,
-                      **write_args) -> List["WriteTask[T, W]"]:
+                      **write_args) -> List["WriteTask[T, R]"]:
         raise NotImplementedError
 
-    def on_write_complete(self, write_tasks: List["WriteTask[T, W]"],
-                          write_task_outputs: List[W]) -> None:
+    def on_write_complete(self, write_tasks: List["WriteTask[T, R]"],
+                          write_task_outputs: List[R]) -> None:
         pass
 
-    def on_write_failed(self, write_tasks: List["WriteTask[T, W]"],
+    def on_write_failed(self, write_tasks: List["WriteTask[T, R]"],
                         error: Exception) -> None:
         pass
 
@@ -42,11 +41,11 @@ class ReadTask(Callable[[], Block[T]]):
         return self._read_fn()
 
 
-class WriteTask(Callable[[Block[T]], W]):
-    def __init__(self, write_fn: Callable[[Block[T]], W]):
+class WriteTask(Callable[[Block[T]], R]):
+    def __init__(self, write_fn: Callable[[Block[T]], R]):
         self._write_fn = write_fn
 
-    def __call__(self) -> W:
+    def __call__(self) -> R:
         self._write_fn()
 
 
