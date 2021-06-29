@@ -16,6 +16,7 @@ except ImportError:
 @pytest.fixture(params=[False, True])
 def ray_start_4_cpus(request):
     if request.param:
+
         def ray_connect_handler(job_config=None):
             # Ray client will disconnect from ray when
             # num_clients == 0.
@@ -86,6 +87,7 @@ def test_train(ray_start_4_cpus):
     assert set(result) == {0, 1, 2}
     hjob.shutdown()
 
+
 @pytest.mark.skipif(
     not gloo_built(), reason="Gloo is required for Ray integration")
 def test_horovod_example(ray_start_4_cpus):
@@ -96,6 +98,7 @@ def test_horovod_example(ray_start_4_cpus):
     }
 
     main(num_workers=1, use_gpu=False, kwargs=kwargs)
+
 
 if __name__ == "__main__":
     import pytest
