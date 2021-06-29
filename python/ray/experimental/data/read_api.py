@@ -17,7 +17,7 @@ from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 def autoinit_ray(f):
     def wrapped(*a, **kw):
         if not ray.is_initialized():
-            ray.client.connect()
+            ray.client().connect()
         return f(*a, **kw)
 
     return wrapped
