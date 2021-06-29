@@ -204,9 +204,8 @@ def read_json(paths: Union[str, List[str]],
 
     if isinstance(paths, str):
         paths = [paths]
-    elif (
-            not isinstance(paths, list) or
-            any(not isinstance(p, str) for p in paths)):
+    elif (not isinstance(paths, list)
+          or any(not isinstance(p, str) for p in paths)):
         raise ValueError(
             "paths must be a path string or a list of path strings.")
 
@@ -217,14 +216,16 @@ def read_json(paths: Union[str, List[str]],
         for p in reader_paths:
             tables.append(
                 json.read_json(
-                    p, read_options=json.ReadOptions(use_threads=False),
+                    p,
+                    read_options=json.ReadOptions(use_threads=False),
                     **arrow_json_args))
         return ArrowBlock(pa.concat_tables(tables))
 
     return Dataset([
         json_read.remote(reader_paths)
         for reader_paths in np.array_split(paths, parallelism)
-        if len(reader_paths) > 0])
+        if len(reader_paths) > 0
+    ])
 
 
 @autoinit_ray
@@ -256,9 +257,8 @@ def read_csv(paths: Union[str, List[str]],
 
     if isinstance(paths, str):
         paths = [paths]
-    elif (
-            not isinstance(paths, list) or
-            any(not isinstance(p, str) for p in paths)):
+    elif (not isinstance(paths, list)
+          or any(not isinstance(p, str) for p in paths)):
         raise ValueError(
             "paths must be a path string or a list of path strings.")
 
@@ -269,14 +269,16 @@ def read_csv(paths: Union[str, List[str]],
         for p in reader_paths:
             tables.append(
                 csv.read_csv(
-                    p, read_options=csv.ReadOptions(use_threads=False),
+                    p,
+                    read_options=csv.ReadOptions(use_threads=False),
                     **arrow_csv_args))
         return ArrowBlock(pa.concat_tables(tables))
 
     return Dataset([
         csv_read.remote(reader_paths)
         for reader_paths in np.array_split(paths, parallelism)
-        if len(reader_paths) > 0])
+        if len(reader_paths) > 0
+    ])
 
 
 @autoinit_ray
@@ -322,8 +324,8 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-    return from_pandas([
-        next(iter(part.dask.values())) for part in persisted_partitions])
+    return from_pandas(
+        [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
 def from_modin(df: "modin.DataFrame",

@@ -392,9 +392,10 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
-    def write_parquet(self, paths: Union[str, List[str]],
-                      filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                      ) -> None:
+    def write_parquet(
+            self,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -417,17 +418,16 @@ class Dataset(Generic[T]):
 
         if isinstance(paths, str):
             paths = [paths]
-        elif (
-                not isinstance(paths, list) or
-                any(not isinstance(p, str) for p in paths)):
+        elif (not isinstance(paths, list)
+              or any(not isinstance(p, str) for p in paths)):
             raise ValueError(
                 "paths must be a path string or a list of path strings.")
 
         @ray.remote
         def parquet_write(writer_path, *blocks):
             print(f"Writing {len(blocks)} blocks to {writer_path}.")
-            with pq.ParquetWriter(
-                    writer_path, blocks[0]._table.schema) as writer:
+            with pq.ParquetWriter(writer_path,
+                                  blocks[0]._table.schema) as writer:
                 for block in blocks:
                     writer.write_table(block._table)
 
@@ -435,15 +435,17 @@ class Dataset(Generic[T]):
             parquet_write.remote(writer_path, *blocks)
             for writer_path, blocks in zip(
                 paths, np.array_split(self._blocks, len(paths)))
-            if len(blocks) > 0]
+            if len(blocks) > 0
+        ]
 
         # Block until writing is done.
         ray.get(refs)
 
     def write_parquet_partitions(
-            self, path: str, partition_cols: List[str],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None
-            ) -> None:
+            self,
+            path: str,
+            partition_cols: List[str],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to parquet as a partitioned dataset, consisting of
         multiple files.
 
@@ -464,15 +466,15 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        table = pa.concat_tables([
-            block._table for block in ray.get(self._blocks)])
+        table = pa.concat_tables(
+            [block._table for block in ray.get(self._blocks)])
         pq.write_to_dataset(
-            table, path, partition_cols=partition_cols,
-            filesystem=filesystem)
+            table, path, partition_cols=partition_cols, filesystem=filesystem)
 
-    def write_json(self, paths: Union[str, List[str]],
-                   filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                   ) -> None:
+    def write_json(
+            self,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -495,9 +497,8 @@ class Dataset(Generic[T]):
 
         if isinstance(paths, str):
             paths = [paths]
-        elif (
-                not isinstance(paths, list) or
-                any(not isinstance(p, str) for p in paths)):
+        elif (not isinstance(paths, list)
+              or any(not isinstance(p, str) for p in paths)):
             raise ValueError(
                 "paths must be a path string or a list of path strings.")
 
@@ -513,14 +514,16 @@ class Dataset(Generic[T]):
             json_write.remote(writer_path, *blocks)
             for writer_path, blocks in zip(
                 paths, np.array_split(self._blocks, len(paths)))
-            if len(blocks) > 0]
+            if len(blocks) > 0
+        ]
 
         # Block until writing is done.
         ray.get(refs)
 
-    def write_csv(self, paths: Union[str, List[str]],
-                  filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                  ) -> None:
+    def write_csv(
+            self,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -542,9 +545,8 @@ class Dataset(Generic[T]):
 
         if isinstance(paths, str):
             paths = [paths]
-        elif (
-                not isinstance(paths, list) or
-                any(not isinstance(p, str) for p in paths)):
+        elif (not isinstance(paths, list)
+              or any(not isinstance(p, str) for p in paths)):
             raise ValueError(
                 "paths must be a path string or a list of path strings.")
 
@@ -561,7 +563,8 @@ class Dataset(Generic[T]):
             csv_write.remote(writer_path, *blocks)
             for writer_path, blocks in zip(
                 paths, np.array_split(self._blocks, len(paths)))
-            if len(blocks) > 0]
+            if len(blocks) > 0
+        ]
 
         # Block until writing is done.
         ray.get(refs)
@@ -685,6 +688,7 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Pandas dataframes created from this dataset.
         """
+
         @ray.remote
         def block_to_df(block):
             return block._table.to_pandas()
