@@ -123,8 +123,8 @@ message WorkerRefRemovedSubMessage {
 ///
 
 message PubsubLongPollingRequest {
-  /// The address of the subscriber that sends a long polling request.
-  Address subscriber_address = 1;
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
 }
 
 message PubsubLongPollingReply {

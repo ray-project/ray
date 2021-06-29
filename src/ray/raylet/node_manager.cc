@@ -246,7 +246,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*core_worker_subscriber_=*/
           std::make_shared<pubsub::Subscriber>(
-              self_node_id_, config.node_manager_address, config.node_manager_port,
+              self_node_id_,
               RayConfig::instance().max_command_batch_size(),
               [this](const rpc::Address &address) {
                 return worker_rpc_pool_.GetOrConnect(address);
