@@ -104,30 +104,45 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
-def test_map_batch(ray_start_regular_shared):
+def test_map_batch(ray_start_regular_shared, tmp_path):
+    # Test input validation
+    ds = ray.experimental.data.range(5)
+    with pytest.raises(ValueError):
+        ds.map_batches(
+            lambda x: x + 1, batch_format="arrow", batch_size=-1).take()
+
+    # Test the chunk size calculation doesn't have division by 0
+    ds = ray.experimental.data.range(5)
+    assert sorted(
+        ds.map_batches(lambda x: x + 1, batch_format="arrow",
+                       batch_size=6).take()) == [1, 2, 3, 4, 5]
+
     # Test Pyarrow
     ds = ray.experimental.data.range(5)
     assert sorted(
-        ds.map_batches(lambda x: x + 1,
-                       batch_format="arrow").take()) == [1, 2, 3, 4, 5]
+        ds.map_batches(lambda x: x + 1, batch_format="arrow",
+                       batch_size=2).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
 
     # Test pandas
-    ds = ray.experimental.data.range(5)
-    ds = ds.map_batches(lambda df: df.count()).take()
-    for d in ds:
-        # count of each data frame is always 1 in this test example.
-        assert d.values == [1]
-    assert len(ds) == 5
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
 
-    # Test pandas batch
+    # Test pandas large batch
     size = 600
     parallelism = 200
     ds = ray.experimental.data.range(size, parallelism=parallelism)
     # Choose a value that cannot divide cleanly to test the edge case.
     # Add 1 to each row at the dataframe.
-    ds = ds.map_batches(lambda df: df + 1, batch_size=7)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=21)
 
     # Make sure the total rows are correctly set.
     assert ds.count() == size
@@ -142,6 +157,9 @@ def test_map_batch(ray_start_regular_shared):
         row = list(dict_row.values())[0]
         assert row == i + 1
     assert len(ds) == size
+    # Q: Although the original dataset has Dataset[T], the return
+    # values conatain Dataset[ArrowRow[T]] due to the pandas conversion.
+    # Do we need to recover the original type?
 
 
 if __name__ == "__main__":

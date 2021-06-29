@@ -46,7 +46,7 @@ class TaskPool(ComputePool):
                 yield chunk
                 chunk = list(itertools.islice(it, size))
 
-        chunk_size = int(len(blocks) // (len(blocks) // batch_size))
+        chunk_size = int(len(blocks) // (max(1, len(blocks) // batch_size)))
         # Return type is a nested list: List[ObjectRef[List[ObjectRef[Block]]]]
         # because we batch process them.
         blocks = [fn.remote(*chunk) for chunk in chunks(blocks, chunk_size)]
