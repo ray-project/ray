@@ -342,6 +342,11 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
   fi
 
+  # Data processing test dependencies.
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+  fi
+
   # Remove this entire section once Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
