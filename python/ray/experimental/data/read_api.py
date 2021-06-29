@@ -17,11 +17,21 @@ from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 def autoinit_ray(f):
     def wrapped(*a, **kw):
         if not ray.is_initialized():
-            ray.client.connect()
+            ray.client().connect()
         return f(*a, **kw)
 
     return wrapped
 
+def _parse_paths(paths: Union[str, List[str]]) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
+    from pyarrow import fs
+    if isinstance(paths, str):
+        return fs.FileSystem.from_uri(paths)
+    else:
+        parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
+        assert len(parsed_result) != 0
+        filesystem = parsed_results[0][0]
+        paths = [path[1] for path in parsed_results]
+        return filesystem, paths
 
 @autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
@@ -146,31 +156,20 @@ def read_parquet(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow.parquet as pq
-
-    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
+    if filesystem is None:
+        filesystem, paths = _parse_paths(paths)
+    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args, filesystem=None)
     pieces = pq_ds.pieces
-    data_pieces = []
-
-    for piece in pieces:
-        num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
-        for i in builtins.range(num_row_groups):
-            data_pieces.append(
-                pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
-                                       piece.file_options, i,
-                                       piece.partition_keys))
-
     read_tasks = [[] for _ in builtins.range(parallelism)]
     for i, piece in enumerate(pieces):
         read_tasks[i].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
-    partitions = pq_ds.partitions
-
     @ray.remote
-    def gen_read(pieces: List[pq.ParquetDatasetPiece]):
+    def gen_read(pieces: List['pyarrow._dataset.ParquetFileFragment']):
         print("Reading {} parquet pieces".format(len(pieces)))
-        table = piece.read(
-            columns=columns, use_threads=False, partitions=partitions)
-        return ArrowBlock(table)
+        from pyarrow import concat_tables
+        tables = [piece.to_table() for piece in pieces]
+        return ArrowBlock(concat_tables(tables))
 
     return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
 
