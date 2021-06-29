@@ -1,3 +1,4 @@
+import logging
 from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
     Generator, Optional, Union, TYPE_CHECKING
 
@@ -17,6 +18,8 @@ from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -416,7 +419,8 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def parquet_write(write_path, block):
-            print(f"Writing {block.num_rows()} records to {write_path}.")
+            logger.debug(
+                f"Writing {block.num_rows()} records to {write_path}.")
             with pq.ParquetWriter(write_path, block._table.schema) as writer:
                 writer.write_table(block._table)
 
@@ -462,7 +466,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def json_write(writer_path: str, *blocks: List[ArrowBlock]):
-            print(f"Writing {len(blocks)} blocks to {writer_path}.")
+            logger.debug(f"Writing {len(blocks)} blocks to {writer_path}.")
             dfs = []
             for block in blocks:
                 dfs.append(block.to_pandas())
@@ -510,7 +514,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def csv_write(writer_path: str, *blocks: List[ArrowBlock]):
-            print(f"Writing {len(blocks)} blocks to {writer_path}.")
+            logger.debug(f"Writing {len(blocks)} blocks to {writer_path}.")
             include_header = True
             for block in blocks:
                 block.to_pandas().to_csv(

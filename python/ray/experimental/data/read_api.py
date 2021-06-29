@@ -1,4 +1,5 @@
 import builtins
+import logging
 from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -12,6 +13,8 @@ import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
+
+logger = logging.getLogger(__name__)
 
 
 def autoinit_ray(f):
@@ -167,7 +170,7 @@ def read_parquet(paths: Union[str, List[str]],
 
     @ray.remote
     def gen_read(pieces: List[pq.ParquetDatasetPiece]):
-        print("Reading {} parquet pieces".format(len(pieces)))
+        logger.debug("Reading {} parquet pieces".format(len(pieces)))
         table = piece.read(
             columns=columns, use_threads=False, partitions=partitions)
         return ArrowBlock(table)
@@ -211,7 +214,7 @@ def read_json(paths: Union[str, List[str]],
 
     @ray.remote
     def json_read(reader_paths: List[str]):
-        print(f"Reading {len(reader_paths)} files.")
+        logger.debug(f"Reading {len(reader_paths)} files.")
         tables = []
         for p in reader_paths:
             tables.append(
@@ -264,7 +267,7 @@ def read_csv(paths: Union[str, List[str]],
 
     @ray.remote
     def csv_read(reader_paths: List[str]):
-        print(f"Reading {len(reader_paths)} files.")
+        logger.debug(f"Reading {len(reader_paths)} files.")
         tables = []
         for p in reader_paths:
             tables.append(
