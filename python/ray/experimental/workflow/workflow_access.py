@@ -33,12 +33,3 @@ def workflow_output_cache(workflow_id: str, output: ray.ObjectRef) -> Any:
         raise WorkflowExecutionError(workflow_id) from e
     logger.info(f"Workflow job {workflow_id} completes successfully.")
     return output
-
-
-@ray.remote
-class WorkflowManagement:
-    def __init__(self):
-        pass
-
-    def notify_complete(self, workflow_id: str):
-        pass
