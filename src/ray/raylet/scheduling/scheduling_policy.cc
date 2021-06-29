@@ -4,7 +4,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
+int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback,
                      bool require_available) {
@@ -40,11 +40,11 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
     const auto &it = nodes.find(node_id);
     RAY_CHECK(it != nodes.end());
     const auto &node = it->second;
-    if (!node.GetLocalView().IsFeasible(task_request)) {
+    if (!node.GetLocalView().IsFeasible(resource_request)) {
       continue;
     }
 
-    bool is_available = node.GetLocalView().IsAvailable(task_request);
+    bool is_available = node.GetLocalView().IsAvailable(resource_request);
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
     if (critical_resource_utilization < spread_threshold) {

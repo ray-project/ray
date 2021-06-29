@@ -16,6 +16,11 @@ parser.add_argument(
     type=str,
     help="the serialized parsed runtime env dict")
 
+parser.add_argument(
+    "--serialized-runtime-env-context",
+    type=str,
+    help="the serialized runtime env context")
+
 # The worker is not set up yet, so we can't get session_dir from the worker.
 parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")

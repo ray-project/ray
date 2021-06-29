@@ -20,6 +20,8 @@
 
 namespace ray {
 
+#define EMPTY_FAILURE_CALLBACK [](const std::string &key_id) {}
+
 class MockWorkerClient : public pubsub::SubscriberClientInterface {
  public:
   void PubsubLongPolling(
@@ -64,6 +66,26 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       new_pub_message->set_channel_type(channel_type);
     }
     callback(status, reply);
+    long_polling_callbacks.pop_front();
+    return true;
+  }
+
+  bool FailureMessagePublished(rpc::ChannelType channel_type,
+                               std::vector<ObjectID> &object_ids) {
+    if (long_polling_callbacks.empty()) {
+      return false;
+    }
+
+    auto callback = long_polling_callbacks.front();
+    auto reply = rpc::PubsubLongPollingReply();
+
+    for (const auto &object_id : object_ids) {
+      auto new_pub_message = reply.add_pub_messages();
+      new_pub_message->set_key_id(object_id.Binary());
+      new_pub_message->set_channel_type(channel_type);
+      new_pub_message->mutable_failure_message();
+    }
+    callback(Status::OK(), reply);
     long_polling_callbacks.pop_front();
     return true;
   }
@@ -124,7 +146,7 @@ class SubscriberTest : public ::testing::Test {
     // Need to call this to invoke callback when the reply comes.
     // The io service basically executes the queued handler in a blocking manner, and
     // reset should be called in order to run the poll_one again.
-    callback_service_.poll_one();
+    callback_service_.poll();
     callback_service_.reset();
     return success;
   }
@@ -146,7 +168,7 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
     object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -180,7 +202,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
     object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   std::vector<ObjectID> object_ids;
@@ -200,6 +222,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
 
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
+    // RAY_LOG(ERROR) << "haha " << object_subscribed_.count(object_id);
     ASSERT_TRUE(object_subscribed_.count(object_id) > 0);
   }
 }
@@ -212,7 +235,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
     object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -244,7 +267,7 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
     object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -270,7 +293,7 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
     object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -298,7 +321,7 @@ TEST_F(SubscriberTest, TestLongPollingFailure) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  auto failure_callback = [this, object_id]() {
+  auto failure_callback = [this, object_id](const std::string &key_id) {
     object_failed_to_subscribe_.emplace(object_id);
   };
   subscriber_->Subscribe(GenerateSubMessage(object_id), channel, owner_addr,
@@ -327,7 +350,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
     ASSERT_TRUE(owner_client->ReplyCommandBatch());
     object_subscribed_.emplace(object_id);
   };
-  auto failure_callback = []() {
+  auto failure_callback = [](const std::string &key_id) {
     // This shouldn't be invoked in this test.
     ASSERT_TRUE(false);
   };
@@ -355,7 +378,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchSingleEntry) {
   /// Verify the command batch works as expected when there's a single publisher.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -389,7 +412,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
   /// Verify the command batch works when there are multiple entries in the FIFO order.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -448,7 +471,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
   /// Verify when there are multi batches, they are sent properly.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -499,7 +522,7 @@ TEST_F(SubscriberTest, TestOnlyOneInFlightCommandBatch) {
   /// 1 in-flight command batch RPC at a time.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -535,7 +558,7 @@ TEST_F(SubscriberTest, TestCommandsCleanedUponPublishFailure) {
   /// If the publisher is failed, the queue should be cleaned up.
   ///
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
-  auto failure_callback = []() {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
@@ -559,6 +582,38 @@ TEST_F(SubscriberTest, TestCommandsCleanedUponPublishFailure) {
   ASSERT_FALSE(owner_client->ReplyCommandBatch());
   // Make sure entries are cleaned up.
   ASSERT_TRUE(subscriber_->CheckNoLeaks());
+}
+
+TEST_F(SubscriberTest, TestFailureMessagePublished) {
+  ///
+  /// The publisher can publish the failure message to indicate that
+  /// the key id is not available. This test ensures that the failure callback
+  /// is properly called in this scenario.
+  ///
+  auto subscription_callback = [this](const rpc::PubMessage &msg) {
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
+  };
+
+  const auto owner_addr = GenerateOwnerAddress();
+  const auto object_id = ObjectID::FromRandom();
+  auto failure_callback = [this, object_id](const std::string &key_id) {
+    object_failed_to_subscribe_.emplace(object_id);
+  };
+  subscriber_->Subscribe(GenerateSubMessage(object_id), channel, owner_addr,
+                         object_id.Binary(), subscription_callback, failure_callback);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+
+  // Failure message is published.
+  std::vector<ObjectID> objects_batched;
+  objects_batched.push_back(object_id);
+  ASSERT_TRUE(owner_client->FailureMessagePublished(channel, objects_batched));
+  // Callback is not invoked.
+  ASSERT_EQ(object_subscribed_.count(object_id), 0);
+  // Failure callback is invoked.
+  ASSERT_EQ(object_failed_to_subscribe_.count(object_id), 1);
+  // Since the long polling is failed due to the publisher failure, we shouldn't have any
+  // outstanding long polling request.
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
 }
 
 // TODO(sang): Need to add a network failure test once we support network failure

@@ -1,3 +1,4 @@
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,10 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+if "RAY_EXPERIMENTAL_DATA_API" in os.environ:
+    from ray.experimental import data
+    __all__.append(data)
+
 
 # Remove modules from top-level ray
 def _ray_user_setup_function():
@@ -170,5 +175,6 @@ def _ray_user_setup_function():
 
 _ray_user_setup_function()
 
+del os
 del logging
 del _ray_user_setup_function

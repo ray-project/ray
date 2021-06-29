@@ -257,50 +257,6 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
   AssertNoLeaks();
 }
 
-TEST_F(CreateRequestQueueTest, TestTransientOomFromCreateCallback) {
-  CreateRequestQueue queue(
-      /*oom_grace_period_s=*/oom_grace_period_s_,
-      /*spill_object_callback=*/[&]() { return true; },
-      /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*get_time=*/[&]() { return current_time_ns_; });
-
-  auto return_status = PlasmaError::TransientOutOfMemory;
-  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
-    if (return_status == PlasmaError::OK) {
-      result->data_size = 1234;
-    }
-    return return_status;
-  };
-  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
-    result->data_size = 1234;
-    return PlasmaError::OK;
-  };
-
-  auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
-
-  // Transient OOM should happen until the grace period.
-  for (int i = 0; i < 9; i++) {
-    // Advance 0.1 seconds. OOM grace period is 1 second, so it should return transient
-    // error.
-    current_time_ns_ += 1e8;
-    ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
-    ASSERT_REQUEST_UNFINISHED(queue, req_id1);
-    ASSERT_REQUEST_UNFINISHED(queue, req_id2);
-    ASSERT_EQ(num_global_gc_, i + 1);
-  }
-
-  current_time_ns_ += oom_grace_period_s_ * 2e9;
-  // Return OK for the first request. The second request should also be served.
-  return_status = PlasmaError::OK;
-  ASSERT_TRUE(queue.ProcessRequests().ok());
-  ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OK);
-  ASSERT_REQUEST_FINISHED(queue, req_id2, PlasmaError::OK);
-
-  AssertNoLeaks();
-}
-
 TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
   int spill_object_callback_ret = true;
   CreateRequestQueue queue(
