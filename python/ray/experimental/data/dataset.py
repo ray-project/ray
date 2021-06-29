@@ -495,6 +495,19 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P0
 
+    def write_datasource(self, datasource: Datasource[T]) -> None:
+        """Write the dataset to a custom datasource.
+
+        Examples:
+            >>> ds.write_datasource(CustomDatasourceClass())
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasource: The datasource to write to.
+        """
+        raise NotImplementedError  # P0
+
     def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
         """Return a local row iterator over the dataset.
 

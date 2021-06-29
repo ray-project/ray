@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray.experimental.data.dataset import Dataset
+from ray.experimental.data.datasource import Datasource, RangeDatasource
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
@@ -78,34 +79,8 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     Returns:
         Dataset holding the integers.
     """
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
-    block_size = max(1, n // parallelism)
-
-    @ray.remote
-    def gen_block(start: int, count: int) -> ListBlock:
-        builder = ListBlock.builder()
-        for value in builtins.range(start, start + count):
-            builder.add(value)
-        return builder.build()
-
-    i = 0
-    while i < n:
-
-        def make_call(start: int, count: int) -> ObjectRef[Block]:
-            return lambda: gen_block.remote(start, count)
-
-        count = min(block_size, n - i)
-        calls.append(make_call(i, count))
-        metadata.append(
-            BlockMetadata(
-                num_rows=count,
-                size_bytes=8 * count,
-                schema=int,
-                input_files=None))
-        i += block_size
-
-    return Dataset(LazyBlockList(calls, metadata))
+    return from_datasource(
+        RangeDatasource(n, use_arrow=False), parallelism=parallelism)
 
 
 @autoinit_ray
@@ -125,36 +100,32 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
-    import pyarrow
+    return from_datasource(
+        RangeDatasource(n, use_arrow=True), parallelism=parallelism)
 
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
-    block_size = max(1, n // parallelism)
-    i = 0
+
+@autoinit_ray
+def from_datasource(datasource: DataSource[T],
+                    parallelism: int = 200) -> Dataset[T]:
+    """Create a dataset from a custom data source."""
+
+    read_tasks = datasource.prepare_read(parallelism)
 
     @ray.remote
-    def gen_block(start: int, count: int) -> "ArrowBlock":
-        return ArrowBlock(
-            pyarrow.Table.from_pydict({
-                "value": list(builtins.range(start, start + count))
-            }))
+    def remote_read(task: ReadTask) -> Block[T]:
+        return task()
 
-    while i < n:
+    calls: List[Callable[[], ObjectRef[Block[T]]]] = []
+    metadata: List[BlockMetadata] = []
 
-        def make_call(start: int, count: int) -> ObjectRef[Block]:
-            return lambda: gen_block.remote(start, count)
+    for task in read_tasks:
 
-        start = block_size * i
-        count = min(block_size, n - i)
-        calls.append(make_call(start, count))
-        schema = pyarrow.Table.from_pydict({"value": [0]}).schema
-        metadata.append(
-            BlockMetadata(
-                num_rows=count,
-                size_bytes=8 * count,
-                schema=schema,
-                input_files=None))
-        i += block_size
+        def bind_lambda_args(
+                task: ReadTask) -> Callable[[], ObjectRef[Block[T]]]:
+            return lambda: remote_read.remote(task)
+
+        calls.append(bind_lambda_args(task))
+        metadata.append(task.get_metadata())
 
     return Dataset(LazyBlockList(calls, metadata))
 
@@ -368,9 +339,3 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
-
-
-@autoinit_ray
-def from_source(source: Any) -> Dataset[Any]:
-    """Create a dataset from a generic data source."""
-    raise NotImplementedError  # P0
