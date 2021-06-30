@@ -2152,7 +2152,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", ""--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+    args = ["--run=PG", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
