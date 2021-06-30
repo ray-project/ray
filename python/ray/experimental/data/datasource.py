@@ -55,8 +55,9 @@ class Datasource(Generic[T]):
                           write_task_outputs: List[R]) -> None:
         """Callback for when a write job completes.
 
-        This can be used to "commit" a write output. If this function fails,
-        then ``on_write_failed()`` will be called.
+        This can be used to "commit" a write output. This method must
+        succeed prior to ``write_datasource()`` returning to the user. If this
+        method fails, then ``on_write_failed()`` will be called.
 
         Args:
             write_tasks: The list of the original write tasks.
@@ -176,10 +177,11 @@ class TestOutput(Datasource[Union[ArrowRow, int]]):
                 self.rows_written = 0
                 self.enabled = True
 
-            def write(self, block: Block[T]) -> None:
+            def write(self, block: Block[T]) -> str:
                 if not self.enabled:
                     raise ValueError("disabled")
                 self.rows_written += block.num_rows()
+                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -201,6 +203,8 @@ class TestOutput(Datasource[Union[ArrowRow, int]]):
 
     def on_write_complete(self, write_tasks: List["WriteTask[T, R]"],
                           write_task_outputs: List[R]) -> None:
+        assert len(write_task_outputs) == len(write_tasks)
+        assert all(w == "ok" for w in write_task_outputs)
         self.num_ok += 1
 
     def on_write_failed(self, write_tasks: List["WriteTask[T, R]"],
