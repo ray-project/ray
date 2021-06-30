@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
 #include <boost/any.hpp>
 #include <queue>
@@ -23,7 +24,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -34,7 +35,7 @@ namespace pubsub {
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
 using SubscriptionCallback = std::function<void(const rpc::PubMessage &)>;
-using SubscriptionFailureCallback = std::function<void()>;
+using SubscriptionFailureCallback = std::function<void(const std::string &)>;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// SubscriberChannel Abstraction
@@ -103,6 +104,9 @@ class SubscribeChannelInterface {
 
   /// Return true if there's no metadata leak.
   virtual bool CheckNoLeaks() const = 0;
+
+  /// Return the statistics of the specific channel.
+  virtual std::string DebugString() const = 0;
 };
 
 template <typename KeyIdType>
@@ -131,6 +135,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   }
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
+
+  std::string DebugString() const override;
 
  protected:
   rpc::ChannelType channel_type_;
@@ -171,6 +177,14 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   /// Mapping of the publisher ID -> subscription info.
   absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
+
+  ///
+  /// Statistics attributes.
+  ///
+  uint64_t cum_subscribe_requests_ = 0;
+  uint64_t cum_unsubscribe_requests_ = 0;
+  mutable uint64_t cum_published_messages_ = 0;
+  mutable uint64_t cum_processed_messages_ = 0;
 };
 
 /// The below defines the list of channel implementation.
@@ -189,6 +203,14 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
     channel_type_ = rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL;
   }
   ~WaitForRefRemovedChannel() = default;
+};
+
+class ObjectLocationsChannel : public SubscriberChannel<ObjectID> {
+ public:
+  ObjectLocationsChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
+  }
+  ~ObjectLocationsChannel() = default;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -227,7 +249,26 @@ class SubscriberInterface {
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary) = 0;
 
+  /// Return the statistics string for the subscriber.
+  virtual std::string DebugString() const = 0;
+
   virtual ~SubscriberInterface() {}
+};
+
+/// The grpc client that the subscriber needs.
+class SubscriberClientInterface {
+ public:
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
+
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
+
+  virtual ~SubscriberClientInterface() = default;
 };
 
 /// The pubsub client implementation. The class is thread-safe.
@@ -250,25 +291,23 @@ class SubscriberInterface {
 ///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(const SubscriberID subscriber_id,
-                      const std::string subscriber_address, const int subscriber_port,
-                      const int64_t max_command_batch_size,
-                      rpc::CoreWorkerClientPool &publisher_client_pool,
-                      instrumented_io_context *callback_service)
+  explicit Subscriber(
+      const SubscriberID subscriber_id, const int64_t max_command_batch_size,
+      std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+          get_client,
+      instrumented_io_context *callback_service)
       : callback_service_(callback_service),
         subscriber_id_(subscriber_id),
-        subscriber_address_(subscriber_address),
-        subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
-        publisher_client_pool_(publisher_client_pool),
-        wait_for_object_eviction_channel_(
-            std::make_shared<WaitForObjectEvictionChannel>()),
-        wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
-        /// This is used to define new channel_type -> Channel abstraction.
-        channels_({{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                    wait_for_object_eviction_channel_},
-                   {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                    wait_for_ref_removed_channel_}}) {}
+        get_client_(get_client) {
+    /// This is used to define new channel_type -> Channel abstraction.
+    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                      std::make_unique<WaitForObjectEvictionChannel>());
+    channels_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                      std::make_unique<WaitForRefRemovedChannel>());
+    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                      std::make_unique<ObjectLocationsChannel>());
+  }
 
   ~Subscriber() = default;
 
@@ -283,12 +322,14 @@ class Subscriber : public SubscriberInterface {
                    const std::string &key_id_binary) override;
 
   /// Return the Channel of the given channel type.
-  std::shared_ptr<SubscribeChannelInterface> Channel(
-      const rpc::ChannelType channel_type) const EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  std::unique_ptr<SubscribeChannelInterface> &Channel(const rpc::ChannelType channel_type)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     const auto it = channels_.find(channel_type);
     RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
     return it->second;
   }
+
+  std::string DebugString() const override;
 
  private:
   ///
@@ -319,14 +360,12 @@ class Subscriber : public SubscriberInterface {
   /// \param publisher_address The address of the publisher that publishes
   /// objects.
   /// \param subscriber_address The address of the subscriber.
-  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
-                                       const rpc::Address &subscriber_address)
+  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &publisher_address,
-                                 const rpc::Address &subscriber_address,
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -358,10 +397,8 @@ class Subscriber : public SubscriberInterface {
   /// pool's io service.
   instrumented_io_context *callback_service_;
 
-  /// Self node's address information.
+  /// Self node's identifying information.
   const SubscriberID subscriber_id_;
-  const std::string subscriber_address_;
-  const int subscriber_port_;
 
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;
@@ -376,8 +413,9 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<rpc::Command>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
-  /// Cache of gRPC clients to publishers.
-  rpc::CoreWorkerClientPool &publisher_client_pool_;
+  /// Gets an rpc client for connecting to the publisher.
+  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+      get_client_;
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.
@@ -386,16 +424,8 @@ class Subscriber : public SubscriberInterface {
   /// A set to keep track of in-flight command batch requests
   absl::flat_hash_set<PublisherID> command_batch_sent_ GUARDED_BY(mutex_);
 
-  /// WaitForObjectEviction channel.
-  std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_
-      GUARDED_BY(mutex_);
-
-  /// WaitForRefRemoved channel.
-  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_
-      GUARDED_BY(mutex_);
-
   /// Mapping of channel type to channels.
-  absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
+  absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscribeChannelInterface>>
       channels_ GUARDED_BY(mutex_);
 };
 

@@ -55,6 +55,8 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    ray.init(num_cpus=args.num_cpus or None)
+
     grouping = {
         "group_1": [0, 1],
     }
@@ -100,7 +102,8 @@ if __name__ == "__main__":
                         "agent_id": 1,
                     }),
                 },
-                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+                "policy_mapping_fn": (
+                    lambda aid, **kwargs: "pol2" if aid else "pol1"),
             },
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -116,14 +119,13 @@ if __name__ == "__main__":
                 "final_epsilon": 0.05,
             },
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
+            "mixer": grid_search([None, "qmix"]),
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": args.framework,
         }
         group = True
     else:
@@ -133,8 +135,6 @@ if __name__ == "__main__":
             "framework": args.framework,
         }
         group = False
-
-    ray.init(num_cpus=args.num_cpus or None)
 
     stop = {
         "episode_reward_mean": args.stop_reward,
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         "env": "grouped_twostep" if group else TwoStepGame,
     })
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.run(args.run, stop=stop, config=config, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

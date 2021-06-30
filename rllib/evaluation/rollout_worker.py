@@ -5,7 +5,6 @@ import logging
 import pickle
 import platform
 import os
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -15,6 +14,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
@@ -47,6 +47,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode import MultiAgentEpisode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
@@ -106,7 +107,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
-        ...   policy_mapping_fn=lambda agent_id:
+        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(worker.sample())
@@ -141,7 +142,8 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_spec: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
@@ -155,7 +157,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn: "ObservationFunction" = None,
             observation_filter: str = "NoFilter",
             clip_rewards: bool = None,
-            clip_actions: bool = True,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
             env_config: EnvConfigDict = None,
             model_config: ModelConfigDict = None,
             policy_config: TrainerConfigDict = None,
@@ -200,12 +203,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn can also be set (if not, will map all agents
                 to DEFAULT_POLICY_ID).
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): A
-                callable that maps agent ids to policy ids in multi-agent mode.
-                This function will be called each time a new agent appears in
-                an episode, to bind that agent to a policy for the duration of
-                the episode. If not provided, will map all agents to
-                DEFAULT_POLICY_ID.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): A callable that maps agent ids to policy ids in
+                multi-agent mode. This function will be called each time a new
+                agent appears in an episode, to bind that agent to a policy
+                for the duration of the episode. If not provided, will map all
+                agents to DEFAULT_POLICY_ID.
             policies_to_train (Optional[List[PolicyID]]): Optional list of
                 policies to train, or None for all policies.
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
@@ -247,6 +250,8 @@ class RolloutWorker(ParallelIteratorWorker):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
+            normalize_actions (bool): Whether to normalize actions to the
+                action space's bounds.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
             env_config (EnvConfigDict): Config to pass to the env creator.
@@ -361,35 +366,65 @@ class RolloutWorker(ParallelIteratorWorker):
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
-        policy_mapping_fn = (policy_mapping_fn
-                             or (lambda agent_id: DEFAULT_POLICY_ID))
-        if not callable(policy_mapping_fn):
-            raise ValueError("Policy mapping function not callable?")
+
+        # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
+        # independent on the agent ID and the episode passed in.
+        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        self.set_policy_mapping_fn(policy_mapping_fn)
+
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
+        self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # No Env will be used in this particular worker (not needed).
-        if worker_index == 0 and num_workers > 0 and \
-                policy_config["create_env_on_driver"] is False:
-            self.env = None
+        self.env = None
+
         # Create an env for this worker.
-        else:
-            self.env = _validate_env(env_creator(env_context))
+        if not (worker_index == 0 and num_workers > 0
+                and policy_config["create_env_on_driver"] is False):
+            # Run the `env_creator` function passing the EnvContext.
+            self.env = env_creator(env_context)
+        if self.env is not None:
+            # Validate environment (general validation function).
+            self.env = _validate_env(self.env)
+            # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
-            if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
+            # MultiAgentEnv (a gym.Env) -> Wrap and make
+            # the wrapped Env yet another MultiAgentEnv.
+            if isinstance(self.env, MultiAgentEnv):
 
                 def wrap(env):
-                    return env  # we can't auto-wrap these env types
+                    cls = env.__class__
+                    # Add gym.Env as mixin parent to the env's class
+                    # (so it can be wrapped).
+                    env.__class__ = \
+                        type(env.__class__.__name__, (type(env), gym.Env), {})
+                    # Wrap the (now gym.Env) env with our (multi-agent capable)
+                    # recording wrapper.
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
+                    # Make sure, we make the wrapped object a member of the
+                    # original MultiAgentEnv sub-class again.
+                    if type(env) is not cls:
+                        env.__class__ = \
+                            type(cls.__name__, (type(env), cls), {})
+                    return env
 
+            # We can't auto-wrap a BaseEnv.
+            elif isinstance(self.env, BaseEnv):
+
+                def wrap(env):
+                    return env
+
+            # Atari type env and "deepmind" preprocessor pref.
             elif is_atari(self.env) and \
                     not model_config.get("custom_preprocessor") and \
                     preprocessor_pref == "deepmind":
@@ -407,8 +442,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 # framestacking via trajectory view API is enabled.
                 num_framestacks = model_config.get("num_framestacks", 0)
 
-                # Trajectory view API is on and num_framestacks=auto: Only
-                # stack traj. view based if old `framestack=[invalid value]`.
+                # Trajectory view API is on and num_framestacks=auto:
+                # Only stack traj. view based if old
+                # `framestack=[invalid value]`.
                 if num_framestacks == "auto":
                     if framestack == DEPRECATED_VALUE:
                         model_config["num_framestacks"] = num_framestacks = 4
@@ -422,46 +458,18 @@ class RolloutWorker(ParallelIteratorWorker):
                         dim=model_config.get("dim"),
                         framestack=framestack,
                         framestack_via_traj_view_api=framestack_traj_view)
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
+                    env = record_env_wrapper(env, record_env, log_dir,
+                                             policy_config)
                     return env
+
+            # gym.Env -> Wrap with gym Monitor.
             else:
 
                 def wrap(env):
-                    if record_env:
-                        from gym import wrappers
-                        path_ = record_env if isinstance(record_env,
-                                                         str) else log_dir
-                        # Relative path: Add logdir here, otherwise, this would
-                        # not work for non-local workers.
-                        if not re.search("[/\\\]", path_):
-                            path_ = os.path.join(log_dir, path_)
-                        print(f"Setting the path for recording to {path_}")
-                        env = wrappers.Monitor(
-                            env,
-                            path_,
-                            resume=True,
-                            force=True,
-                            video_callable=lambda _: True,
-                            mode="evaluation"
-                            if policy_config["in_evaluation"] else "training")
-                    return env
+                    return record_env_wrapper(env, record_env, log_dir,
+                                              policy_config)
 
+            # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):
@@ -476,9 +484,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
-            policy_spec, self.env, spaces=spaces)
+            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
+        # List of IDs of those policies, which should be trained.
+        # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
+        self.set_policies_to_train(self.policies_to_train)
+
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
@@ -575,7 +587,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "ExternalMultiAgentEnv?".format(self.env))
 
         self.filters: Dict[PolicyID, Filter] = {
-            policy_id: get_filter(observation_filter,
+            policy_id: get_filter(self.observation_filter,
                                   policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
@@ -646,10 +658,6 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = AsyncSampler(
                 worker=self,
                 env=self.async_env,
-                policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
-                preprocessors=self.preprocessors,
-                obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
@@ -657,6 +665,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
@@ -672,10 +681,6 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler = SyncSampler(
                 worker=self,
                 env=self.async_env,
-                policies=self.policy_map,
-                policy_mapping_fn=policy_mapping_fn,
-                preprocessors=self.preprocessors,
-                obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
@@ -683,6 +688,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
@@ -1015,6 +1021,124 @@ class RolloutWorker(ParallelIteratorWorker):
         return self.policy_map.get(policy_id)
 
     @DeveloperAPI
+    def add_policy(
+            self,
+            *,
+            policy_id: PolicyID,
+            policy_cls: Type[Policy],
+            observation_space: Optional[gym.spaces.Space] = None,
+            action_space: Optional[gym.spaces.Space] = None,
+            config: Optional[PartialTrainerConfigDict] = None,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ) -> Policy:
+        """Adds a new policy to this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to add.
+            policy_cls (Type[Policy]): The Policy class to use for
+                constructing the new Policy.
+            observation_space (Optional[gym.spaces.Space]): The observation
+                space of the policy to add.
+            action_space (Optional[gym.spaces.Space]): The action space
+                of the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config overrides
+                for the policy to add.
+            policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
+                PolicyID]]): An optional (updated) policy mapping function to
+                use from here on. Note that already ongoing episodes will not
+                change their mapping but will use the old mapping till the
+                end of the episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+
+        Returns:
+            Policy: The newly added policy (the copy that got added to the
+                local worker).
+        """
+        if policy_id in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
+        policy_dict = {
+            policy_id: (policy_cls, observation_space, action_space, config)
+        }
+        add_map, add_prep = self._build_policy_map(policy_dict,
+                                                   self.policy_config)
+        new_policy = add_map[policy_id]
+
+        self.policy_map.update(add_map)
+        self.preprocessors.update(add_prep)
+        self.filters[policy_id] = get_filter(
+            self.observation_filter, new_policy.observation_space.shape)
+
+        self.set_policy_mapping_fn(policy_mapping_fn)
+        self.set_policies_to_train(policies_to_train)
+
+        return new_policy
+
+    @DeveloperAPI
+    def remove_policy(
+            self,
+            *,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+    ):
+        """Removes a policy from this RolloutWorker.
+
+        Args:
+            policy_id (Optional[PolicyID]): ID of the policy to be removed.
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
+                optional (updated) policy mapping function to use from here on.
+                Note that already ongoing episodes will not change their
+                mapping but will use the old mapping till the end of the
+                episode.
+            policies_to_train (Optional[List[PolicyID]]): An optional list of
+                policy IDs to be trained. If None, will keep the existing list
+                in place. Policies, whose IDs are not in the list will not be
+                updated.
+        """
+        if policy_id not in self.policy_map:
+            raise ValueError(f"Policy ID '{policy_id}' not in policy map!")
+        del self.policy_map[policy_id]
+        del self.preprocessors[policy_id]
+        self.set_policy_mapping_fn(policy_mapping_fn)
+        self.set_policies_to_train(policies_to_train)
+
+    @DeveloperAPI
+    def set_policy_mapping_fn(
+            self,
+            policy_mapping_fn: Optional[Callable[
+                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+    ):
+        """Sets `self.policy_mapping_fn` to a new callable (if provided).
+
+        Args:
+            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): The
+                new mapping function to use. If None, will keep the existing
+                mapping function in place.
+        """
+        if policy_mapping_fn is not None:
+            self.policy_mapping_fn = policy_mapping_fn
+            if not callable(self.policy_mapping_fn):
+                raise ValueError("`policy_mapping_fn` must be a callable!")
+
+    @DeveloperAPI
+    def set_policies_to_train(
+            self, policies_to_train: Optional[List[PolicyID]] = None):
+        """Sets `self.policies_to_train` to a new list of PolicyIDs.
+
+        Args:
+            policies_to_train (Optional[List[PolicyID]]): The new
+                list of policy IDs to train with. If None, will keep the
+                existing list in place.
+        """
+        if policies_to_train is not None:
+            self.policies_to_train = policies_to_train
+
+    @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
                    policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
@@ -1083,7 +1207,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def save(self) -> str:
+    def save(self) -> bytes:
         filters = self.get_filters(flush_after=True)
         state = {
             pid: self.policy_map[pid].get_state()
@@ -1092,10 +1216,16 @@ class RolloutWorker(ParallelIteratorWorker):
         return pickle.dumps({"filters": filters, "state": state})
 
     @DeveloperAPI
-    def restore(self, objs: str) -> None:
+    def restore(self, objs: bytes) -> None:
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
+            if pid not in self.policy_map:
+                logger.warning(
+                    f"pid={pid} not found in policy_map! It was probably added"
+                    " on-the-fly and is not part of the static `config."
+                    "multiagent.policies` dict. Ignoring it for now.")
+                continue
             self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
@@ -1129,7 +1259,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def stop(self) -> None:
-        if self.env:
+        if self.env is not None:
             self.async_env.stop()
 
     @DeveloperAPI
@@ -1189,7 +1319,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     else:
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
-                with tf1.variable_scope(name):
+                scope = name + (("_wk" + str(self.worker_index))
+                                if self.worker_index else "")
+                with tf1.variable_scope(scope):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             # non-tf.
             else:
@@ -1235,15 +1367,17 @@ class RolloutWorker(ParallelIteratorWorker):
 
 def _validate_and_canonicalize(
         policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
-        env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[
-            gym.spaces.Space, gym.spaces.Space]]] = None) -> \
-        MultiAgentPolicyConfigDict:
+        env: Optional[EnvType],
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]],
+        policy_config: Optional[PartialTrainerConfigDict],
+) -> MultiAgentPolicyConfigDict:
+
     if isinstance(policy, dict):
         _validate_multiagent_config(policy)
         return policy
     elif not issubclass(policy, Policy):
-        raise ValueError("policy must be a rllib.Policy class")
+        raise ValueError(f"`policy` ({policy}) must be a rllib.Policy class!")
     else:
         if (isinstance(env, MultiAgentEnv)
                 and not hasattr(env, "observation_space")):
@@ -1255,11 +1389,22 @@ def _validate_and_canonicalize(
                 DEFAULT_POLICY_ID: (policy, env.observation_space,
                                     env.action_space, {})
             }
-        else:
-            return {
-                DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
-                                    spaces[DEFAULT_POLICY_ID][1], {})
+
+        if spaces is None:
+            if "action_space" not in policy_config or \
+                    "observation_space" not in policy_config:
+                raise ValueError(
+                    "If no env given, must provide obs/action spaces either "
+                    "in the `multiagent.policies` dict or under "
+                    "`config.[observation|action]_space`!")
+            spaces = {
+                DEFAULT_POLICY_ID: (policy_config["observation_space"],
+                                    policy_config["action_space"])
             }
+        return {
+            DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
+                                spaces[DEFAULT_POLICY_ID][1], {})
+        }
 
 
 def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
@@ -1267,8 +1412,7 @@ def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
     # Loop through all policy definitions in multi-agent policie
     for k, v in policy.items():
         if not isinstance(k, str):
-            raise ValueError("policy keys must be strs, got {}".format(
-                type(k)))
+            raise ValueError("Policy key must be str, got {}!".format(k))
         if not isinstance(v, (tuple, list)) or len(v) != 4:
             raise ValueError(
                 "policy values must be tuples/lists of "

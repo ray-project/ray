@@ -246,12 +246,23 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     return;
   }
 
+  cum_pub_message_cnt_[channel_type]++;
+
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
     subscriber->QueueMessage(pub_message);
   }
+}
+
+void Publisher::PublishFailure(const rpc::ChannelType channel_type,
+                               const std::string &key_id_binary) {
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(key_id_binary);
+  pub_message.set_channel_type(channel_type);
+  pub_message.mutable_failure_message();
+  Publish(channel_type, pub_message, key_id_binary);
 }
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
@@ -320,6 +331,20 @@ bool Publisher::CheckNoLeaks() const {
     }
   }
   return true;
+}
+
+std::string Publisher::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream result;
+  result << "Publisher:";
+  for (const auto &it : cum_pub_message_cnt_) {
+    auto channel_type = it.first;
+    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+    std::string channel_name = descriptor->FindValueByNumber(channel_type)->name();
+    result << "\n" << channel_name;
+    result << "\n- cumulative published messages: " << it.second;
+  }
+  return result.str();
 }
 
 }  // namespace pubsub

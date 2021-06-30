@@ -73,6 +73,9 @@ constexpr int GRANULARITY_MULTIPLIER = 2;
 // Combined with MAP_POPULATE, this can guarantee we never run into SIGBUS errors.
 static bool allocated_once = false;
 
+// Give each mmap record a unique id, so we can disambiguate fd reuse.
+static int64_t next_mmap_unique_id = INVALID_UNIQUE_FD_ID + 1;
+
 // Populated on the first allocation so we can track which allocations fall within
 // the initial region vs outside.
 static char *initial_region_ptr = nullptr;
@@ -171,7 +174,7 @@ void *fake_mmap(size_t size) {
   size += kMmapRegionsGap;
 
   void *pointer;
-  MEMFD_TYPE fd;
+  MEMFD_TYPE_NON_UNIQUE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
   allocated_once = true;
 
@@ -179,7 +182,7 @@ void *fake_mmap(size_t size) {
   mparams.granularity *= GRANULARITY_MULTIPLIER;
 
   MmapRecord &record = mmap_records[pointer];
-  record.fd = fd;
+  record.fd = {fd, next_mmap_unique_id++};
   record.size = size;
 
   // We lie to dlmalloc about where mapped memory actually lives.
@@ -205,12 +208,12 @@ int fake_munmap(void *addr, int64_t size) {
 #ifdef _WIN32
   r = UnmapViewOfFile(addr) ? 0 : -1;
   if (r == 0) {
-    CloseHandle(entry->second.fd);
+    CloseHandle(entry->second.fd.first);
   }
 #else
   r = munmap(addr, size);
   if (r == 0) {
-    close(entry->second.fd);
+    close(entry->second.fd.first);
   }
 #endif
 

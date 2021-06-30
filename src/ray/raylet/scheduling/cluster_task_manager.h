@@ -76,9 +76,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Schedule infeasible tasks.
-  void ScheduleInfeasibleTasks() override;
-
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///
@@ -162,6 +159,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
+
+  /// Calculate normal task resources.
+  ResourceSet CalcNormalTaskResources() const override;
 
  private:
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system

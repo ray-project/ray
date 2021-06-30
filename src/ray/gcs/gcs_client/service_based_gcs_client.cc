@@ -80,7 +80,6 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
   };
@@ -95,7 +94,6 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
   node_resource_accessor_.reset(new ServiceBasedNodeResourceInfoAccessor(this));
-  task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
   object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
@@ -116,7 +114,10 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
 }
 
 void ServiceBasedGcsClient::Disconnect() {
-  RAY_CHECK(is_connected_);
+  if (!is_connected_) {
+    RAY_LOG(WARNING) << "ServiceBasedGcsClient has been disconnected.";
+    return;
+  }
   is_connected_ = false;
   periodical_runner_.reset();
   gcs_pub_sub_.reset();

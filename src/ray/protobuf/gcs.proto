@@ -460,6 +460,11 @@ message ResourcesData {
   bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 10;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 11;
 }
 
 message ResourceUsageBatchData {
