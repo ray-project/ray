@@ -97,6 +97,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
 
+  MOCK_CONST_METHOD1(GetTaskSpec,
+                     absl::optional<TaskSpecification>(const TaskID &task_id));
+
   MOCK_METHOD4(MarkPendingTaskFailed,
                void(const TaskID &task_id, const TaskSpecification &spec,
                     rpc::ErrorType error_type,

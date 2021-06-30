@@ -40,6 +40,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -99,7 +100,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -185,6 +187,8 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
+  /// The PID of the process for setup worker runtime env.
+  pid_t worker_shim_pid;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -891,6 +895,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleStealTasks(const rpc::StealTasksRequest &request,
+                        rpc::StealTasksReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(

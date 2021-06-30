@@ -168,6 +168,11 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  std::string DebugString() const override {
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
+    return "";
+  }
+
   pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;

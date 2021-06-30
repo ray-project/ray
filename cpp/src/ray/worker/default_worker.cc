@@ -6,13 +6,11 @@
 
 #include "../config_internal.h"
 
-using namespace ::ray::api;
-
 int main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started.";
-  ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
-  ::ray::api::RayConfig config;
-  Ray::Init(config, &argc, &argv);
+  ray::api::ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
+  ray::api::RayConfig config;
+  ray::api::Ray::Init(config, &argc, &argv);
   ::ray::CoreWorkerProcess::RunTaskExecutionLoop();
   return 0;
 }

@@ -21,8 +21,7 @@
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/core_worker_server.h"
+#include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -313,6 +312,8 @@ class Publisher : public PublisherInterface {
   /// having a timer per subscriber.
   void CheckDeadSubscribers();
 
+  std::string DebugString() const;
+
  private:
   ///
   /// Testing fields
@@ -362,6 +363,8 @@ class Publisher : public PublisherInterface {
 
   /// The maximum number of objects to publish for each publish calls.
   const int publish_batch_size_;
+
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_;
 };
 
 }  // namespace pubsub

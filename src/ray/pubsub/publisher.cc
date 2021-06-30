@@ -243,9 +243,10 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
   auto maybe_subscribers =
       subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
-    RAY_LOG(INFO) << "Publish a message that has no subscriber.";
     return;
   }
+
+  cum_pub_message_cnt_[channel_type]++;
 
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
@@ -330,6 +331,20 @@ bool Publisher::CheckNoLeaks() const {
     }
   }
   return true;
+}
+
+std::string Publisher::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream result;
+  result << "Publisher:";
+  for (const auto &it : cum_pub_message_cnt_) {
+    auto channel_type = it.first;
+    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+    std::string channel_name = descriptor->FindValueByNumber(channel_type)->name();
+    result << "\n" << channel_name;
+    result << "\n- cumulative published messages: " << it.second;
+  }
+  return result.str();
 }
 
 }  // namespace pubsub

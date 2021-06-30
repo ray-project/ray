@@ -401,7 +401,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -493,10 +493,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
-      /*subscriber_address=*/rpc_address_.ip_address(),
-      /*subscriber_port=*/rpc_address_.port(),
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
+      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
+      /*get_client=*/
+      [this](const rpc::Address &address) {
+        return core_worker_client_pool_->GetOrConnect(address);
+      },
       /*callback_service*/ &io_service_);
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
@@ -631,6 +633,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     reference_counter_, node_addr_factory, rpc_address_))
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
+
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
@@ -645,6 +648,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   future_resolver_.reset(new FutureResolver(memory_store_,
                                             std::move(report_locality_data_callback),
                                             core_worker_client_pool_, rpc_address_));
+
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
@@ -903,7 +907,15 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  if (!IsParentProcessAlive()) {
+  // When running worker process in container, the worker parent process is not raylet.
+  // So we add RAY_RAYLET_PID enviroment to ray worker process.
+  if (const char *env_pid = std::getenv("RAY_RAYLET_PID")) {
+    pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
+    if (!IsProcessAlive(pid)) {
+      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
+      Shutdown();
+    }
+  } else if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
@@ -1388,7 +1400,6 @@ Status CoreWorker::GetLocationFromOwner(
     auto object_location_request = request.mutable_object_location_request();
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
-    object_location_request->set_last_version(-1);
     client->GetObjectLocationsOwner(
         request,
         [object_id, mutex, num_remaining, ready_promise, location_by_id](
@@ -2352,6 +2363,13 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   }
 }
 
+void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
+                                  rpc::StealTasksReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Entering CoreWorker::HandleStealWork!";
+  direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
+}
+
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
     const rpc::DirectActorCallArgWaitCompleteRequest &request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,
@@ -2490,9 +2508,9 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   const auto object_id = ObjectID::FromBinary(message.object_id());
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(INFO) << "The SubscribeForObjectEviction message is for "
-                  << intended_worker_id << ", but the current worker id is "
-                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+    RAY_LOG(INFO) << "The SubscribeForObjectEviction message for object id " << object_id
+                  << " is for " << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ".";
     unpin_object(object_id);
     return;
   }
@@ -2550,7 +2568,7 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
 void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
   object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
                                               std::move(send_reply_callback));
@@ -2605,20 +2623,16 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   const auto object_id = ObjectID::FromBinary(message.object_id());
 
   if (intended_worker_id != worker_context_.GetWorkerID()) {
-    RAY_LOG(ERROR) << "The ProcessSubscribeObjectLocations message is for "
-                   << intended_worker_id << ", but the current worker id is "
-                   << worker_context_.GetWorkerID() << ". This will be no-op.";
+    RAY_LOG(INFO) << "The ProcessSubscribeObjectLocations message is for "
+                  << intended_worker_id << ", but the current worker id is "
+                  << worker_context_.GetWorkerID() << ". This will be no-op.";
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
   }
 
-  auto status =
-      reference_counter_->SubscribeObjectLocations(object_id, message.last_version());
-  if (!status.ok()) {
-    object_info_publisher_->PublishFailure(
-        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
-  }
+  // Publish the first object location snapshot when subscribed for the first time.
+  reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(
