@@ -389,6 +389,26 @@ py_test(
 )
 
 py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
+)
+
+py_test(
     name = "run_regression_tests_repeat_after_me_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf"],
