@@ -49,6 +49,7 @@ class Datasource(Generic[T]):
             A list of write tasks that can be executed to write blocks to the
             datasource in parallel.
         """
+        raise NotImplementedError
 
     def on_write_complete(self, write_tasks: List["WriteTask[T, R]"],
                           write_task_outputs: List[R]) -> None:
