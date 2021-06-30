@@ -38,7 +38,8 @@ class Dataset(Generic[T]):
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
     conversion to/from several more featureful dataframe libraries
-    (e.g., Spark, Dask), and are also compatible with TensorFlow / PyTorch.
+    (e.g., Spark, Dask, Modin, MARS), and are also compatible with distributed
+    TensorFlow / PyTorch.
 
     Dataset supports parallel transformations such as .map(), .map_batches(),
     and simple repartition, but currently not aggregations and joins.
