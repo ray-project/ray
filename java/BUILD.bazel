@@ -12,6 +12,7 @@ exports_files([
 all_modules = [
     "api",
     "runtime",
+    "serve",
     "test",
     "performance_test",
 ]
@@ -120,6 +121,27 @@ define_java_module(
     ],
 )
 
+define_java_module(
+    name = "serve",
+    define_test_lib = True,
+    test_deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_serve",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
 java_binary(
     name = "all_tests",
     args = ["java/testng.xml"],
@@ -129,6 +151,7 @@ java_binary(
         ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
         ":io_ray_ray_test",
+        ":io_ray_ray_serve_test",
     ],
 )
 
@@ -223,6 +246,7 @@ genrule(
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
+        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
         date > $@
     """,
     local = 1,
@@ -237,6 +261,7 @@ java_binary(
     runtime_deps = [
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "//java:io_ray_ray_serve",
         "//streaming/java:io_ray_ray_streaming-api",
         "//streaming/java:io_ray_ray_streaming-runtime",
     ],

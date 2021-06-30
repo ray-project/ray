@@ -17,16 +17,35 @@
   <packaging>jar</packaging>
 
   <dependencies>
-	<dependency>
-	  <groupId>io.ray</groupId>
-	  <artifactId>ray-api</artifactId>
-	  <version>${project.version}</version>
-	</dependency>
-	<dependency>
-	  <groupId>io.ray</groupId>
-	  <artifactId>ray-runtime</artifactId>
-	  <version>${project.version}</version>
-	</dependency>
-	
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+<dependency>
+  <groupId>com.google.guava</groupId>
+  <artifactId>guava</artifactId>
+  <version>27.0.1-jre</version>
+</dependency>
+<dependency>
+  <groupId>org.apache.commons</groupId>
+  <artifactId>commons-lang3</artifactId>
+  <version>3.4</version>
+</dependency>
+<dependency>
+  <groupId>org.slf4j</groupId>
+  <artifactId>slf4j-api</artifactId>
+  <version>1.7.25</version>
+</dependency>
+<dependency>
+  <groupId>org.testng</groupId>
+  <artifactId>testng</artifactId>
+  <version>7.3.0</version>
+</dependency>
   </dependencies>
 </project>

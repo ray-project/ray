@@ -10,13 +10,23 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>ray-api</artifactId>
-  <name>ray api</name>
-  <description>java api for ray</description>
+  <artifactId>ray-serve</artifactId>
+  <name>ray serve</name>
+  <description>java for ray serve</description>
 
   <packaging>jar</packaging>
 
   <dependencies>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 {generated_bzl_deps}
   </dependencies>
 </project>
