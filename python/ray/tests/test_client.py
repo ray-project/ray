@@ -15,7 +15,6 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.client_mode_hook import enable_client_mode
-from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -51,30 +50,31 @@ def test_client_thread_safe(call_ray_stop_only):
         assert ray.get(fast.remote(), timeout=5) == "ok"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# @pytest.mark.skip()
 def test_client_mode_hook_thread_safe(ray_start_regular_shared):
     with ray_start_client_server():
-        _explicitly_enable_client_mode()
-        assert client_mode_should_convert()
-        lock = threading.Lock()
-        lock.acquire()
-        q = queue.Queue()
+        with enable_client_mode():
+            assert client_mode_should_convert()
+            lock = threading.Lock()
+            lock.acquire()
+            q = queue.Queue()
 
-        def disable():
-            with disable_client_hook():
+            def disable():
+                with disable_client_hook():
+                    q.put(client_mode_should_convert())
+                    lock.acquire()
                 q.put(client_mode_should_convert())
-                lock.acquire()
-            q.put(client_mode_should_convert())
 
-        t = threading.Thread(target=disable)
-        t.start()
-        assert client_mode_should_convert()
-        lock.release()
-        t.join()
-        assert q.get(
-        ) is False, "Threaded disable_client_hook failed  to disable"
-        assert q.get(
-        ) is True, "Threaded disable_client_hook failed to re-enable"
+            t = threading.Thread(target=disable)
+            t.start()
+            assert client_mode_should_convert()
+            lock.release()
+            t.join()
+            assert q.get(
+            ) is False, "Threaded disable_client_hook failed  to disable"
+            assert q.get(
+            ) is True, "Threaded disable_client_hook failed to re-enable"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

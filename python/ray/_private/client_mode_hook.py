@@ -26,6 +26,9 @@ def _disable_client_hook():
 
 
 def _explicitly_enable_client_mode():
+    """Force client mode to be enabled.
+    NOTE: This should not be used in tests, use `enable_client_mode`.
+    """
     global client_mode_enabled
     client_mode_enabled = True
 
