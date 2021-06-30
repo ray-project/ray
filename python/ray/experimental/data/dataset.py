@@ -5,6 +5,7 @@ from typing import List, Any, Callable, Iterable, Iterator, Generic, TypeVar, \
 if TYPE_CHECKING:
     import pyarrow
     import pandas
+    import mars
     import modin
     import dask
     import pyspark
@@ -607,6 +608,16 @@ class Dataset(Generic[T]):
 
         Returns:
             A Dask dataframe created from this dataset.
+        """
+        raise NotImplementedError  # P1
+
+    def to_mars(self) -> "mars.DataFrame":
+        """Convert this dataset into a MARS dataframe.
+
+        Time complexity: O(1)
+
+        Returns:
+            A MARS dataframe created from this dataset.
         """
         raise NotImplementedError  # P1
 

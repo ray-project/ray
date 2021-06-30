@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import pyarrow
     import pandas
     import dask
+    import mars
     import modin
     import pyspark
 
@@ -294,6 +295,7 @@ def read_binary_files(
     raise NotImplementedError  # P0
 
 
+@autoinit_ray
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Dask dataframe.
@@ -307,6 +309,21 @@ def from_dask(df: "dask.DataFrame",
     raise NotImplementedError  # P1
 
 
+@autoinit_ray
+def from_mars(df: "mars.DataFrame",
+              parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a MARS dataframe.
+
+    Args:
+        df: A MARS dataframe, which must be executed by MARS-on-Ray.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframe.
+    """
+    raise NotImplementedError  # P1
+
+
+@autoinit_ray
 def from_modin(df: "modin.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
@@ -321,6 +338,7 @@ def from_modin(df: "modin.DataFrame",
     raise NotImplementedError  # P1
 
 
+@autoinit_ray
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
@@ -335,6 +353,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     raise NotImplementedError  # P1
 
 
+@autoinit_ray
 def from_spark(df: "pyspark.sql.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.

@@ -9,6 +9,7 @@ __all__ = [
     "WriteTask",
     "from_dask",
     "from_items",
+    "from_mars",
     "from_modin",
     "from_pandas",
     "from_spark",
