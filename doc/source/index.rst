@@ -123,7 +123,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      bazel build //cpp:ray_cpp_pkg
+      pip install -e python --verbose
       bazel build //cpp/example:example
 
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.

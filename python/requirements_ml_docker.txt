@@ -1,5 +1,5 @@
 ipython
-tensorflow-gpu>=2.4.0
+tensorflow-gpu==2.4.2
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.8.1+cu111
 -f https://download.pytorch.org/whl/torch_stable.html
