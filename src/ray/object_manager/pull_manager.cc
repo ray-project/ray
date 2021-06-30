@@ -270,7 +270,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (wait_requests_remaining) {
     int64_t margin_required =
         NextRequestBundleSize(wait_request_bundles_, highest_wait_req_id_being_pulled_);
-    RAY_LOG(ERROR) << "Margin required " << margin_required;
+    RAY_LOG(DEBUG) << "Margin required " << margin_required;
     DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
                                    /*retain_min=*/0, /*quota_margin=*/margin_required,
                                    &highest_task_req_id_being_pulled_,

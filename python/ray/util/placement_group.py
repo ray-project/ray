@@ -73,7 +73,6 @@ class PlacementGroup:
         # to schedule a single task.
         bundle_index = 0
         bundle = self.bundle_cache[bundle_index]
-
         resource_name, value = self._get_a_non_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
@@ -87,7 +86,6 @@ class PlacementGroup:
             memory = value
         else:
             resources[resource_name] = value
-
         return bundle_reservation_check.options(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
