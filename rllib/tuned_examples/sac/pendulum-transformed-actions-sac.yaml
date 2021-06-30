@@ -10,7 +10,7 @@ pendulum-sac:
         # Works for both torch and tf.
         framework: tf
 
-        # Makes sure, SAC is able to learn in "distorted" action spaces.
+        # Test, whether SAC is able to learn in "distorted" action spaces.
         env_config:
           config:
             low: 300.0
