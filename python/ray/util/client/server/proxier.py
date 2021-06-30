@@ -117,7 +117,7 @@ class ProxyManager():
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._node: Optional[Any] = None
+        self._node: Optional[ray.node.Node] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -153,7 +153,7 @@ class ProxyManager():
         return self._redis_address
 
     @property
-    def node(self) -> Any:
+    def node(self) -> ray.node.Node:
         """
         Gets the session_dir of this running Ray session. This usually
         looks like /tmp/ray/session_<timestamp>.
