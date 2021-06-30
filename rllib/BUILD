@@ -156,6 +156,35 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ars", "--framework=torch"]
 )
 
+# CQL
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_cql_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql", "--framework=torch"]
+)
+
 # DDPG
 py_test(
     name = "run_regression_tests_pendulum_ddpg_tf",
@@ -360,6 +389,26 @@ py_test(
 )
 
 py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
+)
+
+py_test(
     name = "run_regression_tests_repeat_after_me_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf"],
@@ -462,6 +511,26 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
@@ -665,7 +734,7 @@ py_test(
 py_test(
     name = "test_ddppo",
     tags = ["agents_dir", "flaky"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
 
@@ -1517,7 +1586,7 @@ py_test(
 py_test(
     name = "tests/test_model_imports",
     tags = ["tests_dir", "tests_dir_M", "model_imports", "flaky"],
-    size = "small",
+    size = "medium",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
 )
@@ -2459,14 +2528,15 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
-py_test(
-    name = "examples/two_step_game_qmix",
-    main = "examples/two_step_game.py",
-    tags = ["examples", "examples_T", "flaky"],
-    size = "large",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
-)
+# Skipping because of high flakiness.
+#py_test(
+#    name = "examples/two_step_game_qmix",
+#    main = "examples/two_step_game.py",
+#    tags = ["examples", "examples_T", "flaky"],
+#    size = "large",
+#    srcs = ["examples/two_step_game.py"],
+#    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
+#)
 
 py_test(
     name = "contrib/bandits/examples/lin_ts",
