@@ -1,9 +1,10 @@
 import builtins
 from typing import Generic, List, Callable, Union, TypeVar
 
+import numpy as np
+
 import ray
-from ray.experimental.data.impl.arrow_block import ArrowRow, \
-    DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
 from ray.experimental.data.impl.block import Block, ListBlock
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
@@ -135,14 +136,13 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
 
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
-        def make_block(start: int, count: int) -> ListBlock:
-            builder = DelegatingArrowBlockBuilder()
-            for value in builtins.range(start, start + count):
-                if use_arrow:
-                    builder.add({"value": value})
-                else:
-                    builder.add(value)
-            return builder.build()
+        def make_block(start: int, count: int) -> Block[Union[ArrowRow, int]]:
+            if use_arrow:
+                return ArrowBlock(
+                    pyarrow.Table.from_arrays(
+                        [np.arange(start, start + count)], names=["value"]))
+            else:
+                return ListBlock(list(builtins.range(start, start + count)))
 
         i = 0
         while i < n:
