@@ -215,8 +215,8 @@ async def test_monitor_events():
         await asyncio.gather(
             _writer(count), _check_events([str(i) for i in range(count)]))
 
-        read_events = []
         monitor_task.cancel()
+        read_events = []
         monitor_task = monitor_events(
             temp_dir,
             lambda x: read_events.extend(x),
