@@ -114,7 +114,7 @@ class WriteTask(Callable[[Block[T]], R]):
         self._write_fn = write_fn
 
     def __call__(self) -> R:
-        self._write_fn()
+        return self._write_fn()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
@@ -131,6 +131,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
 
+        # Example of a read task. In a real datasource, this would pull data
+        # from an external system instead of generating dummy data.
         def make_block(start: int, count: int) -> ListBlock:
             builder = DelegatingArrowBlockBuilder()
             for value in builtins.range(start, start + count):
@@ -171,6 +173,8 @@ class TestOutput(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
+        # Setup a dummy actor to send the data. In a real datasource, write
+        # tasks would send data to an external system instead of a Ray actor.
         @ray.remote
         class DataSink:
             def __init__(self):
@@ -204,7 +208,7 @@ class TestOutput(Datasource[Union[ArrowRow, int]]):
     def on_write_complete(self, write_tasks: List["WriteTask[T, R]"],
                           write_task_outputs: List[R]) -> None:
         assert len(write_task_outputs) == len(write_tasks)
-        assert all(w == "ok" for w in write_task_outputs)
+        assert all(w == "ok" for w in write_task_outputs), write_task_outputs
         self.num_ok += 1
 
     def on_write_failed(self, write_tasks: List["WriteTask[T, R]"],
