@@ -13,8 +13,8 @@ import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
-from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
-from ray.experimental.data.impl.transform_util import concat_batches
+from ray.experimental.data.impl.arrow_block import (
+    DelegatingArrowBlockBuilder, ArrowBlock)
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -108,46 +108,49 @@ class Dataset(Generic[T]):
         """
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
+        import pyarrow as pa
+        import pandas as pd
 
-        def pandas_batch_transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block[T]) -> Block[U]:
             total_rows = block.num_rows()
-            max_batch_size = total_rows if batch_size is None else batch_size
+            max_batch_size = batch_size
+            if max_batch_size is None:
+                max_batch_size = total_rows
 
-            df = block.to_pandas()
+            builder = DelegatingArrowBlockBuilder()
 
-            batches = []
             for start in range(0, total_rows, max_batch_size):
+                # Build a block for each batch.
+                batch_block_builder = DelegatingArrowBlockBuilder()
                 end = min(total_rows, start + max_batch_size)
-                view = df.iloc[start:end]
-                batches.append(fn(view))
-            return concat_batches(batches)
-
-        def arrow_batch_transform(block: Block[T]) -> Block[U]:
-            if isinstance(block, ListBlock):
-                raise ValueError(
-                    "Pyarrow batch format is currently not supported for "
-                    "list-based Dataset. e.g., data.range(5)")
-            total_rows = block.num_rows()
-            max_batch_size = total_rows if batch_size is None else batch_size
-            batches = []
-            for start in range(0, total_rows, max_batch_size):
-                end = min(total_rows, start + max_batch_size)
+                # Note: if the block is a list, it doesn't support zero-copy.
                 view = block.slice(start, end)
-                batches.append(fn(view.table))
+                if batch_format == "pandas":
+                    view = view.to_pandas()
+                elif batch_format == "pyarrow":
+                    view = view.table
+                else:
+                    raise ValueError(
+                        f"The given batch format: {batch_format} "
+                        f"is invalid. Supported batch type: {BatchType}")
 
-            return concat_batches(batches)
+                applied = fn(view)
+                if isinstance(applied, list):
+                    applied = ListBlock(applied)
+                elif isinstance(applied, pd.core.frame.DataFrame):
+                    applied = ArrowBlock(pa.Table.from_pandas(applied))
+                elif isinstance(applied, pa.Table):
+                    applied = ArrowBlock(applied)
+                else:
+                    raise ValueError("The map batch UDF returns a type "
+                                     f"{type(applied)}, which is not allowed. "
+                                     "The return type must be either list, "
+                                     "pandas.DataFrame, or pyarrow.Table")
+                batch_block_builder.add_block(applied)
+                builder.add_block(batch_block_builder.build())
 
-        def get_batch_transform(transform_format: str) -> Any:
-            if transform_format == "pandas":
-                return pandas_batch_transform
-            elif transform_format == "pyarrow":
-                return arrow_batch_transform
-            else:
-                raise ValueError(
-                    f"The given batch format: {transform_format} is invalid. "
-                    f"Supported batch type: {BatchType}")
+            return builder.build()
 
-        transform = get_batch_transform(batch_format)
         compute = get_compute(compute)
 
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))

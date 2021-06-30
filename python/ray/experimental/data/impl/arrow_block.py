@@ -89,9 +89,6 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         for key, value in item.items():
             self._columns[key].append(value)
 
-    def add_pandas_df(self, df: "pandas.DataFrame") -> None:
-        self.add_block(ArrowBlock(pyarrow.Table.from_pandas(df)))
-
     def add_block(self, block: "ArrowBlock[T]") -> None:
         other_cols = block._table.to_pydict()
         for k, vv in other_cols.items():

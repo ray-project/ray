@@ -117,6 +117,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.experimental.data.read_parquet(tmp_path)
     ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
+    print(ds_list)
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -145,8 +146,6 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.experimental.data.read_parquet(tmp_path)
-    # Q(sang): Should we just now allow this? The return ds_list sizes
-    # is changed depending on the batch size.
     ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
