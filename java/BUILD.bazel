@@ -136,8 +136,8 @@ define_java_module(
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
-        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:com_google_guava_guava",
+        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )
@@ -150,8 +150,8 @@ java_binary(
     runtime_deps = [
         ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
-        ":io_ray_ray_test",
         ":io_ray_ray_serve_test",
+        ":io_ray_ray_test",
     ],
 )
 
