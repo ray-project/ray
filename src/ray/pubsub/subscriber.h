@@ -292,15 +292,12 @@ class SubscriberClientInterface {
 class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(
-      const SubscriberID subscriber_id, const std::string subscriber_address,
-      const int subscriber_port, const int64_t max_command_batch_size,
+      const SubscriberID subscriber_id, const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
       instrumented_io_context *callback_service)
       : callback_service_(callback_service),
         subscriber_id_(subscriber_id),
-        subscriber_address_(subscriber_address),
-        subscriber_port_(subscriber_port),
         max_command_batch_size_(max_command_batch_size),
         get_client_(get_client) {
     /// This is used to define new channel_type -> Channel abstraction.
@@ -363,14 +360,12 @@ class Subscriber : public SubscriberInterface {
   /// \param publisher_address The address of the publisher that publishes
   /// objects.
   /// \param subscriber_address The address of the subscriber.
-  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
-                                       const rpc::Address &subscriber_address)
+  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &publisher_address,
-                                 const rpc::Address &subscriber_address,
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -402,10 +397,8 @@ class Subscriber : public SubscriberInterface {
   /// pool's io service.
   instrumented_io_context *callback_service_;
 
-  /// Self node's address information.
+  /// Self node's identifying information.
   const SubscriberID subscriber_id_;
-  const std::string subscriber_address_;
-  const int subscriber_port_;
 
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;

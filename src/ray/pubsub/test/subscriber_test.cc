@@ -105,8 +105,6 @@ class SubscriberTest : public ::testing::Test {
  public:
   SubscriberTest()
       : self_node_id_(NodeID::FromRandom()),
-        self_node_address_("address"),
-        self_node_port_(1234),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) {
           std::shared_ptr<SubscriberClientInterface> t = owner_client;
@@ -118,9 +116,9 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ = std::make_shared<Subscriber>(
-        self_node_id_, self_node_address_, self_node_port_,
-        /*max_command_batch_size*/ 3, client_pool, &callback_service_);
+    subscriber_ = std::make_shared<Subscriber>(self_node_id_,
+                                               /*max_command_batch_size*/ 3, client_pool,
+                                               &callback_service_);
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -157,8 +155,6 @@ class SubscriberTest : public ::testing::Test {
 
   instrumented_io_context callback_service_;
   const NodeID self_node_id_;
-  const std::string self_node_address_;
-  const int self_node_port_;
   std::shared_ptr<MockWorkerClient> owner_client;
   std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
       client_pool;
