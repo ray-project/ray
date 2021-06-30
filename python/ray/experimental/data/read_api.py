@@ -171,15 +171,15 @@ def read_parquet(paths: Union[str, List[str]],
     pieces = pq_ds.pieces
     read_tasks = [[] for _ in builtins.range(parallelism)]
     for i, piece in enumerate(pieces):
-        read_tasks[i].append(piece)
+        read_tasks[i % len(read_tasks)].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
 
     @ray.remote
     def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
+        import pyarrow
         print("Reading {} parquet pieces".format(len(pieces)))
-        from pyarrow import concat_tables
         tables = [piece.to_table() for piece in pieces]
-        return ArrowBlock(concat_tables(tables))
+        return ArrowBlock(pyarrow.concat_tables(tables))
 
     return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
 
