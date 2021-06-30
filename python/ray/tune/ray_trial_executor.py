@@ -451,6 +451,19 @@ class RayTrialExecutor(TrialExecutor):
                 return False
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
+        if trial.has_new_resources:
+            # (yard1) move to a method
+            trainable = trial.runner
+            trial.has_new_resources = False
+            with self._change_working_directory(trial):
+                with warn_if_slow("update_resources"):
+                    try:
+                        ray.get(
+                            trainable.update_resources.remote(trial.resources),
+                            timeout=DEFAULT_GET_TIMEOUT)
+                    except GetTimeoutError:
+                        logger.exception(
+                            "Trial %s: updating resources timed out.", trial)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
@@ -465,7 +478,8 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None):
+    def _stop_trial(self, trial, error=False, error_msg=None,
+                    destroy_pg=False):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -511,8 +525,17 @@ class RayTrialExecutor(TrialExecutor):
                 if should_destroy_actor:
                     logger.debug("Trial %s: Destroying actor.", trial)
 
-                    # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial)
+                    if destroy_pg:
+                        # (yard1) this is a temporary solution until
+                        # reconcilation is fixed
+                        pg = self._pg_manager.clean_trial_placement_group(
+                            trial)
+                        if pg is not None:
+                            self._pg_manager.remove_pg(pg)
+                    else:
+                        # Try to return the placement group for other
+                        # trials to use
+                        self._pg_manager.return_pg(trial)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
@@ -566,10 +589,11 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self, trial, error=False, error_msg=None, destroy_pg=False):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        self._stop_trial(
+            trial, error=error, error_msg=error_msg, destroy_pg=destroy_pg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:

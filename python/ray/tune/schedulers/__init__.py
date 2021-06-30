@@ -7,6 +7,7 @@ from ray.tune.schedulers.async_hyperband import (AsyncHyperBandScheduler,
 from ray.tune.schedulers.median_stopping_rule import MedianStoppingRule
 from ray.tune.schedulers.pbt import (PopulationBasedTraining,
                                      PopulationBasedTrainingReplay)
+from ray.tune.schedulers.changing_scheduler import ResourceChangingScheduler
 
 
 def _pb2_importer(*args, **kwargs):
@@ -65,5 +66,5 @@ __all__ = [
     "TrialScheduler", "HyperBandScheduler", "AsyncHyperBandScheduler",
     "ASHAScheduler", "MedianStoppingRule", "FIFOScheduler",
     "PopulationBasedTraining", "PopulationBasedTrainingReplay",
-    "HyperBandForBOHB"
+    "HyperBandForBOHB", "ResourceChangingScheduler"
 ]

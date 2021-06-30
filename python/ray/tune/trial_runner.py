@@ -1182,6 +1182,27 @@ class TrialRunner:
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
         self._live_trials.discard(trial)
 
+    def update_trial_resources(self, trial: Trial, resources):
+        """Checkpoints and stops trial to update resources,
+        enqueues the trial back.
+
+        Args:
+            trial (Trial): Trial to be updated.
+            resources (dict|callable|PlacementGroupFactory):
+                New resources to give to trial.
+
+        Returns:
+            True if successful else False.
+        """
+        print("trial executor: update_trial_resources")
+        self._checkpoint_trial_if_needed(trial, True)
+        self.trial_executor.stop_trial(trial, destroy_pg=True)
+        trial.placement_group_factory = None
+        trial.update_resources(resources)
+        self._requeue_trial(trial)
+
+        return
+
     def cleanup_trials(self):
         self.trial_executor.cleanup(self)
 

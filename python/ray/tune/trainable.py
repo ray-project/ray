@@ -492,6 +492,15 @@ class Trainable:
         """
         return False
 
+    def update_resources(self, new_resources):
+        """Fires whenever Trainable resources are changed.
+
+        Args:
+            new_resources (dict|callable|PlacementGroupFactory):
+                Updated resources.
+        """
+        return
+
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
 

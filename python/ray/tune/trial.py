@@ -296,6 +296,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = True
 
         # AutoML fields
         self.results = None
@@ -434,6 +435,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner
