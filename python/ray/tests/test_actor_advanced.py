@@ -822,6 +822,21 @@ def test_detached_actor_local_mode(ray_start_regular):
 
 
 @pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }], indirect=True)
+def test_get_actor_local_mode(ray_start_regular):
+    @ray.remote
+    class A:
+        def hi(self):
+            return "hi"
+
+    a = A.options(name="hi").remote()  # noqa: F841
+    b = ray.get_actor("hi")
+    assert ray.get(b.hi.remote()) == "hi"
+
+
+@pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 3,
         "num_nodes": 1,
@@ -1043,21 +1058,6 @@ def test_get_actor_no_input(ray_start_regular_shared):
     for bad_name in [None, "", "    "]:
         with pytest.raises(ValueError):
             ray.get_actor(bad_name)
-
-
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }], indirect=True)
-def test_get_actor_local_mode(ray_start_regular):
-    @ray.remote
-    class A:
-        def hi(self):
-            return "hi"
-
-    a = A.options(name="hi").remote()  # noqa: F841
-    b = ray.get_actor("hi")
-    assert ray.get(b.hi.remote()) == "hi"
 
 
 def test_actor_resource_demand(shutdown_only):
@@ -1283,21 +1283,21 @@ def test_get_actor_names_basic(ray_start_regular):
         pass
 
     a = A.remote()
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
     a = A.options(name="hi").remote()
-    assert ray.get_all_actor_names() == ["hi"]
+    assert ray.get_actor_names() == ["hi"]
 
     b = A.options(name="hi2").remote()
-    assert len(ray.get_all_actor_names()) == 2
-    assert "hi" in ray.get_all_actor_names()
-    assert "hi2" in ray.get_all_actor_names()
+    assert len(ray.get_actor_names()) == 2
+    assert "hi" in ray.get_actor_names()
+    assert "hi2" in ray.get_actor_names()
 
     del a
-    assert ray.get_all_actor_names() == ["hi2"]
+    assert ray.get_actor_names() == ["hi2"]
 
     del b
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
 
 @pytest.mark.parametrize(
@@ -1310,15 +1310,15 @@ def test_get_actor_names_basic_local_mode(ray_start_regular):
         pass
 
     a = A.remote()
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
     a = A.options(name="hi").remote()  # noqa: F841
-    assert ray.get_all_actor_names() == ["hi"]
+    assert ray.get_actor_names() == ["hi"]
 
     b = A.options(name="hi2").remote()  # noqa: F841
-    assert len(ray.get_all_actor_names()) == 2
-    assert "hi" in ray.get_all_actor_names()
-    assert "hi2" in ray.get_all_actor_names()
+    assert len(ray.get_actor_names()) == 2
+    assert "hi" in ray.get_actor_names()
+    assert "hi2" in ray.get_actor_names()
 
 
 def test_get_actor_names_restarting_actor(ray_start_regular):
@@ -1329,10 +1329,10 @@ def test_get_actor_names_restarting_actor(ray_start_regular):
 
     a = A.options(name="hi").remote()
     for _ in range(10000):
-        assert ray.get_all_actor_names() == ["hi"]
+        assert ray.get_actor_names() == ["hi"]
 
     del a
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
 
 def test_get_actor_names_ray_kill(ray_start_regular):
@@ -1344,11 +1344,11 @@ def test_get_actor_names_ray_kill(ray_start_regular):
             pass
 
     a = A.options(name="hi").remote()
-    assert ray.get_all_actor_names() == ["hi"]
+    assert ray.get_actor_names() == ["hi"]
     ray.kill(a, no_restart=False)
-    assert ray.get_all_actor_names() == ["hi"]
+    assert ray.get_actor_names() == ["hi"]
     ray.kill(a, no_restart=True)
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
 
 def test_get_actor_names_detached(ray_start_regular):
@@ -1366,15 +1366,15 @@ class A:
 A.options(name="hi", lifetime="detached").remote()
 a = A.options(name="sad").remote()
 
-assert "hi" in ray.get_all_actor_names()
-assert "sad" in ray.get_all_actor_names()
+assert "hi" in ray.get_actor_names()
+assert "sad" in ray.get_actor_names()
 """.format(address)
 
     run_string_as_driver(driver_script)
 
-    assert ray.get_all_actor_names() == ["hi"]
+    assert ray.get_actor_names() == ["hi"]
     ray.kill(ray.get_actor("hi"), no_restart=True)
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
 
 def test_get_actor_names_namespace(ray_start_regular):
@@ -1391,24 +1391,24 @@ class A:
 
 A.options(name="hi", lifetime="detached").remote()
 
-assert "hi" in ray.get_all_actor_names()
+assert "hi" in ray.get_actor_names()
 """.format(address)
 
     run_string_as_driver(driver_script_1)
 
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
     driver_script_2 = """
 import ray
 ray.init(address="{}", namespace="test")
 
-assert "hi" in ray.get_all_actor_names()
+assert "hi" in ray.get_actor_names()
 ray.kill(ray.get_actor("hi"), no_restart=True)
-assert not ray.get_all_actor_names()
+assert not ray.get_actor_names()
 """.format(address)
 
     run_string_as_driver(driver_script_2)
-    assert not ray.get_all_actor_names()
+    assert not ray.get_actor_names()
 
 
 if __name__ == "__main__":
