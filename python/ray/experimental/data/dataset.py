@@ -466,48 +466,31 @@ class Dataset(Generic[T]):
 
     def write_csv(
             self,
-            paths: Union[str, List[str]],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+            path: str) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
 
         Examples:
-            # Write to a single file.
             >>> ds.write_csv("s3://bucket/path")
-
-            # Write to multiple files.
-            >>> ds.write_csv(["/path/to/file1", "/path/to/file2"])
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            paths: A single file path or a list of file paths (or directories).
-            filesystem: The filesystem implementation to write to.
+            path: The path to the destination root directory, where Parquet
+                files will be written to..
         """
-        import numpy as np
-
-        if isinstance(paths, str):
-            paths = [paths]
-        elif (not isinstance(paths, list)
-              or any(not isinstance(p, str) for p in paths)):
-            raise ValueError(
-                "paths must be a path string or a list of path strings.")
-
         @ray.remote
-        def csv_write(writer_path: str, *blocks: List[ArrowBlock]):
-            logger.debug(f"Writing {len(blocks)} blocks to {writer_path}.")
-            include_header = True
-            for block in blocks:
-                block.to_pandas().to_csv(
-                    writer_path, mode="a", header=include_header, index=False)
-                include_header = False
+        def csv_write(write_path: str, block: ArrowBlock):
+            logger.debug(
+                f"Writing {block.num_rows()} records to {write_path}.")
+            block.to_pandas().to_csv(
+                write_path, mode="a", header=True, index=False)
 
         refs = [
-            csv_write.remote(writer_path, *blocks)
-            for writer_path, blocks in zip(
-                paths, np.array_split(self._blocks, len(paths)))
-            if len(blocks) > 0
+            csv_write.remote(
+                os.path.join(path, f"data{block_idx}.csv"), block)
+            for block_idx, block in enumerate(self._blocks)
         ]
 
         # Block until writing is done.

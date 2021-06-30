@@ -306,50 +306,27 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
 
 
 def test_csv_write(ray_start_regular_shared, tmp_path):
-    # Single block, single file.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.experimental.data.from_pandas([ray.put(df1)])
-    path1 = os.path.join(tmp_path, "test1.csv")
-    ds.write_csv(path1)
-    dsdf = pd.read_csv(path1)
-    assert df1.equals(dsdf)
-    os.remove(path1)
+    path = os.path.join(tmp_path, "test_csv_dir")
 
-    # Two blocks, two files.
+    # Single block.
+    os.mkdir(path)
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds.write_csv(path)
+    file_path = os.path.join(path, "data0.csv")
+    assert df.equals(pd.read_csv(file_path))
+    shutil.rmtree(path)
+
+    # Two blocks.
+    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path2 = os.path.join(tmp_path, "test2.csv")
-    ds.write_csv([path1, path2])
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
-    assert df.equals(dsdf)
-    os.remove(path1)
-    os.remove(path2)
-
-    # Three blocks, two files.
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    ds = ray.experimental.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
-    ds.write_csv([path1, path2])
-    df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = pd.concat(
-        [pd.read_csv(path1), pd.read_csv(path2)], ignore_index=True)
-    assert df.equals(dsdf)
-    os.remove(path1)
-    os.remove(path2)
-
-    # Two blocks, three files.
-    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path3 = os.path.join(tmp_path, "test3.csv")
-    ds.write_csv([path1, path2, path3])
-    # path3 should never be written since there are only 2 blocks.
-    with pytest.raises(FileNotFoundError):
-        pd.read_csv(path3)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
-    assert df.equals(dsdf)
-    os.remove(path1)
-    os.remove(path2)
+    ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds.write_csv(path)
+    file_path2 = os.path.join(path, "data1.csv")
+    assert pd.concat([df, df2]).equals(
+        pd.concat([pd.read_csv(file_path),
+                   pd.read_csv(file_path2)]))
+    shutil.rmtree(path)
 
 
 if __name__ == "__main__":
