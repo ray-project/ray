@@ -825,8 +825,7 @@ class BackendState:
                                         target_version)
                 replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
             else:
-                assert False
-                user_config_changes += 1
+                assert False, "Update must be code version or user config."
 
         if code_version_changes > 0:
             logger.info(f"Stopping {code_version_changes} replicas of backend "
