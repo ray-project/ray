@@ -470,4 +470,3 @@ class Subscriber : public SubscriberInterface {
 }  // namespace pubsub
 
 }  // namespace ray
-
