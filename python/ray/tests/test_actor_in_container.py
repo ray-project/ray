@@ -16,7 +16,7 @@ def test_actor_in_container():
     job_config = ray.job_config.JobConfig(
         runtime_env={
             "container": {
-                "image": "rayproject/ray-nest-container:nightly-py36-cpu",
+                "image": "rayproject/ray-worker-container:nightly-py36-cpu",
             }
         })
     ray.init(job_config=job_config)
@@ -40,14 +40,14 @@ def test_actor_in_container():
     ray.shutdown()
 
 
-# Raylet runs in container image "ray-nest-container:nightly-py36-cpu"
-# Ray job run in container image "ray-nest-container:nightly-py36-cpu-pandas"
+# Raylet runs in container image "ray-worker-container:nightly-py36-cpu"
+# Ray job run in container image "ray-worker-container:nightly-py36-cpu-pandas"
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(
         runtime_env={
             "container": {
-                "image": "rayproject/ray-nest-container:"
+                "image": "rayproject/ray-worker-container:"
                 "nightly-py36-cpu-pandas",
             }
         })

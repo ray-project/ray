@@ -126,7 +126,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
                 build_args["GPU"] = f"{py_name}{gpu}"
 
-            if image_name in ["ray", "ray-deps", "ray-nest-container"]:
+            if image_name in ["ray", "ray-deps", "ray-worker-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
 
@@ -181,14 +181,14 @@ def copy_wheels(human_build):
         source = os.path.join(root_dir, ".whl", wheel)
         ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
         ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
-        ray_nest_container_dst = os.path.join(
-            root_dir, "docker/ray-nest-container/.whl/")
+        ray_worker_container_dst = os.path.join(
+            root_dir, "docker/ray-worker-container/.whl/")
         os.makedirs(ray_dst, exist_ok=True)
         shutil.copy(source, ray_dst)
         os.makedirs(ray_dep_dst, exist_ok=True)
         shutil.copy(source, ray_dep_dst)
-        os.makedirs(ray_nest_container_dst, exist_ok=True)
-        shutil.copy(source, ray_nest_container_dst)
+        os.makedirs(ray_worker_container_dst, exist_ok=True)
+        shutil.copy(source, ray_worker_container_dst)
 
 
 def build_or_pull_base_images(rebuild_base_images: bool = True) -> List[str]:
@@ -244,8 +244,8 @@ def _get_docker_creds() -> Tuple[str, str]:
     return DOCKER_USERNAME, docker_password
 
 
-def build_ray_nest_container():
-    return _build_cpu_gpu_images("ray-nest-container")
+def build_ray_worker_container():
+    return _build_cpu_gpu_images("ray-worker-container")
 
 
 # For non-release builds, push "nightly" & "sha"
@@ -399,11 +399,11 @@ if __name__ == "__main__":
     parser.add_argument("--no-build-base", dest="base", action="store_false")
     parser.set_defaults(base=True)
     parser.add_argument(
-        "--only-build-nest-container",
-        dest="only_build_nest_container",
+        "--only-build-worker-container",
+        dest="only_build_worker_container",
         action="store_true",
-        help="Whether only to build ray-nest-container")
-    parser.set_defaults(only_build_nest_container=False)
+        help="Whether only to build ray-worker-container")
+    parser.set_defaults(only_build_worker_container=False)
 
     args = parser.parse_args()
     py_versions = args.py_versions
@@ -440,9 +440,9 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
-        if args.only_build_nest_container:
-            build_ray_nest_container()
-            # TODO Currently don't push ray_nest_container
+        if args.only_build_worker_container:
+            build_ray_worker_container()
+            # TODO Currently don't push ray_worker_container
         else:
             build_ray()
             build_ray_ml()
