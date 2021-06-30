@@ -264,7 +264,7 @@ class Dataset(Generic[T]):
         Examples:
             >>> ds.limit(100).map(lambda x: x * 2).take()
 
-        Time complexity: O(1)
+        Time complexity: O(limit specified)
 
         Args:
             limit: The size of the dataset to truncate to.
