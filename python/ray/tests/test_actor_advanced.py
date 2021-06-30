@@ -627,7 +627,7 @@ class NotDetached:
 actor = NotDetached.options(name="actor").remote()
 assert ray.get(actor.ping.remote()) == "pong"
 handle = ray.get_actor("actor")
-assert "actor" in ray.get_all_actor_names()
+assert "actor" in ray.get_actor_names()
 assert ray.get(handle.ping.remote()) == "pong"
 """.format(redis_address)
 
@@ -636,7 +636,7 @@ assert ray.get(handle.ping.remote()) == "pong"
 
     # Must raise an exception since lifetime is not detached.
     with pytest.raises(Exception):
-        assert not ray.get_all_actor_names()
+        assert not ray.get_actor_names()
         detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
 
@@ -690,7 +690,7 @@ import ray
 ray.init(address="{}", namespace="")
 
 name = "{}"
-assert name in ray.get_all_actor_names()
+assert name in ray.get_actor_names()
 existing_actor = ray.get_actor(name)
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
@@ -717,7 +717,7 @@ ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
-    assert create_actor_name in ray.get_all_actor_names()
+    assert create_actor_name in ray.get_actor_names()
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
     # Verify that a detached actor is able to create tasks/actors
@@ -740,7 +740,7 @@ def test_detached_actor_cleanup(ray_start_regular):
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         del detached_actor
-        assert dup_actor_name in ray.get_all_actor_names()
+        assert dup_actor_name in ray.get_actor_names()
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
@@ -811,13 +811,13 @@ def test_detached_actor_local_mode(ray_start_regular):
             return RETURN_VALUE
 
     Y.options(lifetime="detached", name="test").remote()
-    assert "test" in ray.get_all_actor_names()
+    assert "test" in ray.get_actor_names()
     y = ray.get_actor("test")
     assert ray.get(y.f.remote()) == RETURN_VALUE
 
     ray.kill(y)
     with pytest.raises(ValueError):
-        assert "test" not in ray.get_all_actor_names()
+        assert "test" not in ray.get_actor_names()
         ray.get_actor("test")
 
 
