@@ -2010,34 +2010,40 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
 }
 
-Status CoreWorker::GetAllActorNames(std::vector<std::string> *named_actors) {
+std::pair<std::vector<std::string>, Status> CoreWorker::GetActorNames() {
   if (options_.is_local_mode) {
-    return GetAllActorNamesLocalMode(named_actors);
+    return GetActorNamesLocalMode();
   }
+
+  std::vector<std::string> actor_names;
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllActorNames(
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetActorNames(
       ray_namespace,
-      [named_actors, ready_promise](const std::vector<std::string> &result) {
-        *named_actors = std::move(result);
+      [&actor_names, ready_promise](const std::vector<std::string> &result) {
+        actor_names = std::move(result);
         ready_promise->set_value();
       }));
+
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
+  Status status;
   if (ready_promise->get_future().wait_for(std::chrono::seconds(
           RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
               "probably because the GCS server is dead or under high load .";
-    return Status::TimedOut(stream.str());
+    return std::make_pair(actor_names, Status::TimedOut(stream.str()));
+  } else {
+    status = Status::OK();
   }
 
-  return Status::OK();
+  return std::make_pair(actor_names, status);
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status>
@@ -2052,14 +2058,13 @@ CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
   return std::make_pair(GetActorHandle(it->second), Status::OK());
 }
 
-Status CoreWorker::GetAllActorNamesLocalMode(std::vector<std::string> *named_actors) {
-  std::vector<std::string> result;
+std::pair<std::vector<std::string>, Status> CoreWorker::GetActorNamesLocalMode() {
+  std::vector<std::string> actor_names;
   for (auto it = local_mode_named_actor_registry_.begin();
        it != local_mode_named_actor_registry_.end(); it++) {
-    result.push_back(it->first);
+    actor_names.push_back(it->first);
   }
-  *named_actors = std::move(result);
-  return Status::OK();
+  return std::make_pair(actor_names, Status::OK());
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
@@ -2969,16 +2974,15 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(
-      Status::OK(),
-      [this, is_idle]() {
-        // If the worker is idle, we exit.
-        if (is_idle) {
-          Exit(rpc::WorkerExitType::IDLE_EXIT);
-        }
-      },
-      // We need to kill it regardless if the RPC failed.
-      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(Status::OK(),
+                      [this, is_idle]() {
+                        // If the worker is idle, we exit.
+                        if (is_idle) {
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
+                        }
+                      },
+                      // We need to kill it regardless if the RPC failed.
+                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

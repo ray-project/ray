@@ -212,9 +212,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllActorNames(const rpc::GetAllActorNamesRequest &request,
-                              rpc::GetAllActorNamesReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetActorNames(const rpc::GetActorNamesRequest &request,
+                           rpc::GetActorNamesReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -256,7 +256,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get all names of named actors in the namespace.
   /// \param[in] namespace The namespace to filter to.
   /// \param[out] actor_names The vector to write actor names to.
-  std::vector<std::string> GetAllActorNames(const std::string &ray_namespace) const;
+  std::vector<std::string> GetActorNames(const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources

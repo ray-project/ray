@@ -1667,7 +1667,7 @@ def get_actor(name):
 
 
 @client_mode_hook
-def get_all_actor_names() -> List[str]:
+def get_actor_names() -> List[str]:
     """Get all named actor names in the system.
 
     Actors must have been created with Actor.options(name="name").remote().
@@ -1675,7 +1675,7 @@ def get_all_actor_names() -> List[str]:
     """
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_all_actor_names()
+    return worker.core_worker.get_actor_names()
 
 
 @client_mode_hook

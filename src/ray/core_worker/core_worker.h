@@ -889,9 +889,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Returns a list of the named actors currently in the system. This includes
   /// actors that are pending placement or being restarted.
   ///
-  /// \param[out] named_actors The list of named actors.
-  /// \return Status.
-  Status GetAllActorNames(std::vector<std::string> *named_actors);
+  /// \return The list of named actors and a status.
+  std::pair<std::vector<std::string>, Status> GetActorNames();
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -1116,7 +1115,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &name);
 
   /// Get all named actors in local mode.
-  Status GetAllActorNamesLocalMode(std::vector<std::string> *named_actors);
+  std::pair<std::vector<std::string>, Status> GetActorNamesLocalMode();
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from

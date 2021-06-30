@@ -62,7 +62,7 @@ class ActorInfoAccessor {
   /// \param ray_namespace The namespace to filter to.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAllActorNames(
+  virtual Status AsyncGetActorNames(
       const std::string &ray_namespace,
       const ItemCallback<std::vector<std::string>> &callback) = 0;
 

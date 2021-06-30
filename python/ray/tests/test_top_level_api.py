@@ -19,6 +19,7 @@ def test_api_functions():
         "kill",
         "cancel",
         "get_actor",
+        "get_actor_names",
         "get_gpu_ids",
         "shutdown",
         "method",

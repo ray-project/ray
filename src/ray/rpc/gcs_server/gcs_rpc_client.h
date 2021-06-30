@@ -147,7 +147,7 @@ class GcsRpcClient {
                              actor_info_grpc_client_, )
 
   /// Get all named actor names from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorNames,
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorNames,
                              actor_info_grpc_client_, )
 
   /// Get all actor data from GCS Service.
