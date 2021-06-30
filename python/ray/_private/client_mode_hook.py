@@ -1,5 +1,4 @@
 import os
-from collections import defaultdict
 from contextlib import contextmanager
 from functools import wraps
 import threading
@@ -10,18 +9,25 @@ RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
 os.environ.update({"RAY_CLIENT_MODE": "0"})
 
-_per_thread_client_hook = defaultdict(lambda: True)
+_client_hook_enabled = threading.local()
+_client_hook_enabled.val = True
+
+def _get_client_hook_enabled():
+    global _client_hook_enabled
+    if not hasattr(_client_hook_enabled, "val"):
+        _client_hook_enabled.val = True
+    return _client_hook_enabled.val
 
 
 def _enable_client_hook(val: bool):
-    global _per_thread_client_hook
-    _per_thread_client_hook[threading.get_ident()] = val
+    global _client_hook_enabled
+    _client_hook_enabled.val = val
 
 
 def _disable_client_hook():
-    global _per_thread_client_hook
-    out = _per_thread_client_hook[threading.get_ident()]
-    _per_thread_client_hook[threading.get_ident()] = False
+    global _client_hook_enabled
+    out = _get_client_hook_enabled()
+    _client_hook_enabled.val = False
     return out
 
 
@@ -70,9 +76,7 @@ def client_mode_hook(func):
 
 
 def client_mode_should_convert():
-    global _per_thread_client_hook
-    return client_mode_enabled and _per_thread_client_hook[threading.get_ident(
-    )]
+    return client_mode_enabled and _get_client_hook_enabled()
 
 
 def client_mode_wrap(func):
