@@ -34,8 +34,8 @@ def _parse_paths(paths: Union[str, List[str]]
         parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
         filesystem = parsed_results[0][0]
         paths = []
-        for (fs, path) in parsed_results:
-            if type(fs) != type(filesystem):
+        for (tmp_fs, path) in parsed_results:
+            if type(tmp_fs) != type(filesystem):
                 raise ValueError("Paths contains multiple filesystem")
             paths.append(path)
         return filesystem, paths
