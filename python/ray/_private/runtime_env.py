@@ -160,8 +160,7 @@ class RuntimeEnvDict:
             self._dict["uris"] = runtime_env_json["uris"]
 
         if "container" in runtime_env_json:
-            self._dict["container"] = runtime_env_json[
-                "container"]
+            self._dict["container"] = runtime_env_json["container"]
 
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
