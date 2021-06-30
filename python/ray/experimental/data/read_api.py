@@ -24,12 +24,14 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-def autoinit_ray(f):
+def autoinit_ray(f: Callable) -> Callable:
     def wrapped(*a, **kw):
         if not ray.is_initialized():
             ray.client().connect()
         return f(*a, **kw)
 
+    wrapped.__name__ = f.__name__
+    wrapped.__doc__ = f.__doc__
     return wrapped
 
 
