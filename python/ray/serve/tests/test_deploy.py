@@ -325,7 +325,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             # If the request blocks, it must have been the new version.
             new_version_ref = not_ready[0]
             break
-        time.sleep(1)
+        time.sleep(0.1)
     else:
         assert False, "Timed out waiting for new version to be called."
 
@@ -405,7 +405,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
                     for val, num in expected.items())
                     and (expect_blocking is False or len(blocking) > 0)):
                 break
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -505,7 +505,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
                     for val, num in expected.items())
                     and (expect_blocking is False or len(blocking) > 0)):
                 break
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -566,7 +566,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -620,7 +620,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
