@@ -964,7 +964,7 @@ class Trainer(Trainable):
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            normalize_actions (bool): Should actions be normalized according to
+            normalize_actions (bool): Should actions be unsquashed according to
                 the env's/Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 env's/Policy's action space?

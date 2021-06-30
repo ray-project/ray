@@ -317,8 +317,10 @@ class Policy(metaclass=ABCMeta):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -333,6 +335,10 @@ class Policy(metaclass=ABCMeta):
                 Batch of previous action values.
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
+            actions_normalized (bool): Is the given `actions` already
+                normalized (between -1.0 and 1.0) or not? If not and
+                `normalize_actions=True`, we need to normalize the given
+                actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:
