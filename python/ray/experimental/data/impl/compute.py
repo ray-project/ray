@@ -37,8 +37,7 @@ class TaskPool(ComputePool):
             wrapped_fn.remote(b, m)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
-        new_blocks = [r[0] for r in refs]
-        new_metadata = [r[1] for r in refs]
+        new_blocks, new_metadata = zip(*refs)
 
         map_bar.block_until_complete(new_blocks)
         new_metadata = ray.get(new_metadata)
