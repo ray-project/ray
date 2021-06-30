@@ -244,7 +244,7 @@ class TestCuriosity(unittest.TestCase):
             # env = env_maker(config["env_config"])
             # s = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(trainer.compute_action(s))
+            #     s, r, d, _ = env.step(trainer.compute_single_action(s))
             #     if d:
             #         s = env.reset()
             #     env.render()

@@ -4,7 +4,11 @@
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 90000
+    timeout: 36000
+    prepare: python wait_cluster.py 3 600
     script: python workloads/horovod_test.py
-    time_key: last_update
-    max_update_delay: 120
+    long_running: True
+
+  smoke_test:
+    run:
+      timeout: 1800

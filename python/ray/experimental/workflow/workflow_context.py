@@ -1,5 +1,5 @@
-import pathlib
 from typing import Optional
+from ray.experimental.workflow import storage
 
 
 class WorkflowStepContext:
@@ -37,9 +37,7 @@ _context: Optional[WorkflowStepContext] = None
 def init_workflow_step_context(workflow_id, workflow_root_dir) -> None:
     global _context
     if workflow_root_dir is not None:
-        workflow_root_dir = pathlib.Path(workflow_root_dir)
-    else:
-        workflow_root_dir = pathlib.Path.cwd() / ".rayflow"
+        storage.set_global_storage(workflow_root_dir)
     assert workflow_id is not None
     _context = WorkflowStepContext(workflow_id, workflow_root_dir)
 
@@ -51,6 +49,20 @@ def get_workflow_step_context() -> Optional[WorkflowStepContext]:
 def set_workflow_step_context(context: Optional[WorkflowStepContext]):
     global _context
     _context = context
+
+
+def update_workflow_step_context(context: Optional[WorkflowStepContext],
+                                 step_id: str):
+    global _context
+    _context = context
+    _context.workflow_scope.append(step_id)
+
+
+def get_current_step_id() -> str:
+    """Get the current workflow step ID. Empty means we are in
+    the workflow job driver."""
+    s = get_scope()
+    return s[-1] if s else ""
 
 
 def get_scope():

@@ -109,11 +109,13 @@ class DataClient:
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:
         if self._in_shutdown:
+            from ray.util import disconnect
+            disconnect()
             raise ConnectionError(
                 "Request can't be sent because the data channel is "
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
-                "prepared.")
+                "prepared. Ray Client has been disconnected.")
         req_id = self._next_id()
         req.req_id = req_id
         self.request_queue.put(req)
@@ -122,10 +124,13 @@ class DataClient:
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
+                from ray.util import disconnect
+                disconnect()
                 raise ConnectionError(
                     "Sending request failed because the data channel "
                     "terminated. This is usually due to an error "
-                    f"in handling the most recent request: {req}")
+                    f"in handling the most recent request: {req}. Ray Client "
+                    "has been disconnected.")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
@@ -134,11 +139,13 @@ class DataClient:
                     req: ray_client_pb2.DataRequest,
                     callback: Optional[ResponseCallable] = None) -> None:
         if self._in_shutdown:
+            from ray.util import disconnect
+            disconnect()
             raise ConnectionError(
                 "Request can't be sent because the data channel is "
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
-                "prepared.")
+                "prepared. Ray Client has been disconnected.")
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
