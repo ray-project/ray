@@ -59,13 +59,8 @@ class RayConfig {
       RAY_CHECK(                                                                        \
           absl::Base64Unescape(pair.second, reinterpret_cast<std::string *>(&name##_))) \
           << "key: " << #name << ", value: " << pair.second;                            \
-    } else if (typeid(type) == typeid(bool)) {                                          \
-      std::string value = pair.second;                                                  \
-      std::transform(value.begin(), value.end(), value.begin(), ::tolower);             \
-      name##_ = value == "true" || value == "1";                                        \
     } else {                                                                            \
-      std::istringstream stream(pair.second);                                           \
-      stream >> name##_;                                                                \
+      name##_ = ConvertValue<type>(pair.second);                                        \
     }                                                                                   \
     continue;                                                                           \
   }
@@ -95,68 +90,33 @@ class RayConfig {
 
  private:
   template <typename T>
+  T ConvertValue(const std::string &value) {
+    std::istringstream stream(value);
+    T parsed_value;
+    stream >> parsed_value;
+    RAY_CHECK(stream.eof()) << "Cannot parse \"" << value << "\" to a "
+                            << typeid(T).name() << " value.";
+    return parsed_value;
+  }
+
+  template <>
+  std::string ConvertValue<std::string>(const std::string &value) {
+    return value;
+  }
+
+  template <>
+  bool ConvertValue<bool>(const std::string &value) {
+    auto new_value = absl::AsciiStrToLower(value);
+    return new_value == "true" || new_value == "1";
+  }
+
+  template <typename T>
   T ReadEnv(const std::string &name, T default_value) {
     auto value = getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
     } else {
-      return ConvertEnvValue<T>(value);
+      return ConvertValue<T>(value);
     }
-  }
-
-  template <typename T>
-  T ConvertEnvValue(const std::string &value) {
-    // sizeof(T) == 0 should always be false, but the compiler is not smart enough to know
-    // the value of the expression until the time of template instantiation.
-    // If we use `static_assert(false, ...)` here, the compilation will fail even the
-    // template is not instantiated with the default version. See
-    // https://stackoverflow.com/questions/5246049/c11-static-assert-and-template-instantiation.
-    static_assert(sizeof(T) == 0, "Missing specialization for `ConvertEnvValue`.");
-  }
-
-  template <>
-  bool ConvertEnvValue<bool>(const std::string &value) {
-    return value != std::string("0") &&
-           absl::AsciiStrToLower(value) != std::string("false");
-  }
-
-  template <>
-  float ConvertEnvValue<float>(const std::string &value) {
-    return std::stof(value);
-  }
-
-  template <>
-  double ConvertEnvValue<double>(const std::string &value) {
-    return std::stod(value);
-  }
-
-  template <>
-  std::string ConvertEnvValue<std::string>(const std::string &value) {
-    return value;
-  }
-
-  template <>
-  size_t ConvertEnvValue<size_t>(const std::string &value) {
-    return std::stoull(value);
-  }
-
-  template <>
-  int64_t ConvertEnvValue<int64_t>(const std::string &value) {
-    return std::stoll(value);
-  }
-
-  template <>
-  uint64_t ConvertEnvValue<uint64_t>(const std::string &value) {
-    return std::stoull(value);
-  }
-
-  template <>
-  int32_t ConvertEnvValue<int32_t>(const std::string &value) {
-    return std::stol(value);
-  }
-
-  template <>
-  uint32_t ConvertEnvValue<uint32_t>(const std::string &value) {
-    return std::stoul(value);
   }
 };
