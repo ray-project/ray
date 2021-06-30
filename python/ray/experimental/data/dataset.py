@@ -390,6 +390,7 @@ class Dataset(Generic[T]):
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
+        # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
             if m.schema:
                 return m.schema
@@ -512,7 +513,8 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
 
-        for block in self.iter_batches(prefetch_blocks=prefetch_blocks):
+        for ref in self._blocks:
+            block = ray.get(ref)
             for row in block.iter_rows():
                 yield row
 
@@ -539,12 +541,7 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
-        if prefetch_blocks > 0:
-            raise NotImplementedError  # P1
-
-        for b in self._blocks:
-            block = ray.get(b)
-            yield block
+        raise NotImplementedError  # P1
 
     def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
         """Return a dataset that can be used for Torch distributed training.

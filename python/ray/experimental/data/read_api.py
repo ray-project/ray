@@ -1,4 +1,5 @@
 import logging
+import functools
 import builtins
 from typing import List, Any, Union, Optional, Tuple, Callable, TYPE_CHECKING
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def autoinit_ray(f):
+    @functools.wraps(f)
     def wrapped(*a, **kw):
         if not ray.is_initialized():
             ray.client().connect()
