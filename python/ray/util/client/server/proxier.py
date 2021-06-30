@@ -154,9 +154,8 @@ class ProxyManager():
 
     @property
     def node(self) -> ray.node.Node:
-        """
-        Gets the session_dir of this running Ray session. This usually
-        looks like /tmp/ray/session_<timestamp>.
+        """Gets a 'ray.Node' object for this node (the head node).
+        If it does not already exist, one is created using the redis_address.
         """
         if self._node:
             return self._node
