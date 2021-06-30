@@ -37,8 +37,7 @@ class TaskPool(ComputePool):
             wrapped_fn.remote(b, m)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
-        new_blocks = [r[0] for r in refs]
-        new_metadata = [r[1] for r in refs]
+        new_blocks, new_metadata = zip(*refs)
 
         map_bar.block_until_complete(new_blocks)
         new_metadata = ray.get(new_metadata)
@@ -74,7 +73,7 @@ class ActorPool(ComputePool):
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in workers}
         ready_workers = set()
-        blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
+        blocks_in = list(zip(blocks, blocks.get_metadata()))
         blocks_out = []
 
         while len(blocks_out) < len(blocks):
