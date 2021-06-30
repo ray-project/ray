@@ -132,7 +132,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   /* SubscriptionCallback GetCallbackForPubMessage( */
   /*     const rpc::Address &publisher_address, */
   /*     const rpc::PubMessage &pub_message) const override { */
-  /*   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id()); */
+  /*   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+   */
   /*   auto subscription_it = subscription_map_.find(publisher_id); */
   /*   // If there's no more subscription, do nothing. */
   /*   if (subscription_it == subscription_map_.end()) { */
@@ -145,7 +146,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
   /*   RAY_LOG(DEBUG) << "key id " << key_id << " information was published from " */
   /*                  << publisher_id; */
 
-  /*   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id); */
+  /*   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address,
+   * key_id); */
   /*   cum_published_messages_++; */
   /*   if (maybe_subscription_callback.has_value()) { */
   /*     cum_processed_messages_++; */

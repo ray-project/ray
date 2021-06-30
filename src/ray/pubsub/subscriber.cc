@@ -95,8 +95,9 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   RAY_LOG(DEBUG) << "key id " << key_id << " information was published from "
                  << publisher_id;
 
-  auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address,
-  key_id); cum_published_messages_++; if (maybe_subscription_callback.has_value()) {
+  auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
+  cum_published_messages_++;
+  if (maybe_subscription_callback.has_value()) {
     cum_processed_messages_++;
     // If the object id is still subscribed, return a subscribe callback.
     return std::move(maybe_subscription_callback.value());
