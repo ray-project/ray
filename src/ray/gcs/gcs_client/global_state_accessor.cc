@@ -268,7 +268,13 @@ std::string GlobalStateAccessor::GetSystemConfig() {
         RAY_CHECK_OK(status);
         promise.set_value(*stored_raylet_config);
       }));
-  return promise.get_future().get();
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
+  }
+  return future.get();
 }
 
 }  // namespace gcs

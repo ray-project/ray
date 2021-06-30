@@ -16,7 +16,6 @@ from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
-from ray import ray_constants
 from ray.internal.internal_api import memory_summary
 
 
@@ -634,19 +633,13 @@ def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
     assert not is_dir_empty(temp_folder)
 
     # Kill node 2
-    raylet_process = node2.all_processes[ray_constants.PROCESS_TYPE_RAYLET][
-        0].process
-    raylet_process.terminate()
-    raylet_process.wait()
+    cluster.remove_node(node2)
 
     # Verify that the spill folder is not empty
     assert not is_dir_empty(temp_folder)
 
-    import time
-    time.sleep(2)
     # Start a new node
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
-    time.sleep(2)
 
     # Verify that the spill folder is now cleaned up
     assert is_dir_empty(temp_folder)
