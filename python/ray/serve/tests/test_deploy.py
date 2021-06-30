@@ -476,10 +476,10 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             if self.config is not None:
                 signal = ray.get_actor(signal_name)
                 ray.get(signal.wait.remote())
-            self.ret = config
+            self.config = config
 
         async def handler(self):
-            return f"{self.ret}|{os.getpid()}"
+            return f"{self.config}|{os.getpid()}"
 
         async def __call__(self, request):
             return await self.handler()
