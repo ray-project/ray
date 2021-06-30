@@ -1,5 +1,6 @@
 import logging
 import builtins
+import inspect
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
@@ -32,6 +33,7 @@ def autoinit_ray(f: Callable) -> Callable:
 
     wrapped.__name__ = f.__name__
     wrapped.__doc__ = f.__doc__
+    setattr(wrapped, "__signature__", inspect.signature(f))
     return wrapped
 
 
