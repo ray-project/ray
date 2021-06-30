@@ -87,7 +87,8 @@ def test_parquet(ray_start_regular_shared, tmp_path):
 
     ds = ray.experimental.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) ==  [[1, 'a'], [2, 'b'], [3, 'c'], [4, 'e'], [5, 'f'], [6, 'g']]
+    assert sorted(values) == [[1, 'a'], [2, 'b'], [3, 'c'], [4, 'e'], [5, 'f'],
+                              [6, 'g']]
 
 
 def test_pyarrow(ray_start_regular_shared):
