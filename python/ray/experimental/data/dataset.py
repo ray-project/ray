@@ -433,9 +433,7 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_json(
-            self,
-            path: str) -> None:
+    def write_json(self, path: str) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -449,6 +447,7 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to..
         """
+
         @ray.remote
         def json_write(write_path: str, block: ArrowBlock):
             logger.debug(
@@ -464,9 +463,7 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_csv(
-            self,
-            path: str) -> None:
+    def write_csv(self, path: str) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -480,6 +477,7 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to..
         """
+
         @ray.remote
         def csv_write(write_path: str, block: ArrowBlock):
             logger.debug(
