@@ -134,10 +134,11 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(JNIEn
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetInternalKV
- * Signature: (JLjava/lang/String)[B
+ * Signature: (JLjava/lang/String;)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring k);
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *, jobject, jlong,
+                                                                jstring);
 
 #ifdef __cplusplus
 }
