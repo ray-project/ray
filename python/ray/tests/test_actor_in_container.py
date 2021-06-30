@@ -11,7 +11,7 @@ import ray.test_utils
 import ray.cluster_utils
 
 
-@pytest.mark.skipif("sys.platform != 'linux'")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_actor_in_container():
     job_config = ray.job_config.JobConfig(
         runtime_env={
@@ -42,7 +42,7 @@ def test_actor_in_container():
 
 # Raylet runs in container image "ray-nest-container:nightly-py36-cpu"
 # Ray job run in container image "ray-nest-container:nightly-py36-cpu-pandas"
-@pytest.mark.skipif("sys.platform != 'linux'")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(
         runtime_env={
