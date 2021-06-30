@@ -109,7 +109,7 @@ class ProxyManager():
                  session_dir: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
-        self.redis_address = redis_address
+        self._redis_address = redis_address
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
@@ -139,19 +139,21 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
-    def _get_redis_address(self) -> str:
+    @property
+    def redis_address(self) -> str:
         """
         Returns the provided Ray Redis address, or creates a new cluster.
         """
-        if self.redis_address:
-            return self.redis_address
+        if self._redis_address:
+            return self._redis_address
         # Start a new, locally scoped cluster.
         connection_tuple = ray.init()
-        self.redis_address = connection_tuple["redis_address"]
+        self._redis_address = connection_tuple["redis_address"]
         self._session_dir = connection_tuple["session_dir"]
-        return self.redis_address
+        return self._redis_address
 
-    def _get_node(self) -> Any:
+    @property
+    def node(self) -> Any:
         """
         Gets the session_dir of this running Ray session. This usually
         looks like /tmp/ray/session_<timestamp>.
@@ -160,7 +162,7 @@ class ProxyManager():
             return self._node
 
         self._node = ray.node.Node(
-            RayParams(redis_address=self._get_redis_address()),
+            RayParams(redis_address=self.redis_address),
             head=False,
             shutdown_at_exit=False,
             spawn_reaper=False,
@@ -196,19 +198,18 @@ class ProxyManager():
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
-        node = self._get_node()
-        output, error = node.get_log_file_handles(
+        output, error = self.node.get_log_file_handles(
             f"ray_client_server_{specific_server.port}", unique=True)
 
         proc = start_ray_client_server(
-            self._get_redis_address(),
+            self.redis_address,
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=node._session_dir)
+            session_dir=self.node._session_dir)
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
