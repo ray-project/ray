@@ -191,6 +191,7 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
+# Flaky tests only on Mac.
 py_test_module_list(
   files = [
     "test_gcs_fault_tolerance.py",
@@ -201,7 +202,6 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-# Flaky tests only on Mac.
 py_test_module_list(
   files = [
     "test_placement_group.py",
