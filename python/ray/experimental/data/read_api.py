@@ -112,7 +112,16 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 def read_datasource(datasource: Datasource[T],
                     parallelism: int = 200,
                     **read_args) -> Dataset[T]:
-    """Create a dataset from a custom data source."""
+    """Read a dataset from a custom data source.
+
+    Args:
+        datasource: The datasource to read data from.
+        parallelism: The requested parallelism of the read.
+        read_args: Additional kwargs to pass to the datasource impl.
+
+    Returns:
+        Dataset holding the data read from the datasource.
+    """
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
 
