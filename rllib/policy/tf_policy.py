@@ -553,6 +553,7 @@ class TFPolicy(Policy):
                                        DEFAULT_SERVING_SIGNATURE_DEF_KEY]
                 inputs = [v.name for k, v in sd.inputs.items()]
                 outputs = [v.name for k, v in sd.outputs.items()]
+
                 g = tf2onnx.tfonnx.process_tf_graph(
                     self._sess.graph,
                     input_names=inputs,

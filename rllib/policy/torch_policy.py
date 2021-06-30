@@ -733,23 +733,26 @@ class TorchPolicy(Policy):
             os.makedirs(export_dir)
 
         seq_lens = self._dummy_batch["seq_lens"]
-        traced = torch.jit.trace(self.model,
-                                 (dummy_inputs, state_ins, seq_lens))
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
-                traced,
-                dummy_inputs,
+                self.model, (dummy_inputs, state_ins, seq_lens),
                 file_name,
                 export_params=True,
                 opset_version=onnx,
                 do_constant_folding=True,
-                input_names=["input"],
-                output_names=["output"],
-                dynamic_axes={"input": {
-                    0: "batch_size"
-                }})
+                input_names=list(dummy_inputs.keys()) +
+                ["state_ins", "seq_lens"],
+                output_names=["output", "state_outs"],
+                dynamic_axes={
+                    k: {
+                        0: "batch_size"
+                    }
+                    for k in dummy_inputs.keys()
+                })
         else:
+            traced = torch.jit.trace(self.model,
+                                     (dummy_inputs, state_ins, seq_lens))
             file_name = os.path.join(export_dir, "model.pt")
             traced.save(file_name)
 
