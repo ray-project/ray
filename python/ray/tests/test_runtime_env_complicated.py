@@ -4,6 +4,7 @@ import pytest
 import sys
 import unittest
 import yaml
+import time
 
 import subprocess
 
@@ -592,6 +593,44 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
             assert ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --num-cpus=4"], indirect=True)
+def test_env_installation_nonblocking():
+    """Test fix for https://github.com/ray-project/ray/issues/16226."""
+    env = {"env_vars": {"TEST_123": "123"}}
+    job_config = ray.job_config.JobConfig(runtime_env=env)
+
+    ray.init(job_config=job_config)
+
+    @ray.remote
+    def f():
+        return "hello"
+
+    ray.get(f.remote())
+
+    for i in range(10):
+        start = time.time()
+        ray.get(f.remote())
+        time.sleep(0.01)
+        assert time.time() - start < 0.1
+
+    ref = f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote()
+    for i in range(10):
+        start = time.time()
+        ray.get(f.remote())
+        time.sleep(0.01)
+        # Env installation takes around 10 to 60 seconds.  If we fail the below
+        # assert, we can be pretty sure the env installation blocked the task.
+        assert time.time() - start < 0.1
+
+    assert ray.get(ref) == "hello"
 
 
 if __name__ == "__main__":
