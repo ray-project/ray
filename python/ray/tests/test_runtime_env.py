@@ -759,7 +759,7 @@ def test_decorator_complex(shutdown_only):
 
 def test_container_option_serialize():
     runtime_env = {
-        "container_option": {
+        "container": {
             "image": "ray:latest",
             "run_options": ["--name=test"]
         }
