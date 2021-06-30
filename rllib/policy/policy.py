@@ -14,7 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, normalize_action, unbatch
+    get_base_struct_from_space, unbatch, unsquash_action
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -244,9 +244,12 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
         if normalize_actions:
-            single_action = normalize_action(single_action,
-                                             self.action_space_struct)
+            single_action = unsquash_action(single_action,
+                                            self.action_space_struct)
+        # Clip, according to env's action space.
         elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
