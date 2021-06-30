@@ -613,22 +613,23 @@ def test_env_installation_nonblocking():
     def f():
         return "hello"
 
+    # Warm up a worker for the first env, in case it takes time to start.
     ray.get(f.remote())
 
-    for i in range(10):
-        start = time.time()
-        ray.get(f.remote())
-        time.sleep(0.01)
-        assert time.time() - start < 0.1
+    def assert_tasks_finish_quickly():
+        for i in range(10):
+            start = time.time()
+            ray.get(f.remote())
+            time.sleep(0.01)
+            # Env installation takes around 10 to 60 seconds.  If we fail the
+            # below assert, we can be pretty sure an env installation blocked
+            # the task.
+            assert time.time() - start < 0.1
 
+    assert_tasks_finish_quickly()
     ref = f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote()
-    for i in range(10):
-        start = time.time()
-        ray.get(f.remote())
-        time.sleep(0.01)
-        # Env installation takes around 10 to 60 seconds.  If we fail the below
-        # assert, we can be pretty sure the env installation blocked the task.
-        assert time.time() - start < 0.1
+    # Check that installing the new env above does not block other tasks.
+    assert_tasks_finish_quickly()
 
     assert ray.get(ref) == "hello"
 
