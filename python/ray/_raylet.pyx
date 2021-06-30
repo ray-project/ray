@@ -1312,6 +1312,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
+                    b"",
                     c_serialized_runtime_env,
                     c_override_environment_variables),
                 &return_ids, max_retries,

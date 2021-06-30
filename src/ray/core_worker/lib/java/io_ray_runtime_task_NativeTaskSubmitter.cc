@@ -21,6 +21,13 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 
+/// A helper that computes the hash code of a Java object.
+inline jint GetHashCodeOfJavaObject(JNIEnv *env, jobject java_object) {
+  const jint hashcode = env->CallIntMethod(java_object, java_object_hash_code);
+  RAY_CHECK_JAVA_EXCEPTION(env);
+  return hashcode;
+}
+
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
     submitter_function_descriptor_cache;
@@ -113,6 +120,7 @@ inline std::pair<ray::PlacementGroupID, int64_t> ToPlacementGroupOptions(
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
   std::string name = "";
+  std::string concurrency_group_name = "";
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
@@ -121,9 +129,16 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     if (java_name) {
       name = JavaStringToNativeString(env, java_name);
     }
+    auto java_concurrency_group_name = reinterpret_cast<jstring>(
+        env->GetObjectField(callOptions, java_call_options_concurrency_group_name));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK(java_concurrency_group_name != nullptr);
+    if (java_concurrency_group_name) {
+      concurrency_group_name = JavaStringToNativeString(env, java_concurrency_group_name);
+    }
   }
 
-  ray::TaskOptions task_options{name, numReturns, resources};
+  ray::TaskOptions task_options{name, numReturns, resources, concurrency_group_name};
   return task_options;
 }
 
@@ -136,6 +151,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+  std::vector<ray::ConcurrencyGroup> concurrency_groups;
+
   if (actorCreationOptions) {
     global =
         env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
@@ -169,6 +186,38 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                     java_actor_creation_options_bundle_index);
       placement_options = std::make_pair(id, index);
     }
+    // Convert concurrency groups from Java to native.
+    jobject java_concurrency_groups_field = env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_concurrency_groups);
+    RAY_CHECK(java_concurrency_groups_field != nullptr);
+    JavaListToNativeVector<ray::ConcurrencyGroup>(
+        env, java_concurrency_groups_field, &concurrency_groups,
+        [](JNIEnv *env, jobject java_concurrency_group_impl) {
+          RAY_CHECK(java_concurrency_group_impl != nullptr);
+          jobject java_func_descriptors =
+              env->CallObjectMethod(java_concurrency_group_impl,
+                                    java_concurrency_group_impl_get_function_descriptors);
+          RAY_CHECK_JAVA_EXCEPTION(env);
+          std::vector<ray::FunctionDescriptor> native_func_descriptors;
+          JavaListToNativeVector<ray::FunctionDescriptor>(
+              env, java_func_descriptors, &native_func_descriptors,
+              [](JNIEnv *env, jobject java_func_descriptor) {
+                RAY_CHECK(java_func_descriptor != nullptr);
+                const jint hashcode = GetHashCodeOfJavaObject(env, java_func_descriptor);
+                ray::FunctionDescriptor native_func =
+                    ToRayFunction(env, java_func_descriptor, hashcode)
+                        .GetFunctionDescriptor();
+                return native_func;
+              });
+          // Put func_descriptors into this task group.
+          const std::string concurrency_group_name = JavaStringToNativeString(
+              env, (jstring)env->GetObjectField(java_concurrency_group_impl,
+                                                java_concurrency_group_impl_name));
+          const uint32_t max_concurrency = env->GetIntField(
+              java_concurrency_group_impl, java_concurrency_group_impl_max_concurrency);
+          return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
+                                       native_func_descriptors};
+        });
   }
 
   auto full_name = GetFullName(global, name);
@@ -186,7 +235,11 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       full_name,
       ray_namespace,
       /*is_asyncio=*/false,
-      placement_options};
+      placement_options,
+      true,
+      "{}",
+      {},
+      concurrency_groups};
   return actor_creation_options;
 }
 
@@ -296,6 +349,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
+  RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;

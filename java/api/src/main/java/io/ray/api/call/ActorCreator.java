@@ -2,7 +2,10 @@ package io.ray.api.call;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.RayFuncR;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -40,5 +43,13 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
    */
   public ActorHandle<A> remote() {
     return Ray.internal().createActor(func, args, buildOptions());
+  }
+
+  /** Set the concurrency groups for this actor. */
+  public ActorCreator<A> setConcurrencyGroups(ConcurrencyGroup... groups) {
+    ArrayList<ConcurrencyGroup> list = new ArrayList<>();
+    Collections.addAll(list, groups);
+    builder.setConcurrencyGroups(list);
+    return this;
   }
 }

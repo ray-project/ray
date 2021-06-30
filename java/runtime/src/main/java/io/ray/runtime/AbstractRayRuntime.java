@@ -7,6 +7,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -138,11 +139,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args) {
+  public ObjectRef callActor(
+      ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
-    return callActorFunction(actor, functionDescriptor, args, returnType);
+    return callActorFunction(actor, functionDescriptor, args, returnType, options);
   }
 
   @Override
@@ -152,7 +154,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
             pyActor.getModuleName(), pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
     return callActorFunction(
-        pyActor, functionDescriptor, args, /*returnType=*/ Optional.of(pyActorMethod.returnType));
+        pyActor,
+        functionDescriptor,
+        args,
+        /*returnType=*/ Optional.of(pyActorMethod.returnType),
+        null);
   }
 
   @Override
@@ -238,6 +244,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     };
   }
 
+  @Override
+  public ConcurrencyGroup createConcurrencyGroup(
+      String name, int maxConcurrency, List<RayFunc> funcs) {
+    return new ConcurrencyGroupImpl(name, maxConcurrency, funcs);
+  }
+
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
       Object[] args,
@@ -262,14 +274,16 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       BaseActorHandle rayActor,
       FunctionDescriptor functionDescriptor,
       Object[] args,
-      Optional<Class<?>> returnType) {
+      Optional<Class<?>> returnType,
+      CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
     }
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds =
-        taskSubmitter.submitActorTask(rayActor, functionDescriptor, functionArgs, numReturns, null);
+        taskSubmitter.submitActorTask(
+            rayActor, functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
     if (returnIds.isEmpty()) {
       return null;
