@@ -90,6 +90,8 @@ class Ray {
   template <typename T>
   inline static ActorHandle<T> GetActor(const std::string &actor_name);
 
+  static void ExitActor() { ray::internal::RayRuntime()->ExitActor(); }
+
  private:
   static std::once_flag is_inited_;
 
