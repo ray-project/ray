@@ -160,7 +160,6 @@ py_test_module_list(
   files = [
     "test_actor.py",
     "test_memstat.py",
-    "test_gcs_fault_tolerance.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -189,6 +188,16 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_gcs_fault_tolerance.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac"],
   deps = ["//:ray_lib"],
 )
 
