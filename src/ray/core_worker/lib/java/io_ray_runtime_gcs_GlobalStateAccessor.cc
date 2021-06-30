@@ -157,7 +157,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
       });
 }
 
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring k) {
   std::string key = JavaStringToNativeString(env, k);
   auto *gcs_accessor =
