@@ -1329,13 +1329,15 @@ class Trainer(Trainable):
 
         # Loop through all policy definitions in multi-agent policies.
         multiagent_config = config["multiagent"]
-        policies = multiagent_config.get("policies", {DEFAULT_POLICY_ID})
+        policies = multiagent_config.get("policies")
+        if not policies:
+            policies = {DEFAULT_POLICY_ID}
         if isinstance(policies, set):
             policies = multiagent_config["policies"] = {
                 pid: PolicySpec()
                 for pid in policies
             }
-        is_multiagent = len(policies) == 1 and DEFAULT_POLICY_ID in policies
+        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
 
         for pid, policy_spec in policies.copy().items():
             # Policy IDs must be strings.
