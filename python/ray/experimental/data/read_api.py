@@ -28,17 +28,23 @@ def _parse_paths(paths: Union[str, List[str]]
     from pyarrow import fs
     if isinstance(paths, str):
         return fs.FileSystem.from_uri(paths)
+
+    if not isinstance(paths, list) or any(not isinstance(p, str)
+                                          for p in paths):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
     else:
         if len(paths) == 0:
             raise ValueError("No data provided")
         parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
-        filesystem = parsed_results[0][0]
         paths = []
-        for (tmp_fs, path) in parsed_results:
-            if type(tmp_fs) != type(filesystem):
-                raise ValueError("Paths contains multiple filesystem")
-            paths.append(path)
-        return filesystem, paths
+        fses, paths = zip(*parsed_results)
+        unique_fses = set(map(type, fses))
+        if len(unique_fses) > 1:
+            raise ValueError(
+                f"When specifying multiple paths, each path must have the "
+                f"same filesystem, but found: {unique_fses}")
+        return fses[0], list(paths)
 
 
 @autoinit_ray
