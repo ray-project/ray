@@ -17,8 +17,8 @@ class Datasource(Generic[T]):
     To read a datasource into a dataset, use ``ray.data.read_datasource()``.
     To write to a writable datasource, use ``Dataset.write_datasource()``.
 
-    See ``RangeDatasource`` and ``TestOutput`` below for examples of how to
-    implement readable and writable datasources.
+    See ``RangeDatasource`` and ``DummyOutputDatasource`` below for examples
+    of how to implement readable and writable datasources.
     """
 
     def prepare_read(self, parallelism: int,
@@ -163,11 +163,11 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         return read_tasks
 
 
-class TestOutput(Datasource[Union[ArrowRow, int]]):
+class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """An example implementation of a writable datasource for testing.
 
     Examples:
-        >>> output = TestOutput()
+        >>> output = DummyOutputDatasource()
         >>> ray.data.range(10).write_datasource(output)
         >>> assert output.num_ok == 1
     """

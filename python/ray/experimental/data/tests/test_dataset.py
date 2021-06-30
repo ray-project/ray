@@ -7,7 +7,7 @@ import pytest
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.experimental.data.datasource import TestOutput
+from ray.experimental.data.datasource import DummyOutputDatasource
 
 
 def test_basic_actors(shutdown_only):
@@ -25,7 +25,7 @@ def test_basic(ray_start_regular_shared):
 
 
 def test_write_datasource(ray_start_regular_shared):
-    output = TestOutput()
+    output = DummyOutputDatasource()
     ds = ray.experimental.data.range(10, parallelism=2)
     ds.write_datasource(output)
     assert output.num_ok == 1
