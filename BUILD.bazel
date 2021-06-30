@@ -93,7 +93,6 @@ cc_library(
     deps = [
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
-        # TODO (Alex): We should be able to import pubsub_cc_grpc here.
         ":pubsub_lib",
         ":ray_common",
         "@boost//:asio",

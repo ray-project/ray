@@ -121,6 +121,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
+
+  /// Feature flag to avoid redis.
+  const bool grpc_based_pubsub_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor

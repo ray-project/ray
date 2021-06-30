@@ -45,7 +45,7 @@ void GcsPublisherManager::Publish(const rpc::ChannelType channel_type,
 void GcsPublisherManager::HandlePubsubLongPolling(
     const rpc::PubsubLongPollingRequest &request, rpc::PubsubLongPollingReply *reply,
     rpc::SendReplyCallback callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   auto wrapped_callback = [callback = std::move(callback), reply](
                               Status status, std::function<void()> success,
                               std::function<void(void)> failure) {
@@ -58,7 +58,7 @@ void GcsPublisherManager::HandlePubsubLongPolling(
 void GcsPublisherManager::HandlePubsubCommandBatch(
     const rpc::PubsubCommandBatchRequest &request, rpc::PubsubCommandBatchReply *reply,
     rpc::SendReplyCallback callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
 
   Status status = Status::OK();
 

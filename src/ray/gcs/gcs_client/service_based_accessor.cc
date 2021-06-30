@@ -143,7 +143,8 @@ Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(
 
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      grpc_based_pubsub_(RayConfig::instance().gcs_grpc_based_pubsub()) {}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
@@ -256,103 +257,141 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id
+  RAY_LOG(ERROR) << "Subscribing update operations of actor, actor id = " << actor_id
                  << ", job id = " << actor_id.JobId();
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
-  auto fetch_data_operation = [this, actor_id,
-                               subscribe](const StatusCallback &fetch_done) {
-    auto callback = [actor_id, subscribe, fetch_done](
-                        const Status &status,
-                        const boost::optional<rpc::ActorTableData> &result) {
-      if (result) {
-        subscribe(actor_id, *result);
-      }
-      if (fetch_done) {
-        fetch_done(status);
-      }
+  if (grpc_based_pubsub_) {
+    auto &subscriber = client_impl_->GetGcsSubscriber();
+    auto sub_message = std::make_unique<rpc::SubMessage>();
+    rpc::Address gcs_address;
+    gcs_address.set_ip_address(client_impl_->GetGcsServerAddress().first);
+    gcs_address.set_port(client_impl_->GetGcsServerAddress().second);
+    auto subscription_callback = [actor_id, subscribe](const rpc::PubMessage &message) {
+      RAY_CHECK(message.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
+      RAY_CHECK(message.has_actor_table_data());
+      ActorID id = ActorID::FromBinary(message.actor_table_data().actor_id());
+      RAY_CHECK(id == actor_id);
+      subscribe(id, message.actor_table_data());
     };
-    RAY_CHECK_OK(AsyncGet(actor_id, callback));
-  };
-
-  auto subscribe_operation = [this, actor_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      ActorTableData actor_data;
-      actor_data.ParseFromString(data);
-      subscribe(ActorID::FromHex(id), actor_data);
+    auto failure_callback = [done](const std::string &message) {
+      done(Status::UnknownError(message));
     };
-    return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
-                                                  on_subscribe, subscribe_done);
-  };
+    subscriber.Subscribe(std::move(sub_message), rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                         gcs_address, actor_id.Binary(), subscription_callback,
+                         failure_callback);
+    return Status::OK();
+  } else {
+    auto fetch_data_operation = [this, actor_id,
+                                 subscribe](const StatusCallback &fetch_done) {
+      auto callback = [actor_id, subscribe, fetch_done](
+                          const Status &status,
+                          const boost::optional<rpc::ActorTableData> &result) {
+        if (result) {
+          subscribe(actor_id, *result);
+        }
+        if (fetch_done) {
+          fetch_done(status);
+        }
+      };
+      RAY_CHECK_OK(AsyncGet(actor_id, callback));
+    };
 
-  {
-    absl::MutexLock lock(&mutex_);
-    subscribe_operations_[actor_id] = subscribe_operation;
-    fetch_data_operations_[actor_id] = fetch_data_operation;
+    auto subscribe_operation = [this, actor_id,
+                                subscribe](const StatusCallback &subscribe_done) {
+      auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+        ActorTableData actor_data;
+        actor_data.ParseFromString(data);
+        subscribe(ActorID::FromHex(id), actor_data);
+      };
+      return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
+                                                    on_subscribe, subscribe_done);
+    };
+
+    {
+      absl::MutexLock lock(&mutex_);
+      subscribe_operations_[actor_id] = subscribe_operation;
+      fetch_data_operations_[actor_id] = fetch_data_operation;
+    }
+    return subscribe_operation([fetch_data_operation, done](const Status &status) {
+      fetch_data_operation(done);
+    });
   }
-  return subscribe_operation(
-      [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
-
-  auto &subscriber = client_impl_->GetGcsSubscriber();
-  auto sub_message = make_unique<rpc::SubMessage>();
-  rpc::Address gcs_address;
-  gcs_address.set_ip_address(client_impl_->GetGcsServerAddress.first);
-  gcs_address.set_port(client_impl_->GetGcsServerAddress.second);
-  auto subscription_callback;  // TODO
-  auto callback_callback;      // TODO
-  subscriber->Subscribe(sub_message, rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address,
-                        actor_id.Binary(), subscription_callback, failure_callback);
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
-  RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id
+  RAY_LOG(ERROR) << "Cancelling subscription to an actor, actor id = " << actor_id
                  << ", job id = " << actor_id.JobId();
-  auto status = client_impl_->GetGcsPubSub().Unsubscribe(ACTOR_CHANNEL, actor_id.Hex());
-  absl::MutexLock lock(&mutex_);
-  subscribe_operations_.erase(actor_id);
-  fetch_data_operations_.erase(actor_id);
-  RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
-                 << actor_id << ", job id = " << actor_id.JobId();
-  return status;
+  if (grpc_based_pubsub_) {
+    rpc::Address gcs_address;
+    gcs_address.set_ip_address(client_impl_->GetGcsServerAddress().first);
+    gcs_address.set_port(client_impl_->GetGcsServerAddress().second);
+    bool success = client_impl_->GetGcsSubscriber().Unsubscribe(
+        rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address, actor_id.Binary());
+    if (success) {
+      return Status::OK();
+    } else {
+      std::stringstream msg;
+      msg << "Couldn't unsubscribe to notifications for actor: " << actor_id << ".";
+      return Status::UnknownError(msg.str());
+    }
+
+  } else {
+    auto status = client_impl_->GetGcsPubSub().Unsubscribe(ACTOR_CHANNEL, actor_id.Hex());
+    absl::MutexLock lock(&mutex_);
+    subscribe_operations_.erase(actor_id);
+    fetch_data_operations_.erase(actor_id);
+    RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
+                   << actor_id << ", job id = " << actor_id.JobId();
+    return status;
+  }
 }
 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
-  auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
-                     "server or pub-sub server is restarted.";
-  };
-
-  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
-  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
-  // server first, then fetch data from the GCS server.
-  absl::MutexLock lock(&mutex_);
-  if (is_pubsub_server_restarted) {
-    if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
-        fetch_all_data_operation_(fetch_all_done);
-      }));
-    }
-    for (auto &item : subscribe_operations_) {
-      auto &actor_id = item.first;
-      RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
-        absl::MutexLock lock(&mutex_);
-        auto fetch_data_operation = fetch_data_operations_[actor_id];
-        // `fetch_data_operation` is called in the callback function of subscribe.
-        // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding
-        // fetch function will be deleted, so we need to check if it's null.
-        if (fetch_data_operation != nullptr) {
-          fetch_data_operation(nullptr);
-        }
-      }));
-    }
+  if (grpc_based_pubsub_) {
+    // TODO (Alex): We'll need to handle this case for HA GCS (We should be
+    // able to handle it in the pubsub layer though).
+    RAY_LOG(FATAL)
+        << "GCS seems to have died. We've lost our subscription to actor changes.";
   } else {
-    if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(fetch_all_done);
-    }
-    for (auto &item : fetch_data_operations_) {
-      item.second(nullptr);
+    auto fetch_all_done = [](const Status &status) {
+      RAY_LOG(INFO)
+          << "Finished fetching all actor information from gcs server after gcs "
+             "server or pub-sub server is restarted.";
+    };
+
+    // If only the GCS sever has restarted, we only need to fetch data from the GCS
+    // server. If the pub-sub server has also restarted, we need to resubscribe to the
+    // pub-sub server first, then fetch data from the GCS server.
+    absl::MutexLock lock(&mutex_);
+    if (is_pubsub_server_restarted) {
+      if (subscribe_all_operation_ != nullptr) {
+        RAY_CHECK_OK(
+            subscribe_all_operation_([this, fetch_all_done](const Status &status) {
+              fetch_all_data_operation_(fetch_all_done);
+            }));
+      }
+      for (auto &item : subscribe_operations_) {
+        auto &actor_id = item.first;
+        RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
+          absl::MutexLock lock(&mutex_);
+          auto fetch_data_operation = fetch_data_operations_[actor_id];
+          // `fetch_data_operation` is called in the callback function of subscribe.
+          // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding
+          // fetch function will be deleted, so we need to check if it's null.
+          if (fetch_data_operation != nullptr) {
+            fetch_data_operation(nullptr);
+          }
+        }));
+      }
+    } else {
+      if (fetch_all_data_operation_ != nullptr) {
+        fetch_all_data_operation_(fetch_all_done);
+      }
+      for (auto &item : fetch_data_operations_) {
+        item.second(nullptr);
+      }
     }
   }
 }

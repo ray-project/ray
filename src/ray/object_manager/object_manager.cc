@@ -50,17 +50,17 @@ ObjectStoreRunner::~ObjectStoreRunner() {
 
 ObjectManager::ObjectManager(
     instrumented_io_context &main_service, const NodeID &self_node_id,
-    const ObjectManagerConfig &config,
-    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback,
-    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback)
+    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
-      object_directory_(std::move(object_directory)),
+      object_directory_(object_directory),
       object_store_internal_(
           config, spill_objects_callback, object_store_full_callback,
           /*add_object_callback=*/
@@ -129,7 +129,8 @@ ObjectManager::ObjectManager(
         // CreateRequestQueue. It would be nice to unify these.
         object_store_full_callback();
         static_cast<void>(spill_objects_callback());
-      }));
+      },
+      pin_object));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -173,6 +174,9 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   used_memory_ += object_info.data_size + object_info.metadata_size;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+
+  // Give the pull manager a chance to pin actively pulled objects.
+  pull_manager_->PinNewObjectIfNeeded(object_id);
 
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
@@ -779,25 +783,16 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
 
-  bool still_required;
-  if (!pull_manager_->IsObjectActive(object_id, &still_required)) {
-    if (still_required) {
-      num_chunks_received_thrashed_++;
-    } else {
-      num_chunks_received_cancelled_++;
-    }
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
   std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
-  if (!pull_manager_->IsObjectActive(object_id, &still_required)) {
-    if (still_required) {
-      num_chunks_received_thrashed_++;
-    } else {
-      num_chunks_received_cancelled_++;
-    }
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Abort the object. We
     // have to check again here because the pull manager runs in a different
     // thread and the object may have been deactivated right before creating
@@ -941,8 +936,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "
          << num_chunks_received_cancelled_;
-  result << "\n- num chunks received failed / thrashed: "
-         << num_chunks_received_thrashed_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
   result << "\nEvent stats:" << rpc_service_.StatsString();

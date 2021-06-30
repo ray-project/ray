@@ -78,8 +78,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   // TODO
   subscriber_ = std::make_unique<pubsub::Subscriber>(
       // TODO: This needs to be self address
-      subscriber_id_, current_gcs_server_address_.first,
-      current_gcs_server_address_.second, /*TODO*/ 10,
+      subscriber_id_, /*TODO*/ 10,
       [this](const rpc::Address &address) { return gcs_rpc_client_; }, &io_service);
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
