@@ -166,7 +166,7 @@ def read_parquet(paths: Union[str, List[str]],
     import pyarrow.parquet as pq
     if filesystem is None:
         filesystem, paths = _parse_paths(paths)
-    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args, filesystem=None)
+    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args, filesystem=filesystem)
     pieces = pq_ds.pieces
     read_tasks = [[] for _ in builtins.range(parallelism)]
     for i, piece in enumerate(pieces):

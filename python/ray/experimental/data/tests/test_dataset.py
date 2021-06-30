@@ -80,16 +80,14 @@ def test_repartition_arrow(ray_start_regular_shared):
 def test_parquet(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+    pq.write_table(table, os.path.join(str(tmp_path), "test1.parquet"))
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
+    pq.write_table(table, os.path.join(str(tmp_path), "test2.parquet"))
 
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-
-    assert sorted(values) == [[4, "e"], [4, "e"], [5, "f"], [5, "f"], [6, "g"],
-                              [6, "g"]]
+    assert sorted(values) ==  [[1, 'a'], [2, 'b'], [3, 'c'], [4, 'e'], [5, 'f'], [6, 'g']]
 
 
 def test_pyarrow(ray_start_regular_shared):
