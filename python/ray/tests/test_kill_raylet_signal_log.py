@@ -1,51 +1,38 @@
-import os
+import psutil
 import signal
 import sys
-import time
 import pytest
-import threading
-
 import ray
 
-from ray.test_utils import (
-    wait_for_pid_to_exit, )
 
-SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
-
-
-def check_result(path):
-    with open(path) as f:
-        time.sleep(1)
-        s = f.read()
-        assert len(s) > 0
-        print(s)
-        assert "SIGTERM" in s
+def get_pid(name):
+    pids = psutil.process_iter()
+    for pid in pids:
+        if name in pid.name():
+            return pid.pid
 
 
-class check_thread(threading.Thread):
-    def __init__(self, raylet_out_path):
-        threading.Thread.__init__(self)
-        self._daemonic = True
-        self.raylet_out_path = raylet_out_path
-
-    def run(self):
-        check_result(self.raylet_out_path)
-
-
-def test_kill_raylet_signal_log(shutdown_only):
-    @ray.remote
-    def f():
-        return os.getpid()
-
+def check_result(filename, num_signal, check_key):
     ray.init(num_cpus=1)
     session_dir = ray.worker._global_node.get_session_dir_path()
-    raylet_out_path = "{}/logs/raylet.out".format(session_dir)
-    assert len(raylet_out_path) > 0
-    pid = ray.get(f.remote())
-    os.kill(pid, SIGKILL)
-    wait_for_pid_to_exit(pid)
-    thread = check_thread(raylet_out_path)
-    thread.start()
+    raylet_out_path = filename.format(session_dir)
+    pid = get_pid("raylet")
+    p = psutil.Process(pid)
+    p.send_signal(num_signal)
+    p.wait()
+    with open(raylet_out_path) as f:
+        s = f.read()
+        assert check_key in s
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not support on Windows.")
+def test_kill_raylet_signal_log(shutdown_only):
+    check_result("{}/logs/raylet.err", signal.SIGABRT, "SIGABRT")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Only run on Windows.")
+def test_kill_raylet_signal_log_win(shutdown_only):
+    check_result("{}/logs/raylet.out", signal.CTRL_BREAK_EVENT, "SIGTERM")
 
 
 if __name__ == "__main__":
