@@ -1256,6 +1256,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
 
+    def testWithParameters3(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+
+            def step(self):
+                return dict(metric=len(self.data), done=True)
+
+        new_data = Data()
+        ref = ray.put(new_data)
+        trainable = tune.with_parameters(TestTrainable, data=ref)
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
 
 class SerializabilityTest(unittest.TestCase):
     @classmethod
