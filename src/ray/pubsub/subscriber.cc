@@ -22,62 +22,62 @@ namespace pubsub {
 /// SubscriberChannel
 ///////////////////////////////////////////////////////////////////////////////
 
-// template <typename KeyIdType>
-// void SubscriberChannel<KeyIdType>::Subscribe(
-//     const rpc::Address &publisher_address, const std::string &key_id_binary,
-//     SubscriptionCallback subscription_callback,
-//     SubscriptionFailureCallback subscription_failure_callback) {
-//   cum_subscribe_requests_++;
-//   RAY_LOG(ERROR) << "Getting publisher id";
-//   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-//   RAY_LOG(ERROR) << "Got publisher id";
-//   const auto key_id = KeyIdType::FromBinary(key_id_binary);
+template <typename KeyIdType>
+void SubscriberChannel<KeyIdType>::Subscribe(
+    const rpc::Address &publisher_address, const std::string &key_id_binary,
+    SubscriptionCallback subscription_callback,
+    SubscriptionFailureCallback subscription_failure_callback) {
+  cum_subscribe_requests_++;
+  RAY_LOG(ERROR) << "Getting publisher id";
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  RAY_LOG(ERROR) << "Got publisher id";
+  const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
-//   auto subscription_it = subscription_map_.find(publisher_id);
-//   if (subscription_it == subscription_map_.end()) {
-//     subscription_it =
-//         subscription_map_.emplace(publisher_id, SubscriptionInfo<KeyIdType>()).first;
-//   }
-//   RAY_CHECK(subscription_it != subscription_map_.end());
-//   RAY_CHECK(subscription_it->second.subscription_callback_map
-//                 .emplace(key_id, std::make_pair(std::move(subscription_callback),
-//                                                 std::move(subscription_failure_callback)))
-//                 .second);
-// }
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    subscription_it =
+        subscription_map_.emplace(publisher_id, SubscriptionInfo<KeyIdType>()).first;
+  }
+  RAY_CHECK(subscription_it != subscription_map_.end());
+  RAY_CHECK(subscription_it->second.subscription_callback_map
+                .emplace(key_id, std::make_pair(std::move(subscription_callback),
+                                                std::move(subscription_failure_callback)))
+                .second);
+}
 
-// template <typename KeyIdType>
-// bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_address,
-//                                                const std::string &key_id_binary) {
-//   cum_unsubscribe_requests_++;
-//   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-//   const auto key_id = KeyIdType::FromBinary(key_id_binary);
+template <typename KeyIdType>
+bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_address,
+                                               const std::string &key_id_binary) {
+  cum_unsubscribe_requests_++;
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
-//   auto subscription_it = subscription_map_.find(publisher_id);
-//   if (subscription_it == subscription_map_.end()) {
-//     return false;
-//   }
-//   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
-//   auto subscription_callback_it = subscription_callback_map.find(key_id);
-//   if (subscription_callback_it == subscription_callback_map.end()) {
-//     return false;
-//   }
-//   subscription_callback_map.erase(subscription_callback_it);
-//   subscription_it = subscription_map_.find(publisher_id);
-//   if (subscription_it->second.subscription_callback_map.size() == 0) {
-//     subscription_map_.erase(subscription_it);
-//   }
-//   return true;
-// }
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return false;
+  }
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+  auto subscription_callback_it = subscription_callback_map.find(key_id);
+  if (subscription_callback_it == subscription_callback_map.end()) {
+    return false;
+  }
+  subscription_callback_map.erase(subscription_callback_it);
+  subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it->second.subscription_callback_map.size() == 0) {
+    subscription_map_.erase(subscription_it);
+  }
+  return true;
+}
 
-// template <typename KeyIdType>
-// bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
-//   for (const auto &subscription : subscription_map_) {
-//     if (subscription.second.subscription_callback_map.size() != 0) {
-//       return false;
-//     }
-//   }
-//   return subscription_map_.size() == 0;
-// }
+template <typename KeyIdType>
+bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
+  for (const auto &subscription : subscription_map_) {
+    if (subscription.second.subscription_callback_map.size() != 0) {
+      return false;
+    }
+  }
+  return subscription_map_.size() == 0;
+}
 
 template <typename KeyIdType>
 SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
@@ -106,51 +106,51 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   }
 }
 
-// template <typename KeyIdType>
-// void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
-//     const rpc::Address &publisher_address) {
-//   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-//   const auto &subscription_it = subscription_map_.find(publisher_id);
-//   // If there's no more subscription, do nothing.
-//   if (subscription_it == subscription_map_.end()) {
-//     return;
-//   }
-//   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+template <typename KeyIdType>
+void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
+    const rpc::Address &publisher_address) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto &subscription_it = subscription_map_.find(publisher_id);
+  // If there's no more subscription, do nothing.
+  if (subscription_it == subscription_map_.end()) {
+    return;
+  }
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
-//   std::vector<std::string> key_ids_to_unsubscribe;
-//   for (const auto &key_id_it : subscription_callback_map) {
-//     const auto &key_id = key_id_it.first;
-//     key_ids_to_unsubscribe.push_back(key_id.Binary());
+  std::vector<std::string> key_ids_to_unsubscribe;
+  for (const auto &key_id_it : subscription_callback_map) {
+    const auto &key_id = key_id_it.first;
+    key_ids_to_unsubscribe.push_back(key_id.Binary());
 
-//     auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
-//     if (maybe_failure_callback.has_value()) {
-//       const auto &failure_callback = maybe_failure_callback.value();
-//       failure_callback(key_ids_to_unsubscribe.back());
-//     }
-//   }
+    auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
+    if (maybe_failure_callback.has_value()) {
+      const auto &failure_callback = maybe_failure_callback.value();
+      failure_callback(key_ids_to_unsubscribe.back());
+    }
+  }
 
-//   for (const auto &key_id : key_ids_to_unsubscribe) {
-//     // If the publisher is failed, we automatically unsubscribe objects from this
-//     // publishers. If the failure callback called UnsubscribeObject, this will raise
-//     // check failures.
-//     RAY_CHECK(Unsubscribe(publisher_address, key_id))
-//         << "Calling UnsubscribeObject inside a failure callback is not allowed.";
-//   }
-// }
+  for (const auto &key_id : key_ids_to_unsubscribe) {
+    // If the publisher is failed, we automatically unsubscribe objects from this
+    // publishers. If the failure callback called UnsubscribeObject, this will raise
+    // check failures.
+    RAY_CHECK(Unsubscribe(publisher_address, key_id))
+        << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+  }
+}
 
-// template <typename KeyIdType>
-// std::string SubscriberChannel<KeyIdType>::DebugString() const {
-//   std::stringstream result;
-//   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-//   std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
-//   result << "Channel " << channel_name;
-//   result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
-//   result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
-//   result << "\n- active subscribed publishers: " << subscription_map_.size();
-//   result << "\n- cumulative published messages: " << cum_published_messages_;
-//   result << "\n- cumulative processed messages: " << cum_processed_messages_;
-//   return result.str();
-// }
+template <typename KeyIdType>
+std::string SubscriberChannel<KeyIdType>::DebugString() const {
+  std::stringstream result;
+  const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+  std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
+  result << "Channel " << channel_name;
+  result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
+  result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
+  result << "\n- active subscribed publishers: " << subscription_map_.size();
+  result << "\n- cumulative published messages: " << cum_published_messages_;
+  result << "\n- cumulative processed messages: " << cum_processed_messages_;
+  return result.str();
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Subscriber
@@ -362,6 +362,7 @@ std::string Subscriber::DebugString() const {
 /// Per each key id, we need to define templates for these functions/classes here so
 /// that symbols are discoverable.
 template class SubscriberChannel<ObjectID>;
+template class SubscriberChannel<ActorID>;
 
 }  // namespace pubsub
 

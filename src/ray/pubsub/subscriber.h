@@ -116,14 +116,12 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   void Subscribe(const rpc::Address &publisher_address, const std::string &key_id,
                  SubscriptionCallback subscription_callback,
-                 SubscriptionFailureCallback subscription_failure_callback) override {}
+                 SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::Address &publisher_address,
-                   const std::string &key_id) override {
-    return true;
-  }
+                   const std::string &key_id) override;
 
-  bool CheckNoLeaks() const override { return true; }
+  bool CheckNoLeaks() const override;
 
   SubscriptionCallback GetCallbackForPubMessage(
       const rpc::Address &publisher_address,
@@ -158,7 +156,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
   /*   } */
   /* } */
 
-  void HandlePublisherFailure(const rpc::Address &publisher_address) override {}
+  void HandlePublisherFailure(const rpc::Address &publisher_address) override;
 
   bool SubscriptionExists(const PublisherID &publisher_id) override {
     return subscription_map_.count(publisher_id);
@@ -166,7 +164,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
 
-  std::string DebugString() const override { return ""; }
+  std::string DebugString() const override;
 
  protected:
   rpc::ChannelType channel_type_;
@@ -472,3 +470,4 @@ class Subscriber : public SubscriberInterface {
 }  // namespace pubsub
 
 }  // namespace ray
+
