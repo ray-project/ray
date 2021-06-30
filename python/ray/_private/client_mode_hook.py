@@ -6,28 +6,37 @@ import threading
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 
-client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+# Global setting of whether client mode is enabled. This default to OFF,
+# but is enabled upon ray.client(...).connect() or in tests.
+is_client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
 os.environ.update({"RAY_CLIENT_MODE": "0"})
 
-_client_hook_enabled = threading.local()
-_client_hook_enabled.val = True
-
-def _get_client_hook_enabled():
-    global _client_hook_enabled
-    if not hasattr(_client_hook_enabled, "val"):
-        _client_hook_enabled.val = True
-    return _client_hook_enabled.val
+# Local setting of whether to ignore client hook conversion. This defaults
+# to TRUE and is disabled when the underlying 'real' Ray function is needed.
+_client_hook_status_on_thread = threading.local()
+_client_hook_status_on_thread.status = True
 
 
-def _enable_client_hook(val: bool):
-    global _client_hook_enabled
-    _client_hook_enabled.val = val
+def _get_client_hook_status_on_thread():
+    """Get's the value of `_client_hook_status_on_thread`.
+    Since `_client_hook_status_on_thread` is a thread-local variable, we may
+    need to add and set the 'status' attribute.
+    """
+    global _client_hook_status_on_thread
+    if not hasattr(_client_hook_status_on_thread, "status"):
+        _client_hook_status_on_thread.status = True
+    return _client_hook_status_on_thread.status
+
+
+def _set_client_hook_status(val: bool):
+    global _client_hook_status_on_thread
+    _client_hook_status_on_thread.status = val
 
 
 def _disable_client_hook():
-    global _client_hook_enabled
-    out = _get_client_hook_enabled()
-    _client_hook_enabled.val = False
+    global _client_hook_status_on_thread
+    out = _get_client_hook_status_on_thread()
+    _client_hook_status_on_thread.status = False
     return out
 
 
@@ -35,13 +44,13 @@ def _explicitly_enable_client_mode():
     """Force client mode to be enabled.
     NOTE: This should not be used in tests, use `enable_client_mode`.
     """
-    global client_mode_enabled
-    client_mode_enabled = True
+    global is_client_mode_enabled
+    is_client_mode_enabled = True
 
 
 def _explicitly_disable_client_mode():
-    global client_mode_enabled
-    client_mode_enabled = False
+    global is_client_mode_enabled
+    is_client_mode_enabled = False
 
 
 @contextmanager
@@ -50,7 +59,7 @@ def disable_client_hook():
     try:
         yield None
     finally:
-        _enable_client_hook(val)
+        _set_client_hook_status(val)
 
 
 @contextmanager
@@ -76,7 +85,7 @@ def client_mode_hook(func):
 
 
 def client_mode_should_convert():
-    return client_mode_enabled and _get_client_hook_enabled()
+    return is_client_mode_enabled and _get_client_hook_status_on_thread()
 
 
 def client_mode_wrap(func):
