@@ -74,7 +74,7 @@ class ActorPool(ComputePool):
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in workers}
         ready_workers = set()
-        blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
+        blocks_in = list(zip(blocks, blocks.get_metadata()))
         blocks_out = []
 
         while len(blocks_out) < len(blocks):
