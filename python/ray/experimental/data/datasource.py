@@ -55,6 +55,9 @@ class Datasource(Generic[T]):
                           write_task_outputs: List[R]) -> None:
         """Callback for when a write job completes.
 
+        This can be used to "commit" a write output. If this function fails,
+        then ``on_write_failed()`` will be called.
+
         Args:
             write_tasks: The list of the original write tasks.
             write_task_outputs: The list of write task outputs.
@@ -64,6 +67,8 @@ class Datasource(Generic[T]):
     def on_write_failed(self, write_tasks: List["WriteTask[T, R]"],
                         error: Exception) -> None:
         """Callback for when a write job fails.
+
+        This is called on a best-effort basis on write failures.
 
         Args:
             write_tasks: The list of the original write tasks.
