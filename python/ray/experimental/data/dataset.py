@@ -72,6 +72,7 @@ class Dataset(Generic[T]):
             return builder.build()
 
         compute = get_compute(compute)
+
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def map_batches(self,

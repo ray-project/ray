@@ -17,6 +17,7 @@ class TaskPool(ComputePool):
     def apply(self, fn: Any, remote_args: dict,
               blocks: List[Block[T]]) -> List[ObjectRef[Block]]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
+
         if remote_args:
             fn = ray.remote(**remote_args)(fn)
         else:
