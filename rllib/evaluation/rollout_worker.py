@@ -317,7 +317,9 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Do quick translation into MultiAgentPolicyConfigDict.
         if not isinstance(policy_spec, dict):
-            policy_spec = {DEFAULT_POLICY_ID: PolicySpec()}
+            policy_spec = {
+                DEFAULT_POLICY_ID: PolicySpec(policy_class=policy_spec)
+            }
         policy_spec = {
             pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
             for pid, spec in policy_spec.copy().items()
@@ -1293,7 +1295,7 @@ class RolloutWorker(ParallelIteratorWorker):
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            merged_conf = merge_dicts(policy_config, conf)
+            merged_conf = merge_dicts(policy_config, conf or {})
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
