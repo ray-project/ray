@@ -7,7 +7,7 @@ import pytest
 import inspect
 import requests
 from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
-                     APIRouter, BackgroundTasks)
+                     APIRouter, BackgroundTasks, Response)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -444,6 +444,50 @@ def test_doc_generation(serve_instance, route_prefix):
 
     r = requests.get(f"http://localhost:8000{prefix}docs")
     assert r.status_code == 200
+
+
+def test_fastapi_multiple_headers(serve_instance):
+    # https://fastapi.tiangolo.com/advanced/response-cookies/
+    app = FastAPI()
+
+    @app.get("/")
+    def func(resp: Response):
+        resp.set_cookie(key="a", value="b")
+        resp.set_cookie(key="c", value="d")
+        return "hello"
+
+    @serve.deployment(name="f")
+    @serve.ingress(app)
+    class FastAPIApp:
+        pass
+
+    FastAPIApp.deploy()
+
+    resp = requests.get("http://localhost:8000/f")
+    assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
+    # https://github.com/ray-project/ray/issues/16757
+    class TestModel(BaseModel):
+        a: str
+        b: List[str]
+
+    app = FastAPI()
+
+    @app.get("/", response_model=TestModel)
+    def test_endpoint():
+        test_model = TestModel(a="a", b=["b"])
+        return test_model
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        pass
+
+    TestDeployment.deploy()
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
 
 
 if __name__ == "__main__":

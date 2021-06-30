@@ -40,6 +40,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -99,7 +100,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -185,6 +187,8 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
+  /// The PID of the process for setup worker runtime env.
+  pid_t worker_shim_pid;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -475,7 +479,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+                        std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -489,10 +495,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// any. This may be nil if the object ID was inlined directly in a task spec
   /// or if it was passed out-of-band by the application (deserialized from a
   /// byte string).
-  /// \param[out] owner_address The address of the object's owner.
+  /// \param[in] owner_address The address of the object's owner.
+  /// \param[in] serialized_object_status The serialized object status protobuf.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address);
+                                             const rpc::Address &owner_address,
+                                             const std::string &serialized_object_status);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -538,7 +546,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
+                     bool created_by_worker);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -554,7 +563,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                         const ObjectID &object_id, const rpc::Address &owner_address,
-                        std::shared_ptr<Buffer> *data);
+                        std::shared_ptr<Buffer> *data, bool created_by_worker);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
@@ -631,6 +640,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Get the locations of a list objects. Locations that failed to be retrieved
+  /// will be returned as nullptrs.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                              std::vector<std::shared_ptr<ObjectLocation>> *results);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
@@ -878,6 +897,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleStealTasks(const rpc::StealTasksRequest &request,
+                        rpc::StealTasksReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
@@ -893,21 +917,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                     rpc::WaitForActorOutOfScopeReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleSubscribeForObjectEviction(
-      const rpc::SubscribeForObjectEvictionRequest &request,
-      rpc::SubscribeForObjectEvictionReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
-
   // Implements gRPC server handler.
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                rpc::PubsubLongPollingReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
-                               rpc::WaitForRefRemovedReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  // Implements gRPC server handler.
+  void HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+                                rpc::PubsubCommandBatchReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
@@ -1036,6 +1054,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
 
+  /// Helper method to fill in object status reply given an object.
+  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
+                            rpc::GetObjectStatusReply *reply);
+
   ///
   /// Private methods related to task submission.
   ///
@@ -1122,6 +1144,35 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   std::vector<std::shared_ptr<RayObject>> *args,
                                   std::vector<ObjectID> *arg_reference_ids,
                                   std::vector<ObjectID> *pinned_ids);
+
+  /// Process a subscribe message for wait for object eviction.
+  /// The object eviction message will be published once the object
+  /// needs to be evicted.
+  void ProcessSubscribeForObjectEviction(
+      const rpc::WorkerObjectEvictionSubMessage &message);
+
+  /// Process a subscribe message for wait for ref removed.
+  /// It is used for the ref counting protocol. When the borrower
+  /// stops using the reference, the message will be published to the owner.
+  void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
+
+  /// Process a subscribe message for object locations.
+  /// Since core worker owns the object directory, there are various raylets
+  /// that subscribe this object directory.
+  void ProcessSubscribeObjectLocations(
+      const rpc::WorkerObjectLocationsSubMessage &message);
+
+  using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
+
+  /// Process the subscribe message received from the subscriber.
+  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                               rpc::ChannelType channel_type, const std::string &key_id,
+                               const NodeID &subscriber_id);
+
+  /// A single endpoint to process different types of pubsub commands.
+  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  /// messages.
+  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -1243,10 +1294,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
+  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

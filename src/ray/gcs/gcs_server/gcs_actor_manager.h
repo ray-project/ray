@@ -68,6 +68,24 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+
+    const auto &function_descriptor = task_spec.function_descriptor();
+    switch (function_descriptor.function_descriptor_case()) {
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.java_function_descriptor().class_name());
+      break;
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kPythonFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.python_function_descriptor().class_name());
+      break;
+    default:
+      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // easy equivalent to class_name for.
+      break;
+    }
+
+    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -172,6 +190,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -453,8 +473,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
-
   RuntimeEnvManager &runtime_env_manager_;
+  /// Run a function on a delay. This is useful for guaranteeing data will be
+  /// accessible for a minimum amount of time.
+  std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+      run_delayed_;
+  const boost::posix_time::milliseconds actor_gc_delay_;
+
   // Debug info.
   enum CountType {
     REGISTER_ACTOR_REQUEST = 0,

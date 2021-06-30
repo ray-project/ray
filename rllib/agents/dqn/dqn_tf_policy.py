@@ -375,7 +375,9 @@ def compute_q_values(policy: Policy,
     return value, logits, dist, state
 
 
-def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
+                  actions: TensorType, rewards: TensorType,
+                  new_obs: TensorType, dones: TensorType):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (

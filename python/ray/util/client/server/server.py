@@ -3,9 +3,9 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
-from dataclasses import dataclass
 import os
 import queue
+import pickle
 
 import threading
 from typing import Any
@@ -22,17 +22,23 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import (GRPC_OPTIONS, CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
+                                    CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
+
+TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
+                                            30)
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -57,7 +63,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.ray_connect_handler = ray_connect_handler
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
-        import pickle
         if request.job_config:
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
@@ -71,7 +76,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             else:
                 self.ray_connect_handler(job_config)
         if job_config is None:
-            return ray_client_pb2.InitResponse()
+            return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -153,8 +158,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = rtc.job_id.binary()
                 ctx.node_id = rtc.node_id.binary()
+                ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
+                ctx.runtime_env = json.dumps(rtc.runtime_env)
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -170,6 +177,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             data = ray.is_initialized()
         elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
             data = ray.timeline()
+        elif request.type == ray_client_pb2.ClusterInfoType.PING:
+            data = {}
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
@@ -551,27 +560,13 @@ def decode_options(
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
 
-    if opts.get("placement_group", None):
+    if isinstance(opts.get("placement_group", None), dict):
         # Placement groups in Ray client options are serialized as dicts.
         # Convert the dict to a PlacementGroup.
         opts["placement_group"] = PlacementGroup.from_dict(
             opts["placement_group"])
 
     return opts
-
-
-@dataclass
-class ClientServerHandle:
-    """Holds the handles to the registered gRPC servicers and their server."""
-    task_servicer: RayletServicer
-    data_servicer: DataServicer
-    logs_servicer: LogstreamServicer
-    grpc_server: grpc.Server
-
-    # Add a hook for all the cases that previously
-    # expected simply a gRPC server
-    def __getattr__(self, attr):
-        return getattr(self.grpc_server, attr)
 
 
 def serve(connection_str, ray_connect_handler=None):
@@ -644,19 +639,23 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
-def try_create_redis_client(args):
-    if "redis-address" not in args:
+def try_create_redis_client(redis_address: Optional[str],
+                            redis_password: Optional[str]) -> Optional[Any]:
+    """
+    Try to create a redis client based on the the command line args or by
+    autodetecting a running Ray cluster.
+    """
+    if redis_address is None:
         possible = ray._private.services.find_redis_address()
         if len(possible) != 1:
             return None
-        address = possible.pop()
-    else:
-        address = args["redis-address"]
-    if args.redis_password is None:
-        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    else:
-        password = args.redis_password
-    return ray._private.services.create_redis_client(address, password)
+        redis_address = possible.pop()
+
+    if redis_password is None:
+        redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+
+    return ray._private.services.create_redis_client(redis_address,
+                                                     redis_password)
 
 
 def main():
@@ -665,7 +664,12 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
+        "-p", "--port", type=int, default=10001, help="Port to bind to")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["proxy", "legacy", "specific-server"],
+        default="proxy")
     parser.add_argument(
         "--redis-address",
         required=False,
@@ -676,6 +680,12 @@ def main():
         required=False,
         type=str,
         help="Password for connecting to Redis")
+    parser.add_argument(
+        "--worker-shim-pid",
+        required=False,
+        type=int,
+        default=0,
+        help="The PID of the process for setup worker runtime env.")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 
@@ -689,8 +699,13 @@ def main():
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport, ray_connect_handler)
+    if args.mode == "proxy":
+        server = serve_proxier(hostport, args.redis_address)
+    else:
+        server = serve(hostport, ray_connect_handler)
+
     try:
+        idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
         while True:
             health_report = {
                 "time": time.time(),
@@ -698,14 +713,28 @@ def main():
 
             try:
                 if not redis_client:
-                    redis_client = try_create_redis_client(args)
+                    redis_client = try_create_redis_client(
+                        args.redis_address, args.redis_password)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
-                logger.error("Failed to put health check.")
+                logger.error(f"[{args.mode}] Failed to put health check "
+                             f"on {args.redis_address}")
                 logger.exception(e)
 
             time.sleep(1)
+            if args.mode == "specific-server":
+                if server.data_servicer.num_clients > 0:
+                    idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
+                else:
+                    idle_checks_remaining -= 1
+                if idle_checks_remaining == 0:
+                    raise KeyboardInterrupt()
+                if (idle_checks_remaining % 5 == 0 and idle_checks_remaining !=
+                        TIMEOUT_FOR_SPECIFIC_SERVER_S):
+                    logger.info(
+                        f"{idle_checks_remaining} idle checks before shutdown."
+                    )
 
     except KeyboardInterrupt:
         server.stop(0)

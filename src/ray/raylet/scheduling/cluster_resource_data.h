@@ -20,7 +20,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
@@ -54,34 +53,13 @@ struct ResourceInstanceCapacities {
   std::vector<FixedPoint> available;
 };
 
-struct ResourceRequest {
-  /// Amount of resource being requested.
-  FixedPoint demand;
-  /// Specify whether the request is soft or hard.
-  /// If hard, the entire request is denied if the demand exceeds the resource
-  /// availability. Otherwise, the request can be still be granted.
-  /// Prefernces are given to the nodes with the lowest number of violations.
-  bool soft;
-};
-
-/// Resource request, including resource ID. This is used for custom resources.
-struct ResourceRequestWithId : ResourceRequest {
-  /// Resource ID.
-  int64_t id;
-};
-
 // Data structure specifying the capacity of each resource requested by a task.
-class TaskRequest {
+class ResourceRequest {
  public:
   /// List of predefined resources required by the task.
-  std::vector<ResourceRequest> predefined_resources;
+  std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::vector<ResourceRequestWithId> custom_resources;
-  /// List of placement hints. A placement hint is a node on which
-  /// we desire to run this task. This is a soft constraint in that
-  /// the task will run on a different node in the cluster, if none of the
-  /// nodes in this list can schedule this task.
-  absl::flat_hash_set<int64_t> placement_hints;
+  std::unordered_map<int64_t, FixedPoint> custom_resources;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -101,7 +79,7 @@ class TaskResourceInstances {
   const std::vector<FixedPoint> &Get(const std::string &resource_name,
                                      const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
-  TaskRequest ToTaskRequest() const;
+  ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
   std::vector<FixedPoint> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
@@ -172,10 +150,10 @@ class NodeResources {
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const TaskRequest &task_req) const;
+  bool IsAvailable(const ResourceRequest &resource_request) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsFeasible(const TaskRequest &task_req) const;
+  bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
@@ -228,13 +206,13 @@ struct Node {
   NodeResources local_view_;
 };
 
-/// \request Conversion result to a TaskRequest data structure.
+/// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map_total,
     const std::unordered_map<std::string, double> &resource_map_available);
 
-/// Convert a map of resources to a TaskRequest data structure.
-TaskRequest ResourceMapToTaskRequest(
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map);

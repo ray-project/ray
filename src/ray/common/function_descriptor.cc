@@ -44,14 +44,11 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
   return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
-FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(
-    const std::string &lib_name, const std::string &function_offset,
-    const std::string &exec_function_offset, const std::string &function_name) {
+FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(const std::string &lib_name,
+                                                       const std::string &function_name) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_cpp_function_descriptor();
   typed_descriptor->set_lib_name(lib_name);
-  typed_descriptor->set_function_offset(function_offset);
-  typed_descriptor->set_exec_function_offset(exec_function_offset);
   typed_descriptor->set_function_name(function_name);
   return ray::FunctionDescriptor(new CppFunctionDescriptor(std::move(descriptor)));
 }
@@ -93,8 +90,6 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
     RAY_CHECK(function_descriptor_list.size() == 4);
     return FunctionDescriptorBuilder::BuildCpp(
         function_descriptor_list[0],  // lib name
-        function_descriptor_list[1],  // function offset
-        function_descriptor_list[2],  // exec function offset
         function_descriptor_list[3]   // function name
     );
   } else {

@@ -113,7 +113,7 @@ def test_kill_cancel_metadata(ray_start_regular):
             pass
 
         def mock_terminate(term, metadata):
-            raise MetadataIsCorrectlyPassedException(metadata[0][0])
+            raise MetadataIsCorrectlyPassedException(metadata[1][0])
 
         # Mock stub's Terminate method to raise an exception.
         ray.api.worker.server.Terminate = mock_terminate

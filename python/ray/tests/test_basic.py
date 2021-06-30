@@ -31,6 +31,28 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/16025
+def test_release_resources_race(shutdown_only):
+    # This test fails with the flag set to false.
+    ray.init(
+        num_cpus=2,
+        object_store_memory=700e6,
+        _system_config={"inline_object_status_in_refs": True})
+    refs = []
+    for _ in range(10):
+        refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
+
+    @ray.remote
+    def consume(refs):
+        # Should work without releasing resources!
+        ray.get(refs)
+        return os.getpid()
+
+    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    # Should not have started multiple workers.
+    assert len(pids) <= 2, pids
+
+
 # https://github.com/ray-project/ray/issues/7263
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
@@ -274,6 +296,7 @@ def test_ray_options(shutdown_only):
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
+        print(key, without_options[key], with_options[key])
         assert without_options[key] != with_options[key], key
     assert without_options != with_options
 

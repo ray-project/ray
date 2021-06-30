@@ -123,6 +123,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
+      pip install -e python --verbose
       bazel build //cpp/example:example
 
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
@@ -130,7 +131,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     .. code-block:: shell
 
       ray stop
-      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so
+      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so
 
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
 
@@ -138,7 +139,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
       ray stop
       ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
-      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so --redis-address=127.0.0.1:6379
+      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so --ray-address=127.0.0.1:6379
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
@@ -241,17 +242,20 @@ Papers
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
+   Design patterns and anti-patterns <ray-design-patterns/index.rst>
    package-ref.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Clusters/Autoscaler
+   :caption: Multi-node Ray
 
    cluster/index.rst
    cluster/quickstart.rst
+   cluster/guide.rst
    cluster/reference.rst
    cluster/cloud.rst
+   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -334,7 +338,7 @@ Papers
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   ray-client.rst
+   ray-collective.rst
 
 .. toctree::
    :hidden:

@@ -128,6 +128,77 @@ def test_deploy_no_version(serve_instance, use_handle):
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
+def test_deploy_prev_version(serve_instance, use_handle):
+    name = "test"
+
+    @serve.deployment(name=name)
+    def v1(*args):
+        return f"1|{os.getpid()}"
+
+    def call():
+        if use_handle:
+            ret = ray.get(v1.get_handle().remote())
+        else:
+            ret = requests.get(f"http://localhost:8000/{name}").text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    # Deploy with prev_version specified, where there is no existing deployment
+    with pytest.raises(ValueError):
+        v1.options(version="1", prev_version="0").deploy()
+
+    v1.deploy()
+    val1, pid1 = call()
+    assert val1 == "1"
+
+    @serve.deployment(name=name)
+    def v2(*args):
+        return f"2|{os.getpid()}"
+
+    # Deploying without specifying prev_version should still be possible.
+    v2.deploy()
+    val2, pid2 = call()
+    assert val2 == "2"
+    assert pid2 != pid1
+
+    v2.options(version="1").deploy()
+    val3, pid3 = call()
+    assert val3 == "2"
+    assert pid3 != pid2
+
+    @serve.deployment(name=name)
+    def v3(*args):
+        return f"3|{os.getpid()}"
+
+    # If prev_version does not match with the existing version, it should fail.
+    with pytest.raises(ValueError):
+        v3.options(version="2", prev_version="0").deploy()
+
+    # If prev_version matches with the existing version, it should succeed.
+    v3.options(version="2", prev_version="1").deploy()
+    val4, pid4 = call()
+    assert val4 == "3"
+    assert pid4 != pid3
+
+    # Specifying the version should stop updates from happening.
+    v3.options(version="2").deploy()
+    val5, pid5 = call()
+    assert val5 == "3"
+    assert pid5 == pid4
+
+    v2.options(version="3", prev_version="2").deploy()
+    val6, pid6 = call()
+    assert val6 == "2"
+    assert pid6 != pid5
+
+    # Deploying without specifying prev_version should still be possible.
+    v1.deploy()
+    val7, pid7 = call()
+    assert val7 == "1"
+    assert pid7 != pid6
+
+
+@pytest.mark.parametrize("use_handle", [True, False])
 def test_config_change(serve_instance, use_handle):
     @serve.deployment(version="1")
     class D:
@@ -234,7 +305,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
 
@@ -353,7 +424,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
     responses3, blocking3 = make_nonblocking_calls(
@@ -650,6 +721,37 @@ def test_input_validation():
 
     with pytest.raises(ValueError):
         Base.options(max_concurrent_queries=-1)
+
+
+def test_deployment_properties():
+    class DClass():
+        pass
+
+    D = serve.deployment(
+        name="name",
+        init_args=("hello", 123),
+        version="version",
+        num_replicas=2,
+        user_config="hi",
+        max_concurrent_queries=100,
+        route_prefix="/hello",
+        ray_actor_options={"num_cpus": 2})(DClass)
+
+    assert D.name == "name"
+    assert D.init_args == ("hello", 123)
+    assert D.version == "version"
+    assert D.num_replicas == 2
+    assert D.user_config == "hi"
+    assert D.max_concurrent_queries == 100
+    assert D.route_prefix == "/hello"
+    assert D.ray_actor_options == {"num_cpus": 2}
+
+    D = serve.deployment(
+        version=None,
+        route_prefix=None,
+    )(DClass)
+    assert D.version is None
+    assert D.route_prefix is None
 
 
 class TestGetDeployment:

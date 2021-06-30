@@ -15,7 +15,7 @@ import ray.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore)
+                            Semaphore, object_memory_usage)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,39 @@ def attempt_to_load_balance(remote_function,
             break
         attempts += 1
     assert attempts < num_attempts
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_many_args(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects are borrowed.
+    cluster = ray_start_cluster
+    object_size = int(1e6)
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    for _ in range(4):
+        cluster.add_node(
+            num_cpus=1, object_store_memory=(4 * object_size * 25))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(i, *args):
+        print(i)
+        return
+
+    @ray.remote
+    def put():
+        return np.zeros(object_size, dtype=np.uint8)
+
+    xs = [put.remote() for _ in range(100)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    tasks = []
+    for i in range(100):
+        args = [np.random.choice(xs) for _ in range(25)]
+        tasks.append(f.remote(i, *args))
+
+    ray.get(tasks, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
@@ -118,10 +151,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
     cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "scheduler_loadbalance_spillback": True,
-            "scheduler_hybrid_scheduling": False
+        num_cpus=0, _system_config={
+            "scheduler_spread_threshold": 0,
         })
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
@@ -356,7 +387,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "ownership_based_object_directory_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
@@ -427,15 +457,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            # This test uses ray.state.objects(), which only works with the
-            # GCS-based object directory
-            "ownership_based_object_directory_enabled": False,
-            "object_timeout_milliseconds": 200
-        })
-    assert len(ray.state.objects()) == 0
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
     @ray.remote
     def f(x):
@@ -452,9 +474,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.state.objects()) == 0, ray.state.objects()
+    wait_for_condition(lambda: object_memory_usage() == 0)
 
 
 if __name__ == "__main__":

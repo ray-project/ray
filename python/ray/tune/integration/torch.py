@@ -16,6 +16,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
+from ray.tune.trainable import DistributedTrainable
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
@@ -43,7 +44,7 @@ def logger_creator(log_config: Dict, logdir: str, rank: int) -> NoopLogger:
     return NoopLogger(log_config, worker_dir)
 
 
-class _TorchTrainable(tune.Trainable):
+class _TorchTrainable(DistributedTrainable):
     """Base class for distributed training on Tune.
 
     A wrapper class is needed to actually create a working
@@ -83,10 +84,11 @@ class _TorchTrainable(tune.Trainable):
                 self._num_workers_per_host, self._timeout_s)
         remote_trainable = \
             remote_trainable.options(**remote_option)
+        new_config = DistributedTrainable.build_config(self, config)
 
         self.workers = [
             remote_trainable.remote(
-                config=config,
+                config=new_config,
                 logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
             for rank in range(num_workers)
         ]
@@ -313,3 +315,13 @@ def _train_simple(config: Dict, checkpoint_dir: Optional[str] = None):
                     torch.save((model.state_dict(), optimizer.state_dict()),
                                path)
         tune.report(mean_loss=loss.item())
+
+
+def _train_validate_session(config: Dict,
+                            checkpoint_dir: Optional[str] = None):
+    """For testing only. Putting this here because Ray has problems
+    serializing within the test file."""
+    current_session = tune.session.get_session()
+    assert current_session is not None
+    assert current_session.trial_id != "default"
+    assert current_session.trial_name != "default"

@@ -32,7 +32,8 @@ if __name__ == "__main__":
             # Method specific
             "multiagent": {
                 "policies": policies,
-                "policy_mapping_fn": (lambda agent_id: agent_id),
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, **kwargs: agent_id),
             },
         },
     )

@@ -19,8 +19,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
@@ -598,20 +599,25 @@ class TorchPolicy(Policy):
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_non_torch_type(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state()
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: object) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
                 optim_state_dict = convert_to_torch_tensor(
                     s, device=self.device)
                 o.load_state_dict(optim_state_dict)
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(state=state["_exploration_state"])
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
@@ -729,11 +735,10 @@ class TorchPolicy(Policy):
         file_name = os.path.join(export_dir, "model.pt")
         traced.save(file_name)
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
-    @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:
-        """TODO(sven): implement for torch.
-        """
+        deprecation_warning("export_checkpoint", "save")
         raise NotImplementedError
 
     @override(Policy)
@@ -908,30 +913,30 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = entropy_coeff
-
+        self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
                     framework=None)
             else:
                 # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
                     framework=None)
+            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff = self.entropy_coeff_schedule.value(
-            global_vars["timestep"])
+        if self._entropy_coeff_schedule is not None:
+            self.entropy_coeff = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])
 
 
 @DeveloperAPI

@@ -109,7 +109,7 @@ class WorkerSet:
         return self._remote_workers
 
     def sync_weights(self) -> None:
-        """Syncs weights of remote workers with the local worker."""
+        """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights())
             for e in self.remote_workers():
@@ -136,7 +136,8 @@ class WorkerSet:
                 policy_cls=self._policy_class,
                 worker_index=i + 1,
                 num_workers=num_workers,
-                config=self._remote_config) for i in range(num_workers)
+                config=self._remote_config,
+            ) for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
@@ -383,6 +384,7 @@ class WorkerSet:
             observation_fn=config["multiagent"]["observation_fn"],
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
+            normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
             model_config=config["model"],
