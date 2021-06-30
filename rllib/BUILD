@@ -2481,14 +2481,15 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
-py_test(
-    name = "examples/two_step_game_qmix",
-    main = "examples/two_step_game.py",
-    tags = ["examples", "examples_T", "flaky"],
-    size = "large",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
-)
+# Skipping because of high flakiness.
+#py_test(
+#    name = "examples/two_step_game_qmix",
+#    main = "examples/two_step_game.py",
+#    tags = ["examples", "examples_T", "flaky"],
+#    size = "large",
+#    srcs = ["examples/two_step_game.py"],
+#    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
+#)
 
 py_test(
     name = "contrib/bandits/examples/lin_ts",
