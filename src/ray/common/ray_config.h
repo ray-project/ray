@@ -34,11 +34,12 @@ class RayConfig {
 /// \param type Type of the config item.
 /// \param name Name of the config item.
 /// \param default_value Default value of the config item.
-#define RAY_CONFIG(type, name, default_value)                                         \
- private:                                                                             \
-  type name##_ = ReadEnv<type>("RAY_" + absl::AsciiStrToUpper(#name), default_value); \
-                                                                                      \
- public:                                                                              \
+#define RAY_CONFIG(type, name, default_value)                                     \
+ private:                                                                         \
+  type name##_ =                                                                  \
+      ReadEnv<type>("RAY_" + absl::AsciiStrToUpper(#name), #type, default_value); \
+                                                                                  \
+ public:                                                                          \
   inline type name() { return name##_; }
 
 #include "ray/common/ray_config_def.h"
@@ -60,7 +61,7 @@ class RayConfig {
           absl::Base64Unescape(pair.second, reinterpret_cast<std::string *>(&name##_))) \
           << "key: " << #name << ", value: " << pair.second;                            \
     } else {                                                                            \
-      name##_ = ConvertValue<type>(pair.second);                                        \
+      name##_ = ConvertValue<type>(#type, pair.second);                                 \
     }                                                                                   \
     continue;                                                                           \
   }
@@ -90,33 +91,34 @@ class RayConfig {
 
  private:
   template <typename T>
-  T ConvertValue(const std::string &value) {
+  T ConvertValue(const std::string &type_string, const std::string &value) {
     std::istringstream stream(value);
     T parsed_value;
     stream >> parsed_value;
-    RAY_CHECK(stream.eof()) << "Cannot parse \"" << value << "\" to a "
-                            << typeid(T).name() << " value.";
+    RAY_CHECK(!value.empty() && stream.eof())
+        << "Cannot parse \"" << value << "\" to " << type_string;
     return parsed_value;
   }
 
   template <>
-  std::string ConvertValue<std::string>(const std::string &value) {
+  std::string ConvertValue<std::string>(const std::string &type_string,
+                                        const std::string &value) {
     return value;
   }
 
   template <>
-  bool ConvertValue<bool>(const std::string &value) {
+  bool ConvertValue<bool>(const std::string &type_string, const std::string &value) {
     auto new_value = absl::AsciiStrToLower(value);
     return new_value == "true" || new_value == "1";
   }
 
   template <typename T>
-  T ReadEnv(const std::string &name, T default_value) {
+  T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
     auto value = getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
     } else {
-      return ConvertValue<T>(value);
+      return ConvertValue<T>(type_string, value);
     }
   }
 };
