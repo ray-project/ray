@@ -162,7 +162,7 @@ class GlobalStateAccessor {
   /// Get information of a placement group from GCS Service by name.
   ///
   /// \param placement_group_name The name of placement group to look up in the GCS
-  /// Service. 
+  /// Service.
   /// \return Placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.

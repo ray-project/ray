@@ -106,7 +106,7 @@ public class GlobalStateAccessor {
     }
   }
 
-    public byte[] getInternalKV(String k) {
+  public byte[] getInternalKV(String k) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return nativeGetInternalKV(globalStateAccessorNativePointer, k);
@@ -166,6 +166,5 @@ public class GlobalStateAccessor {
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
-    private native byte[] nativeGetInternalKV(
-      long nativePtr, String k);
+  private native byte[] nativeGetInternalKV(long nativePtr, String k);
 }
