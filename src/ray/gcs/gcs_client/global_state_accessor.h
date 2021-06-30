@@ -168,6 +168,8 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
+  std::unique_ptr<std::string> GetInternalKV(const std::string &key);
+
  private:
   /// MultiItem transformation helper in template style.
   ///
