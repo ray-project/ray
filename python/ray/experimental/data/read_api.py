@@ -202,8 +202,13 @@ def read_json(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
+    from pyarrow.fs import (
+        FileType, FileSelector, _resolve_filesystem_and_path)
     from pyarrow import json
     import numpy as np
+
+    # TODO(Clark): Refactor to use shared filesystem + path resolution utility
+    # once Yi's filesystem deducing PR has landed.
 
     if isinstance(paths, str):
         paths = [paths]
@@ -212,22 +217,57 @@ def read_json(paths: Union[str, List[str]],
         raise ValueError(
             "paths must be a path string or a list of path strings.")
 
+    resolved_paths = []
+    for path in paths:
+        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+            path, filesystem)
+        if (
+                filesystem is not None and
+                type(resolved_filesystem) != type(filesystem)):
+            raise ValueError("All paths must use same filesystem.")
+        filesystem = resolved_filesystem
+        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_paths.append(resolved_path)
+
+    paths = resolved_paths
+
+    if len(paths) == 1:
+        path = paths[0]
+        file_info = filesystem.get_file_info(path)
+        if file_info.type == FileType.Directory:
+            selector = FileSelector(path, recursive=True)
+            files = filesystem.get_file_info(selector)
+            base_path = selector.base_dir
+            filtered_paths = []
+            for file_ in files:
+                if not file_.is_file:
+                    continue
+                file_path = file_.path
+                if not file_path.startswith(base_path):
+                    continue
+                relative = file_path[len(base_path):]
+                if any(relative.startswith(prefix) for prefix in [".", "_"]):
+                    continue
+                filtered_paths.append(file_path)
+            paths = sorted(filtered_paths)
+
     @ray.remote
-    def json_read(reader_paths: List[str]):
-        logger.debug(f"Reading {len(reader_paths)} files.")
+    def json_read(read_paths: List[str]):
+        logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
-        for p in reader_paths:
-            tables.append(
-                json.read_json(
-                    p,
-                    read_options=json.ReadOptions(use_threads=False),
-                    **arrow_json_args))
+        for read_path in read_paths:
+            with filesystem.open_input_file(read_path) as f:
+                tables.append(
+                    json.read_json(
+                        f,
+                        read_options=json.ReadOptions(use_threads=False),
+                        **arrow_json_args))
         return ArrowBlock(pa.concat_tables(tables))
 
     return Dataset([
-        json_read.remote(reader_paths)
-        for reader_paths in np.array_split(paths, parallelism)
-        if len(reader_paths) > 0
+        json_read.remote(read_paths)
+        for read_paths in np.array_split(paths, parallelism)
+        if len(read_paths) > 0
     ])
 
 
@@ -255,8 +295,13 @@ def read_csv(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
+    from pyarrow.fs import (
+        FileType, FileSelector, _resolve_filesystem_and_path)
     from pyarrow import csv
     import numpy as np
+
+    # TODO(Clark): Refactor to use shared filesystem + path resolution utility
+    # once Yi's filesystem deducing PR has landed.
 
     if isinstance(paths, str):
         paths = [paths]
@@ -265,22 +310,57 @@ def read_csv(paths: Union[str, List[str]],
         raise ValueError(
             "paths must be a path string or a list of path strings.")
 
+    resolved_paths = []
+    for path in paths:
+        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+            path, filesystem)
+        if (
+                filesystem is not None and
+                type(resolved_filesystem) != type(filesystem)):
+            raise ValueError("All paths must use same filesystem.")
+        filesystem = resolved_filesystem
+        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_paths.append(resolved_path)
+
+    paths = resolved_paths
+
+    if len(paths) == 1:
+        path = paths[0]
+        file_info = filesystem.get_file_info(path)
+        if file_info.type == FileType.Directory:
+            selector = FileSelector(path, recursive=True)
+            files = filesystem.get_file_info(selector)
+            base_path = selector.base_dir
+            filtered_paths = []
+            for file_ in files:
+                if not file_.is_file:
+                    continue
+                file_path = file_.path
+                if not file_path.startswith(base_path):
+                    continue
+                relative = file_path[len(base_path):]
+                if any(relative.startswith(prefix) for prefix in [".", "_"]):
+                    continue
+                filtered_paths.append(file_path)
+            paths = sorted(filtered_paths)
+
     @ray.remote
-    def csv_read(reader_paths: List[str]):
-        logger.debug(f"Reading {len(reader_paths)} files.")
+    def csv_read(read_paths: List[str]):
+        logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
-        for p in reader_paths:
-            tables.append(
-                csv.read_csv(
-                    p,
-                    read_options=csv.ReadOptions(use_threads=False),
-                    **arrow_csv_args))
+        for read_path in read_paths:
+            with filesystem.open_input_file(read_path) as f:
+                tables.append(
+                    csv.read_csv(
+                        f,
+                        read_options=csv.ReadOptions(use_threads=False),
+                        **arrow_csv_args))
         return ArrowBlock(pa.concat_tables(tables))
 
     return Dataset([
-        csv_read.remote(reader_paths)
-        for reader_paths in np.array_split(paths, parallelism)
-        if len(reader_paths) > 0
+        csv_read.remote(read_paths)
+        for read_paths in np.array_split(paths, parallelism)
+        if len(read_paths) > 0
     ])
 
 
