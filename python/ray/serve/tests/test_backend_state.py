@@ -1704,12 +1704,15 @@ def test_shutdown(mock_backend_state):
     """
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1 = backend_info()
+    b_info_1, b_version_1 = backend_info()
     create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
 
     # Single replica should be created.
     backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(
+        backend_state,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     backend_state._replicas[TEST_TAG].get()[0]._actor.set_ready()
 
     # Now the replica should be marked running.
