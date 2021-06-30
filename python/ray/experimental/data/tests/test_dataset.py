@@ -102,6 +102,27 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
+def test_uri_parser():
+    from ray.experimental.data.read_api import _parse_paths
+    fs, path = _parse_paths("/local/path")
+    assert path == "/local/path"
+    assert fs.type_name == "local"
+
+    fs, path = _parse_paths("s3://bucket/dir")
+    assert path == "bucket/dir"
+    assert fs.type_name == "s3"
+
+    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
+    assert path == ["bucket/dir_1", "bucket/dir_2"]
+    assert fs.type_name == "s3"
+
+    with pytest.raises(ValueError):
+        _parse_paths(["s3://bucket/dir_1", "/path/local"])
+
+    with pytest.raises(ValueError):
+        _parse_paths([])
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
