@@ -1204,7 +1204,8 @@ class Trainer(Trainable):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
         """Export policy model with given policy_id to local directory.
 
         Args:
@@ -1217,7 +1218,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_model("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_model(export_dir, policy_id)
+        self.workers.local_worker().export_policy_model(
+            export_dir, policy_id, onnx)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -1470,6 +1472,10 @@ class Trainer(Trainable):
             path = os.path.join(export_dir, ExportFormat.MODEL)
             self.export_policy_model(path)
             exported[ExportFormat.MODEL] = path
+        if ExportFormat.ONNX in export_formats:
+            path = os.path.join(export_dir, ExportFormat.ONNX)
+            self.export_policy_model(path, onnx=11)
+            exported[ExportFormat.ONNX] = path
         return exported
 
     def import_model(self, import_file: str):

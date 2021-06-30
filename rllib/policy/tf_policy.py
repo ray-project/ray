@@ -528,7 +528,8 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
             builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
@@ -539,6 +540,31 @@ class TFPolicy(Policy):
                 saver=tf1.summary.FileWriter(export_dir).add_graph(
                     graph=self._sess.graph))
             builder.save()
+
+            if onnx:
+                try:
+                    import tf2onnx
+                except ImportError as e:
+                    raise RuntimeError(
+                        "Converting a TensorFlow model to ONNX requires "
+                        "`tf2onnx` to be installed. Install with "
+                        "`pip install tf2onnx`.") from e
+                sd = signature_def_map[tf1.saved_model.signature_constants.
+                                       DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+                inputs = [v.name for k, v in sd.inputs.items()]
+                outputs = [v.name for k, v in sd.outputs.items()]
+                g = tf2onnx.tfonnx.process_tf_graph(
+                    self._sess.graph,
+                    input_names=inputs,
+                    output_names=outputs,
+                    inputs_as_nchw=inputs)
+
+                model_proto = g.make_model("onnx_model")
+                tf2onnx.utils.save_onnx_model(
+                    export_dir,
+                    "saved_model",
+                    feed_dict={},
+                    model_proto=model_proto)
 
     # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)

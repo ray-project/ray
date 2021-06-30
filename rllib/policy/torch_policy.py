@@ -703,7 +703,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Creates a TorchScript model and saves it.
@@ -717,7 +718,6 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
-        seq_lens = self._dummy_batch["seq_lens"]
 
         state_ins = []
         i = 0
@@ -728,12 +728,30 @@ class TorchPolicy(Policy):
             k: self._dummy_batch[k]
             for k in self._dummy_batch.keys() if k != "is_training"
         }
-        traced = torch.jit.trace(self.model,
-                                 (dummy_inputs, state_ins, seq_lens))
+
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
-        file_name = os.path.join(export_dir, "model.pt")
-        traced.save(file_name)
+
+        seq_lens = self._dummy_batch["seq_lens"]
+        traced = torch.jit.trace(self.model,
+                                 (dummy_inputs, state_ins, seq_lens))
+        if onnx:
+            file_name = os.path.join(export_dir, "model.onnx")
+            torch.onnx.export(
+                traced,
+                dummy_inputs,
+                file_name,
+                export_params=True,
+                opset_version=onnx,
+                do_constant_folding=True,
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={"input": {
+                    0: "batch_size"
+                }})
+        else:
+            file_name = os.path.join(export_dir, "model.pt")
+            traced.save(file_name)
 
     # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
