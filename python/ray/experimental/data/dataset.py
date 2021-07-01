@@ -111,7 +111,11 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
             compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+                or "actors" to use an autoscaling Ray actor pool. When using
+                actors, state can be preserved across function invocations
+                in Python global variables. This can be useful for one-time
+                setups, e.g., initializing a model once and re-using it across
+                many function applications.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
