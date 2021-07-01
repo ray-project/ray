@@ -13,6 +13,7 @@ def get_pid(name):
 
     return -1
 
+
 def check_result(filename, num_signal, check_key):
     ray.init(num_cpus=1)
     session_dir = ray.worker._global_node.get_session_dir_path()
