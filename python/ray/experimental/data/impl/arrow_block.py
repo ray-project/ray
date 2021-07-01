@@ -7,7 +7,7 @@ except ImportError:
     pyarrow = None
 
 from ray.experimental.data.impl.block import Block, BlockBuilder, \
-    ListBlockBuilder
+    SimpleBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
@@ -57,9 +57,9 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     check.build()
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = ListBlockBuilder()
+                    self._builder = SimpleBlockBuilder()
             else:
-                self._builder = ListBlockBuilder()
+                self._builder = SimpleBlockBuilder()
         self._builder.add(item)
 
     def add_block(self, block: Block[T]) -> None:

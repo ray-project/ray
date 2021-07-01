@@ -14,7 +14,7 @@ import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block, \
+from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
     BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
@@ -140,7 +140,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = ListBlock.builder()
+        builder = SimpleBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
@@ -175,8 +175,8 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     block_size = max(1, n // parallelism)
 
     @ray.remote
-    def gen_block(start: int, count: int) -> ListBlock:
-        builder = ListBlock.builder()
+    def gen_block(start: int, count: int) -> SimpleBlock:
+        builder = SimpleBlock.builder()
         for value in builtins.range(start, start + count):
             builder.add(value)
         return builder.build()

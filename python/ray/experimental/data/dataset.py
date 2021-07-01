@@ -18,7 +18,7 @@ import ray
 import numpy as np
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock, \
+from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
     BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
@@ -37,7 +37,7 @@ class Dataset(Generic[T]):
     Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
     also determines the unit of parallelism. The default block type is the
     ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
-    Python objects are represented with ``ListBlock`` (a plain Python list).
+    Python objects are represented with ``SimpleBlock`` (a plain Python list).
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -146,7 +146,7 @@ class Dataset(Generic[T]):
 
                 applied = fn(view)
                 if isinstance(applied, list):
-                    applied = ListBlock(applied)
+                    applied = SimpleBlock(applied)
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = ArrowBlock(pa.Table.from_pandas(applied))
                 elif isinstance(applied, pa.Table):
