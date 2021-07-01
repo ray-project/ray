@@ -415,10 +415,12 @@ class Worker:
 
         def sigterm_handler(signum, frame):
             shutdown(True)
+            print("-----XXXXX worker main_loop() exit with 1.")
             sys.exit(1)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
+        print("-----XXXXX worker main_loop() exit with 0.")
         sys.exit(0)
 
     def print_logs(self):

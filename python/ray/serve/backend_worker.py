@@ -36,6 +36,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
+    print("    [DEBUG][backend_worker.py] Calling create_backend_replica")
     serialized_backend_def = serialized_backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
@@ -43,6 +44,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
+            print("   [DEBUG][backend_worker.py] Executing RayServeWrappedReplica.__init__")
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
@@ -60,29 +62,58 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             # Set the controller name so that serve.connect() in the user's
             # backend code will connect to the instance that this backend is
             # running in.
-            ray.serve.api._set_internal_replica_context(
-                backend_tag,
-                replica_tag,
-                controller_name,
-                servable_object=None)
+            print("   [DEBUG][backend_worker.py] Setting first replica_context")
+
+            context = ray.serve.api.get_replica_context()
+            if context == None:
+                ray.serve.api._set_internal_replica_context(
+                    backend_tag,
+                    replica_tag,
+                    controller_name,
+                    constructor_retry_remaining=3,
+                    servable_object=None)
+
             if is_function:
                 _callable = backend
             else:
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
                 _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args)
+                try:
+                    print("   [DEBUG][backend_worker.py] Trying to execute callable.__init__")
+                    await sync_to_async(_callable.__init__)(*init_args)
+                except Exception as e:
+                    print("   [DEBUG][backend_worker.py] Exception during callable.__init__")
+                    constructor_retry_remaining = ray.serve.api.get_replica_context().constructor_retry_remaining
+                    if constructor_retry_remaining <= 0:
+                        # TODO: Add termination logic that marks the goal_id as failed, ideally surface 
+                        # exception message too 
+                        print("   [DEBUG][backend_worker.py] All constructor retries exhausted. TODO abort")
+                    else:
+                        # TODO: Add proper retry here (maybe by a retry decorator that works for async func ?)
+                        print(f"   [DEBUG][backend_worker.py] {constructor_retry_remaining - 1} retry left.")
+                        ray.serve.api._set_internal_replica_context(
+                            backend_tag,
+                            replica_tag,
+                            controller_name,
+                            constructor_retry_remaining=constructor_retry_remaining - 1,
+                            servable_object=None)
             # Setting the context again to update the servable_object.
+
+            print("   [DEBUG][backend_worker.py] Setting second replica_context")
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
                 replica_tag,
                 controller_name,
+                constructor_retry_remaining,
                 servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
+            print("   [DEBUG][backend_worker.py] Creating RayServeReplica ..")
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
+            print("   [DEBUG][backend_worker.py] Finished creating RayServeReplica.")
 
         @ray.method(num_returns=2)
         async def handle_request(

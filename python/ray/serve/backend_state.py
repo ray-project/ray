@@ -25,9 +25,12 @@ SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 
 class ReplicaState(Enum):
+    # started the actor that 
     SHOULD_START = 1
+
     STARTING = 2
     RUNNING = 3
+
     SHOULD_STOP = 4
     STOPPING = 5
     STOPPED = 6
@@ -65,6 +68,9 @@ class ActorReplicaWrapper:
         # the non-detached case.
         self._actor_handle = None
         self._placement_group = None
+        # By default we retry 3 times and will throw exception if single replica
+        # reached this count
+        self.retry_count = 0
 
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -118,6 +124,9 @@ class ActorReplicaWrapper:
 
     def check_ready(self) -> bool:
         ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
+        if len(ready) == 1:
+            ray.get(ready[0])
+
         return len(ready) == 1
 
     @property
@@ -879,6 +888,9 @@ class BackendState:
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
+        print(f" replicas: {self._replicas}")
+        print(f" backend_goals: {self._backend_goals} \n")
+
         self._scale_all_backends()
 
         for goal_id in self._completed_goals():

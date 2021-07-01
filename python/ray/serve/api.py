@@ -62,6 +62,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    constructor_retry_remaining: int 
     servable_object: Callable
 
 
@@ -69,11 +70,12 @@ def _set_internal_replica_context(
         backend_tag: BackendTag,
         replica_tag: ReplicaTag,
         controller_name: str,
+        constructor_retry_remaining: int,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, servable_object)
+        backend_tag, replica_tag, controller_name, constructor_retry_remaining, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -374,7 +376,7 @@ class Client:
             config = {}
         if ray_actor_options is None:
             ray_actor_options = {}
-
+        print("   [DEBUG][api.py] Calling api.deploy()")
         # If conda is activated and a conda env is not specified in runtime_env
         # in ray_actor_options, default to conda env of this process (client).
         # Without this code, the backend would run in the controller's conda
@@ -406,11 +408,12 @@ class Client:
                                                      inspect.isfunction):
                 python_methods.append(method_name)
 
+        print("   [DEBUG][api.py] Calling deploy -> ray.get(controller.deploy.remote())")
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
                 name, backend_config, replica_config, python_methods, version,
                 prev_version, route_prefix))
-
+        print("   [DEBUG][api.py] Returning api.deploy -> ray.get(controller.deploy.remote())")
         if updating:
             msg = f"Updating deployment '{name}'"
             if version is not None:
@@ -421,7 +424,9 @@ class Client:
                         f"'{version}', not updating.")
 
         if _blocking:
+            print("   [DEBUG][api.py] Waiting for blocking _wait_for_goal")
             self._wait_for_goal(goal_id)
+            print("   [DEBUG][api.py] Finished waiting for _wait_for_goal")
         else:
             return goal_id
 
@@ -1014,10 +1019,10 @@ def get_replica_context() -> ReplicaContext:
         >>> serve.get_replica_context().backend_tag # my_backend
         >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
     """
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_replica_context()` "
-                                "may only be called from within a "
-                                "Ray Serve backend.")
+    # if _INTERNAL_REPLICA_CONTEXT is None:
+    #     raise RayServeException("`serve.get_replica_context()` "
+    #                             "may only be called from within a "
+    #                             "Ray Serve backend.")
     return _INTERNAL_REPLICA_CONTEXT
 
 

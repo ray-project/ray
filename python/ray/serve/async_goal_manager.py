@@ -15,13 +15,14 @@ class AsyncGoalManager:
         return len(self._pending_goals)
 
     def create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
+        print("   [DEBUG][async_goal_manager.py] Creating goal_id")
         if goal_id is None:
             goal_id = uuid4()
         self._pending_goals[goal_id] = asyncio.Event()
         return goal_id
 
     def complete_goal(self, goal_id: GoalId) -> None:
-        logger.debug(f"Completing goal {goal_id}")
+        print(f"   [DEBUG][async_goal_manager.py] Completing goal {goal_id}")
         event = self._pending_goals.pop(goal_id, None)
         if event:
             event.set()
@@ -30,6 +31,7 @@ class AsyncGoalManager:
         return goal_id not in self._pending_goals
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
+        print(f"   [DEBUG][async_goal_manager.py] Waiting for goal_id {goal_id}")
         start = time.time()
         if goal_id not in self._pending_goals:
             logger.debug(f"Goal {goal_id} not found")
@@ -39,3 +41,4 @@ class AsyncGoalManager:
         await event.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
+        print(f"   [DEBUG][async_goal_manager.py] Waiting for goal {goal_id} took {time.time() - start} seconds")

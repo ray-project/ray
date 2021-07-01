@@ -33,7 +33,7 @@ from ray.serve.utils import logger
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 # How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+CONTROL_LOOP_PERIOD_S = 1
 
 
 @ray.remote(num_cpus=0)
@@ -210,6 +210,7 @@ class ServeController:
             self, backend_tag: BackendTag, backend_config: BackendConfig,
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
+        print("    [DEBUG][controller.py] Calling create_backend()")
         async with self.write_lock:
             backend_info = BackendInfo(
                 actor_def=ray.remote(
@@ -281,6 +282,7 @@ class ServeController:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
+        print("   [DEBUG][controller.py] Calling deploy()")
         async with self.write_lock:
             if prev_version is not None:
                 existing_backend_info = self.backend_state.get_backend(name)
@@ -295,6 +297,7 @@ class ServeController:
                         "does not match with the existing "
                         f"version '{existing_backend_info.version}'.")
 
+            print("   [DEBUG][controller.py] Creating backend_info")
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(
@@ -303,13 +306,16 @@ class ServeController:
                 backend_config=backend_config,
                 replica_config=replica_config)
 
+            print("   [DEBUG][controller.py] Finished creating backend_info")
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
+            print(f"   [DEBUG][controller.py] Got goal_id: {goal_id}")
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
                 python_methods=python_methods,
                 legacy=False)
+            print("   [DEBUG][controller.py] Got endpoint_info")
             self.endpoint_state.update_endpoint(name, endpoint_info,
                                                 TrafficPolicy({
                                                     name: 1.0
