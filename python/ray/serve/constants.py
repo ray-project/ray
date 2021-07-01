@@ -19,6 +19,9 @@ ASYNC_CONCURRENCY = int(1e6)
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
+#: Default retry count for allowing failures in replica constructor.
+REPLICA_CONSTRUCTOR_RETRY_COUNT = 4
+
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
     1,
