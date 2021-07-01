@@ -290,10 +290,7 @@ class TFPolicy(Policy):
 
         if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches.update({
-                "model": self.model.metrics() if isinstance(
-                    self.model, ModelV2) else self.model.custom_stats()
-            })
+            self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._loss = loss
 

@@ -77,7 +77,7 @@ def start_worker_in_container(container_option, args, remaining_args):
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-    container_option = runtime_env.get("container_option")
+    container_option = runtime_env.get("container")
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
