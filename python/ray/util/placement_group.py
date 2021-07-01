@@ -68,11 +68,7 @@ class PlacementGroup:
             "bundle length == 0, current bundle length: "
             f"{len(self.bundle_cache)}")
 
-        # Select the first bundle to schedule a dummy task.
-        # Since the placement group creation will be atomic, it is sufficient
-        # to schedule a single task.
         bundle_index = 0
-        bundle = self.bundle_cache[bundle_index]
 
         return bundle_reservation_check.options(
             placement_group=self,
