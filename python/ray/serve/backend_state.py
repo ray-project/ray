@@ -25,7 +25,7 @@ SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 
 class ReplicaState(Enum):
-    # started the actor that 
+    # started the actor that
     SHOULD_START = 1
 
     STARTING = 2

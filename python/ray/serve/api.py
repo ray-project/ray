@@ -62,7 +62,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
-    constructor_retry_remaining: int 
+    constructor_retry_remaining: int
     servable_object: Callable
 
 
@@ -75,7 +75,8 @@ def _set_internal_replica_context(
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, constructor_retry_remaining, servable_object)
+        backend_tag, replica_tag, controller_name, constructor_retry_remaining,
+        servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -408,12 +409,16 @@ class Client:
                                                      inspect.isfunction):
                 python_methods.append(method_name)
 
-        print("   [DEBUG][api.py] Calling deploy -> ray.get(controller.deploy.remote())")
+        print(
+            "   [DEBUG][api.py] Calling deploy -> ray.get(controller.deploy.remote())"
+        )
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
                 name, backend_config, replica_config, python_methods, version,
                 prev_version, route_prefix))
-        print("   [DEBUG][api.py] Returning api.deploy -> ray.get(controller.deploy.remote())")
+        print(
+            "   [DEBUG][api.py] Returning api.deploy -> ray.get(controller.deploy.remote())"
+        )
         if updating:
             msg = f"Updating deployment '{name}'"
             if version is not None:

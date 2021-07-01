@@ -31,7 +31,8 @@ class AsyncGoalManager:
         return goal_id not in self._pending_goals
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
-        print(f"   [DEBUG][async_goal_manager.py] Waiting for goal_id {goal_id}")
+        print(
+            f"   [DEBUG][async_goal_manager.py] Waiting for goal_id {goal_id}")
         start = time.time()
         if goal_id not in self._pending_goals:
             logger.debug(f"Goal {goal_id} not found")
@@ -41,4 +42,6 @@ class AsyncGoalManager:
         await event.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
-        print(f"   [DEBUG][async_goal_manager.py] Waiting for goal {goal_id} took {time.time() - start} seconds")
+        print(
+            f"   [DEBUG][async_goal_manager.py] Waiting for goal {goal_id} took {time.time() - start} seconds"
+        )

@@ -207,8 +207,12 @@ class HTTPProxy:
     def __init__(self, controller_name: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(None, None,
-                                                    controller_name, constructor_retry_remaining=3, servable_object=None)
+        ray.serve.api._set_internal_replica_context(
+            None,
+            None,
+            controller_name,
+            constructor_retry_remaining=3,
+            servable_object=None)
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
