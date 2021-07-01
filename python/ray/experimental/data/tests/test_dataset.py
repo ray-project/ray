@@ -1,7 +1,6 @@
 import os
 
 import pandas as pd
-import pathlib
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
