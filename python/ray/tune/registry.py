@@ -168,5 +168,8 @@ class _ParameterRegistry:
 
     def flush(self):
         for k, v in self.to_flush.items():
-            self.references[k] = ray.put(v)
+            if isinstance(v, ray.ObjectRef):
+                self.references[k] = v
+            else:
+                self.references[k] = ray.put(v)
         self.to_flush.clear()

@@ -1447,6 +1447,10 @@ def get(object_refs, *, timeout=None):
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
 
+    Ordering for an input list of object refs is preserved for each object
+    returned. That is, if an object ref to A precedes an object ref to B in the
+    input list, then A will precede B in the returned list.
+
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
@@ -1910,7 +1914,7 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This
