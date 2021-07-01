@@ -325,6 +325,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             # If the request blocks, it must have been the new version.
             new_version_ref = not_ready[0]
             break
+        time.sleep(0.1)
     else:
         assert False, "Timed out waiting for new version to be called."
 
@@ -404,6 +405,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
                     for val, num in expected.items())
                     and (expect_blocking is False or len(blocking) > 0)):
                 break
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -446,6 +448,91 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
+def test_reconfigure_multiple_replicas(serve_instance, use_handle):
+    # Tests that updating the user_config with multiple replicas performs a
+    # rolling update.
+    client = serve_instance
+
+    name = "test"
+
+    @ray.remote(num_cpus=0)
+    def call():
+        if use_handle:
+            handle = serve.get_deployment(name).get_handle()
+            ret = ray.get(handle.handler.remote())
+        else:
+            ret = requests.get(f"http://localhost:8000/{name}").text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    signal_name = f"signal-{get_random_letters()}"
+    signal = SignalActor.options(name=signal_name).remote()
+
+    @serve.deployment(name=name, version="1", num_replicas=2)
+    class V1:
+        def __init__(self):
+            self.config = None
+
+        async def reconfigure(self, config):
+            # Don't block when the replica is first created.
+            if self.config is not None:
+                signal = ray.get_actor(signal_name)
+                ray.get(signal.wait.remote())
+            self.config = config
+
+        async def handler(self):
+            return f"{self.config}|{os.getpid()}"
+
+        async def __call__(self, request):
+            return await self.handler()
+
+    def make_nonblocking_calls(expected, expect_blocking=False):
+        # Returns dict[val, set(pid)].
+        blocking = []
+        responses = defaultdict(set)
+        start = time.time()
+        while time.time() - start < 30:
+            refs = [call.remote() for _ in range(10)]
+            ready, not_ready = ray.wait(refs, timeout=0.5)
+            for ref in ready:
+                val, pid = ray.get(ref)
+                responses[val].add(pid)
+            for ref in not_ready:
+                blocking.extend(not_ready)
+
+            if (all(
+                    len(responses[val]) == num
+                    for val, num in expected.items())
+                    and (expect_blocking is False or len(blocking) > 0)):
+                break
+            time.sleep(0.1)
+        else:
+            assert False, f"Timed out, responses: {responses}."
+
+        return responses, blocking
+
+    V1.options(user_config="1").deploy()
+    responses1, _ = make_nonblocking_calls({"1": 2})
+    pids1 = responses1["1"]
+
+    # Reconfigure should block one replica until the signal is sent. Check that
+    # some requests are now blocking.
+    goal_ref = V1.options(user_config="2").deploy(_blocking=False)
+    responses2, blocking2 = make_nonblocking_calls(
+        {
+            "1": 1
+        }, expect_blocking=True)
+    assert list(responses2["1"])[0] in pids1
+
+    # Signal reconfigure to finish. Now the goal should complete and both
+    # replicas should have the updated config.
+    ray.get(signal.send.remote())
+    assert client._wait_for_goal(goal_ref)
+    make_nonblocking_calls({"2": 2})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_down(serve_instance, use_handle):
     # Tests redeploying with a new version and lower num_replicas.
     name = "test"
@@ -479,6 +566,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -532,6 +620,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
+            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
