@@ -750,8 +750,8 @@ def get_or_create_head_node(config: Dict[str, Any],
         cli_logger.print("  {}", remote_shell_str.strip())
 
 
-def _should_create_new_head(head_node: Optional[str], launch_hash: str,
-                            head_node_type: str,
+def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
+                            new_head_node_type: str,
                             provider: NodeProvider) -> bool:
     """
     Decides whether a new head node needs to be created.
@@ -762,25 +762,25 @@ def _should_create_new_head(head_node: Optional[str], launch_hash: str,
     (c) The user-submitted head node-type key differs from the existing head's
 
     Args:
-        head_node (Optional[str]): head node id if a head exists, else None
-        launch_hash (str): hash of current user-submitted head configuration
+        head_node_id (Optional[str]): head node id if a head exists, else None
+        new_launch_hash (str): hash of current user-submitted head config
         head_node_type (str): current user-submitted head node-type key
 
     Returns:
         bool: True if a new Ray head node should be launched, False otherwise
     """
-    if not head_node:
+    if not head_node_id:
         # No head node exists, need to create it.
         return True
 
     # Pull existing head's data.
-    head_tags = provider.node_tags(head_node)
+    head_tags = provider.node_tags(head_node_id)
     current_launch_hash = head_tags.get(TAG_RAY_LAUNCH_CONFIG)
     current_head_type = head_tags.get(TAG_RAY_USER_NODE_TYPE)
 
     # Compare to current head
-    hashes_mismatch = launch_hash != current_launch_hash
-    types_mismatch = head_node_type != current_head_type
+    hashes_mismatch = new_launch_hash != current_launch_hash
+    types_mismatch = new_head_node_type != current_head_type
 
     new_head_required = hashes_mismatch or types_mismatch
 
@@ -793,12 +793,12 @@ def _should_create_new_head(head_node: Optional[str], launch_hash: str,
             if hashes_mismatch:
                 cli_logger.print("Current hash is {}, expected {}",
                                  cf.bold(current_launch_hash),
-                                 cf.bold(launch_hash))
+                                 cf.bold(new_launch_hash))
 
             if types_mismatch:
                 cli_logger.print("Current head node type is {}, expected {}",
                                  cf.bold(current_head_type),
-                                 cf.bold(head_node_type))
+                                 cf.bold(new_head_node_type))
 
     return new_head_required
 
