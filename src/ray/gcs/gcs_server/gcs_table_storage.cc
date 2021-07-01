@@ -152,11 +152,11 @@ template class GcsTableWithJobId<ObjectID, ObjectLocationInfo>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
 
-GcsActorTable::GcsActorTable(std::shared_ptr<StoreClient> &store_client,
-                             std::function<void(const rpc::ChannelType channel_type,
-                                                rpc::PubMessage &pub_message,
-                                                const std::string &key_id_binary)>
-                                 publish_change)
+GcsActorTable::GcsActorTable(
+    std::shared_ptr<StoreClient> &store_client,
+    std::function<void(const rpc::ChannelType channel_type, rpc::PubMessage &pub_message,
+                       const std::string &key_id_binary)>
+        publish_change)
     : GcsTableWithJobId(store_client, publish_change) {
   table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
 }

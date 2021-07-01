@@ -32,9 +32,11 @@ void SubscriberChannel<KeyIdType>::Subscribe(
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
   RAY_LOG(ERROR) << "Registering callback for " << publisher_id << "\t" << key_id;
-  subscription_map_[publisher_id].subscription_callback_map.emplace(key_id, std::make_pair(std::move(subscription_callback),
-                                                                                           std::move(subscription_failure_callback)))
-    .second;
+  subscription_map_[publisher_id]
+      .subscription_callback_map
+      .emplace(key_id, std::make_pair(std::move(subscription_callback),
+                                      std::move(subscription_failure_callback)))
+      .second;
 
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
@@ -191,7 +193,8 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
 
-  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Subscribing on " << channel_type << " to " << ActorID::FromBinary(key_id_binary);
+  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Subscribing on " << channel_type << " to "
+                 << ActorID::FromBinary(key_id_binary);
   Channel(channel_type)
       ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
@@ -244,7 +247,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const Status &status,
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Long polling request has replied from " << publisher_id;
+  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Long polling request has replied from "
+                 << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
 
   if (!status.ok()) {
