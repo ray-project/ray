@@ -451,6 +451,13 @@ def debug(address):
     type=str,
     help="Module path to the Python function that will be used to set up the "
     "environment for the worker process.")
+@click.option(
+    "--runtime-env-setup-hook",
+    hidden=True,
+    default=ray_constants.DEFAULT_RUNTIME_ENV_SETUP_HOOK,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "runtime env in agent.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -462,7 +469,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
-          worker_setup_hook, log_style, log_color, verbose):
+          worker_setup_hook, runtime_env_setup_hook, log_style, log_color,
+          verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -473,10 +481,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
-    redis_address = None
-    if address is not None:
-        (redis_address, redis_address_ip,
-         redis_address_port) = services.validate_redis_address(address)
     try:
         resources = json.loads(resources)
     except Exception:
@@ -525,7 +529,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
-        worker_setup_hook=worker_setup_hook)
+        worker_setup_hook=worker_setup_hook,
+        runtime_env_setup_hook=runtime_env_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -544,14 +549,36 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if redis_address is not None:
-            cli_logger.abort(
-                "`{}` starts a new Redis server, `{}` should not be set.",
-                cf.bold("--head"), cf.bold("--address"))
-
-            raise Exception("If --head is passed in, a Redis server will be "
-                            "started, so a Redis address should not be "
-                            "provided.")
+        if address is not None:
+            cli_logger.print(
+                "Will use value of `{}` as remote Redis server address(es). "
+                "If the primary one is not reachable, we starts new one(s) "
+                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
+            external_addresses = address.split(",")
+            reachable = False
+            try:
+                [primary_redis_ip, port] = external_addresses[0].split(":")
+                ray._private.services.wait_for_redis_to_start(
+                    primary_redis_ip, port, password=redis_password)
+                reachable = True
+            # We catch a generic Exception here in case someone later changes
+            # the type of the exception.
+            except Exception:
+                cli_logger.print(
+                    "The primary external redis server `{}` is not reachable. "
+                    "Will starts new one(s) with `{}` in local.",
+                    cf.bold(external_addresses[0]), cf.bold("--port"))
+            if reachable:
+                ray_params.update_if_absent(
+                    external_addresses=external_addresses)
+                if len(external_addresses) > 1:
+                    num_redis_shards = len(external_addresses) - 1
+                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                    cli_logger.warning(
+                        "`{}` should not be specified as empty string if "
+                        "external redis server(s) `{}` points to requires "
+                        "password.", cf.bold("--redis-password"),
+                        cf.bold("--address"))
 
         node_ip_address = services.get_node_ip_address()
 
@@ -631,6 +658,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(cf.bold("  ray stop"))
     else:
         # Start Ray on a non-head node.
+        redis_address = None
+        if address is not None:
+            (redis_address, redis_address_ip,
+             redis_address_port) = services.validate_redis_address(address)
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
@@ -1501,13 +1532,21 @@ def status(address, redis_password):
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def local_dump(stream: bool = False,
                output: Optional[str] = None,
                logs: bool = True,
                debug_state: bool = True,
                pip: bool = True,
                processes: bool = True,
-               processes_verbose: bool = False):
+               processes_verbose: bool = False,
+               tempfile: Optional[str] = None):
     """Collect local data and package into an archive.
 
     Usage:
@@ -1524,7 +1563,8 @@ def local_dump(stream: bool = False,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
 
 
 @cli.command()
@@ -1596,6 +1636,13 @@ def local_dump(stream: bool = False,
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def cluster_dump(cluster_config_file: Optional[str] = None,
                  host: Optional[str] = None,
                  ssh_user: Optional[str] = None,
@@ -1607,7 +1654,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
                  debug_state: bool = True,
                  pip: bool = True,
                  processes: bool = True,
-                 processes_verbose: bool = False):
+                 processes_verbose: bool = False,
+                 tempfile: Optional[str] = None):
     """Get log data from one or more nodes.
 
     Best used with Ray cluster configs:
@@ -1634,7 +1682,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
     if archive_path:
         click.echo(f"Created archive: {archive_path}")
     else:

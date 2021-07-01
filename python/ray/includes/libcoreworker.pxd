@@ -146,6 +146,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
         CPlacementGroupID GetCurrentPlacementGroupId()
+        CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)

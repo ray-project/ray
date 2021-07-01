@@ -403,8 +403,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
-      const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {});
+      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
+      std::unordered_map<std::string, std::string> override_environment_variables = {},
+      const std::string &serialized_runtime_env_context = "{}");
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,

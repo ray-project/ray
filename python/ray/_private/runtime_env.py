@@ -59,12 +59,15 @@ class RuntimeEnvDict:
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
-        docker (dict): Require a given (Docker) container image. The Ray
-            dependency will be automatically installed into the docker image
-            to ensure compatibility with the cluster Ray. The `run_options`
-            dict spec is here: https://docs.docker.com/engine/reference/run/
+        container (dict): Require a given (Docker) container image,
+            The Ray worker process will run in a container with this image.
+            The `worker_path` is the default_worker.py path.
+            The `run_options` list spec is here:
+            https://docs.docker.com/engine/reference/run/
             Examples:
-                {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
+                {"image": "anyscale/ray-ml:nightly-py38-cpu",
+                 "worker_path": "/root/python/ray/workers/default_worker.py",
+                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
         env_vars (dict): Environment variables to set.
             Examples:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
@@ -78,8 +81,13 @@ class RuntimeEnvDict:
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
+            if not isinstance(self._dict["working_dir"], str):
+                raise TypeError("`working_dir` must be a string. Type "
+                                f"{type(self._dict['working_dir'])} received.")
+            working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
+            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -91,11 +99,14 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 yaml_file = Path(conda)
                 if yaml_file.suffix in (".yaml", ".yml"):
+                    if working_dir and not yaml_file.is_absolute():
+                        yaml_file = working_dir / yaml_file
                     if not yaml_file.is_file():
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
                     try:
-                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                        self._dict["conda"] = yaml.safe_load(
+                            yaml_file.read_text())
                     except Exception as e:
                         raise ValueError(
                             f"Invalid conda file {yaml_file} with error {e}")
@@ -132,6 +143,8 @@ class RuntimeEnvDict:
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
+                if working_dir and not pip_file.is_absolute():
+                    pip_file = working_dir / pip_file
                 if not pip_file.is_file():
                     raise ValueError(f"{pip_file} is not a valid file")
                 self._dict["pip"] = pip_file.read_text()
@@ -145,6 +158,9 @@ class RuntimeEnvDict:
 
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
+
+        if "container" in runtime_env_json:
+            self._dict["container"] = runtime_env_json["container"]
 
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:

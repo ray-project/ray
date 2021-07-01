@@ -245,7 +245,8 @@ if __name__ == "__main__":
                 else:
                     obs = np.array(
                         time_step.observations["info_state"][player_id])
-                    action = trainer.compute_action(obs, policy_id="main")
+                    action = trainer.compute_single_action(
+                        obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]

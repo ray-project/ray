@@ -2,13 +2,14 @@ import pytest
 import collections
 import os
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 from ray import tune
 from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        best_trial_str, trial_progress_str)
+from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
+                                        _fair_filter_trials, best_trial_str,
+                                        detect_reporter, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -480,6 +481,17 @@ class ProgressReporterTest(unittest.TestCase):
                 raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testReporterDetection(self):
+        """Test if correct reporter is returned from ``detect_reporter()``"""
+        reporter = detect_reporter()
+        self.assertTrue(isinstance(reporter, CLIReporter))
+        self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
+
+        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+            reporter = detect_reporter()
+            self.assertFalse(isinstance(reporter, CLIReporter))
+            self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
 
 if __name__ == "__main__":

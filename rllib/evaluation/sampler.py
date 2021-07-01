@@ -22,13 +22,14 @@ from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
     MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
-from ray.rllib.policy.policy import clip_action, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, \
+    unsquash_action, unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
@@ -137,7 +138,8 @@ class SyncSampler(SamplerInput):
             horizon: int = None,
             multiple_episodes_in_batch: bool = False,
             tf_sess=None,
-            clip_actions: bool = True,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             observation_fn: "ObservationFunction" = None,
@@ -168,6 +170,8 @@ class SyncSampler(SamplerInput):
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
                 framework=tf).
+            normalize_actions (bool): Whether to normalize actions to the
+                action space's bounds.
             clip_actions (bool): Whether to clip actions according to the
                 given action_space's bounds.
             soft_horizon (bool): If True, calculate bootstrapped values as if
@@ -216,9 +220,9 @@ class SyncSampler(SamplerInput):
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put,
             self.rollout_fragment_length, self.horizon, clip_rewards,
-            clip_actions, multiple_episodes_in_batch, callbacks, tf_sess,
-            self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
-            self.sample_collector, self.render)
+            normalize_actions, clip_actions, multiple_episodes_in_batch,
+            callbacks, tf_sess, self.perf_stats, soft_horizon, no_done_at_end,
+            observation_fn, self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -272,7 +276,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             horizon: int = None,
             multiple_episodes_in_batch: bool = False,
             tf_sess=None,
-            clip_actions: bool = True,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
             blackhole_outputs: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
@@ -306,6 +311,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
                 framework=tf).
+            normalize_actions (bool): Whether to normalize actions to the
+                action space's bounds.
             clip_actions (bool): Whether to clip actions according to the
                 given action_space's bounds.
             blackhole_outputs (bool): Whether to collect samples, but then
@@ -354,6 +361,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.tf_sess = tf_sess
         self.callbacks = callbacks
+        self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
@@ -391,10 +399,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         rollout_provider = _env_runner(
             self.worker, self.base_env, extra_batches_putter,
             self.rollout_fragment_length, self.horizon, self.clip_rewards,
-            self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
-            self.tf_sess, self.perf_stats, self.soft_horizon,
-            self.no_done_at_end, self.observation_fn, self.sample_collector,
-            self.render)
+            self.normalize_actions, self.clip_actions,
+            self.multiple_episodes_in_batch, self.callbacks, self.tf_sess,
+            self.perf_stats, self.soft_horizon, self.no_done_at_end,
+            self.observation_fn, self.sample_collector, self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -446,6 +454,7 @@ def _env_runner(
         rollout_fragment_length: int,
         horizon: int,
         clip_rewards: bool,
+        normalize_actions: bool,
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
@@ -471,6 +480,8 @@ def _env_runner(
         multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
+        normalize_actions (bool): Whether to normalize actions to the action
+            space's bounds.
         clip_actions (bool): Whether to clip actions to the space range.
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
@@ -548,7 +559,7 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # type: Policy
+        # types: Policy
         for p in worker.policy_map.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
@@ -572,7 +583,7 @@ def _env_runner(
         perf_stats.iters += 1
         t0 = time.time()
         # Get observations from all ready agents.
-        # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
+        # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
@@ -584,7 +595,7 @@ def _env_runner(
 
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
-        # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
+        # types: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = \
             _process_observations(
@@ -609,7 +620,7 @@ def _env_runner(
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
-        # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
+        # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
         eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=worker.policy_map,
@@ -630,6 +641,7 @@ def _env_runner(
                 active_envs=active_envs,
                 off_policy_actions=off_policy_actions,
                 policies=worker.policy_map,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
             )
         perf_stats.action_processing_time += time.time() - t3
@@ -736,7 +748,7 @@ def _process_observations(
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
     # For each (vectorized) sub-environment.
-    # type: EnvID, Dict[AgentID, EnvObsType]
+    # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
@@ -791,7 +803,7 @@ def _process_observations(
                     "observe() must return a dict of agent observations")
 
         # For each agent in the environment.
-        # type: AgentID, EnvObsType
+        # types: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
 
@@ -937,7 +949,7 @@ def _process_observations(
                         base_env=base_env,
                         policies=worker.policy_map,
                         episode=new_episode)
-                # type: AgentID, EnvObsType
+                # types: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = new_episode.policy_for(agent_id)
                     prep_obs: EnvObsType = _get_or_raise(
@@ -1022,7 +1034,7 @@ def _do_policy_eval(
                 episodes=[active_episodes[t.env_id] for t in eval_data])
 
     if builder:
-        # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]
+        # types: PolicyID, Tuple[TensorStructType, StateBatch, dict]
         for pid, v in pending_fetches.items():
             eval_results[pid] = builder.get(v)
 
@@ -1042,6 +1054,7 @@ def _process_policy_eval_results(
         active_envs: Set[int],
         off_policy_actions: MultiEnvDict,
         policies: Dict[PolicyID, Policy],
+        normalize_actions: bool,
         clip_actions: bool,
 ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
@@ -1060,6 +1073,8 @@ def _process_policy_eval_results(
         off_policy_actions (dict): Doubly keyed dict of env-ids -> agent ids ->
             off-policy-action, returned by a `BaseEnv.poll()` call.
         policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
+        normalize_actions (bool): Whether to normalize actions to the action
+            space's bounds.
         clip_actions (bool): Whether to clip actions to the action space's
             bounds.
 
@@ -1071,11 +1086,11 @@ def _process_policy_eval_results(
     actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
         defaultdict(dict)
 
-    # type: int
+    # types: int
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
-    # type: PolicyID, List[PolicyEvalData]
+    # types: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)
@@ -1084,7 +1099,7 @@ def _process_policy_eval_results(
         pi_info_cols: dict = eval_results[policy_id][2]
 
         # In case actions is a list (representing the 0th dim of a batch of
-        # primitive actions), try to convert it first.
+        # primitive actions), try converting it first.
         if isinstance(actions, list):
             actions = np.array(actions)
 
@@ -1095,14 +1110,18 @@ def _process_policy_eval_results(
         policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.
         actions: List[EnvActionType] = unbatch(actions)
-        # type: int, EnvActionType
+        # types: int, EnvActionType
         for i, action in enumerate(actions):
-            # Clip if necessary.
-            if clip_actions:
-                clipped_action = clip_action(action,
+            # Normalize, if necessary.
+            if normalize_actions:
+                action_to_send = unsquash_action(action,
+                                                 policy.action_space_struct)
+            # Clip, if necessary.
+            elif clip_actions:
+                action_to_send = clip_action(action,
                                              policy.action_space_struct)
             else:
-                clipped_action = action
+                action_to_send = action
 
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
@@ -1119,7 +1138,7 @@ def _process_policy_eval_results(
                 episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
-            actions_to_send[env_id][agent_id] = clipped_action
+            actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send
 
