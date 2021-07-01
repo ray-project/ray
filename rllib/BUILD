@@ -2425,11 +2425,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/pettungzoo_env",
-    main = "examples/pettungzoo_env.py",
+    name = "examples/pettingzoo_env",
+    main = "examples/pettingzoo_env.py",
     tags = ["examples", "examples_P"],
     size = "small",
-    srcs = ["examples/pettungzoo_env.py"],
+    srcs = ["examples/pettingzoo_env.py"],
 )
 
 py_test(
