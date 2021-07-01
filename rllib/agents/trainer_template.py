@@ -140,15 +140,6 @@ def build_trainer(
                     assert default_policy is not None
                     self._policy_class = default_policy
 
-            # Now that we know the default policy class of this Trainer,
-            # check all multiagent policies for policy_class=None and adjust.
-            policies = config["multiagent"].get("policies", {})
-            for pid, policy_spec in policies.copy().items():
-                # Class is None -> Use our `_policy_class` property.
-                if policy_spec.policy_class is None:
-                    policies[pid] = policies[pid]._replace(
-                        policy_class=self._policy_class)
-
             if before_init:
                 before_init(self)
 

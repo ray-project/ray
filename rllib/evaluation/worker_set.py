@@ -343,10 +343,15 @@ class WorkerSet:
             input_evaluation = config["input_evaluation"]
 
         # Assert everything is correct in "multiagent" config dict (if given).
-        if config["multiagent"]["policies"]:
-            for v in config["multiagent"]["policies"].values():
-                assert isinstance(v, (PolicySpec, list, tuple))
-            policies = config["multiagent"]["policies"]
+        ma_policies = config["multiagent"]["policies"]
+        if ma_policies:
+            for pid, policy_spec in ma_policies.copy().items():
+                assert isinstance(policy_spec, (PolicySpec, list, tuple))
+                # Class is None -> Use `policy_cls`.
+                if policy_spec.policy_class is None:
+                    ma_policies[pid] = ma_policies[pid]._replace(
+                        policy_class=policy_cls)
+            policies = ma_policies
 
         # Create a policy_spec (MultiAgentPolicyConfigDict),
         # even if no "multiagent" setup given by user.
