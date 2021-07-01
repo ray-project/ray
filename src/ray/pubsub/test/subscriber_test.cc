@@ -151,6 +151,15 @@ class SubscriberTest : public ::testing::Test {
     return success;
   }
 
+  bool FailureMessagePublished(rpc::ChannelType channel_type,
+                               std::vector<ObjectID> &object_ids) {
+    auto published = owner_client->FailureMessagePublished(channel_type, object_ids);
+    // reset should be called in order to run the poll_one again.
+    callback_service_.poll();
+    callback_service_.reset();
+    return published;
+  }
+
   void TearDown() {}
 
   instrumented_io_context callback_service_;
@@ -606,7 +615,7 @@ TEST_F(SubscriberTest, TestFailureMessagePublished) {
   // Failure message is published.
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->FailureMessagePublished(channel, objects_batched));
+  ASSERT_TRUE(FailureMessagePublished(channel, objects_batched));
   // Callback is not invoked.
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
   // Failure callback is invoked.
