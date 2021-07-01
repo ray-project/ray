@@ -434,4 +434,7 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
-           std::string("1") == getenv("RAY_PREALLOCATE_PLASMA_MEMORY") ? 120 : 10)
+           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
+                   getenv("RAY_PREALLOCATE_PLASMA_MEMORY") == std::string("1")
+               ? 120
+               : 10)
