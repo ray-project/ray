@@ -310,6 +310,10 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.experimental.data.read_json(path1)
     assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert "two" in str(ds.schema())
+    assert "two" in str(ds)
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -412,6 +416,10 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_csv(path1)
     dsdf = ray.get(ds.to_pandas())[0]
     assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert "two" in str(ds.schema())
+    assert "two" in str(ds)
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})

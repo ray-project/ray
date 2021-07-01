@@ -46,6 +46,7 @@ class Dataset(Generic[T]):
 
     def __init__(self, blocks: BlockList[T]):
         self._blocks: BlockList[T] = blocks
+        assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
