@@ -281,6 +281,7 @@ def _tracing_task_invocation(method):
     # If tracing feature flag is not on, do nothing
     if not is_tracing_enabled():
         return method
+
     @wraps(method)
     def _invocation_remote_span(
             self,
