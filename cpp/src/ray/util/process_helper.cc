@@ -1,5 +1,4 @@
 #include "process_helper.h"
-#include <ray/api/logging.h>
 #include "hiredis/hiredis.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
@@ -31,7 +30,7 @@ void ProcessHelper::StartRayNode(int redis_port, std::string redis_password,
        "--include-dashboard", "false"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  sleep(5);
+  std::this_thread::sleep_for(std::chrono::seconds(5));
   return;
 }
 
@@ -39,7 +38,7 @@ void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  sleep(3);
+  std::this_thread::sleep_for(std::chrono::seconds(3));
   return;
 }
 

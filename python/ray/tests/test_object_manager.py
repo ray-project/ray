@@ -264,7 +264,6 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 # (4) Allow the local object to be evicted.
 # (5) Try to get the object again. Now the retry timer should kick in and
 #     successfuly pull the remote object.
-@pytest.mark.timeout(30)
 def test_pull_request_retry(shutdown_only):
     cluster = Cluster()
     cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
@@ -282,7 +281,7 @@ def test_pull_request_retry(shutdown_only):
 
         remote_ref = put.remote()
 
-        ready, _ = ray.wait([remote_ref], timeout=10)
+        ready, _ = ray.wait([remote_ref], timeout=30)
 
         if ray.worker.global_worker.core_worker.plasma_unlimited():
             # Sadly, the test cannot work in this mode.
@@ -301,7 +300,8 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
-@pytest.mark.timeout(30)
+# TODO(ekl) this sometimes takes much longer (10+s) due to a higher level
+# pull retry. We should try to resolve these hangs in the chunk transfer logic.
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -335,15 +335,39 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-@pytest.mark.timeout(30)
+# Will hang if RAY_pull_manager_pin_active_objects=0 due to an eviction loop.
+def test_pull_bundles_pinning(shutdown_only):
+    cluster = Cluster()
+    object_size = int(50e6)
+    num_objects = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(num_cpus=0, object_store_memory=1000e6)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node cannot even fit a single task.
+    cluster.add_node(num_cpus=1, object_store_memory=200e6)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    def foo(*args):
+        return
+
+    task_args = [
+        ray.put(np.zeros(object_size, dtype=np.uint8))
+        for _ in range(num_objects)
+    ]
+    ray.get(foo.remote(*task_args))
+
+
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
     # dynamically by concurrent workers.
     cluster = Cluster()
     object_size = int(6e6)
-    num_objects = 10
-    num_tasks = 10
+    num_objects = 20
+    num_tasks = 20
     # Head node can fit all of the objects at once.
     cluster.add_node(
         num_cpus=0,
@@ -374,13 +398,14 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
         ]
         args.append(task_args)
 
-    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     allocated = [allocate.remote(i) for i in range(num_objects)]
+    ray.get(allocated)
+
+    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
     ray.get(tasks)
     del allocated
 
 
-@pytest.mark.timeout(30)
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -413,7 +438,6 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
-@pytest.mark.timeout(30)
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -450,6 +474,140 @@ def test_ray_get_task_args_deadlock(shutdown_only):
         ]
         ray.get(test_deadlock.remote(get_args, task_args))
         print(f"round {i} finished in {time.time() - start}")
+
+
+def test_object_directory_basic(ray_start_cluster_with_resource):
+    cluster, num_nodes = ray_start_cluster_with_resource
+
+    @ray.remote
+    def task(x):
+        pass
+
+    # Test a single task.
+    x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+    ray.get(task.options(resources={str(3): 1}).remote(x_id), timeout=10)
+
+    # Test multiple tasks on all nodes can find locations properly.
+    object_refs = []
+    for _ in range(num_nodes):
+        object_refs.append(ray.put(np.zeros(1024 * 1024, dtype=np.uint8)))
+    ray.get([
+        task.options(resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
+    del object_refs
+
+    @ray.remote
+    class ObjectHolder:
+        def __init__(self):
+            self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+
+        def get_obj(self):
+            return self.x
+
+        def ready(self):
+            return True
+
+    # Test if tasks can find object location properly
+    # when there are multiple owners
+    object_holders = [
+        ObjectHolder.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote() for i in range(num_nodes)
+    ]
+    ray.get([o.ready.remote() for o in object_holders])
+
+    object_refs = []
+    for i in range(num_nodes):
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
+    ray.get([
+        task.options(num_cpus=0.01, resources={
+            str(i): 1
+        }).remote(object_refs[i]) for i in range(num_nodes)
+    ])
+
+    # Test a stressful scenario.
+    object_refs = []
+    repeat = 10
+    for _ in range(num_nodes):
+        for _ in range(repeat):
+            object_refs.append(ray.put(np.zeros(1024 * 1024, dtype=np.uint8)))
+    tasks = []
+    for i in range(num_nodes):
+        for r in range(repeat):
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[i * r]))
+    ray.get(tasks)
+
+    object_refs = []
+    for i in range(num_nodes):
+        object_refs.append(
+            object_holders[(i + 1) % num_nodes].get_obj.remote())
+    tasks = []
+    for i in range(num_nodes):
+        for _ in range(10):
+            tasks.append(
+                task.options(num_cpus=0.01, resources={
+                    str(i): 0.1
+                }).remote(object_refs[(i + 1) % num_nodes]))
+
+
+def test_object_directory_failure(ray_start_cluster):
+    cluster = ray_start_cluster
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 500,
+        "object_timeout_milliseconds": 200,
+    }
+    # Add a head node.
+    cluster.add_node(_system_config=config)
+    ray.init(address=cluster.address)
+
+    # Add worker nodes.
+    num_nodes = 5
+    for i in range(num_nodes):
+        cluster.add_node(resources={str(i): 100})
+
+    # Add a node to be removed
+    index_killing_node = num_nodes
+    node_to_kill = cluster.add_node(
+        resources={str(index_killing_node): 100}, object_store_memory=10**9)
+
+    @ray.remote
+    class ObjectHolder:
+        def __init__(self):
+            self.x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+
+        def get_obj(self):
+            return [self.x]
+
+        def ready(self):
+            return True
+
+    oh = ObjectHolder.options(
+        num_cpus=0.01, resources={
+            str(index_killing_node): 1
+        }).remote()
+    obj = ray.get(oh.get_obj.remote())[0]
+
+    @ray.remote
+    def task(x):
+        pass
+
+    tasks = []
+    repeat = 3
+    for i in range(num_nodes):
+        for _ in range(repeat):
+            tasks.append(task.options(resources={str(i): 1}).remote(obj))
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+
+    for t in tasks:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(t, timeout=10)
 
 
 if __name__ == "__main__":

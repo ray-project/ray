@@ -37,7 +37,6 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
-    "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_iter.py",
     "test_joblib.py",
@@ -195,6 +194,16 @@ py_test_module_list(
 # Flaky tests only on Mac.
 py_test_module_list(
   files = [
+    "test_gcs_fault_tolerance.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_placement_group.py",
   ],
   size = "large",
@@ -277,4 +286,15 @@ py_test_module_list(
   #env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
   tags = ["exclusive", "client_tests"],
   deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor_in_container.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "worker-container"],
+  # Now we run this test in a container which has installed ray
+  deps = [],
 )
