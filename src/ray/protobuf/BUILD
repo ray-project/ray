@@ -108,7 +108,11 @@ cc_proto_library(
 proto_library(
     name = "core_worker_proto",
     srcs = ["core_worker.proto"],
-    deps = [":common_proto", ":pubsub_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_service_proto",
+        ":pubsub_proto",
+    ],
 )
 
 python_grpc_compile(
@@ -186,7 +190,11 @@ python_grpc_compile(
 proto_library(
     name = "pubsub_proto",
     srcs = ["pubsub.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+        ":gcs_service_proto",
+    ],
 )
 
 cc_proto_library(

@@ -48,7 +48,7 @@ def do_test_explorations(run,
             actions = []
             for _ in range(25):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         observation=dummy_obs,
                         explore=False,
                         prev_action=prev_a,
@@ -60,7 +60,7 @@ def do_test_explorations(run,
             actions = []
             for _ in range(100):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         observation=dummy_obs,
                         explore=True,
                         prev_action=prev_a,

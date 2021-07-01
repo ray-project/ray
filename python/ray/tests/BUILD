@@ -287,3 +287,14 @@ py_test_module_list(
   tags = ["exclusive", "client_tests"],
   deps = ["//:ray_lib"],
 )
+
+py_test_module_list(
+  files = [
+    "test_actor_in_container.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "worker-nest-container"],
+  # Now we run this test in a container which has installed ray
+  deps = [],
+)

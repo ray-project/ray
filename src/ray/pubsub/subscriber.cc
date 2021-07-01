@@ -201,32 +201,26 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
   auto publishers_connected_it = publishers_connected_.find(publisher_id);
   if (publishers_connected_it == publishers_connected_.end()) {
     publishers_connected_.emplace(publisher_id);
-    rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(subscriber_id_.Binary());
-    subscriber_address.set_ip_address(subscriber_address_);
-    subscriber_address.set_port(subscriber_port_);
-    MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
+    MakeLongPollingPubsubConnection(publisher_address);
   }
 }
 
-void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
-                                                 const rpc::Address &subscriber_address) {
+void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
   auto publisher_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
-  long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+  long_polling_request.set_subscriber_id(subscriber_id_.Binary());
 
   publisher_client->PubsubLongPolling(
-      long_polling_request, [this, publisher_address, subscriber_address](
-                                Status status, const rpc::PubsubLongPollingReply &reply) {
+      long_polling_request,
+      [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
         absl::MutexLock lock(&mutex_);
-        HandleLongPollingResponse(publisher_address, subscriber_address, status, reply);
+        HandleLongPollingResponse(publisher_address, status, reply);
       });
 }
 
 void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address,
-                                           const rpc::Address &subscriber_address,
                                            const Status &status,
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
@@ -274,7 +268,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   }
 
   if (SubscriptionExists(publisher_id)) {
-    MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
+    MakeLongPollingPubsubConnection(publisher_address);
   } else {
     publishers_connected_.erase(publisher_id);
   }
