@@ -41,6 +41,7 @@ dataclasses; python_version < '3.7'
 starlette
 
 # Requirements for running tests
+pyarrow==4.0.1
 blist; platform_system != "Windows"
 azure-common
 azure-mgmt-resource
@@ -83,4 +84,3 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
-pyarrow==4.0.1
