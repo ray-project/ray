@@ -168,6 +168,11 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
+  /// TODO: Add comment
+  ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
+                                        int num_retries,
+                                        ray::rpc::GcsNodeInfo *node_to_connect);
+
  private:
   /// MultiItem transformation helper in template style.
   ///
@@ -209,6 +214,9 @@ class GlobalStateAccessor {
       promise.set_value(true);
     };
   }
+
+  std::string redis_address_;
+  std::string redis_ip_address_;
 
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};
