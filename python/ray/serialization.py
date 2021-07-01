@@ -74,6 +74,9 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
+        # Keep track of the object refs we are deserializing. The
+        # deserialization could be nested so we need a stack.
+        self._thread_local.object_ref_stack = []
 
         def actor_handle_reducer(obj):
             serialized, actor_handle_id = obj._serialization_helper()
@@ -119,11 +122,9 @@ class SerializationContext:
     def set_out_of_band_serialization(self):
         self._thread_local.in_band = False
 
-    def set_outer_object_ref(self, outer_object_ref):
-        self._thread_local.outer_object_ref = outer_object_ref
-
     def get_outer_object_ref(self):
-        return getattr(self._thread_local, "outer_object_ref", None)
+        stack = self._thread_local.object_ref_stack
+        return stack[-1] if stack else None
 
     def get_and_clear_contained_object_refs(self):
         if not hasattr(self._thread_local, "object_refs"):
@@ -243,16 +244,19 @@ class SerializationContext:
         results = []
         for object_ref, (data, metadata) in zip(object_refs,
                                                 data_metadata_pairs):
-            assert self.get_outer_object_ref() is None
-            self.set_outer_object_ref(object_ref)
             try:
+                # Push the object ref to the stack, so the object under
+                # the object ref knows where it comes from.
+                self._thread_local.object_ref_stack.append(object_ref)
                 obj = self._deserialize_object(data, metadata, object_ref)
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
+            finally:
+                # Must clear ObjectRef to not hold a reference.
+                if self._thread_local.object_ref_stack:
+                    self._thread_local.object_ref_stack.pop()
             results.append(obj)
-            # Must clear ObjectRef to not hold a reference.
-            self.set_outer_object_ref(None)
         return results
 
     def _serialize_to_pickle5(self, metadata, value):
