@@ -26,9 +26,8 @@ def autoinit_ray(f):
     return wrapped
 
 
-def _resolve_paths_and_filesystem(
-        paths: Union[str, List[str]],
-        filesystem: "pyarrow.fs.FileSystem" = None):
+def _resolve_paths_and_filesystem(paths: Union[str, List[str]],
+                                  filesystem: "pyarrow.fs.FileSystem" = None):
     from pyarrow.fs import (FileType, FileSelector,
                             _resolve_filesystem_and_path)
 
