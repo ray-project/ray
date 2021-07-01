@@ -74,27 +74,9 @@ class PlacementGroup:
         bundle_index = 0
         bundle = self.bundle_cache[bundle_index]
 
-        resource_name, value = self._get_a_non_zero_resource(bundle)
-        num_cpus = 0
-        num_gpus = 0
-        memory = 0
-        resources = {}
-        if resource_name == "CPU":
-            num_cpus = value
-        elif resource_name == "GPU":
-            num_gpus = value
-        elif resource_name == "memory":
-            memory = value
-        else:
-            resources[resource_name] = value
-
         return bundle_reservation_check.options(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
             placement_group=self,
-            placement_group_bundle_index=bundle_index,
-            resources=resources).remote(self)
+            placement_group_bundle_index=bundle_index).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -157,12 +139,6 @@ class PlacementGroup:
         pg_id = PlacementGroupID(id_bytes)
         bundle_cache = pg_dict["bundle_cache"]
         return PlacementGroup(pg_id, bundle_cache)
-
-    def _get_a_non_zero_resource(self, bundle: Dict):
-        for key, value in bundle.items():
-            if value > 0:
-                return key, 0
-        assert False, "This code should be unreachable."
 
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
