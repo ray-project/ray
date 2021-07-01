@@ -1,6 +1,6 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/task/scheduling_resources.h"
 
 namespace ray {
 
@@ -552,4 +552,4 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   return true;
 }
 
-}
+}  // namespace ray

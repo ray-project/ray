@@ -91,15 +91,6 @@ class TaskSpecBuilder {
       const std::string &serialized_runtime_env = "{}",
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {}) {
-    RAY_LOG(ERROR) << "required_resources: ";
-    for(auto r : required_resources) {
-      RAY_LOG(ERROR) << "\t" << r.first << ", " << r.second;
-    }
-
-    RAY_LOG(ERROR) << "required_placement_resources: ";
-    for(auto r : required_placement_resources) {
-      RAY_LOG(ERROR) << "\t" << r.first << ", " << r.second;
-    }
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);

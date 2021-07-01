@@ -18,7 +18,6 @@ ResourceSet::ResourceSet(const std::unordered_map<std::string, FixedPoint> &reso
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
-    RAY_CHECK(resource_pair.second > 0);
     resource_capacity_[resource_pair.first] = FixedPoint(resource_pair.second);
   }
 }
@@ -27,7 +26,6 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (size_t i = 0; i < resource_labels.size(); i++) {
-    RAY_CHECK(resource_capacity[i] > 0);
     resource_capacity_[resource_labels[i]] = FixedPoint(resource_capacity[i]);
   }
 }

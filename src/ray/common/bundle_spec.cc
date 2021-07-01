@@ -109,7 +109,7 @@ bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id
 
 std::string GetOriginalResourceName(const std::string &resource) {
   auto idx = resource.find("_group_");
-  if(idx > 0) {
+  if (idx > 0) {
     return resource.substr(0, idx);
   } else {
     return "";

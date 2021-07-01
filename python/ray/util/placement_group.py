@@ -8,7 +8,7 @@ import ray
 from ray._raylet import ObjectRef
 from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
-from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
+from ray.ray_constants import to_memory_units
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 

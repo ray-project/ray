@@ -796,7 +796,6 @@ void ClusterTaskManager::RecordMetrics() {
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
   for (auto shapes_it = infeasible_tasks_.begin();
        shapes_it != infeasible_tasks_.end();) {
-    RAY_LOG(ERROR) << "DBG: TryLocalInfeasibleTaskScheduling";
     auto &work_queue = shapes_it->second;
     RAY_CHECK(!work_queue.empty())
         << "Empty work queue shouldn't have been added as a infeasible shape.";
