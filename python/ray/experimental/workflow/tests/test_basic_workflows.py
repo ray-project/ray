@@ -2,6 +2,7 @@ import time
 
 import ray
 from ray.experimental import workflow
+from ray.experimental.workflow.workflow_access import flatten_workflow_output
 
 
 @workflow.step
@@ -105,4 +106,19 @@ def test_async_execution():
     assert duration < 5  # workflow.run is not blocked
     assert ray.get(output) == 314
 
+    ray.shutdown()
+
+
+@ray.remote
+def deep_nested(x):
+    if x >= 42:
+        return x
+    return deep_nested.remote(x + 1)
+
+
+def test_workflow_output_resolving():
+    ray.init()
+    nested_ref = deep_nested.remote(30)
+    ref = flatten_workflow_output("fake_workflow_id", nested_ref)
+    assert ray.get(ref) == 42
     ray.shutdown()
