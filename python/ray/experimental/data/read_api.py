@@ -17,7 +17,7 @@ from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 def autoinit_ray(f):
     def wrapped(*a, **kw):
         if not ray.is_initialized():
-            ray.client.connect()
+            ray.client().connect()
         return f(*a, **kw)
 
     return wrapped
@@ -146,6 +146,7 @@ def read_parquet(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow.parquet as pq
+    import numpy as np
 
     pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
     pieces = pq_ds.pieces
@@ -159,10 +160,6 @@ def read_parquet(paths: Union[str, List[str]],
                                        piece.file_options, i,
                                        piece.partition_keys))
 
-    read_tasks = [[] for _ in builtins.range(parallelism)]
-    for i, piece in enumerate(pieces):
-        read_tasks[i].append(piece)
-    nonempty_tasks = [r for r in read_tasks if r]
     partitions = pq_ds.partitions
 
     @ray.remote
@@ -172,7 +169,10 @@ def read_parquet(paths: Union[str, List[str]],
             columns=columns, use_threads=False, partitions=partitions)
         return ArrowBlock(table)
 
-    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
+    return Dataset([
+        gen_read.remote(ps) for ps in np.array_split(pieces, parallelism)
+        if len(ps) > 0
+    ])
 
 
 @autoinit_ray
