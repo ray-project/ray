@@ -197,7 +197,7 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            if (self._keep_min_worker_of_node_type(node_id, node_type_counts)
+            if (self._keep_worker_of_node_type(node_id, node_type_counts)
                     or not nodes_allowed_to_terminate.get(
                         node_id, True)) and self.launch_config_ok(node_id):
                 continue
@@ -449,15 +449,20 @@ class StandardAutoscaler:
                 nodes_allowed_to_terminate[node_id] = False
         return nodes_allowed_to_terminate
 
-    def _keep_min_worker_of_node_type(
+    def _keep_worker_of_node_type(
             self, node_id: NodeID,
             node_type_counts: Dict[NodeType, int]) -> bool:
-        """Returns if workers of node_type can be terminated.
-        The worker cannot be terminated to respect min_workers constraint.
+        """Determines if a worker should be kept based on the min_workers
+        constraint of the worker's node_type.
 
-        Receives the counters of running nodes so far and determines if idle
-        node_id should be terminated or not. It also updates the counters
-        (node_type_counts), which is returned by reference.
+        Returns True exactly when both of the following hold:
+        (a) The worker's node_type is present among the keys of the current
+            config's available_node_types dict.
+        (b) Deleting the node would violate the min_workers constraint for that
+            worker's node_type.
+
+        Also updates the counter dict (node_type_counts), which is passed in by
+        reference.
 
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
@@ -585,6 +590,7 @@ class StandardAutoscaler:
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
         if node_type not in self.available_node_types:
             # The node type has been deleted from the cluster config.
+            # Don't keep the node.
             return False
 
         # The `worker_nodes` field is deprecated in favor of per-node-type
