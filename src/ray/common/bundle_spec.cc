@@ -46,7 +46,8 @@ void BundleSpecification::ComputeBundleResourceLabels() {
         FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), -1);
     bundle_resource_labels_[wildcard_label] = resource_value;
   }
-  auto bundle_label = FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
+  auto bundle_label =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
   bundle_resource_labels_[bundle_label] = 1;
 }
 

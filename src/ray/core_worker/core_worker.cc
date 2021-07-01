@@ -1599,7 +1599,8 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
         new_resources[index_name] = iter->second;
       }
     }
-    auto bundle_label = FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
+    auto bundle_label =
+        FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
     new_resources[bundle_label] = 0;
     return new_resources;
   }
