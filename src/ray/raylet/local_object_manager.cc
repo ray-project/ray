@@ -64,7 +64,10 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, object_id]() { ReleaseFreedObject(object_id); };
+    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      ReleaseFreedObject(object_id);
+    };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
@@ -213,8 +216,13 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
-      num_bytes_pending_spill_ += it->second.first->GetSize();
+
+      // Move a pinned object to the pending spill object.
+      auto object_size = it->second.first->GetSize();
+      num_bytes_pending_spill_ += object_size;
       objects_pending_spill_[id] = std::move(it->second);
+
+      pinned_objects_size_ -= object_size;
       pinned_objects_.erase(it);
     }
   }
@@ -451,6 +459,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       // If there's no more refs, delete the object.
       if (url_ref_count_it->second == 0) {
         url_ref_count_.erase(url_ref_count_it);
+        RAY_LOG(DEBUG) << "The URL " << object_url
+                       << " is deleted because the references are out of scope.";
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
@@ -513,6 +523,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
+  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
 }
 

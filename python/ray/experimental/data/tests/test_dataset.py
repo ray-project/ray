@@ -135,6 +135,66 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item
 
 
+def test_map_batch(ray_start_regular_shared, tmp_path):
+    # Test input validation
+    ds = ray.experimental.data.range(5)
+    with pytest.raises(ValueError):
+        ds.map_batches(
+            lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
+
+    # Test pandas
+    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
+    print(ds_list)
+    values = [s["one"] for s in ds_list]
+    assert values == [2, 3, 4]
+    values = [s["two"] for s in ds_list]
+    assert values == [3, 4, 5]
+
+    # Test Pyarrow
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(
+        lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
+    values = [s["one"] for s in ds_list]
+    assert values == [1, 2, 3]
+    values = [s["two"] for s in ds_list]
+    assert values == [2, 3, 4]
+
+    # Test batch
+    size = 300
+    ds = ray.experimental.data.range(size)
+    ds_list = ds.map_batches(lambda df: df + 1, batch_size=17).take(limit=size)
+    for i in range(size):
+        # The pandas column is "0", and it originally has rows from 0~299.
+        # After the map batch, it should have 1~300.
+        row = ds_list[i]
+        assert row["0"] == i + 1
+    assert ds.count() == 300
+
+    # Test the lambda returns different types than the batch_format
+    # pandas => list block
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
+    assert ds_list == [1, 1, 1]
+    assert ds.count() == 3
+
+    # pyarrow => list block
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds_list = ds.map_batches(
+        lambda df: [1], batch_size=1, batch_format="pyarrow").take()
+    assert ds_list == [1, 1, 1]
+    assert ds.count() == 3
+
+    # Test the wrong return value raises an exception.
+    ds = ray.experimental.data.read_parquet(tmp_path)
+    with pytest.raises(ValueError):
+        ds_list = ds.map_batches(
+            lambda df: 1, batch_size=2, batch_format="pyarrow").take()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

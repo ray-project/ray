@@ -39,6 +39,39 @@ def attempt_to_load_balance(remote_function,
     assert attempts < num_attempts
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_many_args(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects are borrowed.
+    cluster = ray_start_cluster
+    object_size = int(1e6)
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    for _ in range(4):
+        cluster.add_node(
+            num_cpus=1, object_store_memory=(4 * object_size * 25))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(i, *args):
+        print(i)
+        return
+
+    @ray.remote
+    def put():
+        return np.zeros(object_size, dtype=np.uint8)
+
+    xs = [put.remote() for _ in range(100)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    tasks = []
+    for i in range(100):
+        args = [np.random.choice(xs) for _ in range(25)]
+        tasks.append(f.remote(i, *args))
+
+    ray.get(tasks, timeout=30)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets
@@ -441,41 +474,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert object_memory_usage() == 0
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_many_args(ray_start_cluster):
-    # This test ensures that a task will run where its task dependencies are
-    # located, even when those objects are borrowed.
-    cluster = ray_start_cluster
-    object_size = int(1e6)
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
-    for _ in range(4):
-        cluster.add_node(
-            num_cpus=1, object_store_memory=(4 * object_size * 25))
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(i, *args):
-        print(i)
-        return
-
-    @ray.remote
-    def put():
-        return np.zeros(object_size, dtype=np.uint8)
-
-    xs = [put.remote() for _ in range(100)]
-    ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    tasks = []
-    for i in range(100):
-        args = [np.random.choice(xs) for _ in range(25)]
-        tasks.append(f.remote(i, *args))
-    ray.get(tasks, timeout=30)
+    wait_for_condition(lambda: object_memory_usage() == 0)
 
 
 if __name__ == "__main__":
