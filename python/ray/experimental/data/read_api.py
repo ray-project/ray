@@ -11,8 +11,9 @@ if TYPE_CHECKING:
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
+from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
+from ray.experimental.data.impl import reader as _reader
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +399,12 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    dataset = from_items(paths, parallelism=parallelism)
+    return dataset.map(
+        lambda path: _reader.read_file(
+            path,
+            include_paths=include_paths,
+            filesystem=filesystem))
 
 
 def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:

@@ -11,6 +11,7 @@ import ray
 from ray.util.dask import ray_dask_get
 
 from ray.tests.conftest import *  # noqa
+import ray.experimental.data.tests.util as util
 
 
 def test_basic(ray_start_regular_shared):
@@ -145,6 +146,35 @@ def test_pyarrow(ray_start_regular_shared):
     assert ds.filter(lambda x: x["value"] == 0) \
         .flat_map(lambda x: [{"b": x["value"] + 2}, {"b": x["value"] + 20}]) \
         .take() == [{"b": 2}, {"b": 20}]
+
+
+def test_read_binary_files(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
+        for i, item in enumerate(ds.to_local_iterator()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
+def test_read_binary_files_with_paths(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(
+            paths, include_paths=True, parallelism=10)
+        for i, (path, item) in enumerate(ds.to_local_iterator()):
+            assert path == paths[i]
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
+def test_read_binary_files_with_fs(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (tempdir, paths):
+        # All the paths are absolute, so we want the root file system.
+        fs, _ = pa.fs.FileSystem.from_uri("/")
+        ds = ray.experimental.data.read_binary_files(
+            paths, filesystem=fs, parallelism=10)
+        for i, item in enumerate(ds.to_local_iterator()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):
