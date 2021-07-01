@@ -766,7 +766,7 @@ def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
     Args:
         head_node_id (Optional[str]): head node id if a head exists, else None
         new_launch_hash (str): hash of current user-submitted head config
-        head_node_type (str): current user-submitted head node-type key
+        new_head_node_type (str): current user-submitted head node-type key
 
     Returns:
         bool: True if a new Ray head node should be launched, False otherwise
