@@ -269,6 +269,8 @@ def read_parquet(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow.parquet as pq
+    import numpy as np
+
     if filesystem is None:
         filesystem, paths = _parse_paths(paths)
     pq_ds = pq.ParquetDataset(

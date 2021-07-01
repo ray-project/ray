@@ -182,7 +182,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
     print(ds_list)
     values = [s["one"] for s in ds_list]
@@ -191,7 +191,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     assert values == [3, 4, 5]
 
     # Test Pyarrow
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(
         lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
     values = [s["one"] for s in ds_list]
@@ -212,20 +212,20 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(
         lambda df: [1], batch_size=1, batch_format="pyarrow").take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # Test the wrong return value raises an exception.
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     with pytest.raises(ValueError):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
