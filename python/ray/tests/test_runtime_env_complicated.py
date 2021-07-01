@@ -600,7 +600,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
-def test_env_installation_nonblocking():
+def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env = {"env_vars": {"TEST_123": "123"}}
     job_config = ray.job_config.JobConfig(runtime_env=env)
