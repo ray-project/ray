@@ -208,7 +208,7 @@ class ProxyManager():
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=self.node._session_dir)
+            session_dir=self.node.get_session_dir_path())
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
