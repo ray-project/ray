@@ -85,6 +85,13 @@ def test_mlflow_example(start_client_server):
     tune_decorated(mlflow_tracking_uri, finish_fast=True)
 
 
+def test_pbt_transformers(start_client_server):
+    assert ray.util.client.ray.is_connected()
+    from ray.tune.examples.pbt_transformers.pbt_transformers import \
+        tune_transformer
+    tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
