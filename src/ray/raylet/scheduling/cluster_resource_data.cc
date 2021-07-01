@@ -71,7 +71,6 @@ ResourceRequest ResourceMapToResourceRequest(
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
-    RAY_LOG(ERROR) << "DBG: " << resource.first << ", " << resource.second;
     if (resource.first == ray::kCPU_ResourceLabel) {
       resource_request.predefined_resources[CPU] = resource.second;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
