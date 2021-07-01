@@ -12,8 +12,9 @@ if TYPE_CHECKING:
 import ray
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block
-from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
+from ray.experimental.data.impl.arrow_block import (
+    DelegatingArrowBlockBuilder, ArrowBlock)
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -106,7 +107,52 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        raise NotImplementedError  # P0
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
+        import pyarrow as pa
+        import pandas as pd
+
+        def transform(block: Block[T]) -> Block[U]:
+            total_rows = block.num_rows()
+            max_batch_size = batch_size
+            if max_batch_size is None:
+                max_batch_size = total_rows
+
+            builder = DelegatingArrowBlockBuilder()
+
+            for start in range(0, total_rows, max_batch_size):
+                # Build a block for each batch.
+                end = min(total_rows, start + max_batch_size)
+                # Note: if the block is a list, it doesn't support zero-copy.
+                view = block.slice(start, end)
+                if batch_format == "pandas":
+                    view = view.to_pandas()
+                elif batch_format == "pyarrow":
+                    view = view._table
+                else:
+                    raise ValueError(
+                        f"The given batch format: {batch_format} "
+                        f"is invalid. Supported batch type: {BatchType}")
+
+                applied = fn(view)
+                if isinstance(applied, list):
+                    applied = ListBlock(applied)
+                elif isinstance(applied, pd.core.frame.DataFrame):
+                    applied = ArrowBlock(pa.Table.from_pandas(applied))
+                elif isinstance(applied, pa.Table):
+                    applied = ArrowBlock(applied)
+                else:
+                    raise ValueError("The map batch UDF returns a type "
+                                     f"{type(applied)}, which is not allowed. "
+                                     "The return type must be either list, "
+                                     "pandas.DataFrame, or pyarrow.Table")
+                builder.add_block(applied)
+
+            return builder.build()
+
+        compute = get_compute(compute)
+
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
                  fn: Callable[[T], Iterator[U]],

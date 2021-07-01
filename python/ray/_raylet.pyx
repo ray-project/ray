@@ -117,8 +117,7 @@ from ray.exceptions import (
 )
 from ray._private.utils import decode
 from ray._private.client_mode_hook import (
-    _enable_client_hook,
-    _disable_client_hook,
+    disable_client_hook,
 )
 import msgpack
 
@@ -620,9 +619,8 @@ cdef CRayStatus task_execution_handler(
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
-    with gil:
+    with gil, disable_client_hook():
         try:
-            client_was_enabled = _disable_client_hook()
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -663,8 +661,6 @@ cdef CRayStatus task_execution_handler(
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
-        finally:
-            _enable_client_hook(client_was_enabled)
 
     return CRayStatus.OK()
 
@@ -990,6 +986,10 @@ cdef class CoreWorker:
         return PlacementGroupID(
             CCoreWorkerProcess.GetCoreWorker()
             .GetCurrentPlacementGroupId().Binary())
+
+    def get_worker_id(self):
+        return WorkerID(
+            CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
 
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
