@@ -1,3 +1,4 @@
+from glob import glob
 import os
 import pickle
 import pytest
@@ -22,7 +23,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
     Creates a ProxyManager and tests basic handling of the lifetime of a
     specific RayClient Server. It checks the following properties:
     1. The SpecificServer is created using the first port.
-    2. The SpecificServer comes alive.
+    2. The SpecificServer comes alive and has a log associated with it.
     3. The SpecificServer destructs itself when no client connects.
     4. The ProxyManager returns the port of the destructed SpecificServer.
     """
@@ -44,6 +45,11 @@ def test_proxy_manager_lifecycle(shutdown_only):
 
     proc = pm._get_server_for_client(client)
     assert proc.port == port_one
+
+    log_files_path = os.path.join(pm.node.get_session_dir_path(), "logs",
+                                  "ray_client_server*")
+    files = glob.glob(log_files_path)
+    assert any(port_one in f for f in files)
 
     proc.process_handle_future.result().process.wait(10)
     # Wait for reconcile loop
