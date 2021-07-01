@@ -2,9 +2,9 @@ import math
 from typing import TypeVar, List
 
 import ray
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.impl.block import Block, BlockMetadata
 from ray.experimental.data.impl.progress_bar import ProgressBar
-from ray.experimental.data.impl.block_list import BlockMetadata, BlockList
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")

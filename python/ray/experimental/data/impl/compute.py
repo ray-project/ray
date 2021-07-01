@@ -1,8 +1,8 @@
 from typing import TypeVar, Iterable, Any
 
 import ray
-from ray.experimental.data.impl.block import Block, ObjectRef
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
+from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")

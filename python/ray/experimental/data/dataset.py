@@ -18,8 +18,9 @@ import ray
 import numpy as np
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
+from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
 
