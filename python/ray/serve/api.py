@@ -1406,9 +1406,12 @@ def deployment(
             catch-all.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
-        user_config (Optional[Any]): [experimental] Arguments to pass to the
-            reconfigure method of the backend. The reconfigure method is
-            called if user_config is not None.
+        user_config (Optional[Any]): [experimental] Config to pass to the
+            reconfigure method of the backend. This can be updated dynamically
+            without changing the version of the deployment and restarting its
+            replicas. The user_config needs to be hashable to keep track of
+            updates, so it must only contain hashable types, or hashable types
+            nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this backend without receiving a
             response. Defaults to 100.
