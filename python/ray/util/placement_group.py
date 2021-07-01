@@ -159,13 +159,9 @@ class PlacementGroup:
         return PlacementGroup(pg_id, bundle_cache)
 
     def _get_a_non_zero_resource(self, bundle: Dict):
-        # Any number between 0-1 should be fine.
-        MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
-                value = MEMORY_RESOURCE_UNIT_BYTES \
-                    if key == "memory" else MOCK_VALUE
-                return key, value
+                return key, 0
         assert False, "This code should be unreachable."
 
     def _fill_bundle_cache_if_needed(self) -> None:

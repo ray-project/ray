@@ -204,8 +204,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
@@ -797,6 +796,7 @@ void ClusterTaskManager::RecordMetrics() {
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
   for (auto shapes_it = infeasible_tasks_.begin();
        shapes_it != infeasible_tasks_.end();) {
+    RAY_LOG(ERROR) << "DBG: TryLocalInfeasibleTaskScheduling";
     auto &work_queue = shapes_it->second;
     RAY_CHECK(!work_queue.empty())
         << "Empty work queue shouldn't have been added as a infeasible shape.";

@@ -1,5 +1,8 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/bundle_spec.h"
+
+namespace ray {
 
 const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
@@ -68,6 +71,7 @@ ResourceRequest ResourceMapToResourceRequest(
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
+    RAY_LOG(ERROR) << "DBG: " << resource.first << ", " << resource.second;
     if (resource.first == ray::kCPU_ResourceLabel) {
       resource_request.predefined_resources[CPU] = resource.second;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
@@ -79,6 +83,9 @@ ResourceRequest ResourceMapToResourceRequest(
     } else {
       int64_t id = string_to_int_map.Insert(resource.first);
       resource_request.custom_resources[id] = resource.second;
+      if (!GetOriginalResourceName(resource.first).empty()) {
+        resource_request.placement_resources.insert(id);
+      }
     }
   }
 
@@ -121,6 +128,7 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
       resource_request.custom_resources[it->first] += it->second[j];
     }
   }
+  resource_request.placement_resources = placement_resources;
   return resource_request;
 }
 
@@ -313,13 +321,6 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   return buffer.str();
 }
 
-const std::string format_resource(std::string resource_name, double quantity) {
-  if (resource_name == "object_store_memory" || resource_name == "memory") {
-    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
-  }
-  return std::to_string(quantity);
-}
-
 std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   bool first = true;
@@ -451,7 +452,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   for (const auto &it : this->custom_resources) {
     task_resources.custom_resources.emplace(it.first, it.second.available);
   }
-
   return task_resources;
 };
 
@@ -466,7 +466,7 @@ bool ResourceRequest::IsEmpty() const {
       return false;
     }
   }
-  return true;
+  return placement_resources.empty();
 }
 
 std::string ResourceRequest::DebugString() const {
@@ -550,4 +550,6 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
     }
   }
   return true;
+}
+
 }

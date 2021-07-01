@@ -511,6 +511,8 @@ class SchedulingResources {
   ResourceSet resources_normal_tasks_;
 };
 
+std::string format_resource(std::string resource_name, double quantity);
+
 }  // namespace ray
 
 namespace std {

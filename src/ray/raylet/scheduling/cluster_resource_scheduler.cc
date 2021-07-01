@@ -62,14 +62,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    // This node is new, so add it to the map.
-    nodes_.emplace(node_id, node_resources);
-  } else {
-    // This node exists, so update its resources.
-    it->second = Node(node_resources);
-  }
+  nodes_.insert_or_assign(node_id, Node(node_resources));
 }
 
 bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
@@ -170,7 +163,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
   int violations = 0;
-
+  RAY_LOG(ERROR) << "DBG: IsSchedulable running";
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] >
@@ -742,9 +735,10 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
-
+  RAY_LOG(ERROR) << "DBG: AllocateTask";
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    RAY_LOG(ERROR) << "DBG: PredefinedResource: " <<  i << ", " << resource_request.predefined_resources[i];
     if (resource_request.predefined_resources[i] > 0) {
       if (!AllocateResourceInstances(resource_request.predefined_resources[i],
                                      local_resources_.predefined_resources[i].available,
@@ -758,6 +752,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   }
 
   for (const auto &task_req_custom_resource : resource_request.custom_resources) {
+    RAY_LOG(ERROR) << "DBG: CustomResources: " <<  task_req_custom_resource.first << ", " << task_req_custom_resource.second;
     auto it = local_resources_.custom_resources.find(task_req_custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {
       if (task_req_custom_resource.second > 0) {
@@ -775,8 +770,19 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         }
       }
     } else {
+      // Allocation failed. Restore node's local resources by freeing the resources
+      // of the failed allocation.
+      FreeTaskResourceInstances(task_allocation);
       return false;
     }
+  }
+
+  for (const auto &placement_resource : resource_request.placement_resources) {
+    if (!local_resources_.custom_resources.count(placement_resource)) {
+      FreeTaskResourceInstances(task_allocation);
+      return false;
+    }
+    task_allocation->placement_resources.insert(placement_resource);
   }
   return true;
 }
