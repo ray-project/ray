@@ -59,7 +59,8 @@ class ResourceChangingScheduler(FIFOScheduler):
                         trial: Trial, result: Dict) -> str:
         base_scheduler_decision = self._base_scheduler.on_trial_result(
             trial_runner, trial, result)
-        if base_scheduler_decision == TrialScheduler.CONTINUE:
+        if (base_scheduler_decision == TrialScheduler.CONTINUE
+                and not trial.has_new_resources):
             new_resource = self.should_change_trial_resources(
                 trial_runner, trial, result)
             if new_resource is None:
