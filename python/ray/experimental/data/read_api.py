@@ -202,8 +202,8 @@ def read_json(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
-    from pyarrow.fs import (
-        FileType, FileSelector, _resolve_filesystem_and_path)
+    from pyarrow.fs import (FileType, FileSelector,
+                            _resolve_filesystem_and_path)
     from pyarrow import json
     import numpy as np
 
@@ -221,9 +221,8 @@ def read_json(paths: Union[str, List[str]],
     for path in paths:
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
-        if (
-                filesystem is not None and
-                type(resolved_filesystem) != type(filesystem)):
+        if (filesystem is not None
+                and type(resolved_filesystem) != type(filesystem)):
             raise ValueError("All paths must use same filesystem.")
         filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
@@ -295,8 +294,8 @@ def read_csv(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
-    from pyarrow.fs import (
-        FileType, FileSelector, _resolve_filesystem_and_path)
+    from pyarrow.fs import (FileType, FileSelector,
+                            _resolve_filesystem_and_path)
     from pyarrow import csv
     import numpy as np
 
@@ -314,9 +313,8 @@ def read_csv(paths: Union[str, List[str]],
     for path in paths:
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
-        if (
-                filesystem is not None and
-                type(resolved_filesystem) != type(filesystem)):
+        if (filesystem is not None
+                and type(resolved_filesystem) != type(filesystem)):
             raise ValueError("All paths must use same filesystem.")
         filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
