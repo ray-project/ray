@@ -20,19 +20,8 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
-    : periodical_runner_(main_io_service),
-      gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage),
-      redis_broadcast_enabled_(redis_broadcast_enabled) {
-  if (redis_broadcast_enabled_) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { SendBatchedResourceUsage(); },
-        RayConfig::instance().raylet_report_resources_period_milliseconds(),
-        "GcsResourceManager.deadline_timer.send_batched_resource_usage");
-  }
-}
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    : gcs_table_storage_(gcs_table_storage) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -85,11 +74,7 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
-      } else {
+      {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
@@ -141,11 +126,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
-      } else {
+      {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
@@ -398,18 +379,6 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
     rpc::ResourceUsageBatchData &buffer) {
   for (auto &resources : resources_buffer_) {
     buffer.add_batch()->Swap(&resources.second);
-  }
-}
-
-void GcsResourceManager::SendBatchedResourceUsage() {
-  absl::MutexLock guard(&resource_buffer_mutex_);
-  if (!resources_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    GetResourceUsageBatchForBroadcast_Locked(*batch);
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
-    resources_buffer_.clear();
   }
 }
 

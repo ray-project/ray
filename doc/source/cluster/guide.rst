@@ -115,7 +115,7 @@ Monitoring and observability
 Ray comes with 3 main observability features:
 
 1. :ref:`The dashboard <Ray-dashboard>`
-2. :ref:`Ray status <monitor-cluster>`
+2. :ref:`ray status <monitor-cluster>`
 3. :ref:`Prometheus metrics <multi-node-metrics>`
 
 Monitoring the cluster via the dashboard
@@ -128,7 +128,7 @@ By default, the cluster launcher and operator will launch the dashboard, but
 not publicly expose it.
 
 If you launch your application via the cluster launcher, you can securely
-portforward local traffic to the dashboard via the ``Ray dashboard`` command
+portforward local traffic to the dashboard via the ``ray dashboard`` command
 (which establishes an SSH tunnel). The dashboard will now be visible at
 ``http://localhost:8265``.
 
@@ -144,12 +144,12 @@ information from the cluster. This information, along with the status of
 starting nodes, can be accessed via the ``ray status`` command.
 
 To dump the current state of a cluster launched via the cluster launcher, you
-can run ``Ray exec cluster.yaml "Ray status"``.
+can run ``ray exec cluster.yaml "Ray status"``.
 
-For a more "live" monitoring experience, it is recommended that you run ``Ray
-status`` in a watch loop: ``Ray exec cluster.yaml "watch -n 1 Ray status"``.
+For a more "live" monitoring experience, it is recommended that you run ``ray
+status`` in a watch loop: ``ray exec cluster.yaml "watch -n 1 Ray status"``.
 
-With the kubernetes operator, you should replace ``Ray exec cluster.yaml`` with
+With the kubernetes operator, you should replace ``ray exec cluster.yaml`` with
 ``kubectl exec <head node pod>``.
 
 Prometheus metrics
@@ -229,9 +229,11 @@ Configuring the autoscaler
 For large, long running clusters, there are a few parameters that can be tuned.
 
 * Ensure your quotas for node types are set correctly.
-* For long running clusters, set the ``AUTOSCALER_MAX_RETRIES`` environment
+* For long running clusters, set the ``AUTOSCALER_MAX_NUM_FAILURES`` environment
   variable to a large number (or ``inf``) to avoid unexpected autoscaler
-  crashes. (Note: you may want a separate mechanism to detect if the autoscaler
+  crashes. The variable can be set by prepending \ ``export AUTOSCALER_MAX_NUM_FAILURES=inf;``
+  to the head node's Ray start command.
+  (Note: you may want a separate mechanism to detect if the autoscaler
   errors too often).
 * For large clusters, consider tuning ``upscaling_speed`` for faster
   autoscaling.

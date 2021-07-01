@@ -187,6 +187,7 @@ if __name__ == "__main__":
         # scheduler.
         result["stage_4_spread"] = stage_4_spread
         result["success"] = 1
+        print("PASSED.")
 
         # TODO(rkn): The test below is commented out because it currently
         # does not pass.
@@ -202,6 +203,6 @@ if __name__ == "__main__":
         # logger.info("Finished after %s seconds.", time.time() - start_time)
     except Exception as e:
         logging.exception(e)
+        print("FAILED.")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:
         out_put.write(json.dumps(result))
-    print("PASSED.")
