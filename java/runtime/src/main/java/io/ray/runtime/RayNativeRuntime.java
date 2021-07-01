@@ -46,12 +46,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   private void updateSessionDir(GcsClient gcsClient) {
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      // Fetch session dir from GCS if this is a driver.
-      final String sessionDir = gcsClient.getInternalKV("session_dir");
-      Preconditions.checkNotNull(sessionDir);
-      rayConfig.setSessionDir(sessionDir);
-    }
+    // Fetch session dir from GCS if this is a driver.
+    final String sessionDir = gcsClient.getInternalKV("session_dir");
+    Preconditions.checkNotNull(sessionDir);
+    rayConfig.setSessionDir(sessionDir);
   }
 
   @Override
@@ -65,16 +63,23 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       Preconditions.checkNotNull(rayConfig.getRedisAddress());
 
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
-      updateSessionDir(gcsClient);
-
-      // Expose ray ABI symbols which may be depended by other shared
-      // libraries such as libstreaming_java.so.
-      // See BUILD.bazel:libcore_worker_library_java.so
-      Preconditions.checkNotNull(rayConfig.sessionDir);
-      JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-
+      // In order to remove redis dependency in Java lang, we use a temp dir to load library 
+      // instead of getting session dir from redis.
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
+        JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+        updateSessionDir(gcsClient);
+        Preconditions.checkNotNull(rayConfig.sessionDir);
+      } else {
+        // Expose ray ABI symbols which may be depended by other shared
+        // libraries such as libstreaming_java.so.
+        // See BUILD.bazel:libcore_worker_library_java.so
+        Preconditions.checkNotNull(rayConfig.sessionDir);
+        JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      }
+      
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         RunManager.getAddressInfoAndFillConfig(rayConfig);
       }

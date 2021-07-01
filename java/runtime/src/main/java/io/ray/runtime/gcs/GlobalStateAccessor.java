@@ -109,7 +109,7 @@ public class GlobalStateAccessor {
   public byte[] getInternalKV(String k) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return nativeGetInternalKV(globalStateAccessorNativePointer, k);
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, k);
     }
   }
 
