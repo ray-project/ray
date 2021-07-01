@@ -27,6 +27,7 @@ def autoinit_ray(f):
 def _parse_paths(paths: Union[str, List[str]]
                  ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
     from pyarrow import fs
+
     def parse_single_path(path: str):
         if Path(path).exists():
             return fs.LocalFileSystem(), path
