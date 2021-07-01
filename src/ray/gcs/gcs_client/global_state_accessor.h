@@ -168,10 +168,14 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
-  /// TODO: Add comment
+  /// Get the node to connect for a Ray driver.
+  ///
+  /// \param[in] node_ip_address The IP address of the desired node to connect.
+  /// \param[out] node_to_connect The info of the node to connect. To support
+  /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
+  /// Where used, it needs to be deserialized with protobuf function.
   ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
-                                        int num_retries,
-                                        ray::rpc::GcsNodeInfo *node_to_connect);
+                                        std::string *node_to_connect);
 
  private:
   /// MultiItem transformation helper in template style.

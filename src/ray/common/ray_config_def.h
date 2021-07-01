@@ -429,3 +429,9 @@ RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
 /// If enabled, raylet will report resources only when resources are changed.
 RAY_CONFIG(bool, enable_light_weight_resource_report, true)
+
+// The number of seconds to wait for the Raylet to start. This is normally
+// fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
+// (a few GB/s) to populate all the pages on Raylet startup.
+RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+           std::string("1") == getenv("RAY_PREALLOCATE_PLASMA_MEMORY") ? 120 : 10)

@@ -11,9 +11,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import redis.clients.util.IOUtils;
 
 /** Ray service management on one box. */
 public class RunManager {
@@ -69,7 +69,7 @@ public class RunManager {
         String.format(
             "import ray;"
                 + " print(ray._private.services.get_address_info_from_redis("
-                + "'%s', '%s', redis_password='%s', log_warning=False))",
+                + "'%s', '%s', redis_password='%s'))",
             rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 

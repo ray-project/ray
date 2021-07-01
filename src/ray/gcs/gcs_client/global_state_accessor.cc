@@ -263,9 +263,8 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
 }
 
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
-    const std::string &node_ip_address, int num_retries,
-    ray::rpc::GcsNodeInfo *node_to_connect) {
-  int counter = 0;
+    const std::string &node_ip_address, std::string *node_to_connect) {
+  auto start_ms = current_time_ms();
   while (true) {
     std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
@@ -332,7 +331,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
             << "address that the head should use when sending to this node.";
         status = Status::NotFound(oss.str());
       } else {
-        *node_to_connect = nodes[relevant_client_index];
+        *node_to_connect = nodes[relevant_client_index].SerializeAsString();
         return Status::OK();
       }
     }
@@ -341,7 +340,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       return status;
     }
 
-    if (counter == num_retries) {
+    if (current_time_ms - start_ms >=
+        RayConfig::instance().raylet_start_wait_time_s * 1000) {
       return status;
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "
@@ -349,7 +349,6 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                         "'ray start' on this node?";
     // Some of the information may not be in Redis yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    counter++;
   }
 }
 
