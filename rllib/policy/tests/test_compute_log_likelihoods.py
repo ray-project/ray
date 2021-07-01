@@ -57,7 +57,7 @@ def do_test_log_likelihood(run,
                     explore=True,
                     # Do not unsquash actions
                     # (remain in normalized [-1.0; 1.0] space).
-                    normalize_actions=False,
+                    unsquash_actions=False,
                 ))
 
         # Test all taken actions for their log-likelihoods vs expected values.
@@ -94,6 +94,7 @@ def do_test_log_likelihood(run,
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
+                    actions_normalized=True,
                 )
                 check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.

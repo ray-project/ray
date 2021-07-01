@@ -573,7 +573,7 @@ def build_eager_tf_policy(
                 state_batches=None,
                 prev_action_batch=None,
                 prev_reward_batch=None,
-                actions_normalized=None,
+                actions_normalized=True,
         ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError("Cannot compute log-prob/likelihood w/o an "

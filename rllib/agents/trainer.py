@@ -939,7 +939,7 @@ class Trainer(Trainable):
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             full_fetch: bool = False,
             explore: bool = None,
-            normalize_actions: Optional[bool] = None,
+            unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
         """Computes an action for the specified policy on the local Worker.
@@ -964,7 +964,7 @@ class Trainer(Trainable):
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            normalize_actions (bool): Should actions be unsquashed according to
+            unsquash_actions (bool): Should actions be unsquashed according to
                 the env's/Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 env's/Policy's action space?
@@ -989,7 +989,7 @@ class Trainer(Trainable):
             prev_action,
             prev_reward,
             info,
-            normalize_actions=normalize_actions,
+            unsquash_actions=unsquash_actions,
             clip_actions=clip_actions,
             explore=explore)
 

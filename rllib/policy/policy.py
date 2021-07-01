@@ -161,7 +161,7 @@ class Policy(metaclass=ABCMeta):
             clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            normalize_actions: bool = None,
+            unsquash_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -176,7 +176,7 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            normalize_actions (bool): Should actions be normalized according to
+            unsquash_actions (bool): Should actions be unsquashed according to
                 the Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 Policy's action space?
@@ -195,8 +195,10 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
-        normalize_actions = \
-            normalize_actions if normalize_actions is not None \
+        # If policy works in normalized space, we should unsquash the action.
+        # Use value of config.normalize_actions, if None.
+        unsquash_actions = \
+            unsquash_actions if unsquash_actions is not None \
             else self.config["normalize_actions"]
         clip_actions = clip_actions if clip_actions is not None else \
             self.config["clip_actions"]
@@ -246,7 +248,7 @@ class Policy(metaclass=ABCMeta):
 
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
-        if normalize_actions:
+        if unsquash_actions:
             single_action = unsquash_action(single_action,
                                             self.action_space_struct)
         # Clip, according to env's action space.
