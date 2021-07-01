@@ -12,39 +12,48 @@ public class RayServeReplicaTest {
   @Test
   public void test() {
 
+    boolean inited = Ray.isInitialized();
+
+    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
 
-    String controllerName = "RayServeReplicaTest";
-    String backendTag = "b_tag";
-    String replicaTag = "r_tag";
+    try {
+      String controllerName = "RayServeReplicaTest";
+      String backendTag = "b_tag";
+      String replicaTag = "r_tag";
 
-    ActorHandle<ReplicaContext> controllerHandle =
-        Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
-            .setName(controllerName)
-            .remote();
+      ActorHandle<ReplicaContext> controllerHandle =
+          Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
+              .setName(controllerName)
+              .remote();
 
-    BackendConfig backendConfig = new BackendConfig();
-    ActorHandle<RayServeWrappedReplica> backendHandle =
-        Ray.actor(
-                RayServeWrappedReplica::new,
-                backendTag,
-                replicaTag,
-                "io.ray.serve.ReplicaContext",
-                new Object[] {backendTag, replicaTag, controllerName, new Object()},
-                backendConfig,
-                controllerName)
-            .remote();
+      BackendConfig backendConfig = new BackendConfig();
+      ActorHandle<RayServeWrappedReplica> backendHandle =
+          Ray.actor(
+                  RayServeWrappedReplica::new,
+                  backendTag,
+                  replicaTag,
+                  "io.ray.serve.ReplicaContext",
+                  new Object[] {backendTag, replicaTag, controllerName, new Object()},
+                  backendConfig,
+                  controllerName)
+              .remote();
 
-    backendHandle.task(RayServeWrappedReplica::ready).remote();
+      backendHandle.task(RayServeWrappedReplica::ready).remote();
 
-    RequestMetadata requestMetadata = new RequestMetadata();
-    requestMetadata.setRequestId("RayServeReplicaTest");
-    requestMetadata.setCallMethod("getBackendTag");
-    ObjectRef<Object> resultRef =
-        backendHandle
-            .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null)
-            .remote();
+      RequestMetadata requestMetadata = new RequestMetadata();
+      requestMetadata.setRequestId("RayServeReplicaTest");
+      requestMetadata.setCallMethod("getBackendTag");
+      ObjectRef<Object> resultRef =
+          backendHandle
+              .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null)
+              .remote();
 
-    Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), backendTag);
+    } finally {
+      if (!inited) {
+        Ray.shutdown();
+      }
+    }
   }
 }
