@@ -14,7 +14,6 @@ public class RayServeReplicaTest {
 
     boolean inited = Ray.isInitialized();
 
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
 
     try {
