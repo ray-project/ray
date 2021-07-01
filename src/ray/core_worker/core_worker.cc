@@ -493,8 +493,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
-      /*subscriber_address=*/rpc_address_.ip_address(),
-      /*subscriber_port=*/rpc_address_.port(),
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
@@ -910,8 +908,8 @@ void CoreWorker::RegisterToGcs() {
 
 void CoreWorker::CheckForRayletFailure() {
   // When running worker process in container, the worker parent process is not raylet.
-  // So we add RAYLET_PID enviroment to ray worker process.
-  if (const char *env_pid = std::getenv("RAYLET_PID")) {
+  // So we add RAY_RAYLET_PID enviroment to ray worker process.
+  if (const char *env_pid = std::getenv("RAY_RAYLET_PID")) {
     pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
@@ -2570,7 +2568,7 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
 void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
   object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
                                               std::move(send_reply_callback));

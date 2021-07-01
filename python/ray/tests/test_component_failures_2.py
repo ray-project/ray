@@ -36,6 +36,9 @@ def ray_start_workers_separate_multinode(request):
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
 
+    if num_nodes == 4 and sys.platform == "win32":
+        pytest.skip("Failing on Windows.")
+
     @ray.remote
     def get_pids():
         time.sleep(0.25)

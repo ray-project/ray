@@ -186,8 +186,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
-          self_node_id_, config.node_manager_address, config.node_manager_port,
-          RayConfig::instance().max_command_batch_size(),
+          self_node_id_, RayConfig::instance().max_command_batch_size(),
           /*get_client=*/
           [this](const rpc::Address &address) {
             return worker_rpc_pool_.GetOrConnect(address);
@@ -570,7 +569,8 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
-  cluster_task_manager_->FillResourceUsage(resources_data);
+  cluster_task_manager_->FillResourceUsage(
+      resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }

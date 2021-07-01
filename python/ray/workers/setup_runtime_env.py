@@ -81,9 +81,6 @@ def setup_worker(input_args):
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
 
-    # add worker-shim-pid argument
-    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
-
     commands = []
     py_executable: str = sys.executable
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
@@ -245,3 +242,7 @@ def inject_dependencies(
         deps.append({"pip": pip_dependencies})
 
     return conda_dict
+
+
+if __name__ == "__main__":
+    setup_worker(sys.argv[1:])

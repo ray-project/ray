@@ -68,7 +68,8 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
         return batch
 
     if not workers.remote_workers():
-        # Handle the serial sampling case.
+        # Handle the `num_workers=0` case, in which the local worker
+        # has to do sampling as well.
         def sampler(_):
             while True:
                 yield workers.local_worker().sample()

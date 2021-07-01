@@ -38,7 +38,7 @@ print(f"Agent loaded from saved model at {checkpoint_path}")
 env = gym.make(env_name)
 obs = env.reset()
 for i in range(1000):
-    action = agent.compute_action(obs)
+    action = agent.compute_single_action(obs)
     obs, reward, done, info = env.step(action)
     env.render()
     if done:
