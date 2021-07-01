@@ -365,9 +365,17 @@ class AWSNodeProvider(NodeProvider):
                 conf.update({
                     "MinCount": 1,
                     "MaxCount": count,
-                    "SubnetId": subnet_id,
+                    "NetworkInterfaces": [{
+                        "AssociatePublicIpAddress": True,
+                        "DeviceIndex": 0,
+                        "SubnetId": subnet_id,
+                    }],
                     "TagSpecifications": tag_specs
                 })
+                maybe_security_group_ids = conf.pop("SecurityGroupIds", None)
+                if maybe_security_group_ids is not None:
+                    conf["NetworkInterface"]["Groups"] = maybe_security_group_ids
+
                 created = self.ec2_fail_fast.create_instances(**conf)
                 created_nodes_dict = {n.id: n for n in created}
 
