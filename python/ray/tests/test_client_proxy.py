@@ -48,7 +48,7 @@ def test_proxy_manager_lifecycle(shutdown_only):
 
     log_files_path = os.path.join(pm.node.get_session_dir_path(), "logs",
                                   "ray_client_server*")
-    files = glob.glob(log_files_path)
+    files = glob(log_files_path)
     assert any(port_one in f for f in files)
 
     proc.process_handle_future.result().process.wait(10)
