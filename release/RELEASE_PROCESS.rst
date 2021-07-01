@@ -320,7 +320,7 @@ versions. If there is no CUDA version that is compatible, then downgrade either 
    
    Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
-8. **Send out an email announcing the release** to the engineering@anyscale.com
+8. **Send out an email announcing the release** to the employees@anyscale.com
    Google group, and post a slack message in the Announcements channel of the
    Ray slack (message a team lead if you do not have permissions.)
 
