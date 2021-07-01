@@ -1388,13 +1388,13 @@ class Trainer(Trainable):
                 policies[pid] = PolicySpec(*policy_spec)
 
             # Config is None -> Set to {}.
-            if policy_spec.config is None:
+            if policies[pid].config is None:
                 policies[pid] = policies[pid]._replace(config={})
             # Config not a dict.
-            elif not isinstance(policy_spec.config, dict):
+            elif not isinstance(policies[pid].config, dict):
                 raise ValueError(
                     f"Multiagent policy config for {pid} must be a dict, "
-                    f"but got {type(policy_spec[3])}!")
+                    f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
         # Multi-GPU setting: Must use TFMultiGPU if tf.
