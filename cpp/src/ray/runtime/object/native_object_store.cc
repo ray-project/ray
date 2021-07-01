@@ -12,8 +12,6 @@
 
 namespace ray {
 namespace api {
-NativeObjectStore::NativeObjectStore(NativeRayRuntime &native_ray_tuntime)
-    : native_ray_tuntime_(native_ray_tuntime) {}
 
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
