@@ -37,6 +37,8 @@ public class RayServeReplica {
 
   private Object callable;
 
+  private boolean metricsRegistered = false;
+
   private Count requestCounter;
 
   private Count errorCounter;
@@ -63,9 +65,16 @@ public class RayServeReplica {
         newConfig -> updateBackendConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
+    registerMetrics();
+  }
+
+  private void registerMetrics() {
+    if (!Ray.isInitialized() || Ray.getRuntimeContext().isSingleProcess()) {
+      return;
+    }
 
     Metrics.init(MetricConfig.DEFAULT_CONFIG);
-    this.requestCounter =
+    requestCounter =
         Metrics.count()
             .name("serve_backend_request_counter")
             .description("The number of queries that have been processed in this replica.")
@@ -73,7 +82,7 @@ public class RayServeReplica {
             .tags(ImmutableMap.of("backend", backendTag))
             .register();
 
-    this.errorCounter =
+    errorCounter =
         Metrics.count()
             .name("serve_backend_error_counter")
             .description("The number of exceptions that have occurred in the backend.")
@@ -81,7 +90,7 @@ public class RayServeReplica {
             .tags(ImmutableMap.of("backend", backendTag))
             .register();
 
-    this.restartCounter =
+    restartCounter =
         Metrics.count()
             .name("serve_backend_replica_starts")
             .description("The number of times this replica has been restarted due to failure.")
@@ -89,7 +98,7 @@ public class RayServeReplica {
             .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
-    this.processingLatencyTracker =
+    processingLatencyTracker =
         Metrics.histogram()
             .name("serve_backend_processing_latency_ms")
             .description("The latency for queries to be processed.")
@@ -98,7 +107,7 @@ public class RayServeReplica {
             .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
-    this.numProcessingItems =
+    numProcessingItems =
         Metrics.gauge()
             .name("serve_replica_processing_queries")
             .description("The current number of queries being processed.")
@@ -106,7 +115,9 @@ public class RayServeReplica {
             .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
-    this.restartCounter.inc(1.0);
+    metricsRegistered = true;
+
+    restartCounter.inc(1.0);
   }
 
   public Object handleRequest(Query request) {
@@ -114,7 +125,8 @@ public class RayServeReplica {
     LOGGER.debug(
         "Replica {} received request {}", replicaTag, request.getMetadata().getRequestId());
 
-    numProcessingItems.update(numOngoingRequests.incrementAndGet());
+    numOngoingRequests.incrementAndGet();
+    reportMetrics(() -> numProcessingItems.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();
 
@@ -140,10 +152,10 @@ public class RayServeReplica {
 
       methodToCall = getRunnerMethod(requestItem);
       Object result = methodToCall.invoke(callable, requestItem.getArgs());
-      requestCounter.inc(1.0);
+      reportMetrics(() -> requestCounter.inc(1.0));
       return result;
     } catch (Throwable e) {
-      errorCounter.inc(1.0);
+      reportMetrics(() -> errorCounter.inc(1.0));
       throw new RayServeException(
           LogUtil.format(
               "Replica {} failed to invoke method {}",
@@ -151,7 +163,7 @@ public class RayServeReplica {
               methodToCall == null ? "unknown" : methodToCall.getName()),
           e);
     } finally {
-      processingLatencyTracker.update(System.currentTimeMillis() - start);
+      reportMetrics(() -> processingLatencyTracker.update(System.currentTimeMillis() - start));
     }
   }
 
@@ -201,6 +213,9 @@ public class RayServeReplica {
    * @param userConfig new user's configuration
    */
   private void reconfigure(Object userConfig) {
+    if (userConfig == null) {
+      return;
+    }
     try {
       Method reconfigureMethod =
           ReflectUtil.getMethod(
@@ -229,5 +244,11 @@ public class RayServeReplica {
   private void updateBackendConfigs(Object newConfig) {
     config = (BackendConfig) newConfig;
     reconfigure(((BackendConfig) newConfig).getUserConfig());
+  }
+
+  private void reportMetrics(Runnable runnable) {
+    if (metricsRegistered) {
+      runnable.run();
+    }
   }
 }
