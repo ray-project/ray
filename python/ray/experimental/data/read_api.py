@@ -358,7 +358,7 @@ def read_json(paths: Union[str, List[str]],
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def json_read(read_paths: List[str]):
         logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
@@ -369,13 +369,17 @@ def read_json(paths: Union[str, List[str]],
                         f,
                         read_options=json.ReadOptions(use_threads=False),
                         **arrow_json_args))
-        return ArrowBlock(pa.concat_tables(tables))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
 
-    return Dataset([
+    res = [
         json_read.remote(read_paths)
         for read_paths in np.array_split(paths, parallelism)
         if len(read_paths) > 0
-    ])
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -411,7 +415,7 @@ def read_csv(paths: Union[str, List[str]],
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def csv_read(read_paths: List[str]):
         logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
@@ -422,13 +426,17 @@ def read_csv(paths: Union[str, List[str]],
                         f,
                         read_options=csv.ReadOptions(use_threads=False),
                         **arrow_csv_args))
-        return ArrowBlock(pa.concat_tables(tables))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
 
-    return Dataset([
+    res = [
         csv_read.remote(read_paths)
         for read_paths in np.array_split(paths, parallelism)
         if len(read_paths) > 0
-    ])
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -510,11 +518,14 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     """
     import pyarrow as pa
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def df_to_block(df: "pandas.DataFrame"):
-        return ArrowBlock(pa.table(df))
+        block = ArrowBlock(pa.table(df))
+        return block, block.get_metadata(input_files=None)
 
-    return Dataset([df_to_block.remote(df) for df in dfs])
+    res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 def from_spark(df: "pyspark.sql.DataFrame",

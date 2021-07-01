@@ -228,16 +228,20 @@ def test_pyarrow(ray_start_regular_shared):
 def test_read_binary_files(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
-        for i, item in enumerate(ds.to_local_iterator()):
+        for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
+        # Test metadata ops.
+        assert ds.count() == 10
+        assert "bytes" in str(ds.schema()), ds
+        assert "bytes" in str(ds), ds
 
 
 def test_read_binary_files_with_paths(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(
             paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.to_local_iterator()):
+        for i, (path, item) in enumerate(ds.iter_rows()):
             assert path == paths[i]
             expected = open(paths[i], "rb").read()
             assert expected == item
@@ -249,7 +253,7 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         fs, _ = pa.fs.FileSystem.from_uri("/")
         ds = ray.experimental.data.read_binary_files(
             paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.to_local_iterator()):
+        for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
 

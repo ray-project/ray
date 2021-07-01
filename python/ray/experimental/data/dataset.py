@@ -133,8 +133,7 @@ class Dataset(Generic[T]):
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                # Note: if the block is a list, it doesn't support zero-copy.
-                view = block.slice(start, end)
+                view = block.slice(start, end, copy=False)
                 if batch_format == "pandas":
                     view = view.to_pandas()
                 elif batch_format == "pyarrow":
@@ -284,10 +283,16 @@ class Dataset(Generic[T]):
                 "doesn't equal the number of splits {n}.")
 
         block_refs = list(self._blocks)
+        metadata_mapping = {
+            b: m
+            for b, m in zip(self._blocks, self._blocks.get_metadata())
+        }
 
         if locality_hints is None:
             return [
-                Dataset(list(blocks))
+                Dataset(
+                    BlockList(
+                        list(blocks), [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
             ]
 
@@ -382,7 +387,12 @@ class Dataset(Generic[T]):
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
         return [
-            Dataset(allocation_per_actor[actor]) for actor in locality_hints
+            Dataset(
+                BlockList(
+                    allocation_per_actor[actor],
+                    [metadata_mapping[b]
+                     for b in allocation_per_actor[actor]]))
+            for actor in locality_hints
         ]
 
     def sort(self,
