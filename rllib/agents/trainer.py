@@ -1387,16 +1387,6 @@ class Trainer(Trainable):
                         f"got {policy_spec}")
                 policies[pid] = PolicySpec(*policy_spec)
 
-            # Class is None -> Use Trainer's `_policy_class` property.
-            if policy_spec.policy_class is None:
-                if trainer_obj_or_none is not None and \
-                        (not hasattr(trainer_obj_or_none, "_policy_class") or
-                         trainer_obj_or_none._policy_class is None):
-                    raise ValueError(
-                        f"Multiagent policy class for {pid} was not provided "
-                        f"and Trainer does not have a default policy class!")
-                policies[pid] = policies[pid]._replace(
-                    policy_class=trainer_obj_or_none._policy_class)
             # Config is None -> Set to {}.
             if policy_spec.config is None:
                 policies[pid] = policies[pid]._replace(config={})
