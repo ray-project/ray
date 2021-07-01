@@ -1,3 +1,6 @@
+from ray.tune.suggest.basic_variant import BasicVariantGenerator
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
+from ray.tune.trial import Trial
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -116,7 +119,7 @@ def tune_xgboost():
     }
     # This will enable aggressive early stopping of bad trials.
     base_scheduler = ASHAScheduler(
-        max_t=20,  # 10 training iterations
+        max_t=16,  # 10 training iterations
         grace_period=1,
         reduction_factor=2)
 
@@ -124,20 +127,45 @@ def tune_xgboost():
                                      base_trial_resource):
         if result["training_iteration"] < 1:
             return False
-        if trial.resources.cpu >= 4:
+
+        # only start dynamic resource allocation after a sufficient
+        # number of trials has been completed
+        if trial_runner.search_alg.total_samples - (
+                len(trial_runner.get_trials()) - len(
+                    trial_runner.get_live_trials())) > 8:
             return False
-        if ray.available_resources().get("CPU", 0) > 0:
-            return {
-                "cpu": trial.resources.cpu + max(
-                    1,
-                    ray.available_resources().get("CPU", 0) // len(
-                        trial_runner.get_live_trials())),
-                "gpu": 0
-            }
-        return False
+
+        used_resources = trial_runner.trial_executor._pg_manager.total_used_resources(
+            trial_runner.trial_executor._committed_resources).get("CPU", 0)
+        total_available_resources = trial_runner.trial_executor._avail_resources.cpu
+        total_pending_resources = sum([
+            trial.resources.cpu for t in trial_runner.get_trials()
+            if t is not trial and t.status == Trial.PENDING
+        ])
+        free_resources = total_available_resources - used_resources - total_pending_resources
+        new_cpu = trial.resources.cpu
+        print(
+            f"Trial {trial} ({trial.resources.cpu}) free resources {free_resources}"
+        )
+        if free_resources > 0:
+            if trial.resources.cpu > free_resources:
+                new_cpu = max(free_resources, 1)
+            else:
+                new_cpu = trial.resources.cpu + max(
+                    1, free_resources // len(trial_runner.get_live_trials()))
+        elif free_resources < 0:
+            if trial.resources.cpu > free_resources:
+                new_cpu = max(trial.resources.cpu + free_resources, 1)
+        if new_cpu == trial.resources.cpu:
+            return False
+        return {"cpu": new_cpu, "gpu": 0}
 
     scheduler = ResourceChangingScheduler(base_scheduler,
                                           resource_allocation_function)
+
+    search = BasicVariantGenerator(
+        #max_concurrent=4
+    )
 
     analysis = tune.run(
         BreastCancerTrainable,
@@ -146,6 +174,7 @@ def tune_xgboost():
         # You can add "gpu": 0.1 to allocate GPUs
         resources_per_trial={"cpu": 1},
         config=search_space,
+        search_alg=search,
         num_samples=1,
         checkpoint_at_end=True,
         scheduler=scheduler)
