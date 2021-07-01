@@ -228,21 +228,6 @@ def test_to_dask(ray_start_regular_shared):
 
 
 def test_json_read(ray_start_regular_shared, tmp_path):
-    # Directory, two files.
-    path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.experimental.data.read_json(path)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas()))
-    assert df.equals(dsdf)
-    shutil.rmtree(path)
-
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json")
@@ -266,6 +251,57 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_json([path1, path2, path3], parallelism=2)
     dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dsdf)
+
+    # Directory, two files.
+    path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.json")
+    df1.to_json(path1, orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path)
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(path)
+
+    # Two directories, three files.
+    path1 = os.path.join(tmp_path, "test_json_dir1")
+    path2 = os.path.join(tmp_path, "test_json_dir2")
+    os.mkdir(path1)
+    os.mkdir(path2)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    file_path1 = os.path.join(path1, "data0.json")
+    df1.to_json(file_path1, orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    file_path2 = os.path.join(path2, "data1.json")
+    df2.to_json(file_path2, orient="records", lines=True)
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    file_path3 = os.path.join(path2, "data2.json")
+    df3.to_json(file_path3, orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2])
+    df = pd.concat([df1, df2, df3])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(path1)
+    shutil.rmtree(path2)
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json")
+    df1.to_json(path1, orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
 
 
 def test_json_write(ray_start_regular_shared, tmp_path):
@@ -293,21 +329,6 @@ def test_json_write(ray_start_regular_shared, tmp_path):
 
 
 def test_csv_read(ray_start_regular_shared, tmp_path):
-    # Directory, two files.
-    path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.experimental.data.read_csv(path)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas()))
-    assert df.equals(dsdf)
-    shutil.rmtree(path)
-
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.csv")
@@ -333,6 +354,57 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dsdf)
+
+    # Directory, two files.
+    path = os.path.join(tmp_path, "test_csv_dir")
+    os.mkdir(path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.csv")
+    df1.to_csv(path1, index=False)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.csv")
+    df2.to_csv(path2, index=False)
+    ds = ray.experimental.data.read_csv(path)
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(path)
+
+    # Two directories, three files.
+    path1 = os.path.join(tmp_path, "test_csv_dir1")
+    path2 = os.path.join(tmp_path, "test_csv_dir2")
+    os.mkdir(path1)
+    os.mkdir(path2)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    file_path1 = os.path.join(path1, "data0.csv")
+    df1.to_csv(file_path1, index=False)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    file_path2 = os.path.join(path2, "data1.csv")
+    df2.to_csv(file_path2, index=False)
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    file_path3 = os.path.join(path2, "data2.csv")
+    df3.to_csv(file_path3, index=False)
+    ds = ray.experimental.data.read_csv([path1, path2])
+    df = pd.concat([df1, df2, df3])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(path1)
+    shutil.rmtree(path2)
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_csv_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.csv")
+    df1.to_csv(path1, index=False)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.csv")
+    df2.to_csv(path2, index=False)
+    ds = ray.experimental.data.read_csv([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
 
 
 def test_csv_write(ray_start_regular_shared, tmp_path):

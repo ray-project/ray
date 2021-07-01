@@ -26,10 +26,61 @@ def autoinit_ray(f):
     return wrapped
 
 
-def _resolve_paths_and_filesystem(paths: Union[str, List[str]],
-                                  filesystem: "pyarrow.fs.FileSystem" = None):
-    from pyarrow.fs import (FileType, FileSelector,
-                            _resolve_filesystem_and_path)
+def _expand_directory(path: str,
+                      filesystem: "pyarrow.fs.FileSystem",
+                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
+    """
+    Expand the provided directory path to a list of file paths.
+
+    Args:
+        path: The directory path to expand.
+        filesystem: The filesystem implementation that should be used for
+            reading these files.
+        exclude_prefixes: The file relative path prefixes that should be
+            excluded from the returned file set. Default excluded prefixes are
+            "." and "_".
+
+    Returns:
+        A list of file paths contained in the provided directory.
+    """
+    from pyarrow.fs import FileSelector
+    selector = FileSelector(path, recursive=True)
+    files = filesystem.get_file_info(selector)
+    base_path = selector.base_dir
+    filtered_paths = []
+    for file_ in files:
+        if not file_.is_file:
+            continue
+        file_path = file_.path
+        if not file_path.startswith(base_path):
+            continue
+        relative = file_path[len(base_path):]
+        if any(relative.startswith(prefix) for prefix in [".", "_"]):
+            continue
+        filtered_paths.append(file_path)
+    # We sort the paths to guarantee a stable order.
+    return sorted(filtered_paths)
+
+
+def _resolve_paths_and_filesystem(
+        paths: Union[str, List[str]],
+        filesystem: "pyarrow.fs.FileSystem" = None
+) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
+    """
+    Resolves and normalizes all provided paths, infers a filesystem from the
+    paths and ensures that all paths use the same filesystem, and expands all
+    directory paths to the underlying file paths.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation that should be used for
+            reading these files. If None, a filesystem will be inferred. If not
+            None, the provided filesystem will still be validated against all
+            filesystems inferred from the provided paths to ensure
+            compatibility.
+    """
+    from pyarrow.fs import FileType, _resolve_filesystem_and_path
 
     if isinstance(paths, str):
         paths = [paths]
@@ -37,40 +88,30 @@ def _resolve_paths_and_filesystem(paths: Union[str, List[str]],
           or any(not isinstance(p, str) for p in paths)):
         raise ValueError(
             "paths must be a path string or a list of path strings.")
+    elif len(paths) == 0:
+        raise ValueError("Must provide at least one path.")
 
     resolved_paths = []
     for path in paths:
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
-        if (filesystem is not None
-                and type(resolved_filesystem) != type(filesystem)):
+        if filesystem is None:
+            filesystem = resolved_filesystem
+        elif type(resolved_filesystem) != type(filesystem):
             raise ValueError("All paths must use same filesystem.")
-        filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
-    paths = resolved_paths
-
-    if len(paths) == 1:
-        path = paths[0]
+    expanded_paths = []
+    for path in resolved_paths:
         file_info = filesystem.get_file_info(path)
         if file_info.type == FileType.Directory:
-            selector = FileSelector(path, recursive=True)
-            files = filesystem.get_file_info(selector)
-            base_path = selector.base_dir
-            filtered_paths = []
-            for file_ in files:
-                if not file_.is_file:
-                    continue
-                file_path = file_.path
-                if not file_path.startswith(base_path):
-                    continue
-                relative = file_path[len(base_path):]
-                if any(relative.startswith(prefix) for prefix in [".", "_"]):
-                    continue
-                filtered_paths.append(file_path)
-            paths = sorted(filtered_paths)
-    return paths, filesystem
+            expanded_paths.extend(_expand_directory(path, filesystem))
+        elif file_info.type == FileType.File:
+            expanded_paths.append(path)
+        else:
+            raise FileNotFoundError(path)
+    return expanded_paths, filesystem
 
 
 @autoinit_ray
@@ -239,8 +280,12 @@ def read_json(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_json(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_json_args: Other json read options to pass to pyarrow.
@@ -288,8 +333,12 @@ def read_csv(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_csv(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_csv_args: Other csv read options to pass to pyarrow.
