@@ -8,6 +8,8 @@ import pytest
 import ray
 
 from ray.tests.conftest import *  # noqa
+import ray.experimental.data.tests.util as util
+
 
 
 def test_basic(ray_start_regular_shared):
@@ -106,43 +108,33 @@ def test_pyarrow(ray_start_regular_shared):
 
 
 def test_read_binary_files(ray_start_regular_shared):
-    ds = ray.experimental.data.read_binary_files(
-        [f"data/{i}.bin" for i in range(10)], parallelism=10)
-    for i, item in enumerate(ds.to_local_iterator()):
-        # The files happen to be 685 bytes each.
-        assert len(item) == 685
-        # The data files are b64 encoded so they end in '='
-        assert item[-2] == ord("="), item
-        # Each file begins with its index (i.e. 0.bin begins with '0')
-        assert item[0] == ord(str(i))
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(
+            paths, parallelism=10)
+        for i, item in enumerate(ds.to_local_iterator()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
 
 
 def test_read_binary_files_with_paths(ray_start_regular_shared):
-    paths = [f"data/{i}.bin" for i in range(10)]
-    ds = ray.experimental.data.read_binary_files(
-        paths, include_paths=True, parallelism=10)
-    for i, (path, item) in enumerate(ds.to_local_iterator()):
-        assert path == paths[i]
-        # The files happen to be 685 bytes each.
-        assert len(item) == 685
-        # The data files are b64 encoded so they end in '='
-        assert item[-2] == ord("="), item
-        # Each file begins with its index (i.e. 0.bin begins with '0')
-        assert item[0] == ord(str(i))
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(
+            paths, include_paths=True, parallelism=10)
+        for i, (path, item) in enumerate(ds.to_local_iterator()):
+            assert path == paths[i]
+            expected = open(paths[i], "rb").read()
+            assert expected == item
 
 
 def test_read_binary_files_with_fs(ray_start_regular_shared):
-    fs, _ = pa.fs.FileSystem.from_uri(pathlib.Path("data/"))
-    ds = ray.experimental.data.read_binary_files(
-        [f"data/{i}.bin" for i in range(10)],
-        filesystem= fs, parallelism=10)
-    for i, item in enumerate(ds.to_local_iterator()):
-        # The files happen to be 685 bytes each.
-        assert len(item) == 685
-        # The data files are b64 encoded so they end in '='
-        assert item[-2] == ord("="), item
-        # Each file begins with its index (i.e. 0.bin begins with '0')
-        assert item[0] == ord(str(i))
+    with util.gen_bin_files(10) as (tempdir, paths):
+        # All the paths are absolute, so we want the root file system.
+        fs, _ = pa.fs.FileSystem.from_uri("/")
+        ds = ray.experimental.data.read_binary_files(
+            paths, filesystem=fs, parallelism=10)
+        for i, item in enumerate(ds.to_local_iterator()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
 
 
 if __name__ == "__main__":
