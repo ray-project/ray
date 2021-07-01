@@ -96,7 +96,10 @@ class Dataset(Generic[T]):
             # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
 
-            # Transform batches in parallel on GPUs.
+            # Transform batches in parallel on GPUs. Since the compute is set
+            # to be executed on actors, you can persist state across function
+            # invocations in Python global variables. This can be useful for
+            # one-time setups, e.g., initializing a model.
             >>> ds.map_batches(
             ...    batch_infer_fn,
             ...    batch_size=256, compute="actors", num_gpus=1)
