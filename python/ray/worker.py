@@ -52,7 +52,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import _random_string, check_oversized_pickle
+from ray._private.utils import check_oversized_pickle
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -170,6 +170,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def worker_id(self):
+        return self.core_worker.get_worker_id().binary()
+
+    @property
     def should_capture_child_tasks_in_placement_group(self):
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
@@ -215,6 +219,9 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+                ray.client().connect()
+                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -1190,18 +1197,10 @@ def connect(node,
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
-        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
-        worker.worker_id = _random_string()
     else:
         # This is the code path of driver mode.
         if job_id is None:
             job_id = ray.state.next_job_id()
-        # When tasks are executed on remote workers in the context of multiple
-        # drivers, the current job ID is used to keep track of which job is
-        # responsible for the task so that error messages will be propagated to
-        # the correct driver.
-        worker.worker_id = ray._private.utils.compute_driver_id_from_job(
-            job_id).binary()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
@@ -1447,6 +1446,10 @@ def get(object_refs, *, timeout=None):
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
+
+    Ordering for an input list of object refs is preserved for each object
+    returned. That is, if an object ref to A precedes an object ref to B in the
+    input list, then A will precede B in the returned list.
 
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
@@ -1911,7 +1914,7 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

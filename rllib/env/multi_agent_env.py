@@ -131,7 +131,7 @@ class MultiAgentEnv:
 
 
 def make_multi_agent(env_name_or_creator):
-    """Convenience wrapper for any sigle-agent env to be converted into MA.
+    """Convenience wrapper for any single-agent env to be converted into MA.
 
     Agent IDs are int numbers starting from 0 (first agent).
 

@@ -50,7 +50,7 @@ def do_test_log_likelihood(run,
         for _ in range(num_actions):
             # Single action from single obs.
             actions.append(
-                trainer.compute_action(
+                trainer.compute_single_action(
                     obs_batch[0],
                     prev_action=prev_a,
                     prev_reward=prev_r,

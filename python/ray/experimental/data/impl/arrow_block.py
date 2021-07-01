@@ -29,7 +29,7 @@ class ArrowRow:
         return self.as_pydict().values()
 
     def items(self) -> Iterator[Tuple[str, Any]]:
-        return self.as_pydict().keys()
+        return self.as_pydict().items()
 
     def __getitem__(self, key: str) -> Any:
         return self._row[key][0].as_py()

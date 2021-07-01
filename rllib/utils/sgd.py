@@ -110,8 +110,11 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
 
+        learner_stats = defaultdict(list)
+        model_stats = defaultdict(list)
+        custom_callbacks_stats = defaultdict(list)
+
         for i in range(num_sgd_iter):
-            learner_stats = defaultdict(list)
             for minibatch in minibatches(batch, sgd_minibatch_size):
                 batch_fetches = (local_worker.learn_on_batch(
                     MultiAgentBatch({
@@ -119,5 +122,11 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                     }, minibatch.count)))[policy_id]
                 for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
                     learner_stats[k].append(v)
+                for k, v in batch_fetches.get("model", {}).items():
+                    model_stats[k].append(v)
+                for k, v in batch_fetches.get("custom_metrics", {}).items():
+                    custom_callbacks_stats[k].append(v)
         fetches[policy_id][LEARNER_STATS_KEY] = averaged(learner_stats)
+        fetches[policy_id]["model"] = averaged(model_stats)
+        fetches[policy_id]["custom_metrics"] = averaged(custom_callbacks_stats)
     return fetches
