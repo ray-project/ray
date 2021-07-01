@@ -74,9 +74,6 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
-        # Keep track of the object refs we are deserializing. The
-        # deserialization could be nested so we need a stack.
-        self._thread_local.object_ref_stack = []
 
         def actor_handle_reducer(obj):
             serialized, actor_handle_id = obj._serialization_helper()
@@ -123,7 +120,7 @@ class SerializationContext:
         self._thread_local.in_band = False
 
     def get_outer_object_ref(self):
-        stack = self._thread_local.object_ref_stack
+        stack = getattr(self._thread_local, "object_ref_stack", [])
         return stack[-1] if stack else None
 
     def get_and_clear_contained_object_refs(self):
@@ -241,6 +238,9 @@ class SerializationContext:
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         assert len(data_metadata_pairs) == len(object_refs)
+        # initialize the thread-local field
+        if not hasattr(self._thread_local, "object_ref_stack"):
+            self._thread_local.object_ref_stack = []
         results = []
         for object_ref, (data, metadata) in zip(object_refs,
                                                 data_metadata_pairs):
