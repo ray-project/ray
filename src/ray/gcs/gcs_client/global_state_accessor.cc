@@ -297,7 +297,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
           relevant_client_index = i;
           break;
         }
-        // TODO: Replace `node_ip_address` with `get_node_ip_address()`
+        // TODO(kfstorm): Do we need to replace `node_ip_address` with
+        // `get_node_ip_address()`?
         if ((ip_address == "127.0.0.1" && redis_ip_address_ == node_ip_address) or
             ip_address == redis_ip_address_) {
           head_node_client_index = i;
