@@ -1,0 +1,30 @@
+== Status ==
+Memory usage on this node: 11.0/480.3 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/64 CPUs, 0/8 GPUs, 0.0/326.39 GiB heap, 0.0/143.87 GiB objects (0.0/1.0 accelerator_type:V100)
+Result logdir: /home/ray/ray_results/a2c-torch-atari
+Result logdir: /home/ray/ray_results/apex-dqn-torch-atari
+Result logdir: /home/ray/ray_results/dqn-torch-atari
+Result logdir: /home/ray/ray_results/impala-torch-atari
+Result logdir: /home/ray/ray_results/ppo-torch-atari
+Result logdir: /home/ray/ray_results/sac-torch-halfcheetah-pybullet
+Number of trials: 12/12 (12 TERMINATED)
++-------------------------------------------+------------+-------+--------+------------------+---------+----------+----------------------+----------------------+--------------------+
+| Trial name                                | status     | loc   |   iter |   total time (s) |      ts |   reward |   episode_reward_max |   episode_reward_min |   episode_len_mean |
+|-------------------------------------------+------------+-------+--------+------------------+---------+----------+----------------------+----------------------+--------------------|
+| A2C_BreakoutNoFrameskip-v4_89dd2_00000    | TERMINATED |       |    350 |          3605.64 | 2574500 |   45.54  |              273     |                 8    |            2489.29 |
+| A2C_BreakoutNoFrameskip-v4_89dd2_00001    | TERMINATED |       |    349 |          3609.91 | 2531000 |   20.22  |               40     |                 9    |            2869.39 |
+| APEX_BreakoutNoFrameskip-v4_89dd2_00002   | TERMINATED |       |     79 |          3603.33 | 3973120 |   11.56  |               34     |                 2    |            1897.13 |
+| APEX_BreakoutNoFrameskip-v4_89dd2_00003   | TERMINATED |       |     81 |          3626.75 | 4075040 |   14.6   |               36     |                 4    |            2166.04 |
+| DQN_BreakoutNoFrameskip-v4_89dd2_00004    | TERMINATED |       |     20 |          3705.37 |  210000 |    9.89  |               27     |                 2    |            1613.49 |
+| DQN_BreakoutNoFrameskip-v4_89dd2_00005    | TERMINATED |       |     21 |          3680.85 |  220000 |   15.7   |              234     |                 3    |            2003.28 |
+| IMPALA_BreakoutNoFrameskip-v4_89dd2_00006 | TERMINATED |       |    356 |          3607.74 | 6490250 |  350.07  |              435     |                27    |            8428.66 |
+| IMPALA_BreakoutNoFrameskip-v4_89dd2_00007 | TERMINATED |       |    356 |          3604.6  | 6510000 |  333.94  |              435     |                60    |            8422.51 |
+| PPO_BreakoutNoFrameskip-v4_89dd2_00008    | TERMINATED |       |    580 |          3600.36 | 2900000 |   21.8   |               41     |                 9    |            3029.82 |
+| PPO_BreakoutNoFrameskip-v4_89dd2_00009    | TERMINATED |       |    578 |          3602.76 | 2890000 |   24.63  |               69     |                 7    |            2980.77 |
+| SAC_HalfCheetahBulletEnv-v0_89dd2_00010   | TERMINATED |       |     17 |          3695.49 |   26000 | -241.653 |              389.052 |             -1042.96 |            1000    |
+| SAC_HalfCheetahBulletEnv-v0_89dd2_00011   | TERMINATED |       |     36 |          3619.25 |   45000 | -607.206 |              367.676 |             -1331.25 |            1000    |
++-------------------------------------------+------------+-------+--------+------------------+---------+----------+----------------------+----------------------+--------------------+
+
+
+2021-04-09 06:43:05,537 INFO tune.py:549 -- Total run time: 7289.99 seconds (7289.48 seconds for the tuning loop).

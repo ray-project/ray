@@ -20,6 +20,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 import glob
 import sys
 import tempfile
+import uuid
 import re
 import os
 from contextlib import contextmanager
@@ -35,28 +36,42 @@ from click.testing import CliRunner
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
+import ray
 import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
+from ray.test_utils import wait_for_condition
 
 boto3_list = [{
     "InstanceType": "t1.micro",
     "VCpuInfo": {
         "DefaultVCpus": 1
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 627
     }
 }, {
     "InstanceType": "t3a.small",
     "VCpuInfo": {
         "DefaultVCpus": 2
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 2048
     }
 }, {
     "InstanceType": "m4.4xlarge",
     "VCpuInfo": {
         "DefaultVCpus": 16
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 65536
     }
 }, {
     "InstanceType": "p3.8xlarge",
     "VCpuInfo": {
         "DefaultVCpus": 32
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 249856
     },
     "GpuInfo": {
         "Gpus": [{
@@ -163,8 +178,16 @@ def _setup_popen_mock(commands_mock):
 def _load_output_pattern(name):
     pattern_dir = Path(__file__).parent / "test_cli_patterns"
     with open(str(pattern_dir / name)) as f:
-        # remove \n
-        return [x[:-1] for x in f.readlines()]
+        # Remove \n from each line.
+        # Substitute the Ray version in each line containing the string
+        # {ray_version}.
+        out = []
+        for x in f.readlines():
+            if "{ray_version}" in x:
+                out.append(x[:-1].format(ray_version=ray.__version__))
+            else:
+                out.append(x[:-1])
+        return out
 
 
 def _check_output_via_pattern(name, result):
@@ -184,6 +207,10 @@ def _check_output_via_pattern(name, result):
 DEFAULT_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
 
+MISSING_MAX_WORKER_CONFIG_PATH = str(
+    Path(__file__).parent / "test_cli_patterns" /
+    "test_ray_up_no_max_worker_config.yaml")
+
 DOCKER_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" /
     "test_ray_up_docker_config.yaml")
@@ -194,9 +221,16 @@ DOCKER_TEST_CONFIG_PATH = str(
     reason=("Mac builds don't provide proper locale support"))
 def test_ray_start(configure_lang):
     runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(scripts.start, [
-        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0"
+        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0",
+        "--temp-dir", temp_dir
     ])
+
+    # Check that --temp-dir arg worked:
+    assert os.path.isfile(os.path.join(temp_dir, "ray_current_cluster"))
+    assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
+
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)
@@ -229,6 +263,36 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
             "--log-style=pretty", "--log-color", "False"
         ])
         _check_output_via_pattern("test_ray_up.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_up_no_head_max_workers(configure_lang, _unlink_test_ssh_key,
+                                    configure_aws):
+    def commands_mock(command, stdin):
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if "uptime" in command:
+            return PopenBehaviour(stdout=b"MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout=b"MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout=b"MOCKED ray")
+        return PopenBehaviour(stdout=b"MOCKED GENERIC")
+
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            MISSING_MAX_WORKER_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _check_output_via_pattern("test_ray_up_no_max_worker.txt", result)
 
 
 @pytest.mark.skipif(
@@ -339,7 +403,8 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
         ])
         _die_on_error(result)
 
-        result = runner.invoke(scripts.dashboard, [DEFAULT_TEST_CONFIG_PATH])
+        result = runner.invoke(scripts.dashboard,
+                               [DEFAULT_TEST_CONFIG_PATH, "--no-config-cache"])
         _check_output_via_pattern("test_ray_dashboard.txt", result)
 
 
@@ -413,6 +478,57 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
                 ])
 
             _check_output_via_pattern("test_ray_submit.txt", result)
+
+
+def test_ray_status():
+    import ray
+    address = ray.init().get("redis_address")
+    runner = CliRunner()
+
+    def output_ready():
+        result = runner.invoke(scripts.status)
+        result.stdout
+        return not result.exception and "memory" in result.output
+
+    wait_for_condition(output_ready)
+
+    result = runner.invoke(scripts.status, [])
+    _check_output_via_pattern("test_ray_status.txt", result)
+
+    result_arg = runner.invoke(scripts.status, ["--address", address])
+    _check_output_via_pattern("test_ray_status.txt", result_arg)
+
+    # Try to check status with RAY_ADDRESS set
+    os.environ["RAY_ADDRESS"] = address
+    result_env = runner.invoke(scripts.status)
+    _check_output_via_pattern("test_ray_status.txt", result_env)
+
+    result_env_arg = runner.invoke(scripts.status, ["--address", address])
+    _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
+    def commands_mock(command, stdin):
+        print("This is a test!")
+        return PopenBehaviour(stdout=b"This is a test!")
+
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _die_on_error(result)
+
+        result = runner.invoke(scripts.cluster_dump,
+                               [DEFAULT_TEST_CONFIG_PATH, "--no-processes"])
+
+        _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
 
 if __name__ == "__main__":

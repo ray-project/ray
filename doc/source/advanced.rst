@@ -206,6 +206,66 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
 See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
+Overloaded Functions
+--------------------
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
+
+Overloaded normal task call:
+
+.. code:: java
+
+    public static class MyRayApp {
+
+      public static int overloadFunction() {
+        return 1;
+      }
+
+      public static int overloadFunction(int x) {
+        return x;
+      }
+    }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+
+Overloaded actor task call:
+
+.. code:: java
+
+    public static class Counter {
+      protected int value = 0;
+
+      public int increment() {
+        this.value += 1;
+        return this.value;
+      }
+    }
+
+    public static class CounterOverloaded extends Counter {
+      public int increment(int diff) {
+        super.value += diff;
+        return super.value;
+      }
+
+      public int increment(int diff1, int diff2) {
+        super.value += diff1 + diff2;
+        return super.value;
+      }
+    }
+
+.. code:: java
+
+    ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+    // Call an overloaded actor method by super class method reference.
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an overloaded actor method, cast method reference first.
+    a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+    a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+    a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
+
+
 Nested Remote Functions
 -----------------------
 
@@ -362,3 +422,100 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+.. _runtime-environments:
+
+Runtime Environments (Experimental)
+-----------------------------------
+
+.. note::
+
+    Runtime environments are currently an experimental feature and under active development. The API is subject to change.
+
+On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
+
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.
+The runtime environment defines the dependencies required for your workload.
+
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __ray_init_start__
+   :end-before: __ray_init_end__
+
+..
+  TODO(architkulkarni): run Ray Client doc example in CI
+
+.. code-block:: python
+
+    ray.client("localhost:10001").env(runtime_env).connect()
+
+...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __per_task_per_actor_start__
+   :end-before: __per_task_per_actor_end__
+
+The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
+
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+  It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
+  Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
+
+  - Examples
+
+    - ``"."  # cwd``
+
+    - ``"/code/my_project"``
+
+  Note: Setting this option per-task or per-actor is currently unsupported.
+
+- ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip 
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.  The path may be an absolute path or a relative path.  (Note: A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.)
+  This will be dynamically installed in the ``runtime_env``.
+  To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
+
+  - Example: ``["requests==1.0.0", "aiohttp"]``
+
+  - Example: ``"./requirements.txt"``
+
+- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a 
+  `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
+  or (3) the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.  
+  Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
+
+  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
+
+  - Example: ``"./environment.yml"``
+
+  - Example: ``"pytorch_p36"``
+
+  Note: if specifying the path to an "environment.yml" file, you may provide an absolute path or a relative path.  A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.
+
+- ``env_vars`` (Dict[str, str]): Environment variables to set.
+
+  - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+The runtime env is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
+
+If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.  
+For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
+The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ```runtime_env["env_vars"]`` dict of the parent.  
+This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+
+Here are some examples of runtime envs combining multiple options:
+
+..
+  TODO(architkulkarni): run working_dir doc example in CI
+
+.. code-block:: python
+    
+    runtime_env = {"working_dir": "/code/my_project", "pip": ["pendulum=2.1.2"]}
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __runtime_env_conda_def_start__
+   :end-before: __runtime_env_conda_def_end__

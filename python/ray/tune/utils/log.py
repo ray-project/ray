@@ -21,7 +21,7 @@ def set_verbosity(level: Union[int, Verbosity]):
     if isinstance(level, int):
         verbosity = Verbosity(level)
     else:
-        verbosity = verbosity
+        verbosity = level
 
 
 def has_verbosity(level: Union[int, Verbosity]) -> bool:

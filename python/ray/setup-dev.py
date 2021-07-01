@@ -66,7 +66,7 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes, local_path="../../../rllib")
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
-    do_link("operator", force=args.yes)
+    do_link("ray_operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)
@@ -74,6 +74,8 @@ if __name__ == "__main__":
     do_link("experimental", force=args.yes)
     do_link("util", force=args.yes)
     do_link("serve", force=args.yes)
+    do_link("_private", force=args.yes)
+    do_link("node.py", force=args.yes)
     # Link package's `new_dashboard` directly to local (repo's) dashboard.
     # The repo's `new_dashboard` is a file, soft-linking to which will not work
     # on Mac.

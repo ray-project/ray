@@ -12,6 +12,7 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.test_utils import object_memory_usage
 
 MB = 1024**2
 
@@ -61,7 +62,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.objects()) <= 12
+                assert object_memory_usage() <= (12 * 80e6)
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -131,7 +132,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 if self.verbose:
                     print("Iteration", self.iter_)
                     print("=" * 10)
-                    print("Number of objects: ", len(ray.objects()))
+                    print("Object memory use: ", object_memory_usage())
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20
@@ -168,6 +169,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):

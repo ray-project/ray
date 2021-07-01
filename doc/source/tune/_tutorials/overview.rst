@@ -71,9 +71,9 @@ Take a look at any of the below tutorials to get started with Tune.
    :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
 
 .. customgalleryitem::
-    :tooltip: Use MLFlow with Ray Tune.
+    :tooltip: Use MLflow with Ray Tune.
     :figure: /images/mlflow.png
-    :description: :doc:`Log and track your hyperparameter sweep with MLFlow Tracking & AutoLogging <tune-mlflow>`
+    :description: :doc:`Log and track your hyperparameter sweep with MLflow Tracking & AutoLogging <tune-mlflow>`
 
 
 .. raw:: html
@@ -162,4 +162,4 @@ Check out:
 
 .. _tune-faq:
 
-.. include:: _faq.rst
+.. include:: _faq.inc

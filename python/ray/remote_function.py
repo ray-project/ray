@@ -1,15 +1,21 @@
 import logging
+import inspect
 from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
+from ray._private.client_mode_hook import client_mode_convert_function
+from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
     get_current_placement_group,
 )
-import ray.signature
+import ray._private.signature
+import ray._private.runtime_env as runtime_support
+from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
+                                             _inject_tracing_into_function)
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -47,6 +53,7 @@ class RemoteFunction:
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before exiting.
+        _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
@@ -65,11 +72,16 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 accelerator_type, num_returns, max_calls, max_retries):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 runtime_env):
+        if inspect.iscoroutinefunction(function):
+            raise ValueError("'async def' should not be used for remote "
+                             "tasks. You can wrap the async function with "
+                             "`asyncio.get_event_loop.run_until(f())`. "
+                             "See more at docs.ray.io/async_api.html")
         self._language = language
-        self._function = function
-        self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+        self._function = _inject_tracing_into_function(function)
+        self._function_name = (function.__module__ + "." + function.__name__)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -88,9 +100,10 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
+        self._runtime_env = runtime_env
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
-        self._function_signature = ray.signature.extract_signature(
+        self._function_signature = ray._private.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
@@ -118,9 +131,10 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
@@ -158,12 +172,14 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
+                    runtime_env=runtime_env,
                     override_environment_variables=(
                         override_environment_variables),
                     name=name)
 
         return FuncWrapper()
 
+    @_tracing_task_invocation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -175,12 +191,34 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
+        if client_mode_should_convert():
+            return client_mode_convert_function(
+                self,
+                args,
+                kwargs,
+                num_returns=num_returns,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
+                accelerator_type=accelerator_type,
+                resources=resources,
+                max_retries=max_retries,
+                placement_group=placement_group,
+                placement_group_bundle_index=placement_group_bundle_index,
+                placement_group_capture_child_tasks=(
+                    placement_group_capture_child_tasks),
+                runtime_env=runtime_env,
+                override_environment_variables=override_environment_variables,
+                name=name)
+
         worker = ray.worker.global_worker
         worker.check_connected()
 
@@ -218,9 +256,11 @@ class RemoteFunction:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -228,11 +268,25 @@ class RemoteFunction:
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
 
-        resources = ray.utils.resources_from_resource_arguments(
+        resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
+
+        if runtime_env is None:
+            runtime_env = self._runtime_env
+        if runtime_env:
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
+        else:
+            runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.6.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -240,7 +294,7 @@ class RemoteFunction:
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
-                list_args = ray.signature.flatten_args(
+                list_args = ray._private.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
@@ -259,6 +313,7 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
+                runtime_env_dict,
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

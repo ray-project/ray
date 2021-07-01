@@ -66,6 +66,7 @@ void GcsObjectManager::HandleAddObjectLocation(
 
   NodeID node_id;
   std::string spilled_url;
+  NodeID spilled_node_id;
   if (!request.node_id().empty()) {
     node_id = NodeID::FromBinary(request.node_id());
     RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
@@ -75,12 +76,14 @@ void GcsObjectManager::HandleAddObjectLocation(
     absl::MutexLock lock(&mutex_);
     RAY_CHECK(!request.spilled_url().empty());
     spilled_url = request.spilled_url();
+    spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
     object_to_locations_[object_id].spilled_url = spilled_url;
+    object_to_locations_[object_id].spilled_node_id = spilled_node_id;
     RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
   }
 
   size_t size = request.size();
-  auto on_done = [this, object_id, node_id, spilled_url, size, reply,
+  auto on_done = [this, object_id, node_id, spilled_url, size, spilled_node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
       rpc::ObjectLocationChange notification;
@@ -90,6 +93,7 @@ void GcsObjectManager::HandleAddObjectLocation(
       }
       if (!spilled_url.empty()) {
         notification.set_spilled_url(spilled_url);
+        notification.set_spilled_node_id(spilled_node_id.Binary());
       }
       notification.set_size(size);
       RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
@@ -97,7 +101,8 @@ void GcsObjectManager::HandleAddObjectLocation(
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id << ", task id = " << object_id.TaskId()
-                     << ", spilled_url = " << spilled_url;
+                     << ", spilled_url = " << spilled_url
+                     << ", spilled_node_id = " << spilled_node_id;
     } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
@@ -291,6 +296,7 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
       object_data.add_locations()->set_manager(node_id.Binary());
     }
     object_data.set_spilled_url(it->second.spilled_url);
+    object_data.set_spilled_node_id(it->second.spilled_node_id.Binary());
     object_data.set_size(it->second.object_size);
   }
   return object_data;

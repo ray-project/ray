@@ -123,12 +123,10 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     # Modify keys.
     for pid, p in policies.items():
         i = p.config["agent_id"]
-        keys = multi_agent_batch.policy_batches[pid].data.keys()
+        keys = multi_agent_batch.policy_batches[pid].keys()
         keys = ["_".join([k, str(i)]) for k in keys]
         samples.update(
-            dict(
-                zip(keys,
-                    multi_agent_batch.policy_batches[pid].data.values())))
+            dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
 
     # Make ops and feed_dict to get "new_obs" from target action sampler.
     new_obs_ph_n = [p.new_obs_ph for p in policies.values()]

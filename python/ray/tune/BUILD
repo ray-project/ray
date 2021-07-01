@@ -34,11 +34,27 @@ py_test(
 )
 
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    deps = [":tune_lib"],
+    tags = ["client", "py37", "exclusive"]
+)
+
+py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "jenkins_only", "exclusive"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_cluster_searcher",
+    size = "large",
+    srcs = ["tests/test_cluster_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -50,9 +66,9 @@ py_test(
 )
 
 py_test(
-    name = "test_convergence_gaussian_process",
-    size = "small",
-    srcs = ["tests/test_convergence_gaussian_process.py"],
+    name = "test_convergence",
+    size = "medium",
+    srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -87,7 +103,7 @@ py_test(
 
 py_test(
     name = "test_function_api",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -164,6 +180,14 @@ py_test(
 )
 
 py_test(
+    name = "test_remote",
+    size = "medium",
+    srcs = ["tests/test_remote.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_sample",
     size = "medium",
     srcs = ["tests/test_sample.py"],
@@ -177,6 +201,14 @@ py_test(
     srcs = ["tests/test_searchers.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_soft_imports",
+    size = "small",
+    srcs = ["tests/test_soft_imports.py"],
+    deps = [":tune_lib"],
+    tags = ["soft_imports"],
 )
 
 py_test(
@@ -226,6 +258,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_runner_pg",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_pg.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_trial_runner_callbacks",
     size = "small",
     srcs = ["tests/test_trial_runner_callbacks.py"],
@@ -254,7 +294,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
 )
 
 py_test(
@@ -296,7 +336,7 @@ py_test(
 
 py_test(
     name = "ext_pytorch",
-    size = "medium",
+    size = "large",
     srcs = ["tests/ext_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -343,11 +383,29 @@ py_test(
 )
 
 py_test(
+    name = "blendsearch_example",
+    size = "small",
+    srcs = ["examples/blendsearch_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "bohb_example",
     size = "small",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
+)
+
+py_test(
+    name = "cfo_example",
+    size = "small",
+    srcs = ["examples/cfo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(
@@ -430,6 +488,15 @@ py_test(
 )
 
 py_test(
+    name = "hebo_example",
+    size = "medium",
+    srcs = ["examples/hebo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "horovod_simple",
     size = "medium",
     srcs = ["examples/horovod_simple.py"],
@@ -443,7 +510,8 @@ py_test(
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(
@@ -518,7 +586,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "medium",
+    size = "large",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
@@ -629,7 +697,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "exclusive", "example"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -648,7 +716,7 @@ py_test(
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "exclusive", "example"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -763,6 +831,20 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+# --------------------------------------------------------------------
+# Tune related tests from the ../../../../release directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "medium",
+    srcs = ["examples/horovod_cifar_pbt_example.py"],
+    tags = ["exlusive", "pytorch", "example", "release", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

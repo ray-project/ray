@@ -30,14 +30,32 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-reward", type=float, default=150)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--as-test", action="store_true")
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -77,18 +95,21 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
+    def policy_mapping_fn(agent_id, episode, **kwargs):
+        pol_id = random.choice(policy_ids)
+        return pol_id
+
     config = {
         "env": MultiAgentCartPole,
         "env_config": {
             "num_agents": args.num_agents,
         },
-        "simple_optimizer": args.simple,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 10,
         "multiagent": {
             "policies": policies,
-            "policy_mapping_fn": (lambda agent_id: random.choice(policy_ids)),
+            "policy_mapping_fn": policy_mapping_fn,
         },
         "framework": args.framework,
     }

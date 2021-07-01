@@ -11,32 +11,47 @@ namespace api {
 class Serializer {
  public:
   template <typename T>
-  static void Serialize(msgpack::packer<msgpack::sbuffer> &packer, const T &val);
+  static msgpack::sbuffer Serialize(const T &t) {
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, t);
+    return buffer;
+  }
 
   template <typename T>
-  static void Deserialize(msgpack::unpacker &unpacker, T *val);
-};
-
-// ---------- implementation ----------
-
-template <typename T>
-inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer> &packer,
-                                  const T &val) {
-  packer.pack(val);
-  return;
-}
-
-template <typename T>
-inline void Serializer::Deserialize(msgpack::unpacker &unpacker, T *val) {
-  msgpack::object_handle oh;
-  bool result = unpacker.next(oh);
-  if (result == false) {
-    throw RayException("unpack error");
+  static T Deserialize(const char *data, size_t size) {
+    msgpack::unpacked unpacked;
+    msgpack::unpack(unpacked, data, size);
+    return unpacked.get().as<T>();
   }
-  msgpack::object obj = oh.get();
-  obj.convert(*val);
-  return;
-}
+
+  template <typename T>
+  static T Deserialize(const char *data, size_t size, size_t offset) {
+    return Deserialize<T>(data + offset, size - offset);
+  }
+
+  template <typename T>
+  static T Deserialize(const char *data, size_t size, size_t &off) {
+    msgpack::unpacked unpacked = msgpack::unpack(data, size, off);
+    return unpacked.get().as<T>();
+  }
+
+  template <typename T>
+  static std::pair<bool, T> DeserializeWhenNil(const char *data, size_t size) {
+    T val;
+    size_t off = 0;
+    msgpack::unpacked unpacked = msgpack::unpack(data, size, off);
+    if (!unpacked.get().convert_if_not_nil(val)) {
+      return {false, {}};
+    }
+
+    return {true, val};
+  }
+
+  static bool HasError(char *data, size_t size) {
+    msgpack::unpacked unpacked = msgpack::unpack(data, size);
+    return unpacked.get().is_nil() && size > 1;
+  }
+};
 
 }  // namespace api
 }  // namespace ray

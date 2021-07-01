@@ -7,6 +7,7 @@ import platform
 import sys
 import socket
 import json
+import time
 import traceback
 
 import aiohttp
@@ -21,10 +22,10 @@ import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 
 try:
     create_task = asyncio.create_task
@@ -44,6 +45,9 @@ class DashboardAgent(object):
                  dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
+                 session_dir=None,
+                 runtime_env_dir=None,
+                 runtime_env_setup_hook=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
@@ -55,6 +59,9 @@ class DashboardAgent(object):
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
+        self.session_dir = session_dir
+        self.runtime_env_dir = runtime_env_dir
+        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -75,8 +82,9 @@ class DashboardAgent(object):
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
+        options = (("grpc.enable_http_proxy", 0), )
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}")
+            f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
 
     def _load_modules(self):
@@ -157,7 +165,7 @@ class DashboardAgent(object):
         await runner.setup()
         site = aiohttp.web.TCPSite(runner, self.ip, 0)
         await site.start()
-        http_host, http_port = site._server.sockets[0].getsockname()
+        http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
                     http_port)
 
@@ -184,8 +192,11 @@ class DashboardAgent(object):
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip))
 
-        await asyncio.gather(check_parent_task,
-                             *(m.run(self.server) for m in modules))
+        tasks = [m.run(self.server) for m in modules]
+        if sys.platform not in ["win32", "cygwin"]:
+            tasks.append(check_parent_task)
+        await asyncio.gather(*tasks)
+
         await self.server.wait_for_termination()
         # Wait for finish signal.
         await runner.cleanup()
@@ -284,6 +295,25 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of this session.")
+    parser.add_argument(
+        "--runtime-env-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the resource directory used by runtime_env.")
+    parser.add_argument(
+        "--runtime-env-setup-hook",
+        required=True,
+        type=str,
+        default=None,
+        help="The module path to a Python function that"
+        "will be imported and run to set up the runtime env.")
 
     args = parser.parse_args()
     try:
@@ -295,12 +325,25 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
 
+        # The dashboard is currently broken on Windows.
+        # https://github.com/ray-project/ray/issues/14026.
+        if sys.platform == "win32":
+            logger.warning(
+                "The dashboard is currently disabled on windows."
+                "See https://github.com/ray-project/ray/issues/14026"
+                "for more details")
+            while True:
+                time.sleep(999)
+
         agent = DashboardAgent(
             args.node_ip_address,
             args.redis_address,
             args.dashboard_agent_port,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
+            session_dir=args.session_dir,
+            runtime_env_dir=args.runtime_env_dir,
+            runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
@@ -313,10 +356,11 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
         message = ("The agent on node {} failed with the following "
                    "error:\n{}".format(platform.uname()[1], traceback_str))
-        ray.utils.push_error_to_driver_through_redis(
+        ray._private.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
         logger.exception(message)
         raise e

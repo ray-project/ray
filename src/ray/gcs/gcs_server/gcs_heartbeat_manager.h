@@ -16,12 +16,15 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
+
 namespace ray {
 namespace gcs {
 
@@ -35,7 +38,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// \param on_node_death_callback Callback that will be called when node death is
   /// detected.
   explicit GcsHeartbeatManager(
-      boost::asio::io_service &io_service,
+      instrumented_io_context &io_service,
       std::function<void(const NodeID &)> on_node_death_callback);
 
   /// Handle heartbeat rpc come from raylet.
@@ -62,28 +65,20 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void AddNode(const NodeID &node_id);
 
  protected:
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
-
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
   void DetectDeadNodes();
 
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
-
  private:
   /// The main event loop for node failure detector.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   std::unique_ptr<std::thread> io_service_thread_;
   /// The callback of node death.
   std::function<void(const NodeID &)> on_node_death_callback_;
   /// The number of heartbeats that can be missed before a node is removed.
   int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer detect_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   absl::flat_hash_map<NodeID, int64_t> heartbeats_;

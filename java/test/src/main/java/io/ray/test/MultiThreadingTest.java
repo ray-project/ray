@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"cluster"})
+@Test
 public class MultiThreadingTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
@@ -140,7 +140,6 @@ public class MultiThreadingTest extends BaseTest {
     Assert.assertEquals("ok", obj.get());
   }
 
-  @Test(groups = {"cluster"})
   public void testGetCurrentActorId() {
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();
@@ -237,12 +236,10 @@ public class MultiThreadingTest extends BaseTest {
     return true;
   }
 
-  @Test
   public void testMissingWrapRunnableInWorker() {
     Ray.task(MultiThreadingTest::testMissingWrapRunnable).remote().get();
   }
 
-  @Test
   public void testGetAndSetAsyncContext() throws InterruptedException {
     Object asyncContext = Ray.getAsyncContext();
     Throwable[] throwable = new Throwable[1];

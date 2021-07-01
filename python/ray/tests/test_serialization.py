@@ -8,6 +8,7 @@ import sys
 import weakref
 
 import numpy as np
+from numpy import log
 import pytest
 
 import ray
@@ -615,6 +616,22 @@ def test_custom_serializer(ray_start_shared_local_modes):
     ray.util.register_serializer(
         A, serializer=custom_serializer, deserializer=custom_deserializer)
     ray.get(ray.put(A(1)))
+
+    ray.util.deregister_serializer(A)
+    with pytest.raises(Exception):
+        ray.get(ray.put(A(1)))
+
+    # deregister again takes no effects
+    ray.util.deregister_serializer(A)
+
+
+def test_numpy_ufunc(ray_start_shared_local_modes):
+    @ray.remote
+    def f():
+        # add reference to the numpy ufunc
+        log
+
+    ray.get(f.remote())
 
 
 if __name__ == "__main__":

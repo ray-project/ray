@@ -32,46 +32,42 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
-  int num_retries = RayConfig::instance().grpc_server_num_retries();
-  while (num_retries >= 0) {
-    grpc::ServerBuilder builder;
-    // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
-    // (default behavior in grpc), we may see multiple workers listen on the same port and
-    // the requests sent to this port may be handled by any of the workers.
-    builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
-    builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
-                               RayConfig::instance().max_grpc_message_size());
-    builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
-                               RayConfig::instance().max_grpc_message_size());
-    // TODO(hchen): Add options for authentication.
-    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
-    // Register all the services to this server.
-    if (services_.empty()) {
-      RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
-    }
-    for (auto &entry : services_) {
-      builder.RegisterService(&entry.get());
-    }
-    // Get hold of the completion queue used for the asynchronous communication
-    // with the gRPC runtime.
-    for (int i = 0; i < num_threads_; i++) {
-      cqs_[i] = builder.AddCompletionQueue();
-    }
-    // Build and start server.
-    server_ = builder.BuildAndStart();
-    if (port_ > 0) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().grpc_server_retry_timeout_milliseconds()));
-    num_retries--;
+  grpc::ServerBuilder builder;
+  // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
+  // (default behavior in grpc), we may see multiple workers listen on the same port and
+  // the requests sent to this port may be handled by any of the workers.
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
+  // TODO(hchen): Add options for authentication.
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  // Register all the services to this server.
+  if (services_.empty()) {
+    RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
+  for (auto &entry : services_) {
+    builder.RegisterService(&entry.get());
+  }
+  // Get hold of the completion queue used for the asynchronous communication
+  // with the gRPC runtime.
+  for (int i = 0; i < num_threads_; i++) {
+    cqs_[i] = builder.AddCompletionQueue();
+  }
+  // Build and start server.
+  server_ = builder.BuildAndStart();
 
-  // If the grpc server failed to bind the port, the `port_` will be set to 0.
-  RAY_CHECK(port_ > 0)
-      << "Port " << specified_port
-      << " specified by caller already in use. Try passing node_manager_port=... into "
-         "ray.init() to pick a specific port";
+  RAY_CHECK(server_)
+      << "Failed to start the grpc server. The specified port is " << specified_port
+      << ". This means that Ray's core components will not be able to function "
+      << "correctly. If the server startup error message is `Address already in use`, "
+      << "it indicates the server fails to start because the port is already used by "
+      << "other processes (such as --node-manager-port, --object-manager-port, "
+      << "--gcs-server-port, and ports between --min-worker-port, --max-worker-port). "
+      << "Try running lsof -i :" << specified_port
+      << " to check if there are other processes listening to the port.";
+  RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.

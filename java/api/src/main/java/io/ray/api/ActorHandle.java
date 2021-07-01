@@ -13,9 +13,9 @@ package io.ray.api;
  *   }
  * }
  * // Create an actor, and get a handle.
- * ActorHandle<MyActor> myActor = Ray.createActor(MyActor::new);
+ * ActorHandle<MyActor> myActor = Ray.actor(MyActor::new).remote();
  * // Call the `echo` method remotely.
- * ObjectRef<Integer> result = myActor.call(MyActor::echo, 1);
+ * ObjectRef<Integer> result = myActor.task(MyActor::echo, 1).remote();
  * // Get the result of the remote `echo` method.
  * Assert.assertEqual(result.get(), 1);
  * }</pre>

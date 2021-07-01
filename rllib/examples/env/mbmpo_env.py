@@ -1,12 +1,12 @@
-import gym
 from gym.envs.classic_control import PendulumEnv, CartPoleEnv
 import numpy as np
 
 # MuJoCo may not be installed.
 HalfCheetahEnv = HopperEnv = None
+
 try:
     from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
-except (ImportError, gym.error.DependencyNotInstalled):
+except Exception:
     pass
 
 
@@ -22,11 +22,12 @@ class CartPoleWrapper(CartPoleEnv):
         x = obs_next[:, 0]
         theta = obs_next[:, 2]
 
-        rew = (x < -self.x_threshold) | (x > self.x_threshold) | (
-            theta < -self.theta_threshold_radians) | (
-                theta > self.theta_threshold_radians)
+        # 1.0 if we are still on, 0.0 if we are terminated due to bounds
+        # (angular or x-axis) being breached.
+        rew = 1.0 - ((x < -self.x_threshold) | (x > self.x_threshold) |
+                     (theta < -self.theta_threshold_radians) |
+                     (theta > self.theta_threshold_radians)).astype(np.float32)
 
-        rew = rew.astype(float)
         return rew
 
 
@@ -54,44 +55,43 @@ class PendulumWrapper(PendulumEnv):
         return (((x + np.pi) % (2 * np.pi)) - np.pi)
 
 
-if HalfCheetahEnv:
+class HalfCheetahWrapper(HalfCheetahEnv or object):
+    """Wrapper for the MuJoCo HalfCheetah-v2 environment.
 
-    class HalfCheetahWrapper(HalfCheetahEnv):
-        """Wrapper for the MuJoCo HalfCheetah-v2 environment.
+    Adds an additional `reward` method for some model-based RL algos (e.g.
+    MB-MPO).
+    """
 
-        Adds an additional `reward` method for some model-based RL algos (e.g.
-        MB-MPO).
-        """
-
-        def reward(self, obs, action, obs_next):
-            if obs.ndim == 2 and action.ndim == 2:
-                assert obs.shape == obs_next.shape
-                forward_vel = obs_next[:, 8]
-                ctrl_cost = 0.1 * np.sum(np.square(action), axis=1)
-                reward = forward_vel - ctrl_cost
-                return np.minimum(np.maximum(-1000.0, reward), 1000.0)
-            else:
-                forward_vel = obs_next[8]
-                ctrl_cost = 0.1 * np.square(action).sum()
-                reward = forward_vel - ctrl_cost
-                return np.minimum(np.maximum(-1000.0, reward), 1000.0)
-
-    class HopperWrapper(HopperEnv):
-        """Wrapper for the MuJoCo Hopper-v2 environment.
-
-        Adds an additional `reward` method for some model-based RL algos (e.g.
-        MB-MPO).
-        """
-
-        def reward(self, obs, action, obs_next):
-            alive_bonus = 1.0
-            assert obs.ndim == 2 and action.ndim == 2
-            assert (obs.shape == obs_next.shape
-                    and action.shape[0] == obs.shape[0])
-            vel = obs_next[:, 5]
-            ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
-            reward = vel + alive_bonus - ctrl_cost
+    def reward(self, obs, action, obs_next):
+        if obs.ndim == 2 and action.ndim == 2:
+            assert obs.shape == obs_next.shape
+            forward_vel = obs_next[:, 8]
+            ctrl_cost = 0.1 * np.sum(np.square(action), axis=1)
+            reward = forward_vel - ctrl_cost
             return np.minimum(np.maximum(-1000.0, reward), 1000.0)
+        else:
+            forward_vel = obs_next[8]
+            ctrl_cost = 0.1 * np.square(action).sum()
+            reward = forward_vel - ctrl_cost
+            return np.minimum(np.maximum(-1000.0, reward), 1000.0)
+
+
+class HopperWrapper(HopperEnv or object):
+    """Wrapper for the MuJoCo Hopper-v2 environment.
+
+    Adds an additional `reward` method for some model-based RL algos (e.g.
+    MB-MPO).
+    """
+
+    def reward(self, obs, action, obs_next):
+        alive_bonus = 1.0
+        assert obs.ndim == 2 and action.ndim == 2
+        assert (obs.shape == obs_next.shape
+                and action.shape[0] == obs.shape[0])
+        vel = obs_next[:, 5]
+        ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
+        reward = vel + alive_bonus - ctrl_cost
+        return np.minimum(np.maximum(-1000.0, reward), 1000.0)
 
 
 if __name__ == "__main__":

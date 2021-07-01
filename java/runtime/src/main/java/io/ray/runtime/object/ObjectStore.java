@@ -117,25 +117,36 @@ public abstract class ObjectStore {
   }
 
   /**
-   * Wait for a list of objects to appear in the object store.
+   * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
+   * specified timeout has passed.
    *
    * @param objectIds IDs of the objects to wait for.
    * @param numObjects Number of objects that should appear.
    * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return A bitset that indicates each object has appeared or not.
    */
-  public abstract List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs);
+  public abstract List<Boolean> wait(
+      List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);
 
   /**
-   * Wait for a list of RayObjects to be locally available, until specified number of objects are
-   * ready, or specified timeout has passed.
+   * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
+   * specified timeout has passed.
    *
    * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal) {
     Preconditions.checkNotNull(waitList);
     if (waitList.isEmpty()) {
       return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
@@ -144,7 +155,7 @@ public abstract class ObjectStore {
     List<ObjectId> ids =
         waitList.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId()).collect(Collectors.toList());
 
-    List<Boolean> ready = wait(ids, numReturns, timeoutMs);
+    List<Boolean> ready = wait(ids, numReturns, timeoutMs, fetchLocal);
     List<ObjectRef<T>> readyList = new ArrayList<>();
     List<ObjectRef<T>> unreadyList = new ArrayList<>();
 

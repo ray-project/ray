@@ -29,8 +29,8 @@ class MADDPGPostprocessing:
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
         #  supported now.
-        sample_batch.data[SampleBatch.DONES] = self.get_done_from_info(
-            sample_batch.data[SampleBatch.INFOS])
+        sample_batch[SampleBatch.DONES] = self.get_done_from_info(
+            sample_batch[SampleBatch.INFOS])
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
@@ -297,12 +297,13 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         var_list = []
         for var in self.vars.values():
             var_list += var
-        return self.sess.run(var_list)
+        return {"_state": self.sess.run(var_list)}
 
     @override(TFPolicy)
     def set_weights(self, weights):
         self.sess.run(
-            self.update_vars, feed_dict=dict(zip(self.vars_ph, weights)))
+            self.update_vars,
+            feed_dict=dict(zip(self.vars_ph, weights["_state"])))
 
     @override(Policy)
     def get_state(self):

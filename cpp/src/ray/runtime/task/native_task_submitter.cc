@@ -2,20 +2,15 @@
 
 #include <ray/api/ray_exception.h>
 
-#include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
 namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
-  auto base_addr =
-      GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  auto func_offset = (size_t)(invocation.fptr.function_pointer - base_addr);
-  auto exec_func_offset = (size_t)(invocation.fptr.exec_function_pointer - base_addr);
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset));
-  return RayFunction(Language::CPP, function_descriptor);
+      invocation.lib_name, invocation.remote_function_holder.function_name);
+  return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
 ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation) {

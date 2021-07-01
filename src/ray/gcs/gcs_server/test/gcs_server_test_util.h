@@ -17,17 +17,16 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/util/asio_util.h"
 
 namespace ray {
 
@@ -237,6 +236,26 @@ struct GcsServerMocker {
       return ray::Status::OK();
     }
 
+    void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
+                             &callback) override {}
+
+    void GetGcsServerAddress(
+        const ray::rpc::ClientCallback<ray::rpc::GetGcsServerAddressReply> &callback)
+        override {}
+
+    /// ResourceUsageInterface
+    void RequestResourceReport(
+        const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
+    /// ResourceUsageInterface
+    void UpdateResourceUsage(
+        std::string &address,
+        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
@@ -258,9 +277,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
    public:
-    using gcs::GcsActorScheduler::GcsActorScheduler;
+    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -304,7 +323,7 @@ struct GcsServerMocker {
     }
 
    private:
-    boost::asio::io_service main_io_service_;
+    instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };

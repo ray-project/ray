@@ -139,15 +139,6 @@ class ProcessFD {
         STARTUPINFO si = {sizeof(si)};
         RAY_UNUSED(
             new_env_block.c_str());  // Ensure there's a final terminator for Windows
-        // MSDN:
-        // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
-        // Note that an ANSI environment block is terminated by two zero bytes:
-        // one for the last string, one more to terminate the block.
-        // A Unicode environment block is terminated by four zero bytes:
-        // two for the last string, two more to terminate the block.
-        if (!new_env_block.empty()) {
-          new_env_block += '\0';
-        }
         char *const envp = &new_env_block[0];
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
@@ -576,6 +567,18 @@ pid_t GetParentPID() { return getppid(); }
 #endif  // #ifdef _WIN32
 
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
+
+bool IsProcessAlive(pid_t pid) {
+#ifdef _WIN32
+  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  return false;
+#else
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  return true;
+#endif
+}
 
 }  // namespace ray
 

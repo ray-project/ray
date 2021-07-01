@@ -1,13 +1,10 @@
 cluster_name: default
 min_workers: 5
 max_workers: 5
-initial_workers: 5
-autoscaling_mode: default
 docker:
     image: 'anyscale/ray-ml:latest'
     container_name: ray_container
     pull_before_run: true
-target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
     type: aws

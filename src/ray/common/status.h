@@ -92,8 +92,9 @@ enum class StatusCode : char {
   Interrupted = 13,
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
-  NotFound = 16,
-  Disconnected = 17,
+  CreationTaskError = 16,
+  NotFound = 17,
+  Disconnected = 18,
   // object store status
   ObjectExists = 21,
   ObjectNotFound = 22,
@@ -171,6 +172,11 @@ class RAY_EXPORT Status {
     return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
+  static Status CreationTaskError() {
+    return Status(StatusCode::CreationTaskError,
+                  "error raised in creation task, cause worker to exit");
+  }
+
   static Status NotFound(const std::string &msg) {
     return Status(StatusCode::NotFound, msg);
   }
@@ -212,12 +218,17 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool IsSystemExit() const {
+  bool ShouldExitWorker() const {
     return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnexpectedSystemExit;
+           code() == StatusCode::UnexpectedSystemExit ||
+           code() == StatusCode::CreationTaskError;
   }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
+  }
+  bool IsCreationTaskError() const { return code() == StatusCode::CreationTaskError; }
+  bool IsUnexpectedSystemExit() const {
+    return code() == StatusCode::UnexpectedSystemExit;
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }

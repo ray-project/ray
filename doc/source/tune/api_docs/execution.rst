@@ -18,11 +18,6 @@ tune.Experiment
 
 .. autofunction:: ray.tune.Experiment
 
-tune.with_parameters
---------------------
-
-.. autofunction:: ray.tune.with_parameters
-
 .. _tune-sync-config:
 
 tune.SyncConfig

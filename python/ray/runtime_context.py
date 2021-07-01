@@ -1,5 +1,6 @@
 import ray.worker
 import logging
+from ray._private.client_mode_hook import client_mode_hook
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,7 @@ class RuntimeContext(object):
     def get(self):
         """Get a dictionary of the current context.
 
-        Fields that are not available (e.g., actor ID inside a task) won't be
-        included in the field.
+
 
         Returns:
             dict: Dictionary of the current context.
@@ -23,6 +23,7 @@ class RuntimeContext(object):
         context = {
             "job_id": self.job_id,
             "node_id": self.node_id,
+            "namespace": self.namespace,
         }
         if self.worker.mode == ray.worker.WORKER_MODE:
             if self.task_id is not None:
@@ -113,6 +114,10 @@ class RuntimeContext(object):
         return actor_id if not actor_id.is_nil() else None
 
     @property
+    def namespace(self):
+        return self.worker.namespace
+
+    @property
     def was_current_actor_reconstructed(self):
         """Check whether this actor has been restarted
 
@@ -145,11 +150,28 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
+    @property
+    def runtime_env(self):
+        """Get the runtime env passed to job_config
+
+        Returns:
+            The runtime env currently using by this worker.
+        """
+        return self.worker.runtime_env
+
 
 _runtime_context = None
 
 
+@client_mode_hook
 def get_runtime_context():
+    """Get the runtime context of the current driver/worker.
+
+    Example:
+
+    >>> ray.get_runtime_context().job_id # Get the job id.
+    >>> ray.get_runtime_context().get() # Get all the metadata.
+    """
     global _runtime_context
     if _runtime_context is None:
         _runtime_context = RuntimeContext(ray.worker.global_worker)

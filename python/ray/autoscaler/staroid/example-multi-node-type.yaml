@@ -1,6 +1,5 @@
 # an example of configuring a mixed-node-type cluster.
 cluster_name: multi-node-type # name with 'a-z' and '-'
-min_workers: 1
 max_workers: 40
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.

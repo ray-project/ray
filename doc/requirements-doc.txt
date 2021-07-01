@@ -4,6 +4,7 @@ colorful
 filelock
 flask
 flatbuffers
+fastapi
 jsonschema
 mock
 numpy
@@ -11,7 +12,7 @@ opencv-python-headless==4.3.0.36
 pandas
 pickle5
 pillow
-pydantic<1.7
+pydantic
 pygments
 pyyaml
 recommonmark
@@ -25,6 +26,7 @@ sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
 sphinx-book-theme
+sphinxcontrib.yt
 starlette
 tabulate
 uvicorn

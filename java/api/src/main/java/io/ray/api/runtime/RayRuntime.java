@@ -14,11 +14,10 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -53,15 +52,20 @@ public interface RayRuntime {
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
-   * Wait for a list of RayObjects to be locally available, until specified number of objects are
-   * ready, or specified timeout has passed.
+   * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
+   * specified timeout has passed.
    *
    * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal);
 
   /**
    * Free a list of objects from Plasma Store.
@@ -164,11 +168,13 @@ public interface RayRuntime {
    */
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
 
-  PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy);
-
-  PlacementGroup createPlacementGroup(
-      List<Map<String, Double>> bundles, PlacementStrategy strategy);
+  /**
+   * Create a placement group on remote nodes.
+   *
+   * @param creationOptions Creation options of the placement group.
+   * @return A handle to the created placement group.
+   */
+  PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions);
 
   RuntimeContext getRuntimeContext();
 
@@ -202,6 +208,15 @@ public interface RayRuntime {
    * @return The placement group.
    */
   PlacementGroup getPlacementGroup(PlacementGroupId id);
+
+  /**
+   * Get a placement group by name.
+   *
+   * @param name The name of the placement group.
+   * @param global Whether the named placement group is global.
+   * @return The placement group.
+   */
+  PlacementGroup getPlacementGroup(String name, boolean global);
 
   /**
    * Get all placement groups in this cluster.

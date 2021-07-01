@@ -3,16 +3,18 @@
 Launching Cloud Clusters
 ========================
 
-This section provides instructions for configuring the Ray Cluster Launcher to use with AWS/Azure/GCP, an existing Kubernetes cluster, or on a private cluster of host machines.
+This section provides instructions for configuring the Ray Cluster Launcher to use with various cloud providers or on a private cluster of host machines.
 
 See this blog post for a `step by step guide`_ to using the Ray Cluster Launcher.
+
+To learn about deploying Ray on an existing Kubernetes cluster, refer to the guide :ref:`here<ray-k8s-deploy>`.
 
 .. _`step by step guide`: https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1
 
 .. _ref-cloud-setup:
 
-AWS/GCP/Azure
--------------
+Ray with cloud providers
+------------------------
 
 .. toctree::
     :hidden:
@@ -113,59 +115,9 @@ AWS/GCP/Azure
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-    .. group-tab:: Custom
+    .. group-tab:: Staroid Kubernetes Engine (contributed)
 
-        Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
-        You can specify the external node provider using the yaml config:
-
-        .. code-block:: yaml
-
-            provider:
-                type: external
-                module: mypackage.myclass
-
-        The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``.
-
-.. _ray-launch-k8s:
-
-Kubernetes
-----------
-
-The cluster launcher can also be used to start Ray clusters on an existing Kubernetes cluster.
-
-.. tabs::
-    .. group-tab:: Kubernetes
-        First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
-
-        Once you have ``kubectl`` configured locally to access the remote cluster, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker node pods, with all pods requiring 1 CPU and 0.5GiB of memory.
-        It's also possible to deploy service and ingress resources for each scaled worker pod. An example is provided in `ray/python/ray/autoscaler/kubernetes/example-ingress.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-ingress.yaml>`__.
-
-        Test that it works by running the following commands from your local machine:
-
-        .. code-block:: bash
-
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to get a remote shell into the head node.
-            $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
-
-            # List the pods running in the cluster. You shoud only see one head node
-            # until you start running an application, at which point worker nodes
-            # should be started. Don't forget to include the Ray namespace in your
-            # 'kubectl' commands ('ray' by default).
-            $ kubectl -n ray get pods
-
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-            # Tear down the cluster
-            $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
-
-        .. tip:: This section describes the easiest way to launch a Ray cluster on Kubernetes. See this :ref:`document for advanced usage <ray-k8s-deploy>` of Kubernetes with Ray.
-
-        .. tip:: If you would like to use Ray Tune in your Kubernetes cluster, have a look at :ref:`this short guide to make it work <tune-kubernetes>`.
-
-    .. group-tab:: Staroid (contributed)
+        The Ray Cluster Launcher can be used to start Ray clusters on an existing Staroid Kubernetes Engine (SKE) cluster.
 
         First, install the staroid client package (``pip install staroid``) then get `access token <https://staroid.com/settings/accesstokens>`_.
         Once you have an access token, you should be ready to launch your cluster.
@@ -193,6 +145,45 @@ The cluster launcher can also be used to start Ray clusters on an existing Kuber
 
             # Tear down the cluster
             $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+
+    .. group-tab:: Aliyun
+
+        First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``). Obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__ and grant AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user. Finally, set the AccessKey pair in your cluster config file.
+
+        Once the above is done, you should be ready to launch your cluster. The provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ``ecs.n4.large`` head node (on-demand) configured to autoscale up to two ``ecs.n4.2xlarge`` nodes.
+
+        Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
+
+        Test that it works by running the following commands from your local machine:
+
+        .. code-block:: bash
+
+            # Create or update the cluster. When the command finishes, it will print
+            # out the command that can be used to SSH into the cluster head node.
+            $ ray up ray/python/ray/autoscaler/aliyun/example-full.yaml
+
+            # Get a remote screen on the head node.
+            $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
+            $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+            # Tear down the cluster.
+            $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
+
+        Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
+
+    .. group-tab:: Custom
+
+        Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
+        You can specify the external node provider using the yaml config:
+
+        .. code-block:: yaml
+
+            provider:
+                type: external
+                module: mypackage.myclass
+
+        The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``.
+
 
 .. _cluster-private-setup:
 
@@ -272,6 +263,116 @@ There are two ways of running private clusters:
             $ ray down ray/python/ray/autoscaler/local/example-full.yaml
 
 
+.. _manual-cluster:
+
+Manual Ray Cluster Setup
+------------------------
+
+The most preferable way to run a Ray cluster is via the Ray Cluster Launcher. However, it is also possible to start a Ray cluster by hand.
+
+This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed
+on each machine. To install Ray, follow the `installation instructions`_.
+
+.. _`installation instructions`: http://docs.ray.io/en/master/installation.html
+
+Starting Ray on each machine
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On the head node (just choose some node to be the head node), run the following.
+If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
+random port.
+
+.. code-block:: bash
+
+  $ ray start --head --port=6379
+  ...
+  Next steps
+    To connect to this Ray runtime from another node, run
+      ray start --address='<ip address>:6379' --redis-password='<password>'
+
+  If connection fails, check your firewall settings and network configuration.
+
+The command will print out the address of the Redis server that was started
+(the local node IP address plus the port number you specified).
+
+**Then on each of the other nodes**, run the following. Make sure to replace
+``<address>`` with the value printed by the command on the head node (it
+should look something like ``123.45.67.89:6379``).
+
+Note that if your compute nodes are on their own subnetwork with Network
+Address Translation, to connect from a regular machine outside that subnetwork,
+the command printed by the head node will not work. You need to find the
+address that will reach the head node from the second machine. If the head node
+has a domain address like compute04.berkeley.edu, you can simply use that in
+place of an IP address and rely on the DNS.
+
+.. code-block:: bash
+
+  $ ray start --address=<address> --redis-password='<password>'
+  --------------------
+  Ray runtime started.
+  --------------------
+
+  To terminate the Ray runtime, run
+    ray stop
+
+If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
+with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
+
+If you see ``Unable to connect to Redis. If the Redis instance is on a
+different machine, check that your firewall is configured properly.``,
+this means the ``--port`` is inaccessible at the given IP address (because, for
+example, the head node is not actually running Ray, or you have the wrong IP
+address).
+
+If you see ``Ray runtime started.``, then the node successfully connected to
+the IP address at the ``--port``. You should now be able to connect to the
+cluster with ``ray.init(address='auto')``.
+
+If ``ray.init(address='auto')`` keeps repeating
+``redis_context.cc:303: Failed to connect to Redis, retrying.``, then the node
+is failing to connect to some other port(s) besides the main port.
+
+.. code-block:: bash
+
+  If connection fails, check your firewall settings and network configuration.
+
+If the connection fails, to check whether each port can be reached from a node,
+you can use a tool such as ``nmap`` or ``nc``.
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received echo-reply ttl 60 (0.00087s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  6379/tcp open  redis   syn-ack ttl 60 Redis key-value store
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
+
+If the node cannot access that port at that IP address, you might see
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up (0.0011s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE  SERVICE REASON       VERSION
+  6379/tcp closed redis   reset ttl 60
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
+
+
+Stopping Ray
+~~~~~~~~~~~~
+
+When you want to stop the Ray processes, run ``ray stop`` on each node.
+
+
 Additional Cloud Providers
 --------------------------
 
@@ -283,16 +384,62 @@ Security
 
 On cloud providers, nodes will be launched into their own security group by default, with traffic allowed only between nodes in the same group. A new SSH key will also be created and saved to your local machine for access to the cluster.
 
+.. _using-ray-on-a-cluster:
+
+Running a Ray program on the Ray cluster
+----------------------------------------
+
+To run a distributed Ray program, you'll need to execute your program on the same machine as one of the nodes.
+
+.. tabs::
+  .. group-tab:: Python
+
+    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes Ray to connect to the existing cluster. For example:
+
+    .. code-block:: python
+
+        ray.init(address="auto")
+
+  .. group-tab:: Java
+
+    You need to add the ``ray.address`` parameter to your command line (like ``-Dray.address=...``).
+
+    To connect your program to the Ray cluster, run it like this:
+
+        .. code-block:: bash
+
+            java -classpath <classpath> \
+              -Dray.address=<address> \
+              <classname> <args>
+
+    .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
+
+
+.. note:: A common mistake is setting the address to be a cluster node while running the script on your laptop. This will not work because the script needs to be started/executed on one of the Ray nodes.
+
+To verify that the correct number of nodes have joined the cluster, you can run the following.
+
+.. code-block:: python
+
+  import time
+
+  @ray.remote
+  def f():
+      time.sleep(0.01)
+      return ray._private.services.get_node_ip_address()
+
+  # Get a list of the IP addresses of the nodes that have joined the cluster.
+  set(ray.get([f.remote() for _ in range(1000)]))
+
 
 What's Next?
 -------------
 
 Now that you have a working understanding of the cluster launcher, check out:
 
-* :ref:`cluster-config`: A guide to configuring your Ray cluster.
+* :ref:`ref-cluster-quick-start`: A end-to-end demo to run an application that autoscales.
+* :ref:`cluster-config`: A complete reference of how to configure your Ray cluster.
 * :ref:`cluster-commands`: A short user guide to the various cluster launcher commands.
-* A `step by step guide`_ to using the cluster launcher
-* :ref:`ref-autoscaling`: An overview of how Ray autoscaling works.
 
 
 

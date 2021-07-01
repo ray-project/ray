@@ -15,68 +15,13 @@ Notes: This test seems to be somewhat flaky. This might be due to
 race conditions in handling dead actors. This is likely a problem of
 the xgboost_ray implementation and not of this test.
 """
-import os
-import time
-
 import ray
-from ray.services import get_node_ip_address
 
 from xgboost_ray import RayParams
-from xgboost_ray.session import get_actor_rank, put_queue
-
-from xgboost.callback import TrainingCallback
-from xgboost.rabit import get_world_size
-
-from _train import train_ray
 
 
-@ray.remote
-class FailureState:
-    def __init__(self):
-        self._failed_ids = set()
-
-    def set_failed(self, id):
-        if id in self._failed_ids:
-            return False
-        self._failed_ids.add(id)
-        return True
-
-    def has_failed(self, id):
-        return id in self._failed_ids
-
-
-class FailureInjection(TrainingCallback):
-    def __init__(self, id, state, ranks, iteration, allow_ips=None):
-        self._id = id
-        self._state = state
-        self._ranks = ranks or []
-        self._iteration = iteration
-        self._allow_ips = allow_ips
-        super(FailureInjection).__init__()
-
-    def after_iteration(self, model, epoch, evals_log):
-        if self._allow_ips and get_node_ip_address() not in self._allow_ips:
-            return
-
-        if epoch == self._iteration:
-            rank = get_actor_rank()
-            if rank in self._ranks:
-                if not ray.get(self._state.has_failed.remote(id)):
-                    success = ray.get(self._state.set_failed.remote(id))
-                    if not success:
-                        # Another rank is already about to fail
-                        return
-
-                    pid = os.getpid()
-                    print(f"Killing process: {pid} for actor rank {rank}")
-                    time.sleep(1)
-                    os.kill(pid, 9)
-
-
-class TrackingCallback(TrainingCallback):
-    def after_iteration(self, model, epoch, evals_log):
-        put_queue(get_world_size())
-
+from ray.util.xgboost.release_test_util import train_ray, \
+    FailureState, FailureInjection, TrackingCallback
 
 if __name__ == "__main__":
     ray.init(address="auto")
@@ -111,3 +56,5 @@ if __name__ == "__main__":
     assert len(actor_1_world_size) == 1 and 4 in actor_1_world_size, \
         "Training with fewer than 4 actors observed, but this was " \
         "non-elastic training. Please report to test owner."
+
+    print("PASSED.")

@@ -1,14 +1,18 @@
 # coding: utf-8
+import signal
 from collections import Counter
 import os
 import shutil
 import tempfile
+import time
 import unittest
+
 import skopt
 import numpy as np
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
+from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
@@ -20,11 +24,13 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.tune.suggest.hebo import HEBOSearch
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -87,6 +93,72 @@ class TuneRestoreTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
+class TuneInterruptionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+    def testExperimentInterrupted(self):
+        import multiprocessing
+
+        trainer_semaphore = multiprocessing.Semaphore()
+        driver_semaphore = multiprocessing.Semaphore()
+
+        class SteppingCallback(Callback):
+            def on_step_end(self, iteration, trials, **info):
+                driver_semaphore.release()  # Driver should continue
+                trainer_semaphore.acquire()  # Wait until released
+
+        def _run(local_dir):
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+                local_dir=local_dir,
+                name="interrupt",
+                callbacks=[SteppingCallback()])
+
+        local_dir = tempfile.mkdtemp()
+        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        process.daemon = False
+        process.start()
+
+        exp_dir = os.path.join(local_dir, "interrupt")
+
+        # Skip first five steps
+        for i in range(5):
+            driver_semaphore.acquire()  # Wait for callback
+            trainer_semaphore.release()  # Continue training
+
+        driver_semaphore.acquire()
+
+        experiment_state_file = None
+        for file in os.listdir(exp_dir):
+            if file.startswith("experiment_state"):
+                experiment_state_file = os.path.join(exp_dir, file)
+                break
+
+        self.assertTrue(experiment_state_file)
+        last_mtime = os.path.getmtime(experiment_state_file)
+
+        # Now send kill signal
+        os.kill(process.pid, signal.SIGINT)
+        # Release trainer. It should handle the signal and try to
+        # checkpoint the experiment
+        trainer_semaphore.release()
+
+        time.sleep(2)  # Wait for checkpoint
+        new_mtime = os.path.getmtime(experiment_state_file)
+
+        self.assertNotEqual(last_mtime, new_mtime)
+
+        shutil.rmtree(local_dir)
+
+
 class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
@@ -98,6 +170,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         def on_trial_start(self, trials, **info):
             self._step += 1
             if self._step >= self.steps:
+                print(f"Failing after step {self._step} with "
+                      f"{len(trials)} trials")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):
@@ -112,25 +186,29 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 assert len(trials) == self.expected_trials
                 self._checked = True
 
-    @classmethod
-    def setUpClass(cls):
-        ray.init(local_mode=True, num_cpus=2)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        # Wait up to 1.5 seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+        # Change back to local_mode=True after this is resolved:
+        # https://github.com/ray-project/ray/issues/13932
+        ray.init(local_mode=False, num_cpus=2)
+
         from ray.tune import register_trainable
         register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
         shutil.rmtree(self.logdir)
+        ray.shutdown()
 
     def testFailResumeGridSearch(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         config = dict(
             num_samples=3,
             fail_fast=True,
@@ -160,6 +238,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 9 for v in test2_counter.values())
 
     def testFailResumeWithPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -201,6 +281,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 10 for v in test2_counter.values())
 
     def testFailResumeAfterPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -243,6 +325,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 10 for v in test2_counter.values())
 
     def testMultiExperimentFail(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         experiments = []
         for i in range(3):
             experiments.append(
@@ -454,6 +538,26 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
 
+class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "height": tune.uniform(-100, 100),
+            "width": tune.randint(0, 100),
+        }
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = CFO(
+            space=space,
+            metric="loss",
+            mode="min",
+            seed=20,
+        )
+
+        return search_alg, cost
+
+
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         optimizer = skopt.Optimizer([(0, 20), (-100, 100)])
@@ -663,6 +767,33 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             dim_dict=dim_dict,
             metric="loss",
             mode="min")
+
+        return search_alg, cost
+
+
+class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space_config = [
+            {
+                "name": "width",
+                "type": "num",
+                "lb": 0,
+                "ub": 20
+            },
+            {
+                "name": "height",
+                "type": "num",
+                "lb": -100,
+                "ub": 100
+            },
+        ]
+        space = HEBODesignSpace().parse(space_config)
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = HEBOSearch(
+            space=space, metric="loss", mode="min", random_state_seed=5)
 
         return search_alg, cost
 

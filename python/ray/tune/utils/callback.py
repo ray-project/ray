@@ -11,6 +11,15 @@ from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
     TBXLoggerCallback, TBXLogger
 from ray.tune.syncer import SyncerCallback
 
+try:
+    if "TUNE_TEST_NO_TORCH_IMPORT" in os.environ:
+        _HAS_TORCH = False
+    else:
+        import torch  # noqa: F401
+        _HAS_TORCH = True
+except ImportError:
+    _HAS_TORCH = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,7 +117,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
         if not has_json_logger:
             callbacks.append(JsonLoggerCallback())
             last_logger_index = len(callbacks) - 1
-        if not has_tbx_logger:
+        if not has_tbx_logger and _HAS_TORCH:
             callbacks.append(TBXLoggerCallback())
             last_logger_index = len(callbacks) - 1
 

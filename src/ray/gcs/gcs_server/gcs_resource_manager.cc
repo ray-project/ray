@@ -20,13 +20,8 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : resource_timer_(main_io_service),
-      gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {
-  SendBatchedResourceUsage();
-}
+    : gcs_table_storage_(gcs_table_storage) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -49,7 +44,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
+  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
@@ -79,9 +74,11 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
+      {
+        absl::MutexLock guard(&resource_buffer_mutex_);
+        resources_buffer_proto_.add_batch()->mutable_change()->Swap(
+            &node_resource_change);
+      }
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
@@ -90,7 +87,8 @@ void GcsResourceManager::HandleUpdateResources(
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Node is not exist."));
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                       Status::Invalid("Node does not exist."));
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
   }
@@ -128,9 +126,11 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
+      {
+        absl::MutexLock guard(&resource_buffer_mutex_);
+        resources_buffer_proto_.add_batch()->mutable_change()->Swap(
+            &node_resource_change);
+      }
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
@@ -151,7 +151,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
     for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+      (*resource.mutable_resources_available())[res.first] = res.second.Double();
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -159,29 +159,36 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.resources().node_id());
+void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
+  NodeID node_id = NodeID::FromBinary(data.node_id());
   auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->CopyFrom(request.resources());
+  resources_data->CopyFrom(data);
 
-  // We use `node_resource_usages_` to filter out the nodes that report resource
-  // information for the first time. `UpdateNodeResourceUsage` will modify
-  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
-  if (node_resource_usages_.count(node_id) == 0 ||
-      resources_data->resources_available_changed()) {
-    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
-    SetAvailableResources(node_id, ResourceSet(resource_changed));
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+    UpdateNodeNormalTaskResources(node_id, *resources_data);
+  } else {
+    if (node_resource_usages_.count(node_id) == 0 ||
+        resources_data->resources_available_changed()) {
+      const auto &resource_changed =
+          MapFromProtobuf(resources_data->resources_available());
+      SetAvailableResources(node_id, ResourceSet(resource_changed));
+    }
   }
 
-  UpdateNodeResourceUsage(node_id, request);
+  UpdateNodeResourceUsage(node_id, data);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
       resources_data->resource_load_changed()) {
+    absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
   }
+}
+
+void GcsResourceManager::HandleReportResourceUsage(
+    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  UpdateFromResourceReport(request.resources());
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
@@ -236,26 +243,27 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::UpdateNodeResourceUsage(
-    const NodeID node_id, const rpc::ReportResourceUsageRequest &request) {
+void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
+                                                 const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     auto resources_data = std::make_shared<rpc::ResourcesData>();
-    resources_data->CopyFrom(request.resources());
+    resources_data->CopyFrom(resources);
     node_resource_usages_[node_id] = *resources_data;
   } else {
-    if (request.resources().resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = request.resources().resources_total();
+    if (resources.resources_total_size() > 0) {
+      (*iter->second.mutable_resources_total()) = resources.resources_total();
     }
-    if (request.resources().resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) =
-          request.resources().resources_available();
+    if (resources.resources_available_changed()) {
+      (*iter->second.mutable_resources_available()) = resources.resources_available();
     }
-    if (request.resources().resource_load_changed()) {
-      (*iter->second.mutable_resource_load()) = request.resources().resource_load();
+    if (resources.resource_load_changed()) {
+      (*iter->second.mutable_resource_load()) = resources.resource_load();
     }
-    (*iter->second.mutable_resource_load_by_shape()) =
-        request.resources().resource_load_by_shape();
+    if (resources.resources_normal_task_changed()) {
+      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+    }
+    (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
   }
 }
 
@@ -322,7 +330,10 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
-  resources_buffer_.erase(node_id);
+  {
+    absl::MutexLock guard(&resource_buffer_mutex_);
+    resources_buffer_.erase(node_id);
+  }
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
 }
@@ -352,32 +363,23 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
   return true;
 }
 
-void GcsResourceManager::SendBatchedResourceUsage() {
+void GcsResourceManager::GetResourceUsageBatchForBroadcast(
+    rpc::ResourceUsageBroadcastData &buffer) {
+  absl::MutexLock guard(&resource_buffer_mutex_);
+  resources_buffer_proto_.Swap(&buffer);
   if (!resources_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     for (auto &resources : resources_buffer_) {
-      batch->add_batch()->Swap(&resources.second);
+      buffer.add_batch()->mutable_data()->Swap(&resources.second);
     }
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
-
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();
   }
+}
 
-  auto resources_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
-  resource_timer_.expires_from_now(resources_period);
-  resource_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `resource_timer_` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
-      return;
-    }
-    RAY_CHECK(!error) << "Sending batched resource usage failed with error: "
-                      << error.message();
-    SendBatchedResourceUsage();
-  });
+void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
+    rpc::ResourceUsageBatchData &buffer) {
+  for (auto &resources : resources_buffer_) {
+    buffer.add_batch()->Swap(&resources.second);
+  }
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
@@ -400,6 +402,34 @@ std::string GcsResourceManager::DebugString() const {
          << ", GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST] << "}";
   return stream.str();
+}
+
+void GcsResourceManager::UpdateNodeNormalTaskResources(
+    const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter == cluster_scheduling_resources_.end()) {
+    return;
+  }
+
+  auto &scheduling_resoruces = iter->second;
+  ResourceSet resources_normal_task(MapFromProtobuf(heartbeat.resources_normal_task()));
+  if (heartbeat.resources_normal_task_changed() &&
+      !resources_normal_task.IsEqual(scheduling_resoruces.GetNormalTaskResources())) {
+    scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
+  }
+}
+
+std::string GcsResourceManager::ToString() const {
+  std::ostringstream ostr;
+  const int indent = 0;
+  std::string indent_0(indent + 0 * 2, ' ');
+  std::string indent_1(indent + 1 * 2, ' ');
+  ostr << "{\n";
+  for (const auto &entry : cluster_scheduling_resources_) {
+    ostr << indent_1 << entry.first << " : " << entry.second.DebugString() << ",\n";
+  }
+  ostr << indent_0 << "}\n";
+  return ostr.str();
 }
 
 }  // namespace gcs

@@ -1,0 +1,183 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+/// Each channel is prefixed by the name of its components.
+/// For example, for pubsub channels that are used by core workers,
+/// they have the prefix WORKER_.
+enum ChannelType {
+  /// A channel for object eviction.
+  WORKER_OBJECT_EVICTION = 0;
+  /// A channel for ref removed.
+  WORKER_REF_REMOVED_CHANNEL = 1;
+  /// A channel to subscribe object locations.
+  WORKER_OBJECT_LOCATIONS_CHANNEL = 2;
+}
+
+///
+/// Publish
+///
+
+message PubMessage {
+  /// Channel type for this publish message.
+  ChannelType channel_type = 1;
+  /// The key id (e.g., object id) in bytes.
+  bytes key_id = 2;
+  /// A message for the publish message.
+  oneof pub_message_one_of {
+    WorkerObjectEvictionMessage worker_object_eviction_message = 3;
+    WorkerRefRemovedMessage worker_ref_removed_message = 4;
+    WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
+    // The message that indicates the given key id is not available anymore.
+    FailureMessage failure_message = 6;
+  }
+}
+
+message WorkerObjectEvictionMessage {
+  bytes object_id = 1;
+}
+
+message WorkerRefRemovedMessage {
+  // The reference counts for the object that the worker was borrowing and
+  // any objects nested inside. The worker should no longer be using the object
+  // ID by the time it replies, but may have accumulated other borrowers or may
+  // still be borrowing an object ID that was nested inside.
+  repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message WorkerObjectLocationsPubMessage {
+  // The IDs of the nodes that this object appeared on or was evicted by.
+  repeated bytes node_ids = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The ID of the node that stores the primary copy in plasma.
+  // This could be Nil if the object has been evicted or inlined.
+  bytes primary_node_id = 6;
+}
+
+/// Indicating the subscriber needs to handle failure callback.
+message FailureMessage {
+}
+
+///
+/// Subscribe
+///
+
+/// Command is a set of instructions that can be operated on a publisher.
+/// NOTE(sang): In our pubsub module design, there's no broker,
+/// and publisher is identical to the broker unlike the conventional pubsub systems.
+/// This includes operations such as Subscribe or Unsubscribe. The terminology
+/// has come from Redis' pubsub (e.g., SUB command, UNSUB command).
+message Command {
+  /// The channel type for this command.
+  ChannelType channel_type = 1;
+  /// The key id (e.g., object id) in bytes.
+  bytes key_id = 2;
+  /// A message for a command.
+  oneof command_message_one_of {
+    UnsubscribeMessage unsubscribe_message = 3;
+    SubMessage subscribe_message = 4;
+  }
+}
+
+message UnsubscribeMessage {
+}
+
+/// Each of subscribe command needs to include request body because in Ray's pubsub
+/// module, it doesn't subscribe the same data structure (like for Redis,
+/// it is a table, but Ray has multiple data structures that can be subscribed).
+/// So, the publisher needs to have some business logic depending on subscribe
+/// messages' request body. For example, WaitForRefRemoved subscription
+/// needs to include some of ref count related request body.
+message SubMessage {
+  /// Subscribe message is one of other protobuf messages.
+  /// It needs messages with different payloads because the publisher
+  /// need more metadata than key id & channel type for subscription.
+  oneof sub_message_one_of {
+    WorkerObjectEvictionSubMessage worker_object_eviction_message = 1;
+    WorkerRefRemovedSubMessage worker_ref_removed_message = 2;
+    WorkerObjectLocationsSubMessage worker_object_locations_message = 3;
+  }
+}
+
+message WorkerObjectEvictionSubMessage {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
+  // Address of the subscriber.
+  Address subscriber_address = 3;
+}
+
+message WorkerRefRemovedSubMessage {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Object whose removal we are waiting for.
+  ObjectReference reference = 2;
+  // ObjectID that contains object_id. This is used when an ObjectID is stored
+  // inside another object ID that we do not own. Then, we must notify the
+  // outer ID's owner that the ID contains object_id.
+  bytes contained_in_id = 3;
+  // The ID of the worker that waits for the ref removed message.
+  bytes subscriber_worker_id = 4;
+}
+
+message WorkerObjectLocationsSubMessage {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+///
+/// Events
+///
+
+message PubsubLongPollingRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message PubsubLongPollingReply {
+  /// The object ids that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message PubsubCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message PubsubCommandBatchReply {
+}
+
+service PublisherService {
+  /// The long polling request sent to the publisher for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+}

@@ -137,7 +137,7 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
 
 std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   boost::asio::ip::detail::endpoint primary_endpoint;
-  boost::asio::io_context io_context;
+  instrumented_io_context io_context;
   boost::asio::ip::tcp::resolver resolver(io_context);
   boost::asio::ip::tcp::resolver::query query(
       boost::asio::ip::host_name(), "",
@@ -191,7 +191,7 @@ bool Ping(const std::string &ip, int port, int64_t timeout_ms) {
 }
 
 bool CheckFree(int port) {
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   tcp::socket socket(io_service);
   socket.open(boost::asio::ip::tcp::v4());
   boost::system::error_code ec;

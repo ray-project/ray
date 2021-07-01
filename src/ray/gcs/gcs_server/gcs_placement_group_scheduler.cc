@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
-    boost::asio::io_context &io_context,
+    instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
     GcsResourceScheduler &gcs_resource_scheduler,
@@ -138,18 +138,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
 
-  RAY_LOG(INFO) << "Scheduling placement group " << placement_group->GetName()
-                << ", id: " << placement_group->GetPlacementGroupID()
-                << ", bundles size = " << bundles.size();
+  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
+                 << ", id: " << placement_group->GetPlacementGroupID()
+                 << ", bundles size = " << bundles.size();
   auto selected_nodes = scheduler_strategies_[strategy]->Schedule(
       bundles, GetScheduleContext(placement_group->GetPlacementGroupID()),
       gcs_resource_scheduler_);
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
-    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
-                  << ", id: " << placement_group->GetPlacementGroupID()
-                  << ", because no nodes are available.";
+    RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
+                   << ", id: " << placement_group->GetPlacementGroupID()
+                   << ", because no nodes are available.";
     failure_callback(placement_group);
     return;
   }

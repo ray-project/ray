@@ -333,7 +333,7 @@ class NestedSpacesTest(unittest.TestCase):
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
-            ValueError, "Expected output shape of",
+            ValueError, "State output is not a list",
             lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {
@@ -457,9 +457,9 @@ class NestedSpacesTest(unittest.TestCase):
                             PGTFPolicy, DICT_SPACE, act_space,
                             {"model": {"custom_model": "dict_spy"}}),
                     },
-                    "policy_mapping_fn": lambda a: {
+                    "policy_mapping_fn": lambda aid, **kwargs: {
                         "tuple_agent": "tuple_policy",
-                        "dict_agent": "dict_policy"}[a],
+                        "dict_agent": "dict_policy"}[aid],
                 },
                 "framework": "tf",
             })

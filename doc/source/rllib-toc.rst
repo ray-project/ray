@@ -117,7 +117,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Model-based / Meta-learning
+*  Model-based / Meta-learning / Offline
 
    -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
@@ -126,6 +126,8 @@ Algorithms
    -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
    -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+   -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
 *  Multi-agent
 
@@ -220,7 +222,7 @@ references in the cluster.
 TensorFlow 2.0
 ~~~~~~~~~~~~~~
 
-RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
+RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"framework": "tf2"`` trainer config.
 
 .. |tensorflow| image:: tensorflow.png
     :class: inline-figure

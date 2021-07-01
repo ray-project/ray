@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import os
 import numpy as np
 import pytest
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # issue https://github.com/ray-project/ray/issues/7105
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_internal_free(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -145,6 +146,11 @@ def test_running_function_on_all_workers(ray_start_regular):
 
     assert "fake_directory" == ray.get(get_path1.remote())[-1]
 
+    # the function should only run on the current driver once.
+    assert sys.path[-1] == "fake_directory"
+    if len(sys.path) > 1:
+        assert sys.path[-2] != "fake_directory"
+
     def f(worker_info):
         sys.path.pop(-1)
 
@@ -160,11 +166,14 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
+@pytest.mark.skipif(
+    "RAY_PROFILING" not in os.environ,
+    reason="Only tested in client/profiling build.")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+        with ray.profiling.profile(
+                "custom_event", extra_data={"name": "custom name"}):
             pass
 
     ray.put(1)
@@ -263,7 +272,7 @@ def test_object_transfer_dump(ray_start_cluster):
     # The profiling information only flushes once every second.
     time.sleep(1.1)
 
-    transfer_dump = ray.object_transfer_timeline()
+    transfer_dump = ray.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
     assert len(transfer_dump) >= num_nodes**2
@@ -493,7 +502,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_wait_makes_object_local(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -519,6 +528,43 @@ def test_wait_makes_object_local(ray_start_cluster):
     ok, _ = ray.wait([x_id])
     assert len(ok) == 1
     assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_future_resolution_skip_plasma(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Disable worker caching so worker leases are not reused; set object
+    # inlining size threshold and enable storing of small objects in in-memory
+    # object store so the borrowed ref is inlined.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 100 * 1024,
+            "put_small_object_in_memory_store": True,
+        },
+    )
+    cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin_head": 1})
+    def f(x):
+        return x + 1
+
+    @ray.remote(resources={"pin_worker": 1})
+    def g(x):
+        borrowed_ref = x[0]
+        f_ref = f.remote(borrowed_ref)
+        # borrowed_ref should be inlined on future resolution and shouldn't be
+        # in Plasma.
+        assert ray.worker.global_worker.core_worker.object_exists(
+            borrowed_ref, memory_store_only=True)
+        return ray.get(f_ref) * 2
+
+    one = ray.put(1)
+    g_ref = g.remote([one])
+    assert ray.get(g_ref) == 4
 
 
 if __name__ == "__main__":

@@ -22,6 +22,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -61,13 +63,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
-                   bool distributed_ref_counting_enabled = true,
+                   pubsub::PublisherInterface *object_info_publisher,
+                   pubsub::SubscriberInterface *object_info_subscriber,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
-        distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory) {}
+        borrower_pool_(client_factory),
+        object_info_publisher_(object_info_publisher),
+        object_info_subscriber_(object_info_subscriber) {}
 
   ~ReferenceCounter() {}
 
@@ -75,6 +79,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
+
+  /// Return true if the worker owns any object.
+  bool OwnObjects() const;
+
+  /// Return true if the object is owned by us.
+  bool OwnedByUs(const ObjectID &object_id) const;
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -268,14 +278,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// RefCount() for the object ID goes to 0.
   ///
   /// \param[in] object_id The object that we were borrowing.
-  /// \param[in] reply A reply sent to the owner when we are no longer
-  /// borrowing the object ID. This reply also includes any new borrowers and
-  /// any object IDs that were nested inside the object that we or others are
-  /// now borrowing.
-  /// \param[in] send_reply_callback The callback to send the reply.
-  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
-                        rpc::SendReplyCallback send_reply_callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
@@ -397,6 +400,24 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
+  /// Publish the snapshot of the object location for the given object id.
+  /// Publish the empty locations if object is already evicted or not owned by this
+  /// worker.
+  ///
+  /// \param[in] object_id The object whose locations we want.
+  void PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Fill up the object information.
+  ///
+  /// \param[in] object_id The object id
+  /// \param[out] The object information that will be filled by a given object id.
+  /// \return OK status if object information is filled. Non OK status otherwise.
+  /// It can return non-OK status, for example, if the object for the object id
+  /// doesn't exist.
+  Status FillObjectInformation(const ObjectID &object_id,
+                               rpc::WorkerObjectLocationsPubMessage *object_info)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Get an object's size. This will return 0 if the object is out of scope.
   ///
   /// \param[in] object_id The object whose size to get.
@@ -406,11 +427,33 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
-  /// records that the object has been spilled to suppress reconstruction.
-  void HandleObjectSpilled(const ObjectID &object_id);
+  /// records the spill URL, spill node ID, and updated object size.
+  /// \param[in] object_id The object that has been spilled.
+  /// \param[in] spilled_url The URL to which the object has been spilled.
+  /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
+  /// \param[in] size The size of the object.
+  /// \param[in] release Whether to release the reference.
+  /// \return True if the reference exists, false otherwise.
+  bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
+                           const NodeID &spilled_node_id, int64_t size, bool release);
 
-  /// Get locality data for object.
+  /// Get locality data for object. This is used by the leasing policy to implement
+  /// locality-aware leasing.
+  ///
+  /// \param[in] object_id Object whose locality data we want.
+  /// \return Locality data.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+
+  /// Report locality data for object. This is used by the FutureResolver to report
+  /// locality data for borrowed refs.
+  ///
+  /// \param[in] object_id Object whose locality data we're reporting.
+  /// \param[in] locations Locations of the object.
+  /// \param[in] object_size Size of the object.
+  /// \return True if the reference exists, false otherwise.
+  bool ReportLocalityData(const ObjectID &object_id,
+                          const absl::flat_hash_set<NodeID> &locations,
+                          uint64_t object_size);
 
  private:
   struct Reference {
@@ -492,12 +535,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
-    // If this object is owned by us and stored in plasma, and reference
-    // counting is enabled, then some raylet must be pinning the object value.
-    // This is the address of that raylet.
+    /// If this object is owned by us and stored in plasma, and reference
+    /// counting is enabled, then some raylet must be pinning the object value.
+    /// This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
-    // If this object is owned by us and stored in plasma, this contains all
-    // object locations.
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
     absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
@@ -565,7 +608,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t lineage_ref_count = 0;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
-
+    /// For objects that have been spilled to external storage, the URL from which
+    /// they can be retrieved.
+    std::string spilled_url = "";
+    /// The ID of the node that spilled the object.
+    /// This will be Nil if the object has not been spilled or if it is spilled
+    /// distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -689,15 +738,35 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope, and the caller must have already acquired mutex_.
+  ///
+  /// \param[in] it The reference iterator for the object.
+  /// \param[in] node_id The new object location to be added.
+  void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Publish object locations to all subscribers.
+  ///
+  /// \param[in] it The reference iterator for the object.
+  void PushToLocationSubscribers(ReferenceTable::iterator it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Fill up the object information for the given iterator.
+  void FillObjectInformationInternal(ReferenceTable::iterator it,
+                                     rpc::WorkerObjectLocationsPubMessage *object_info)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Clean up borrowers and references when the reference is removed from borrowers.
+  /// It should be used as a WaitForRefRemoved callback.
+  void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
+                                    const ObjectID &object_id,
+                                    const rpc::WorkerAddress &borrower_addr);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
   rpc::WorkerAddress rpc_address_;
-
-  /// Feature flag for distributed ref counting. If this is false, then we will
-  /// keep the distributed ref count, but only the local ref count will be used
-  /// to decide when objects can be evicted.
-  const bool distributed_ref_counting_enabled_;
 
   /// Feature flag for lineage pinning. If this is false, then we will keep the
   /// lineage ref count, but this will not be used to decide when the object's
@@ -732,6 +801,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
   std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
+
+  /// Object status publisher. It is used to publish the ref removed message for the
+  /// reference counting protocol. It is not guarded by a lock because the class itself is
+  /// thread-safe.
+  pubsub::PublisherInterface *object_info_publisher_;
+
+  /// Object status subscriber. It is used to subscribe the ref removed information from
+  /// other workers.
+  pubsub::SubscriberInterface *object_info_subscriber_;
 };
 
 }  // namespace ray

@@ -1,14 +1,12 @@
 import requests
 import random
 
-import ray
 from ray import serve
-from ray.serve import BackendConfig
 
-ray.init()
-client = serve.start()
+serve.start()
 
 
+@serve.deployment(route_prefix="/threshold")
 class Threshold:
     def __init__(self):
         # self.model won't be changed by reconfigure.
@@ -23,11 +21,8 @@ class Threshold:
         return self.model.random() > self.threshold
 
 
-backend_config = BackendConfig(user_config={"threshold": 0.01})
-client.create_backend("threshold", Threshold, config=backend_config)
-client.create_endpoint("threshold", backend="threshold", route="/threshold")
+Threshold.options(user_config={"threshold": 0.01}).deploy()
 print(requests.get("http://127.0.0.1:8000/threshold").text)  # true, probably
 
-backend_config = BackendConfig(user_config={"threshold": 0.99})
-client.update_backend_config("threshold", backend_config)
+Threshold.options(user_config={"threshold": 0.99}).deploy()
 print(requests.get("http://127.0.0.1:8000/threshold").text)  # false, probably

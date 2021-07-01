@@ -75,8 +75,9 @@ class PlasmaClient {
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
   ///
-  /// If this request cannot be fulfilled immediately, the client will be
-  /// returned a request ID, which it should use to retry the request.
+  /// If this request cannot be fulfilled immediately, this call will block until
+  /// enough objects have been spilled to make space. If spilling cannot free
+  /// enough space, an out of memory error will be returned.
   ///
   /// \param object_id The ID to use for the newly created object.
   /// \param owner_address The address of the object's owner.
@@ -87,8 +88,6 @@ class PlasmaClient {
   /// pointer should be NULL.
   /// \param metadata_size The size in bytes of the metadata. If there is no
   ///        metadata, this should be 0.
-  /// \param retry_with_request_id If the request is not yet fulfilled, this
-  ///        will be set to a unique ID with which the client should retry.
   /// \param data The address of the newly created object will be written here.
   /// \param device_num The number of the device where the object is being
   ///        created.
@@ -99,23 +98,11 @@ class PlasmaClient {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
-                int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
-                uint64_t *retry_with_request_id, std::shared_ptr<Buffer> *data,
-                int device_num = 0);
-
-  /// Retry a previous Create call using the returned request ID.
-  ///
-  /// \param object_id The ID to use for the newly created object.
-  /// \param request_id The request ID returned by the previous Create call.
-  /// \param metadata The object's metadata. If there is no metadata, this
-  /// pointer should be NULL.
-  /// \param retry_with_request_id If the request is not yet fulfilled, this
-  ///        will be set to a unique ID with which the client should retry.
-  /// \param data The address of the newly created object will be written here.
-  Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
-                     const uint8_t *metadata, uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
+  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
+                                const ray::rpc::Address &owner_address, int64_t data_size,
+                                const uint8_t *metadata, int64_t metadata_size,
+                                std::shared_ptr<Buffer> *data,
+                                plasma::flatbuf::ObjectSource source, int device_num = 0);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -146,7 +133,8 @@ class PlasmaClient {
   Status TryCreateImmediately(const ObjectID &object_id,
                               const ray::rpc::Address &owner_address, int64_t data_size,
                               const uint8_t *metadata, int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data, int device_num = 0);
+                              std::shared_ptr<Buffer> *data,
+                              plasma::flatbuf::ObjectSource source, int device_num = 0);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the
@@ -161,9 +149,10 @@ class PlasmaClient {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param[out] object_buffers The object results.
+  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers);
+             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
 
   /// Deprecated variant of Get() that doesn't automatically release buffers
   /// when they get out of scope.
@@ -173,12 +162,13 @@ class PlasmaClient {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param object_buffers An array where the results will be stored.
+  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   ///
   /// The caller is responsible for releasing any retrieved objects, but it
   /// should not release objects that were not retrieved.
   Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer *object_buffers);
+             ObjectBuffer *object_buffers, bool is_from_worker);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
@@ -245,13 +235,6 @@ class PlasmaClient {
   /// \return The return status.
   Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
 
-  /// Bump objects up in the LRU cache, i.e. treat them as recently accessed.
-  /// Objects that do not exist in the store will be ignored.
-  ///
-  /// \param object_ids The IDs of the objects to bump.
-  /// \return The return status.
-  Status Refresh(const std::vector<ObjectID> &object_ids);
-
   /// Disconnect from the local plasma instance, including the local store and
   /// manager.
   ///
@@ -269,6 +252,19 @@ class PlasmaClient {
   int64_t store_capacity();
 
  private:
+  /// Retry a previous create call using the returned request ID.
+  ///
+  /// \param object_id The ID to use for the newly created object.
+  /// \param request_id The request ID returned by the previous Create call.
+  /// \param metadata The object's metadata. If there is no metadata, this
+  /// pointer should be NULL.
+  /// \param retry_with_request_id If the request is not yet fulfilled, this
+  ///        will be set to a unique ID with which the client should retry.
+  /// \param data The address of the newly created object will be written here.
+  Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
+                     const uint8_t *metadata, uint64_t *retry_with_request_id,
+                     std::shared_ptr<Buffer> *data);
+
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);

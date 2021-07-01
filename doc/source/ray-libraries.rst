@@ -12,6 +12,13 @@ Ray also comes packaged with several built-in machine learning libraries:
 - :ref:`sgd-index`
 - :ref:`rayserve`
 
+Airflow |airflow|
+-----------------
+
+Airflow is a platform created by the community to programmatically author, schedule and monitor workflows. The Airflow/Ray integration allows Airflow users to keep all of their Ray code in Python functions and define task dependencies by moving data through python functions.
+
+[`Link to integration <https://registry.astronomer.io/providers/ray>`__] [`Link to announcement <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__]
+
 ClassyVision |classyvision|
 ---------------------------
 
@@ -46,7 +53,13 @@ Hugging Face Transformers |hugging|
 
 State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0.
 
+It integrates with Ray for distributed hyperparameter tuning of transformer models:
+
 [`Link to integration <https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search>`__]
+
+As well as for distributed document retrieval for Retrieval Augmented Generation Models
+
+[`Link to integration <https://github.com/huggingface/transformers/tree/master/examples/research_projects/rag#document-retrieval>`__]
 
 Intel Analytics Zoo |zoo|
 -------------------------
@@ -60,6 +73,14 @@ John Snow Labs' NLU |NLU|
 The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
 
 [`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
+
+Ludwig AI |ludwig|
+------------------
+
+Ludwig is a toolbox that allows users to train and test deep learning models without the need to write code. With Ludwig, you can train a deep learning model on Ray in zero lines of code, automatically leveraging Dask on Ray for data preprocessing, Horovod on Ray for distributed training, and Ray Tune for hyperparameter optimization.
+
+[`Link to integration <https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e>`__]
+
 
 MARS |mars|
 -----------
@@ -82,6 +103,13 @@ PyCaret is an open source low-code machine learning library in Python that aims 
 
 GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
 
+PyTorch Lightning |ptl|
+-----------------------
+
+PyTorch Lightning is a popular open-source library that provides a high level interface for PyTorch. The goal of PyTorch Lightning is to structure your PyTorch code to abstract the details of training, making AI research scalable and fast to iterate on.
+
+[`Link to integration <https://github.com/ray-project/ray_lightning_accelerators>`__]
+
 RayDP |raydp|
 -------------
 
@@ -89,19 +117,19 @@ RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You
 
 GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
 
-Seldon Alibi |seldon|
----------------------
-
-Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
-
-GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
-
 Scikit Learn |scikit|
 ---------------------
 
 Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
 
 [`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
+
+Seldon Alibi |seldon|
+---------------------
+
+Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
+
+GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 Spacy |spacy|
 -------------
@@ -114,6 +142,11 @@ XGBoost |xgboost|
 XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
 
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
+
+
+.. |airflow| image:: images/airflow.png
+    :class: inline-figure
+    :height: 30
 
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
@@ -139,6 +172,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :class: inline-figure
     :height: 30
 
+.. |ludwig| image:: images/ludwig.png
+    :class: inline-figure
+    :height: 30
+
 .. |hugging| image:: images/hugging.png
     :class: inline-figure
     :height: 30
@@ -148,6 +185,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |pycaret| image:: images/pycaret.png
+    :class: inline-figure
+    :height: 30
+
+.. |ptl| image:: images/pytorch_lightning_small.png
     :class: inline-figure
     :height: 30
 

@@ -2,13 +2,14 @@ import pytest
 import collections
 import os
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 from ray import tune
 from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        best_trial_str, trial_progress_str)
+from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
+                                        _fair_filter_trials, best_trial_str,
+                                        detect_reporter, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -35,13 +36,13 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+------------+------------+
-|   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
-|--------------+------------+-------+-----+------------+------------|
-|        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
-|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
-|        00000 | TERMINATED | here  |   0 |        0   |       0    |
-+--------------+------------+-------+-----+------------+------------+
++--------------+------------+-------+-----+-----------+------------+
+|   Trial name | status     | loc   |   A |   NestSub |   Metric 2 |
+|--------------+------------+-------+-----+-----------+------------|
+|        00002 | RUNNING    | here  |   2 |       1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |       0.5 |       0.25 |
+|        00000 | TERMINATED | here  |   0 |       0   |       0    |
++--------------+------------+-------+-----+-----------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
 
 END_TO_END_COMMAND = """
@@ -75,12 +76,12 @@ tune.run_experiments({
     },
 }, verbose=3, progress_reporter=reporter)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
-+---------------+----------+-------+-----+
-| Trial name    | status   | loc   |   a |
-|---------------+----------+-------+-----|
-| f_xxxxx_00000 | RUNNING  |       |   0 |
-+---------------+----------+-------+-----+"""
+EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
++---------------+----------+-------+-----+-----+
+| Trial name    | status   | loc   |   a |   b |
+|---------------+----------+-------+-----+-----|
+| f_xxxxx_00000 | RUNNING  |       |   0 |     |
+| f_xxxxx_00001 | PENDING  |       |   1 |     |"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+--------+
@@ -160,7 +161,7 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
-VERBOSE_EXP_OUT_1 = "Number of trials: 1/3 (1 RUNNING)"
+VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
 VERBOSE_TRIAL_NORM = "Trial train_xxxxx_00000 reported acc=5 with " + \
@@ -174,14 +175,12 @@ Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
 | Trial name        | status   | loc   | do       |
 |-------------------+----------+-------+----------|
-| train_xxxxx_00000 | RUNNING  |       | complete |
-+-------------------+----------+-------+----------+"""
+| train_xxxxx_00000 | RUNNING  |       | complete |"""
 
 VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-
 
 def train(config):
     if config["do"] == "complete":
@@ -208,6 +207,13 @@ tune.run(
 
 
 class ProgressReporterTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
+
     def mock_trial(self, status, i):
         mock = MagicMock()
         mock.status = status
@@ -334,7 +340,10 @@ class ProgressReporterTest(unittest.TestCase):
                     }
                 },
                 "metric_1": i / 2,
-                "metric_2": i / 4
+                "metric_2": i / 4,
+                "nested": {
+                    "sub": i / 2
+                }
             }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
@@ -353,10 +362,10 @@ class ProgressReporterTest(unittest.TestCase):
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
-        # Both metrics, one parameter, all with custom representation
+        # Two metrics, one parameter, all with custom representation
         prog3 = trial_progress_str(
             trials, {
-                "metric_1": "Metric 1",
+                "nested/sub": "NestSub",
                 "metric_2": "Metric 2"
             }, {"a": "A"},
             fmt="psql",
@@ -402,6 +411,7 @@ class ProgressReporterTest(unittest.TestCase):
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+            os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 assert EXPECTED_END_TO_END_START in output
@@ -471,6 +481,17 @@ class ProgressReporterTest(unittest.TestCase):
                 raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testReporterDetection(self):
+        """Test if correct reporter is returned from ``detect_reporter()``"""
+        reporter = detect_reporter()
+        self.assertTrue(isinstance(reporter, CLIReporter))
+        self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
+
+        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+            reporter = detect_reporter()
+            self.assertFalse(isinstance(reporter, CLIReporter))
+            self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
 
 if __name__ == "__main__":

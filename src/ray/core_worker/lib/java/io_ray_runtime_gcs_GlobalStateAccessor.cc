@@ -59,6 +59,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
       });
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env, jobject o,
+                                                               jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  const auto &job_id = gcs_accessor->GetNextJobID();
+  return IdToJavaByteArray<ray::JobID>(env, job_id);
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jobject o,
                                                                  jlong gcs_accessor_ptr) {
@@ -79,15 +88,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(
   auto node_id = JavaByteArrayToId<ray::NodeID>(env, node_id_bytes);
   auto node_resource_info = gcs_accessor->GetNodeResourceInfo(node_id);
   return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, node_resource_info));
-}
-
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
-  auto *gcs_accessor =
-      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto system_config_string = gcs_accessor->GetInternalConfig();
-  return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, system_config_string));
 }
 
 JNIEXPORT jobject JNICALL
@@ -124,6 +124,21 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto placement_group = gcs_accessor->GetPlacementGroupInfo(placement_group_id);
+  if (placement_group) {
+    return NativeStringToJavaByteArray(env, *placement_group);
+  }
+  return nullptr;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring name, jboolean global) {
+  std::string placement_group_name = JavaStringToNativeString(env, name);
+  auto full_name = GetFullName(global, placement_group_name);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  // Java doesn't support namespaces.
+  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name, "");
   if (placement_group) {
     return NativeStringToJavaByteArray(env, *placement_group);
   }

@@ -18,12 +18,12 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/util/asio_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -101,8 +101,9 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy, job_id,
-                                  actor_id, /* is_creator_detached */ false);
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy,
+                                  /* is_detached */ false, job_id, actor_id,
+                                  /* is_creator_detached */ false);
     return builder.Build();
   }
 
@@ -137,7 +138,7 @@ struct Mocker {
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
-    job_table_data->set_timestamp(std::time(nullptr));
+    job_table_data->set_timestamp(current_sys_time_ms());
     job_table_data->set_driver_ip_address("127.0.0.1");
     job_table_data->set_driver_pid(5667L);
     return job_table_data;

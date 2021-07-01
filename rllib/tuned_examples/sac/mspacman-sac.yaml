@@ -11,8 +11,6 @@ mspacman-sac-tf:
         # Works for both torch and tf.
         framework: tf
         gamma: 0.99
-        # state-preprocessor=Our default Atari Conv2D-net.
-        use_state_preprocessor: true
         Q_model:
             fcnet_hiddens: [512]
             fcnet_activation: relu

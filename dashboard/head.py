@@ -1,8 +1,8 @@
 import sys
 import socket
-import json
 import asyncio
 import logging
+import ipaddress
 
 import aiohttp
 import aiohttp.web
@@ -12,9 +12,8 @@ from grpc.experimental import aio as aiogrpc
 import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray import ray_constants
+from ray.new_dashboard.datacenter import DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -22,103 +21,25 @@ routes = dashboard_utils.ClassMethodRouteTable
 aiogrpc.init_grpc_aio()
 
 
-def gcs_node_info_to_dict(message):
-    return dashboard_utils.message_to_dict(
-        message, {"nodeId"}, including_default_value_fields=True)
-
-
 class DashboardHead:
-    def __init__(self, http_host, http_port, redis_address, redis_password,
-                 log_dir):
-        # NodeInfoGcsService
-        self._gcs_node_info_stub = None
-        self._gcs_rpc_error_counter = 0
+    def __init__(self, http_host, http_port, http_port_retries, redis_address,
+                 redis_password, log_dir):
         # Public attributes are accessible for all head modules.
-        self.http_host = http_host
+        # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
+        self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
+        self.http_port_retries = http_port_retries
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
-        self.ip = ray._private.services.get_node_ip_address()
+        self.ip = ray.util.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
-        logger.info("Dashboard head http address: %s:%s", self.http_host,
-                    self.http_port)
-
-    async def _get_nodes(self):
-        """Read the client table.
-
-        Returns:
-            A dict of information about the nodes in the cluster.
-        """
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
-            request, timeout=2)
-        if reply.status.code == 0:
-            result = {}
-            for node_info in reply.node_info_list:
-                node_info_dict = gcs_node_info_to_dict(node_info)
-                result[node_info_dict["nodeId"]] = node_info_dict
-            return result
-        else:
-            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
-
-    async def _update_nodes(self):
-        while True:
-            try:
-                nodes = await self._get_nodes()
-
-                alive_node_ids = []
-                alive_node_infos = []
-                node_id_to_ip = {}
-                node_id_to_hostname = {}
-                for node in nodes.values():
-                    node_id = node["nodeId"]
-                    ip = node["nodeManagerAddress"]
-                    hostname = node["nodeManagerHostname"]
-                    node_id_to_ip[node_id] = ip
-                    node_id_to_hostname[node_id] = hostname
-                    assert node["state"] in ["ALIVE", "DEAD"]
-                    if node["state"] == "ALIVE":
-                        alive_node_ids.append(node_id)
-                        alive_node_infos.append(node)
-
-                agents = dict(DataSource.agents)
-                for node_id in alive_node_ids:
-                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
-                          f"{node_id}"
-                    agent_port = await self.aioredis_client.get(key)
-                    if agent_port:
-                        agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(alive_node_ids):
-                    agents.pop(node_id, None)
-
-                DataSource.node_id_to_ip.reset(node_id_to_ip)
-                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
-                DataSource.agents.reset(agents)
-                DataSource.nodes.reset(nodes)
-
-                self._gcs_rpc_error_counter = 0
-            except aiogrpc.AioRpcError:
-                logger.exception("Got AioRpcError when updating nodes.")
-                self._gcs_rpc_error_counter += 1
-                if self._gcs_rpc_error_counter > \
-                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
-                    logger.error(
-                        "Dashboard suicide, the GCS RPC error count %s > %s",
-                        self._gcs_rpc_error_counter,
-                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
-                    sys.exit(-1)
-            except Exception:
-                logger.exception("Error updating nodes.")
-            finally:
-                await asyncio.sleep(
-                    dashboard_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     def _load_modules(self):
         """Load dashboard head modules."""
@@ -159,7 +80,9 @@ class DashboardHead:
                 if not gcs_address:
                     raise Exception("GCS address not found.")
                 logger.info("Connect to GCS at %s", gcs_address)
-                channel = aiogrpc.insecure_channel(gcs_address)
+                options = (("grpc.enable_http_proxy", 0), )
+                channel = aiogrpc.insecure_channel(
+                    gcs_address, options=options)
             except Exception as ex:
                 logger.error("Connect to GCS failed: %s, retry...", ex)
                 await asyncio.sleep(
@@ -168,19 +91,8 @@ class DashboardHead:
                 self.aiogrpc_gcs_channel = channel
                 break
 
-        # Create a NodeInfoGcsServiceStub.
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            self.aiogrpc_gcs_channel)
-
         # Start a grpc asyncio server.
         await self.server.start()
-
-        # Write the dashboard head port to redis.
-        await self.aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
-                                       self.ip + ":" + str(self.http_port))
-        await self.aioredis_client.set(
-            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            self.ip + ":" + str(self.grpc_port))
 
         async def _async_notify():
             """Notify signals from queue."""
@@ -196,8 +108,34 @@ class DashboardHead:
         # Http server should be initialized after all modules loaded.
         app = aiohttp.web.Application()
         app.add_routes(routes=routes.bound_routes())
-        web_server = aiohttp.web._run_app(
-            app, host=self.http_host, port=self.http_port)
+
+        runner = aiohttp.web.AppRunner(app)
+        await runner.setup()
+        last_ex = None
+        for i in range(1 + self.http_port_retries):
+            try:
+                site = aiohttp.web.TCPSite(runner, self.http_host,
+                                           self.http_port)
+                await site.start()
+                break
+            except OSError as e:
+                last_ex = e
+                self.http_port += 1
+                logger.warning("Try to use port %s: %s", self.http_port, e)
+        else:
+            raise Exception(f"Failed to find a valid port for dashboard after "
+                            f"{self.http_port_retries} retries: {last_ex}")
+        http_host, http_port, *_ = site._server.sockets[0].getsockname()
+        http_host = self.ip if ipaddress.ip_address(
+            http_host).is_unspecified else http_host
+        logger.info("Dashboard head http address: %s:%s", http_host, http_port)
+
+        # Write the dashboard head port to redis.
+        await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
+                                       f"{http_host}:{http_port}")
+        await self.aioredis_client.set(
+            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+            f"{self.ip}:{self.grpc_port}")
 
         # Dump registered http routes.
         dump_routes = [
@@ -210,11 +148,9 @@ class DashboardHead:
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
-            self._update_nodes(),
             _async_notify(),
             DataOrganizer.purge(),
             DataOrganizer.organize(),
-            web_server,
         ]
         await asyncio.gather(*concurrent_tasks,
                              *(m.run(self.server) for m in modules))

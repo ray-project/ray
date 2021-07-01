@@ -79,6 +79,8 @@ class MockWorker {
     } else if ("MergeInputArgsAsOutput" == typed_descriptor->ModuleName()) {
       // Merge input args and write the merged content to each of return ids
       return MergeInputArgsAsOutput(args, return_ids, results);
+    } else if ("WhileTrueLoop" == typed_descriptor->ModuleName()) {
+      return WhileTrueLoop(args, return_ids, results);
     } else {
       return Status::TypeError("Unknown function descriptor: " +
                                typed_descriptor->ModuleName());
@@ -128,13 +130,22 @@ class MockWorker {
     return Status::OK();
   }
 
+  Status WhileTrueLoop(const std::vector<std::shared_ptr<RayObject>> &args,
+                       const std::vector<ObjectID> &return_ids,
+                       std::vector<std::shared_ptr<RayObject>> *results) {
+    while (1) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return Status::OK();
+  }
+
   int64_t prev_seq_no_ = 0;
 };
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc >= 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));

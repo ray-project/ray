@@ -13,13 +13,6 @@ min_workers: 100
 # node. This takes precedence over min_workers.
 max_workers: 100
 
-# The autoscaler will scale up the cluster to this target fraction of resource
-# usage. For example, if a cluster of 10 nodes is 100% busy and
-# target_utilization is 0.8, it would resize the cluster to 13. This fraction
-# can be decreased to increase the aggressiveness of upscaling.
-# This value must be less than 1.0 for scaling to happen.
-target_utilization_fraction: 0.8
-
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 

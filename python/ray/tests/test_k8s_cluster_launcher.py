@@ -7,7 +7,7 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private.kubernetes.node_provider import \
+from ray.autoscaler._private._kubernetes.node_provider import \
     KubernetesNodeProvider
 from ray.autoscaler import sdk
 
@@ -69,8 +69,8 @@ class KubernetesTest(unittest.TestCase):
         while True:
             monitor_output = sdk.run_on_cluster(
                 config, cmd=log_cmd, with_output=True).decode()
-            if ("ray-legacy-head-node-type" in monitor_output
-                    and "ray-legacy-worker-node-type" in monitor_output):
+            if ("head-node" in monitor_output
+                    and "worker-node" in monitor_output):
                 break
             else:
                 time.sleep(1)

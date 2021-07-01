@@ -1,4 +1,6 @@
-from typing import Dict
+import socket
+from contextlib import closing
+from typing import Dict, List, Union
 import copy
 import json
 import glob
@@ -21,10 +23,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
+
+def _import_gputil():
+    try:
+        import GPUtil
+    except ImportError:
+        GPUtil = None
+    return GPUtil
+
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -43,6 +49,8 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        GPUtil = _import_gputil()
+        self.GPUtil = GPUtil
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
@@ -67,10 +75,10 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None)))
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
-            if GPUtil is not None:
+            if self.GPUtil is not None:
                 gpu_list = []
                 try:
-                    gpu_list = GPUtil.getGPUs()
+                    gpu_list = self.GPUtil.getGPUs()
                 except Exception:
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
@@ -133,11 +141,13 @@ class warn_if_slow:
     def __init__(self,
                  name: str,
                  threshold: Optional[float] = None,
-                 message: Optional[str] = None):
+                 message: Optional[str] = None,
+                 disable: bool = False):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
+        self.disable = disable
 
     def __enter__(self):
         self.start = time.time()
@@ -145,6 +155,8 @@ class warn_if_slow:
 
     def __exit__(self, type, value, traceback):
         now = time.time()
+        if self.disable:
+            return
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             duration = now - self.start
@@ -157,6 +169,10 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def seek(self, *args, **kwargs):
+        self.stream1.seek(*args, **kwargs)
+        self.stream2.seek(*args, **kwargs)
+
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
@@ -165,6 +181,36 @@ class Tee(object):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
 
+    @property
+    def encoding(self):
+        if hasattr(self.stream1, "encoding"):
+            return self.stream1.encoding
+        return self.stream2.encoding
+
+    @property
+    def error(self):
+        if hasattr(self.stream1, "error"):
+            return self.stream1.error
+        return self.stream2.error
+
+    @property
+    def newlines(self):
+        if hasattr(self.stream1, "newlines"):
+            return self.stream1.newlines
+        return self.stream2.newlines
+
+    def detach(self):
+        raise NotImplementedError
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def readline(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def tell(self, *args, **kwargs):
+        raise NotImplementedError
+
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -172,17 +218,6 @@ def date_str():
 
 def is_nan_or_inf(value):
     return np.isnan(value) or np.isinf(value)
-
-
-def env_integer(key, default):
-    # TODO(rliaw): move into ray.constants
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-        raise ValueError(f"Found {key} in environment, but value must "
-                         f"be an integer. Got: {value}.")
-    return default
 
 
 def merge_dicts(d1, d2):
@@ -288,11 +323,62 @@ def unflatten_dict(dt, delimiter="/"):
     return out
 
 
+def unflatten_list_dict(dt, delimiter="/"):
+    """Unflatten nested dict and list.
+
+    This function now has some limitations:
+    (1) The keys of dt must be str.
+    (2) If unflattened dt (the result) contains list, the index order must be
+        ascending when accessing dt. Otherwise, this function will throw
+        AssertionError.
+    (3) The unflattened dt (the result) shouldn't contain dict with number
+        keys.
+
+    Be careful to use this function. If you want to improve this function,
+    please also improve the unit test. See #14487 for more details.
+
+    Args:
+        dt (dict): Flattened dictionary that is originally nested by multiple
+            list and dict.
+        delimiter (str): Delimiter of keys.
+
+    Example:
+        >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}
+        >>> unflatten_list_dict(dt)
+        {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
+    """
+    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() \
+        else type(dt)
+    out = out_type()
+    for key, val in dt.items():
+        path = key.split(delimiter)
+
+        item = out
+        for i, k in enumerate(path[:-1]):
+            next_type = list if path[i + 1].isdigit() else dict
+            if isinstance(item, dict):
+                item = item.setdefault(k, next_type())
+            elif isinstance(item, list):
+                if int(k) >= len(item):
+                    item.append(next_type())
+                    assert int(k) == len(item) - 1
+                item = item[int(k)]
+
+        if isinstance(item, dict):
+            item[path[-1]] = val
+        elif isinstance(item, list):
+            item.append(val)
+            assert int(path[-1]) == len(item) - 1
+    return out
+
+
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
+    if flat_key in lookup:
+        return lookup[flat_key]
     keys = deque(flat_key.split(delimiter))
     base = lookup
     while keys:
@@ -431,7 +517,15 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
-    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+    os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def find_free_port():
+    """Finds a free port on the current node."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
@@ -458,27 +552,31 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+def wait_for_gpu(gpu_id=None,
+                 target_util=0.01,
+                 retry=20,
+                 delay_s=5,
+                 gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[str]): GPU id to check. Must be found
-            within GPUtil.getGPUs(). If none, resorts to
+        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+            Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        gpu_memory_limit (float): If memory usage is below
-            this quantity, the check will break.
-        retry (int): Number of times to check GPU limit. Sleeps 5
+        target_util (float): The utilization threshold to reach to unblock.
+            Set this to 0 to block until the GPU is completely free.
+        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
+        delay_s (int): Seconds to wait before check.
+        gpu_memory_limit (float): Deprecated.
 
     Returns:
-        bool
-            True if free.
+        bool: True if free.
 
     Raises:
-        RuntimeError
-            If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If GPUtil is not found, if no GPUs are detected
             or if the check fails.
 
     Example:
@@ -491,21 +589,54 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
 
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
+    GPUtil = _import_gputil()
+    if gpu_memory_limit:
+        raise ValueError("'gpu_memory_limit' is deprecated. "
+                         "Use 'target_util' instead.")
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
-    if not gpu_id:
+
+    if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
-    gpu_object = GPUtil.getGPUs()[gpu_id]
+
+    gpu_attr = "id"
+    if isinstance(gpu_id, str):
+        if gpu_id.isdigit():
+            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
+            # of the int GPU ID
+            gpu_id = int(gpu_id)
+        else:
+            # Could not coerce gpu_id to int, so assume UUID
+            # and compare against `uuid` attribute e.g.,
+            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = "uuid"
+    elif not isinstance(gpu_id, int):
+        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
+
+    def gpu_id_fn(g):
+        # Returns either `g.id` or `g.uuid` depending on
+        # the format of the input `gpu_id`
+        return getattr(g, gpu_attr)
+
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
+    if gpu_id not in gpu_ids:
+        raise ValueError(
+            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
+            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+
     for i in range(int(retry)):
-        if gpu_object.memoryUsed > gpu_memory_limit:
-            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
-                        f"Mem: {gpu_object.memoryUsed:0.3f}")
-            time.sleep(5)
+        gpu_object = next(
+            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        if gpu_object.memoryUtil > target_util:
+            logger.info(f"Waiting for GPU util to reach {target_util}. "
+                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")
@@ -555,13 +686,16 @@ def validate_save_restore(trainable_cls,
     return True
 
 
-def detect_checkpoint_function(train_func, abort=False):
+def detect_checkpoint_function(train_func, abort=False, partial=False):
     """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
     func_sig = inspect.signature(train_func)
     validated = True
     try:
         # check if signature is func(config, checkpoint_dir=None)
-        func_sig.bind({}, checkpoint_dir="tmp/path")
+        if partial:
+            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
+        else:
+            func_sig.bind({}, checkpoint_dir="tmp/path")
     except Exception as e:
         logger.debug(str(e))
         validated = False
@@ -622,6 +756,80 @@ def create_logdir(dirname: str, local_dir: str):
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
+
+
+def validate_warmstart(parameter_names: List[str],
+                       points_to_evaluate: List[Union[List, Dict]],
+                       evaluated_rewards: List):
+    """Generic validation of a Searcher's warm start functionality.
+    Raises exceptions in case of type and length mismatches betwee
+    parameters.
+    """
+    if points_to_evaluate:
+        if not isinstance(points_to_evaluate, list):
+            raise TypeError(
+                "points_to_evaluate expected to be a list, got {}.".format(
+                    type(points_to_evaluate)))
+        for point in points_to_evaluate:
+            if not isinstance(point, (dict, list)):
+                raise TypeError(
+                    f"points_to_evaluate expected to include list or dict, "
+                    f"got {point}.")
+
+            if not len(point) == len(parameter_names):
+                raise ValueError("Dim of point {}".format(point) +
+                                 " and parameter_names {}".format(
+                                     parameter_names) + " do not match.")
+
+    if points_to_evaluate and evaluated_rewards:
+        if not isinstance(evaluated_rewards, list):
+            raise TypeError(
+                "evaluated_rewards expected to be a list, got {}.".format(
+                    type(evaluated_rewards)))
+        if not len(evaluated_rewards) == len(points_to_evaluate):
+            raise ValueError(
+                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
+                " and points_to_evaluate {}".format(points_to_evaluate) +
+                " do not match.")
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+    It can be used for actor placement.
+
+    If using Ray Client, this will return the resource key for the node that
+    is running the client server.
+
+    Returns:
+        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def force_on_current_node(task_or_actor):
+    """Given a task or actor, place it on the current node.
+
+    If using Ray Client, the current node is the client server node.
+
+    Args:
+        task_or_actor: A Ray remote function or class to place on the
+            current node.
+
+    Returns:
+        The provided task or actor, but with options modified to force
+            placement on the current node.
+    """
+    node_resource_key = get_current_node_resource_key()
+    options = {"resources": {node_resource_key: 0.01}}
+    return task_or_actor.options(**options)
 
 
 class SafeFallbackEncoder(json.JSONEncoder):

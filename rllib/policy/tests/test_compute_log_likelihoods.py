@@ -50,7 +50,7 @@ def do_test_log_likelihood(run,
         for _ in range(num_actions):
             # Single action from single obs.
             actions.append(
-                trainer.compute_action(
+                trainer.compute_single_action(
                     obs_batch[0],
                     prev_action=prev_a,
                     prev_reward=prev_r,
@@ -177,8 +177,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("sequential/action", (2, 4),
-                       ("action_model.action_0.", "action_model.action_out.")),
+            layer_key=("fc", (0, 2), ("action_model._hidden_layers.0.",
+                                      "action_model._logits.")),
             logp_func=logp_func)
 
     def test_sac_discr(self):
@@ -188,12 +188,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
 
-        do_test_log_likelihood(
-            sac.SACTrainer,
-            config,
-            prev_a,
-            layer_key=("sequential/action", (0, 2),
-                       ("action_model.action_0.", "action_model.action_out.")))
+        do_test_log_likelihood(sac.SACTrainer, config, prev_a)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"
@@ -37,13 +38,15 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  /// \param is_test_client Whether this client is used for tests.
   GcsClientOptions(const std::string &ip, int port, const std::string &password,
-                   bool is_test_client = false)
+                   bool enable_sync_conn = true, bool enable_async_conn = true,
+                   bool enable_subscribe_conn = true)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        is_test_client_(is_test_client) {}
+        enable_sync_conn_(enable_sync_conn),
+        enable_async_conn_(enable_async_conn),
+        enable_subscribe_conn_(enable_subscribe_conn) {}
 
   GcsClientOptions() {}
 
@@ -54,8 +57,10 @@ class GcsClientOptions {
   // Password of GCS server.
   std::string password_;
 
-  // Whether this client is used for tests.
-  bool is_test_client_{false};
+  // Whether to enable connection for contexts.
+  bool enable_sync_conn_{true};
+  bool enable_async_conn_{true};
+  bool enable_subscribe_conn_{true};
 };
 
 /// \class GcsClient
@@ -71,10 +76,14 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function must be called before calling other functions.
   ///
   /// \return Status
-  virtual Status Connect(boost::asio::io_service &io_service) = 0;
+  virtual Status Connect(instrumented_io_context &io_service) = 0;
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
+
+  virtual std::pair<std::string, int> GetGcsServerAddress() {
+    return std::make_pair("", 0);
+  }
 
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
@@ -114,13 +123,6 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *node_resource_accessor_;
   }
 
-  /// Get the sub-interface for accessing task information in GCS.
-  /// This function is thread safe.
-  TaskInfoAccessor &Tasks() {
-    RAY_CHECK(task_accessor_ != nullptr);
-    return *task_accessor_;
-  }
-
   /// Get the sub-interface for accessing error information in GCS.
   /// This function is thread safe.
   ErrorInfoAccessor &Errors() {
@@ -149,6 +151,10 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  /// Get the sub-interface for accessing worker information in GCS.
+  /// This function is thread safe.
+  InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -165,11 +171,11 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
-  std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
+  std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 };
 
 }  // namespace gcs

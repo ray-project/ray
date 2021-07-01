@@ -1,9 +1,15 @@
+import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
+from dataclasses import dataclass
+import grpc
+import os
+import uuid
 import inspect
-from ray.util.inspect import is_cython
+from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
 from typing import Any
@@ -12,41 +18,42 @@ from typing import Dict
 from typing import Optional
 from typing import Union
 
+# TODO: Instead of just making the max message size large, the right thing to
+# do is to split up the bytes representation of serialized data into multiple
+# messages and reconstruct them on either end. That said, since clients are
+# drivers and really just feed initial things in and final results out, (when
+# not going to S3 or similar) then a large limit will suffice for many use
+# cases.
+#
+# Currently, this is 2GiB, the max for a signed int.
+GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 
-class ClientBaseRef:
-    def __init__(self, id: bytes):
-        self.id = None
-        if not isinstance(id, bytes):
-            raise TypeError("ClientRefs must be created with bytes IDs")
-        self.id: bytes = id
-        ray.call_retain(id)
+# 30 seconds because ELB timeout is 60 seconds
+GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 
-    def binary(self):
-        return self.id
+# Long timeout because we do not want gRPC ending a connection.
+GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
-    def __eq__(self, other):
-        return self.id == other.id
+GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
+    ("grpc.keepalive_permit_without_calls", 1),
+    # Send an infinite number of pings
+    ("grpc.http2.max_pings_without_data", 0),
+    ("grpc.http2.min_ping_interval_without_data_ms",
+     GRPC_KEEPALIVE_TIME_MS - 50),
+    # Allow many strikes
+    ("grpc.http2.max_ping_strikes", 0)
+]
 
-    def __repr__(self):
-        return "%s(%s)" % (
-            type(self).__name__,
-            self.id.hex(),
-        )
+CLIENT_SERVER_MAX_THREADS = float(
+    os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-    def __hash__(self):
-        return hash(self.id)
-
-    def __del__(self):
-        if ray.is_connected() and self.id is not None:
-            ray.call_release(self.id)
-
-
-class ClientObjectRef(ClientBaseRef):
-    pass
-
-
-class ClientActorRef(ClientBaseRef):
-    pass
+# Aliases for compatibility.
+ClientObjectRef = raylet.ClientObjectRef
+ClientActorRef = raylet.ClientActorRef
 
 
 class ClientStub:
@@ -70,11 +77,12 @@ class ClientRemoteFunc(ClientStub):
         self._func = f
         self._name = f.__name__
         self._ref = None
+        self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote function cannot be called directly. "
-                        "Use {self._name}.remote method instead")
+        raise TypeError("Remote function cannot be called directly. "
+                        f"Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
         return return_refs(ray.call_remote(self, *args, **kwargs))
@@ -82,7 +90,11 @@ class ClientRemoteFunc(ClientStub):
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
 
-    def _remote(self, args=[], kwargs={}, **option_args):
+    def _remote(self, args=None, kwargs=None, **option_args):
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
         return self.options(**option_args).remote(*args, **kwargs)
 
     def __repr__(self):
@@ -99,8 +111,9 @@ class ClientRemoteFunc(ClientStub):
                 # So we set the state of the reference to be an
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
-                self._ref = SelfReferenceSentinel()
-                self._ref = ray.put(self._func)
+                self._ref = InProgressSentinel()
+                self._ref = ray.put(
+                    self._func, client_ref_id=self._client_side_ref.id)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
@@ -125,32 +138,40 @@ class ClientActorClass(ClientStub):
 
     def __init__(self, actor_cls, options=None):
         self.actor_cls = actor_cls
+        self._lock = threading.Lock()
         self._name = actor_cls.__name__
         self._ref = None
+        self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote actor cannot be instantiated directly. "
-                        "Use {self._name}.remote() instead")
+        raise TypeError("Remote actor cannot be instantiated directly. "
+                        f"Use {self._name}.remote() instead")
 
     def _ensure_ref(self):
-        if self._ref is None:
-            # As before, set the state of the reference to be an
-            # in-progress self reference value, which
-            # the encoding can detect and handle correctly.
-            self._ref = SelfReferenceSentinel()
-            self._ref = ray.put(self.actor_cls)
+        with self._lock:
+            if self._ref is None:
+                # As before, set the state of the reference to be an
+                # in-progress self reference value, which
+                # the encoding can detect and handle correctly.
+                self._ref = InProgressSentinel()
+                self._ref = ray.put(
+                    self.actor_cls, client_ref_id=self._client_side_ref.id)
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
 
-    def _remote(self, args=[], kwargs={}, **option_args):
+    def _remote(self, args=None, kwargs=None, **option_args):
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
         return self.options(**option_args).remote(*args, **kwargs)
 
     def __repr__(self):
@@ -183,12 +204,33 @@ class ClientActorHandle(ClientStub):
           is a serialized version of the actual handle as an opaque token.
     """
 
-    def __init__(self, actor_ref: ClientActorRef):
+    def __init__(self,
+                 actor_ref: ClientActorRef,
+                 actor_class: Optional[ClientActorClass] = None):
         self.actor_ref = actor_ref
+        self._dir: Optional[List[str]] = None
+        if actor_class is not None:
+            self._dir = list(
+                dict(
+                    inspect.getmembers(actor_class.actor_cls,
+                                       is_function_or_method)).keys())
 
     def __del__(self) -> None:
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
+
+    def __dir__(self) -> List[str]:
+        if self._dir is not None:
+            return self._dir
+        if ray.is_connected():
+
+            @ray.remote(num_cpus=0)
+            def get_dir(x):
+                return dir(x)
+
+            self._dir = ray.get(get_dir.remote(self))
+            return self._dir
+        return super().__dir__()
 
     @property
     def _actor_id(self):
@@ -213,8 +255,8 @@ class ClientRemoteMethod(ClientStub):
     """
 
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
-        self.actor_handle = actor_handle
-        self.method_name = method_name
+        self._actor_handle = actor_handle
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
@@ -224,20 +266,24 @@ class ClientRemoteMethod(ClientStub):
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self.method_name,
-                                               self.actor_handle)
+        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
+                                               self._actor_handle)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
 
-    def _remote(self, args=[], kwargs={}, **option_args):
+    def _remote(self, args=None, kwargs=None, **option_args):
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
         return self.options(**option_args).remote(*args, **kwargs)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_ref.id
+        task.name = self._method_name
+        task.payload_id = self._actor_handle.actor_ref.id
         return task
 
 
@@ -262,7 +308,11 @@ class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        actor_class = None
+        if isinstance(self.remote_stub, ClientActorClass):
+            actor_class = self.remote_stub
+        return ClientActorHandle(
+            ClientActorRef(ref_ids[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
@@ -271,6 +321,13 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
+
+    # If there's a non-null "placement_group" in `options`, convert the
+    # placement group to a dict so that `options` can be passed to json.dumps.
+    pg = options.get("placement_group", None)
+    if pg and pg != "default":
+        options["placement_group"] = options["placement_group"].to_dict()
+
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str
 
@@ -284,13 +341,22 @@ def return_refs(ids: List[bytes]
     return [ClientObjectRef(id) for id in ids]
 
 
-class DataEncodingSentinel:
+class InProgressSentinel:
     def __repr__(self) -> str:
         return self.__class__.__name__
 
 
-class SelfReferenceSentinel(DataEncodingSentinel):
-    pass
+class ClientSideRefID:
+    """An ID generated by the client for objects not yet given an ObjectRef"""
+
+    def __init__(self, id: bytes):
+        assert len(id) != 0
+        self.id = id
+
+    @staticmethod
+    def generate_id() -> "ClientSideRefID":
+        tid = uuid.uuid4()
+        return ClientSideRefID(b"\xcc" + tid.bytes)
 
 
 def remote_decorator(options: Optional[Dict[str, Any]]):
@@ -305,3 +371,17 @@ def remote_decorator(options: Optional[Dict[str, Any]]):
                             "either a function or to a class.")
 
     return decorator
+
+
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: ray_client_pb2_grpc.RayletDriverServicer
+    data_servicer: ray_client_pb2_grpc.RayletDataStreamerServicer
+    logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
+    grpc_server: grpc.Server
+
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)

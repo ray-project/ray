@@ -4,13 +4,13 @@ controller or the backend worker, use mock if necessary.
 """
 import asyncio
 from collections import defaultdict
-import os
 
 import pytest
 
 import ray
+from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
-from ray.serve.router import Query, ReplicaSet, RequestMetadata, Router
+from ray.serve.router import Query, ReplicaSet, RequestMetadata, EndpointRouter
 from ray.serve.utils import get_random_letters
 from ray.test_utils import SignalActor
 
@@ -19,7 +19,12 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def ray_instance():
-    os.environ["SERVE_LOG_DEBUG"] = "1"  # Turns on debug log for tests
+    # Note(simon):
+    # This line should be not turned on on master because it leads to very
+    # spammy and not useful log in case of a failure in CI.
+    # To run locally, please use this instead.
+    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
     ray.init(num_cpus=16)
     yield
     ray.shutdown()
@@ -60,8 +65,7 @@ def task_runner_mock_actor():
 
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                             task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     # Propogate configs
     await mock_controller.set_traffic.remote(
@@ -85,8 +89,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 
 async def test_changing_backend(ray_instance, mock_controller,
                                 task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -114,8 +117,7 @@ async def test_changing_backend(ray_instance, mock_controller,
 
 async def test_split_traffic_random(ray_instance, mock_controller,
                                     task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -144,8 +146,7 @@ async def test_split_traffic_random(ray_instance, mock_controller,
 
 async def test_shard_key(ray_instance, mock_controller,
                          task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     num_backends = 5
     traffic_dict = {}
@@ -187,7 +188,7 @@ async def test_shard_key(ray_instance, mock_controller,
             assert call.args[0] in runner_shard_keys[i]
 
 
-async def test_replica_set(ray_instance):
+async def test_replica_set(ray_instance, mock_controller_with_name):
     signal = SignalActor.remote()
 
     @ray.remote(num_cpus=0)
@@ -204,9 +205,13 @@ async def test_replica_set(ray_instance):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet()
+    rs = ReplicaSet(
+        mock_controller_with_name[1],
+        "my_backend",
+        asyncio.get_event_loop(),
+    )
     workers = [MockWorker.remote() for _ in range(2)]
-    rs.set_max_concurrent_queries(1)
+    rs.set_max_concurrent_queries(BackendConfig(max_concurrent_queries=1))
     rs.update_worker_replicas(workers)
 
     # Send two queries. They should go through the router but blocked by signal

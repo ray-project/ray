@@ -30,6 +30,7 @@ options = {
     "placement_group": (),
     "placement_group_bundle_index": (),
     "placement_group_capture_child_tasks": (),
+    "runtime_env": (),
     "override_environment_variables": (),
 }
 
@@ -46,9 +47,10 @@ def validate_options(
             raise TypeError(f"Invalid option passed to remote(): {k}")
         validator = options[k]
         if len(validator) != 0:
-            if not isinstance(v, validator[0]):
-                raise ValueError(validator[2])
-            if not validator[1](v):
-                raise ValueError(validator[2])
+            if v is not None:
+                if not isinstance(v, validator[0]):
+                    raise ValueError(validator[2])
+                if not validator[1](v):
+                    raise ValueError(validator[2])
         out[k] = v
     return out

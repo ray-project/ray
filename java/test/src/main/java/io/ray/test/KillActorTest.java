@@ -7,24 +7,15 @@ import io.ray.api.Ray;
 import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
-  private String oldNumWorkersPerProcess;
-
   @BeforeClass
   public void setUp() {
-    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
     System.setProperty("ray.job.num-java-workers-per-process", "1");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
   }
 
   public static class HangActor {
@@ -62,6 +53,8 @@ public class KillActorTest extends BaseTest {
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
     ActorHandle<HangActor> actor = Ray.actor(HangActor::new).setMaxRestarts(1).remote();
+    // Wait for the actor to be created.
+    actor.task(HangActor::ping).remote().get();
     ObjectRef<Boolean> result = actor.task(HangActor::hang).remote();
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());

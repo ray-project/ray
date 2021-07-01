@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -82,7 +83,7 @@ class GcsObjectManagerTest : public ::testing::Test {
   }
 
  protected:
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   std::shared_ptr<MockedGcsObjectManager> gcs_object_manager_;

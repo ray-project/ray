@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 # Training parameters
-dataroot = ray.utils.get_user_temp_dir() + os.sep
+dataroot = "~/data"
 workers = 2
 batch_size = 64
 image_size = 32

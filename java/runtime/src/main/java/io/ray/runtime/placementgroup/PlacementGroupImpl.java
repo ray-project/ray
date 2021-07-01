@@ -30,32 +30,32 @@ public class PlacementGroupImpl implements PlacementGroup {
     this.state = state;
   }
 
+  @Override
   public PlacementGroupId getId() {
     return id;
   }
 
+  @Override
   public String getName() {
     return name;
   }
 
+  @Override
   public List<Map<String, Double>> getBundles() {
     return bundles;
   }
 
+  @Override
   public PlacementStrategy getStrategy() {
     return strategy;
   }
 
+  @Override
   public PlacementGroupState getState() {
     return state;
   }
 
-  /**
-   * Wait for the placement group to be ready within the specified time.
-   *
-   * @param timeoutSeconds Timeout in seconds.
-   * @return True if the placement group is created. False otherwise.
-   */
+  @Override
   public boolean wait(int timeoutSeconds) {
     return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
   }

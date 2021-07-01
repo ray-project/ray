@@ -27,7 +27,12 @@ class Unity3DEnv(MultiAgentEnv):
     inside an RLlib PolicyClient for cloud/distributed training of Unity games.
     """
 
-    _BASE_PORT = 5004
+    # Default base port when connecting directly to the Editor
+    _BASE_PORT_EDITOR = 5004
+    # Default base port when connecting to a compiled environment
+    _BASE_PORT_ENVIRONMENT = 5005
+    # The worker_id for each environment instance
+    _WORKER_ID = 0
 
     def __init__(self,
                  file_name: str = None,
@@ -68,27 +73,39 @@ class Unity3DEnv(MultiAgentEnv):
         from mlagents_envs.environment import UnityEnvironment
 
         # Try connecting to the Unity3D game instance. If a port is blocked
+        port_ = None
         while True:
             # Sleep for random time to allow for concurrent startup of many
             # environments (num_workers >> 1). Otherwise, would lead to port
             # conflicts sometimes.
-            time.sleep(random.randint(1, 10))
-            port_ = port or self._BASE_PORT
-            self._BASE_PORT += 1
+            if port_ is not None:
+                time.sleep(random.randint(1, 10))
+            port_ = port or (self._BASE_PORT_ENVIRONMENT
+                             if file_name else self._BASE_PORT_EDITOR)
+            # cache the worker_id and
+            # increase it for the next environment
+            worker_id_ = Unity3DEnv._WORKER_ID if file_name else 0
+            Unity3DEnv._WORKER_ID += 1
             try:
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
-                    worker_id=0,
+                    worker_id=worker_id_,
                     base_port=port_,
                     seed=seed,
                     no_graphics=no_graphics,
                     timeout_wait=timeout_wait,
                 )
-                print("Created UnityEnvironment for port {}".format(port_))
+                print(
+                    "Created UnityEnvironment for port {}".format(port_ +
+                                                                  worker_id_))
             except mlagents_envs.exception.UnityWorkerInUseException:
                 pass
             else:
                 break
+
+        # ML-Agents API version.
+        self.api_version = self.unity_env.API_VERSION.split(".")
+        self.api_version = [int(s) for s in self.api_version]
 
         # Reset entire env every this number of step calls.
         self.episode_horizon = episode_horizon
@@ -117,16 +134,37 @@ class Unity3DEnv(MultiAgentEnv):
                     it. __all__=True, if episode is done for all agents.
                 - infos: An (empty) info dict.
         """
+        from mlagents_envs.base_env import ActionTuple
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.
         all_agents = []
         for behavior_name in self.unity_env.behavior_specs:
-            for agent_id in self.unity_env.get_steps(behavior_name)[
-                    0].agent_id_to_index.keys():
-                key = behavior_name + "_{}".format(agent_id)
-                all_agents.append(key)
-                self.unity_env.set_action_for_agent(behavior_name, agent_id,
-                                                    action_dict[key])
+            # New ML-Agents API: Set all agents actions at the same time
+            # via an ActionTuple. Since API v1.4.0.
+            if self.api_version[0] > 1 or (self.api_version[0] == 1
+                                           and self.api_version[1] >= 4):
+                actions = []
+                for agent_id in self.unity_env.get_steps(behavior_name)[
+                        0].agent_id:
+                    key = behavior_name + "_{}".format(agent_id)
+                    all_agents.append(key)
+                    actions.append(action_dict[key])
+                if actions:
+                    if actions[0].dtype == np.float32:
+                        action_tuple = ActionTuple(
+                            continuous=np.array(actions))
+                    else:
+                        action_tuple = ActionTuple(discrete=np.array(actions))
+                    self.unity_env.set_actions(behavior_name, action_tuple)
+            # Old behavior: Do not use an ActionTuple and set each agent's
+            # action individually.
+            else:
+                for agent_id in self.unity_env.get_steps(behavior_name)[
+                        0].agent_id_to_index.keys():
+                    key = behavior_name + "_{}".format(agent_id)
+                    all_agents.append(key)
+                    self.unity_env.set_action_for_agent(
+                        behavior_name, agent_id, action_dict[key])
         # Do the step.
         self.unity_env.step()
 
@@ -204,6 +242,8 @@ class Unity3DEnv(MultiAgentEnv):
             "3DBall": Box(float("-inf"), float("inf"), (8, )),
             # 3DBallHard.
             "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
+            # GridFoodCollector
+            "GridFoodCollector": Box(float("-inf"), float("inf"), (40, 40, 6)),
             # Pyramids.
             "Pyramids": TupleSpace([
                 Box(float("-inf"), float("inf"), (56, )),
@@ -216,6 +256,15 @@ class Unity3DEnv(MultiAgentEnv):
             "Striker": TupleSpace([
                 Box(float("-inf"), float("inf"), (231, )),
                 Box(float("-inf"), float("inf"), (63, )),
+            ]),
+            # Sorter.
+            "Sorter": TupleSpace([
+                Box(float("-inf"), float("inf"), (
+                    20,
+                    23,
+                )),
+                Box(float("-inf"), float("inf"), (10, )),
+                Box(float("-inf"), float("inf"), (8, )),
             ]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (27, )),
@@ -236,11 +285,15 @@ class Unity3DEnv(MultiAgentEnv):
             # 3DBallHard.
             "3DBallHard": Box(
                 float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # GridFoodCollector.
+            "GridFoodCollector": MultiDiscrete([3, 3, 3, 2]),
             # Pyramids.
             "Pyramids": MultiDiscrete([5]),
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
+            # Sorter.
+            "Sorter": MultiDiscrete([3, 3, 3]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (3, )),
             # VisualHallway.
@@ -260,7 +313,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces["Striker"], {}),
             }
 
-            def policy_mapping_fn(agent_id):
+            def policy_mapping_fn(agent_id, episode, **kwargs):
                 return "Striker" if "Striker" in agent_id else "Goalie"
 
         else:
@@ -269,7 +322,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces[game_name], {}),
             }
 
-            def policy_mapping_fn(agent_id):
+            def policy_mapping_fn(agent_id, episode, **kwargs):
                 return game_name
 
         return policies, policy_mapping_fn
