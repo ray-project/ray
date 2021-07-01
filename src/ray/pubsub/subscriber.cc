@@ -207,7 +207,6 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
 }
 
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto publisher_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
