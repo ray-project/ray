@@ -296,7 +296,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
-        self.has_new_resources = True
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
