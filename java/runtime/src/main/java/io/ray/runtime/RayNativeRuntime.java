@@ -63,7 +63,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       Preconditions.checkNotNull(rayConfig.getRedisAddress());
 
-      // In order to remove redis dependency in Java lang, we use a temp dir to load library 
+      // In order to remove redis dependency in Java lang, we use a temp dir to load library
       // instead of getting session dir from redis.
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
@@ -79,7 +79,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
-      
+
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         RunManager.getAddressInfoAndFillConfig(rayConfig);
       }
