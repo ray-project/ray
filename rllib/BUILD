@@ -2115,7 +2115,7 @@ py_test(
     name = "examples/custom_model_loss_and_metrics_ppo_tf",
     main = "examples/custom_model_loss_and_metrics.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
@@ -2126,7 +2126,7 @@ py_test(
     name = "examples/custom_model_loss_and_metrics_ppo_torch",
     main = "examples/custom_model_loss_and_metrics.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
@@ -2137,7 +2137,7 @@ py_test(
     name = "examples/custom_model_loss_and_metrics_pg_tf",
     main = "examples/custom_model_loss_and_metrics.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
@@ -2148,7 +2148,7 @@ py_test(
     name = "examples/custom_model_loss_and_metrics_pg_torch",
     main = "examples/custom_model_loss_and_metrics.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
