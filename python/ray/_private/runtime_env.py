@@ -59,7 +59,7 @@ class RuntimeEnvDict:
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
-        container_option (dict): Require a given (Docker) container image,
+        container (dict): Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
@@ -159,9 +159,8 @@ class RuntimeEnvDict:
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
 
-        if "container_option" in runtime_env_json:
-            self._dict["container_option"] = runtime_env_json[
-                "container_option"]
+        if "container" in runtime_env_json:
+            self._dict["container"] = runtime_env_json["container"]
 
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
