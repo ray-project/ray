@@ -5,6 +5,7 @@ import traceback
 import inspect
 from typing import Any, Callable
 import time
+import random
 
 import starlette.responses
 
@@ -24,6 +25,7 @@ from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
+    REPLICA_CONSTRUCTOR_RETRY_COUNT,
 )
 from ray.exceptions import RayTaskError
 
@@ -71,7 +73,30 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
                 _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args)
+                # Retry with exponential backoff if ran into transient
+                # failures; Will throw and notify backend_state if
+                # constructor failed with no retries left
+                for current_retry in range(REPLICA_CONSTRUCTOR_RETRY_COUNT):
+                    try:
+                        await sync_to_async(_callable.__init__)(*init_args)
+                    except Exception as e:
+                        logger.error(
+                            f"Exception while running deployment class "
+                            f"__init__: {e}")
+                        if current_retry < REPLICA_CONSTRUCTOR_RETRY_COUNT - 1:
+                            delay_secs = round(
+                                (2**current_retry + random.uniform(0, 1)), 2)
+                            logger.info(
+                                f"Waiting for {delay_secs} secs to retry ..")
+                            await asyncio.sleep(delay_secs)
+                            continue
+                        else:
+                            logger.error(
+                                "Deployment constructor failed and ran out of "
+                                "retries. Aborting.")
+                            raise e
+                    break
+
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
