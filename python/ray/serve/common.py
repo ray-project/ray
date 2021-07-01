@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Optional, Tuple
 from uuid import UUID
 
 import numpy as np
@@ -15,10 +15,12 @@ GoalId = UUID
 Duration = float
 
 
-@dataclass
+@dataclass(frozen=True)
 class EndpointInfo:
-    http_methods: List[str]
-    python_methods: Optional[List[str]] = field(default_factory=list)
+    # NOTE: we use tuples here because this must be hashable to be passed
+    # as a user_config to the HTTPProxy deployment.
+    http_methods: Tuple[str]
+    python_methods: Optional[Tuple[str]] = field(default_factory=tuple)
     route: Optional[str] = None
     legacy: Optional[bool] = True
 

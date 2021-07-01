@@ -918,8 +918,8 @@ class BackendState:
                             f"from backend '{backend_tag}'.")
                 replicas_to_stop = self._replicas[backend_tag].pop(
                     states=[
-                        ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                        ReplicaState.RUNNING
+                        ReplicaState.SHOULD_START,
+                        ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING
                     ],
                     max_replicas=to_remove)
 
@@ -931,7 +931,7 @@ class BackendState:
         # Code path for the "EveryNode" logic.
         else:
             current_replicas = self._replicas[backend_tag].pop(states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
                 ReplicaState.RUNNING
             ])
 

@@ -177,7 +177,7 @@ class ServeController:
                 format(route, endpoint, methods))
 
             endpoints = self.endpoint_state.create_endpoint(
-                endpoint, EndpointInfo(methods, route=route),
+                endpoint, EndpointInfo(tuple(methods), route=route),
                 TrafficPolicy(traffic_dict))
             if endpoints is not None:
                 await self._update_http_proxy_deployment(endpoints)
@@ -300,9 +300,9 @@ class ServeController:
                 name, backend_info)
             if name != HTTP_PROXY_DEPLOYMENT_NAME:
                 endpoint_info = EndpointInfo(
-                    ALL_HTTP_METHODS,
+                    tuple(ALL_HTTP_METHODS),
                     route=route_prefix,
-                    python_methods=python_methods,
+                    python_methods=tuple(python_methods),
                     legacy=False)
                 endpoints = self.endpoint_state.update_endpoint(
                     name, endpoint_info, TrafficPolicy({

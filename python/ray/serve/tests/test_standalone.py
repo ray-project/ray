@@ -4,6 +4,7 @@ requires a shared Serve instance.
 """
 import sys
 import socket
+import time
 
 import pytest
 import requests
@@ -13,7 +14,6 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.constants import HTTP_PROXY_DEPLOYMENT_NAME
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import block_until_http_ready
 from ray.serve.config import HTTPOptions
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
@@ -150,6 +150,31 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
+def block_until_http_ready(http_endpoint,
+                           backoff_time_s=1,
+                           check_ready=None,
+                           timeout=60):
+    http_is_ready = False
+    start_time = time.time()
+
+    while not http_is_ready:
+        try:
+            resp = requests.get(http_endpoint)
+            assert resp.status_code == 200
+            if check_ready is None:
+                http_is_ready = True
+            else:
+                http_is_ready = check_ready(resp)
+        except Exception:
+            pass
+
+        if 0 < timeout < time.time() - start_time:
+            raise TimeoutError(
+                "HTTP proxy not ready after {} seconds.".format(timeout))
+
+        time.sleep(backoff_time_s)
+
+
 @pytest.mark.skipif(
     not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
@@ -173,12 +198,15 @@ def test_multiple_routers(ray_cluster):
     # Two replicas should be started for the two nodes.
     wait_for_condition(lambda: len(get_handles()) == 2)
 
+    _block_until_http_ready = ray.remote(block_until_http_ready).options(
+        num_cpus=0)
+
     # Wait for the actors to come up.
-    ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
+    ray.get(_block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Kill one of the servers, the HTTP server should still function.
     ray.kill(list(get_handles().values())[0], no_restart=True)
-    ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
+    ray.get(_block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # The HTTP server should be brought back up.
     wait_for_condition(lambda: len(get_handles()) == 2)
@@ -195,7 +223,7 @@ def test_multiple_routers(ray_cluster):
 
     # Check that the actor is gone and the HTTP server still functions.
     wait_for_condition(lambda: len(get_handles()) == 2)
-    ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
+    ray.get(_block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -211,7 +239,12 @@ def test_middleware(ray_shutdown):
                 Middleware(
                     CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
             ]))
-    ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
+
+    _block_until_http_ready = ray.remote(block_until_http_ready).options(
+        num_cpus=0)
+
+    ray.get(
+        _block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
     # https://github.com/encode/starlette/blob/master/tests/
