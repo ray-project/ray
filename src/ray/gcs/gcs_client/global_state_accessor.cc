@@ -269,8 +269,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
         [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
-          promise.set(
-              std::make_pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
+          promise.set_value(
+              std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
         }));
     auto result = promise.get_future().get();
     auto status = result.first;
@@ -280,9 +280,10 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
 
     // Deal with alive nodes only
     std::vector<rpc::GcsNodeInfo> nodes;
-    std::copy_if(
-        result.second.begin(), result.second.end(), std::back_inserter(nodes),
-        [](const rpc::GcsNodeInfo &node) { return node.state() == GcsNodeInfo::ALIVE; });
+    std::copy_if(result.second.begin(), result.second.end(), std::back_inserter(nodes),
+                 [](const rpc::GcsNodeInfo &node) {
+                   return node.state() == rpc::GcsNodeInfo::ALIVE;
+                 });
 
     if (nodes.empty()) {
       status = Status::NotFound("Redis has started but no raylets have registered yet.");
@@ -291,9 +292,6 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       int head_node_client_index = -1;
       for (int i = 0; i < nodes.size(); i++) {
         const auto &node = nodes[i];
-        if (node.state() != GcsNodeInfo::ALIVE) {
-          continue;
-        }
         std::string ip_address = node.node_manager_address();
         if (ip_address == node_ip_address) {
           relevant_client_index = i;
@@ -311,7 +309,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                       << ", while we can not found the matched Raylet address. "
                       << "This maybe come from when you connect the Ray cluster "
                       << "with a different IP address or connect a container.";
-        relevant_client_index = head_node_client_index
+        relevant_client_index = head_node_client_index;
       }
       if (relevant_client_index < 0) {
         std::ostringstream oss;
@@ -323,7 +321,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
           if (i > 0) {
             oss << ", ";
           }
-          oss << nodes[i].node_manager_address;
+          oss << nodes[i].node_manager_address();
         }
         oss << " but none of these match this node's IP " << node_ip_address
             << ". Are any of these actually a different IP address for the same node?"
@@ -340,8 +338,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       return status;
     }
 
-    if (current_time_ms - start_ms >=
-        RayConfig::instance().raylet_start_wait_time_s * 1000) {
+    if (current_time_ms() - start_ms >=
+        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
       return status;
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "

@@ -10,6 +10,9 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CPlacementGroupID,
 )
+from ray.includes.common cimport (
+    CRayStatus,
+)
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
