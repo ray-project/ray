@@ -251,7 +251,7 @@ class TestRolloutWorker(unittest.TestCase):
         from ray.rllib.examples.env.random_env import RandomEnv
         action_space = gym.spaces.Box(-2.0, 1.0, (3, ))
 
-        # Clipping: True (clip between Policy's action_space.low/high),
+        # Clipping: True (clip between Policy's action_space.low/high).
         ev = RolloutWorker(
             env_creator=lambda _: RandomEnv(config=dict(
                 action_space=action_space,
@@ -264,6 +264,7 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space,
                 ignore_action_bounds=True,
             ),
+            normalize_actions=False,
             clip_actions=True,
             batch_mode="complete_episodes")
         sample = ev.sample()
@@ -288,7 +289,10 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space,
                 ignore_action_bounds=True,
             ),
-            clip_actions=False,  # <- should lead to Env complaining
+            # No normalization (+clipping) and no clipping ->
+            # Should lead to Env complaining.
+            normalize_actions=False,
+            clip_actions=False,
             batch_mode="complete_episodes")
         self.assertRaisesRegex(ValueError, r"Illegal action", ev2.sample)
         ev2.stop()
@@ -305,12 +309,41 @@ class TestRolloutWorker(unittest.TestCase):
             policy_spec=RandomPolicy,
             policy_config=dict(action_space=action_space),
             # Should not be a problem as RandomPolicy abides to bounds.
+            normalize_actions=False,
             clip_actions=False,
             batch_mode="complete_episodes")
         sample = ev3.sample()
         self.assertGreater(np.min(sample["actions"]), action_space.low[0])
         self.assertLess(np.max(sample["actions"]), action_space.high[0])
         ev3.stop()
+
+    def test_action_normalization(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5, ))
+
+        # Normalize: True (unsquash between Policy's action_space.low/high).
+        ev = RolloutWorker(
+            env_creator=lambda _: RandomEnv(config=dict(
+                action_space=action_space,
+                max_episode_len=10,
+                p_done=0.0,
+                check_action_bounds=True,
+            )),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            normalize_actions=True,
+            clip_actions=False,
+            batch_mode="complete_episodes")
+        sample = ev.sample()
+        # Check, whether the action bounds have been breached (expected).
+        # We still arrived here b/c we unsquashed according to the Env's action
+        # space.
+        self.assertGreater(np.max(sample["actions"]), action_space.high[0])
+        self.assertLess(np.min(sample["actions"]), action_space.low[0])
+        ev.stop()
 
     def test_reward_clipping(self):
         # Clipping: True (clip between -1.0 and 1.0).

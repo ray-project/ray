@@ -62,5 +62,6 @@ spec:
             memory: 1Gi
           limits:
             memory: 2Gi
+            cpu: 1
 {{- end }}
 

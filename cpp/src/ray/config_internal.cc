@@ -3,7 +3,7 @@
 
 #include "config_internal.h"
 
-DEFINE_string(ray_redis_address, "", "The address of the Redis server to connect to.");
+DEFINE_string(ray_address, "", "The address of the Ray cluster to connect to.");
 
 DEFINE_string(ray_redis_password, "",
               "Prevents external clients without the password from connecting to Redis "
@@ -49,8 +49,8 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     if (!FLAGS_ray_dynamic_library_path.empty()) {
       dynamic_library_path = FLAGS_ray_dynamic_library_path;
     }
-    if (!FLAGS_ray_redis_address.empty()) {
-      SetRedisAddress(FLAGS_ray_redis_address);
+    if (!FLAGS_ray_address.empty()) {
+      SetRedisAddress(FLAGS_ray_address);
     }
     google::CommandLineFlagInfo info;
     // Don't rewrite `ray_redis_password` when it is not set in the command line.
