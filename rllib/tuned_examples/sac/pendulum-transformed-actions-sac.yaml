@@ -1,7 +1,7 @@
-# Pendulum SAC can attain -150+ reward in 6-7k
+# TransformedActionPendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 pendulum-sac:
-    env: Pendulum-v0
+    env: ray.rllib.examples.env.transformed_action_space_env.TransformedActionPendulum
     run: SAC
     stop:
         episode_reward_mean: -500
@@ -9,6 +9,13 @@ pendulum-sac:
     config:
         # Works for both torch and tf.
         framework: tf
+
+        # Test, whether SAC is able to learn in "distorted" action spaces.
+        env_config:
+          config:
+            low: 300.0
+            high: 500.0
+
         horizon: 200
         soft_horizon: true
         Q_model:
