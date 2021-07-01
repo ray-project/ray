@@ -205,7 +205,9 @@ void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_rest
   }
 }
 
-void AbstractRayRuntime::ExitActor() {}
+void AbstractRayRuntime::ExitActor() {
+  throw RayIntentionalSystemExitException("SystemExit");
+}
 
 }  // namespace api
 }  // namespace ray

@@ -14,5 +14,11 @@ class RayException : public std::exception {
 
   std::string msg_;
 };
+
+class RayIntentionalSystemExitException : public RayException {
+ public:
+  RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
+};
+
 }  // namespace api
 }  // namespace ray

@@ -34,10 +34,15 @@ class Counter {
     count += x;
     return count;
   }
+  int Exit() {
+    ray::api::Ray::ExitActor();
+    return 1;
+  }
 };
 
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
-           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
+           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
+           &Counter::Exit);
 
 int *cmd_argc = nullptr;
 char ***cmd_argv = nullptr;
@@ -189,6 +194,9 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result14, 166);
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
+
+  auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
+  EXPECT_THROW(actor_object4.Get(), RayException);
 
   Ray::Shutdown();
 

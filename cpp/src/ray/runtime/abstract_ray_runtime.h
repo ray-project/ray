@@ -25,6 +25,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
+  void Put(ray::rpc::ErrorType type, const ObjectID &object_id);
+
   std::string Put(std::shared_ptr<msgpack::sbuffer> data);
 
   std::shared_ptr<msgpack::sbuffer> Get(const std::string &id);

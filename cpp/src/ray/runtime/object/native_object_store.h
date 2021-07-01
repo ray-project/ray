@@ -29,7 +29,7 @@ class NativeObjectStore : public ObjectStore {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
                                                         int timeout_ms);
-
+  void CheckException(const std::string &meta_str);
   NativeRayRuntime &native_ray_tuntime_;
 };
 

@@ -16,33 +16,25 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const std::vector<msgpack::sbuffer> &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
-    return PackError("Task function name is empty");
+    throw std::invalid_argument("Task function name is empty");
   }
 
   msgpack::sbuffer result;
-  do {
-    try {
-      if (actor_ptr) {
-        auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
-        if (func_ptr == nullptr) {
-          result = PackError("unknown actor task: " + func_name);
-          break;
-        }
-
-        result = (*func_ptr)(actor_ptr, args_buffer);
-      } else {
-        auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
-        if (func_ptr == nullptr) {
-          result = PackError("unknown function: " + func_name);
-          break;
-        }
-
-        result = (*func_ptr)(args_buffer);
-      }
-    } catch (const std::exception &ex) {
-      result = PackError(ex.what());
+  if (actor_ptr) {
+    auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
+    if (func_ptr == nullptr) {
+      throw std::invalid_argument("unknown actor task: " + func_name);
     }
-  } while (0);
+
+    result = (*func_ptr)(actor_ptr, args_buffer);
+  } else {
+    auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+    if (func_ptr == nullptr) {
+      throw std::invalid_argument("unknown function: " + func_name);
+    }
+
+    result = (*func_ptr)(args_buffer);
+  }
 
   return result;
 }
@@ -79,10 +71,28 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
   }
 
   RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
-  auto result = entry_func(func_name, args_buffer, actor_ptr);
-  RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
-  return std::make_pair(ray::Status::OK(),
-                        std::make_shared<msgpack::sbuffer>(std::move(result)));
+  try {
+    auto result = entry_func(func_name, args_buffer, actor_ptr);
+    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
+    return std::make_pair(ray::Status::OK(),
+                          std::make_shared<msgpack::sbuffer>(std::move(result)));
+  } catch (ray::api::RayIntentionalSystemExitException &e) {
+    return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
+  } catch (msgpack::type_error &e) {
+    return std::make_pair(
+        ray::Status::Invalid(std::string("invalid arguments: ") + e.what()), nullptr);
+  } catch (const std::invalid_argument &e) {
+    return std::make_pair(
+        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
+        nullptr);
+  } catch (const std::exception &e) {
+    return std::make_pair(
+        ray::Status::Interrupted(std::string("function execute exception: ") + e.what()),
+        nullptr);
+  } catch (...) {
+    return std::make_pair(ray::Status::UnknownError(std::string("unknown exception")),
+                          nullptr);
+  }
 }
 
 Status TaskExecutor::ExecuteTask(
@@ -169,23 +179,29 @@ void TaskExecutor::Invoke(
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
   std::shared_ptr<msgpack::sbuffer> data;
-  if (actor) {
-    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                 args_buffer, actor.get());
-    data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    runtime->Put(std::move(data), task_spec.ReturnId(0));
-  } else {
-    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                 args_buffer, nullptr);
-    data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    if (task_spec.IsActorCreationTask()) {
-      std::unique_ptr<ActorContext> actorContext(new ActorContext());
-      actorContext->current_actor = data;
-      absl::MutexLock lock(&actor_contexts_mutex);
-      actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));
-    } else {
+  try {
+    if (actor) {
+      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                   args_buffer, actor.get());
+      data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
+    } else {
+      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                   args_buffer, nullptr);
+      data = std::make_shared<msgpack::sbuffer>(std::move(result));
+      if (task_spec.IsActorCreationTask()) {
+        std::unique_ptr<ActorContext> actorContext(new ActorContext());
+        actorContext->current_actor = data;
+        absl::MutexLock lock(&actor_contexts_mutex);
+        actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));
+      } else {
+        runtime->Put(std::move(data), task_spec.ReturnId(0));
+      }
     }
+  } catch (std::exception &e) {
+    auto result = ray::internal::PackError(e.what());
+    auto data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    runtime->Put(std::move(data), task_spec.ReturnId(0));
   }
 }
 
