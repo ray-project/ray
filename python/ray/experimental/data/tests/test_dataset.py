@@ -11,7 +11,6 @@ from ray.tests.conftest import *  # noqa
 import ray.experimental.data.tests.util as util
 
 
-
 def test_basic(ray_start_regular_shared):
     ds = ray.experimental.data.range(5)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
@@ -109,8 +108,7 @@ def test_pyarrow(ray_start_regular_shared):
 
 def test_read_binary_files(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
-        ds = ray.experimental.data.read_binary_files(
-            paths, parallelism=10)
+        ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
         for i, item in enumerate(ds.to_local_iterator()):
             expected = open(paths[i], "rb").read()
             assert expected == item
