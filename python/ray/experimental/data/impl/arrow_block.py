@@ -135,10 +135,6 @@ class ArrowBlock(Block):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    @property
-    def table(self):
-        return self._table
-
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()

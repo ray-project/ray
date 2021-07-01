@@ -122,14 +122,13 @@ class Dataset(Generic[T]):
 
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
-                batch_block_builder = DelegatingArrowBlockBuilder()
                 end = min(total_rows, start + max_batch_size)
                 # Note: if the block is a list, it doesn't support zero-copy.
                 view = block.slice(start, end)
                 if batch_format == "pandas":
                     view = view.to_pandas()
                 elif batch_format == "pyarrow":
-                    view = view.table
+                    view = view._table
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -147,8 +146,7 @@ class Dataset(Generic[T]):
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
                                      "pandas.DataFrame, or pyarrow.Table")
-                batch_block_builder.add_block(applied)
-                builder.add_block(batch_block_builder.build())
+                builder.add_block(applied)
 
             return builder.build()
 
