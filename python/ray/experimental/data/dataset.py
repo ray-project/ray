@@ -444,7 +444,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where Parquet
+            path: The path to the destination root directory, where json
                 files will be written to..
         """
 
@@ -474,7 +474,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where Parquet
+            path: The path to the destination root directory, where csv
                 files will be written to..
         """
 
