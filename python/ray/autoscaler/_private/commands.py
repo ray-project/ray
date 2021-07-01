@@ -758,8 +758,8 @@ def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
 
     We need a new head if at least one of the following holds:
     (a) There isn't an existing head node
-    (b) The user-submitted head node_config differs from the existing
-        head node_config.
+    (b) The user-submitted head node_config differs from the existing head
+        node's node_config.
     (c) The user-submitted head node_type key differs from the existing head
         node's node_type.
 
