@@ -26,6 +26,54 @@ def autoinit_ray(f):
     return wrapped
 
 
+def _resolve_paths_and_filesystem(
+        paths: Union[str, List[str]],
+        filesystem: "pyarrow.fs.FileSystem" = None):
+    from pyarrow.fs import (FileType, FileSelector,
+                            _resolve_filesystem_and_path)
+
+    if isinstance(paths, str):
+        paths = [paths]
+    elif (not isinstance(paths, list)
+          or any(not isinstance(p, str) for p in paths)):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+
+    resolved_paths = []
+    for path in paths:
+        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+            path, filesystem)
+        if (filesystem is not None
+                and type(resolved_filesystem) != type(filesystem)):
+            raise ValueError("All paths must use same filesystem.")
+        filesystem = resolved_filesystem
+        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_paths.append(resolved_path)
+
+    paths = resolved_paths
+
+    if len(paths) == 1:
+        path = paths[0]
+        file_info = filesystem.get_file_info(path)
+        if file_info.type == FileType.Directory:
+            selector = FileSelector(path, recursive=True)
+            files = filesystem.get_file_info(selector)
+            base_path = selector.base_dir
+            filtered_paths = []
+            for file_ in files:
+                if not file_.is_file:
+                    continue
+                file_path = file_.path
+                if not file_path.startswith(base_path):
+                    continue
+                relative = file_path[len(base_path):]
+                if any(relative.startswith(prefix) for prefix in [".", "_"]):
+                    continue
+                filtered_paths.append(file_path)
+            paths = sorted(filtered_paths)
+    return paths, filesystem
+
+
 @autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
@@ -202,53 +250,10 @@ def read_json(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
-    from pyarrow.fs import (FileType, FileSelector,
-                            _resolve_filesystem_and_path)
     from pyarrow import json
     import numpy as np
 
-    # TODO(Clark): Refactor to use shared filesystem + path resolution utility
-    # once Yi's filesystem deducing PR has landed.
-
-    if isinstance(paths, str):
-        paths = [paths]
-    elif (not isinstance(paths, list)
-          or any(not isinstance(p, str) for p in paths)):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-
-    resolved_paths = []
-    for path in paths:
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
-        if (filesystem is not None
-                and type(resolved_filesystem) != type(filesystem)):
-            raise ValueError("All paths must use same filesystem.")
-        filesystem = resolved_filesystem
-        resolved_path = filesystem.normalize_path(resolved_path)
-        resolved_paths.append(resolved_path)
-
-    paths = resolved_paths
-
-    if len(paths) == 1:
-        path = paths[0]
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            selector = FileSelector(path, recursive=True)
-            files = filesystem.get_file_info(selector)
-            base_path = selector.base_dir
-            filtered_paths = []
-            for file_ in files:
-                if not file_.is_file:
-                    continue
-                file_path = file_.path
-                if not file_path.startswith(base_path):
-                    continue
-                relative = file_path[len(base_path):]
-                if any(relative.startswith(prefix) for prefix in [".", "_"]):
-                    continue
-                filtered_paths.append(file_path)
-            paths = sorted(filtered_paths)
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
     @ray.remote
     def json_read(read_paths: List[str]):
@@ -294,53 +299,10 @@ def read_csv(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
-    from pyarrow.fs import (FileType, FileSelector,
-                            _resolve_filesystem_and_path)
     from pyarrow import csv
     import numpy as np
 
-    # TODO(Clark): Refactor to use shared filesystem + path resolution utility
-    # once Yi's filesystem deducing PR has landed.
-
-    if isinstance(paths, str):
-        paths = [paths]
-    elif (not isinstance(paths, list)
-          or any(not isinstance(p, str) for p in paths)):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-
-    resolved_paths = []
-    for path in paths:
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
-        if (filesystem is not None
-                and type(resolved_filesystem) != type(filesystem)):
-            raise ValueError("All paths must use same filesystem.")
-        filesystem = resolved_filesystem
-        resolved_path = filesystem.normalize_path(resolved_path)
-        resolved_paths.append(resolved_path)
-
-    paths = resolved_paths
-
-    if len(paths) == 1:
-        path = paths[0]
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            selector = FileSelector(path, recursive=True)
-            files = filesystem.get_file_info(selector)
-            base_path = selector.base_dir
-            filtered_paths = []
-            for file_ in files:
-                if not file_.is_file:
-                    continue
-                file_path = file_.path
-                if not file_path.startswith(base_path):
-                    continue
-                relative = file_path[len(base_path):]
-                if any(relative.startswith(prefix) for prefix in [".", "_"]):
-                    continue
-                filtered_paths.append(file_path)
-            paths = sorted(filtered_paths)
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
     @ray.remote
     def csv_read(read_paths: List[str]):
