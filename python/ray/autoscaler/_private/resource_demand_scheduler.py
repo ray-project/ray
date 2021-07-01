@@ -459,6 +459,8 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
+                # We should not get here, but if for some reason we do, log an
+                # error and skip the errant node_type.
                 logger.error(
                     f"Missing entry for node_type {node_type} in "
                     f"cluster config: {self.node_types} under entry "
