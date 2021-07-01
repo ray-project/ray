@@ -1,4 +1,7 @@
 import argparse
+import json
+import os
+import time
 
 import modin.pandas as pd
 import ray
@@ -49,4 +52,15 @@ def main():
 
 
 if __name__ == "__main__":
+    start = time.time()
     main()
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/modin_xgboost_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    print("Test Successful!")
