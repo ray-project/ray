@@ -164,7 +164,7 @@ cdef class GlobalStateAccessor:
         return None
 
     def get_node_to_connect_for_driver(self, node_ip_address):
-        cdef CRayStatus satus;
+        cdef CRayStatus status
         cdef c_string cnode_ip_address = node_ip_address
         cdef c_string cnode_to_connect
         with nogil:

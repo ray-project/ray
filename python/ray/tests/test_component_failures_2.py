@@ -170,7 +170,8 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
             num_retries=1,
             redis_password=cluster.redis_password)
 
-    assert get_node_info().raylet_socket_name == cluster.head_node.raylet_socket_name
+    assert get_node_info(
+    ).raylet_socket_name == cluster.head_node.raylet_socket_name
 
     cluster.head_node.kill_raylet()
     wait_for_condition(

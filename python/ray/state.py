@@ -768,7 +768,8 @@ class GlobalState:
         return dict(total_available_resources)
 
     def get_node_to_connect_for_driver(self, node_ip_address):
-        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(node_ip_address)
+        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(
+            node_ip_address)
         return gcs_utils.GcsNodeInfo.FromString(node_info_str)
 
 
