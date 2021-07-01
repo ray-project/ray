@@ -216,8 +216,13 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
-      num_bytes_pending_spill_ += it->second.first->GetSize();
+
+      // Move a pinned object to the pending spill object.
+      auto object_size = it->second.first->GetSize();
+      num_bytes_pending_spill_ += object_size;
       objects_pending_spill_[id] = std::move(it->second);
+
+      pinned_objects_size_ -= object_size;
       pinned_objects_.erase(it);
     }
   }
