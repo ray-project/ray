@@ -257,7 +257,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(ERROR) << "Subscribing update operations of actor, actor id = " << actor_id
+  RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id
                  << ", job id = " << actor_id.JobId();
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
@@ -321,7 +321,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
-  RAY_LOG(ERROR) << "Cancelling subscription to an actor, actor id = " << actor_id
+  RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id
                  << ", job id = " << actor_id.JobId();
   if (grpc_based_pubsub_) {
     rpc::Address gcs_address;
@@ -351,8 +351,9 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
   if (grpc_based_pubsub_) {
-    // TODO (Alex): We'll need to handle this case for HA GCS (We should be
-    // able to handle it in the pubsub layer though).
+    // TODO (Alex): We'll need to handle this case for HA GCS. (Ideally we
+    // can handle this in the pubsub layer and restore state by resending the
+    // command batch).
     RAY_LOG(FATAL)
         << "GCS seems to have died. We've lost our subscription to actor changes.";
   } else {

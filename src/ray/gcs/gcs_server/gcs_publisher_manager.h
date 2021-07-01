@@ -22,6 +22,7 @@ namespace ray {
 namespace gcs {
 
 /// This implementation class of `PublisherHandler`
+/// All non-handler public methods are threadsafe.
 class GcsPublisherManager : public rpc::PublisherHandler {
  public:
   explicit GcsPublisherManager(instrumented_io_context &service);
@@ -32,9 +33,18 @@ class GcsPublisherManager : public rpc::PublisherHandler {
   void Start();
   void Stop();
 
+  /// Publish a pubsub message.
+  ///
+  /// \param channel_type the channel type
+  /// \param the pubsub message. The channel type and key will be autofilled.
+  /// \param key_id_binary The serialized id (i.e. ID::Binary()).
   void Publish(const rpc::ChannelType channel_type, rpc::PubMessage &pub_message,
                const std::string key_id_binary);
 
+  /*
+    WARNING: Handler are NOT thread-safe. They should be called from this
+     manager's IO thread only
+  */
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                rpc::PubsubLongPollingReply *reply,
                                rpc::SendReplyCallback callback);

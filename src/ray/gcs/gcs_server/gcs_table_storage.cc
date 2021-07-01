@@ -163,12 +163,9 @@ GcsActorTable::GcsActorTable(
 
 Status GcsActorTable::Put(const ActorID &key, const ActorTableData &value,
                           const StatusCallback &callback) {
-  RAY_LOG(ERROR) << "PUTTING actor: " << key;
   return GcsTableWithJobId::Put(key, value, [this, key, value, callback](Status status) {
-    RAY_LOG(ERROR) << "DONE PUTTING actor: " << key;
     callback(status);
     if (status.ok() && publish_change_) {
-      RAY_LOG(ERROR) << "Sending message now." << key;
       rpc::PubMessage message;
       message.mutable_actor_table_data()->CopyFrom(value);
       publish_change_(rpc::ChannelType::GCS_ACTOR_CHANNEL, message, key.Binary());

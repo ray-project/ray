@@ -75,7 +75,6 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
         RayConfig::instance().gcs_service_connect_retries()))
         << "Failed to get gcs server address when init gcs client.";
   }
-  RAY_LOG(ERROR) << "RECONSTRUCTING THE SUBSCRIBER";
   subscriber_ = std::make_unique<pubsub::Subscriber>(
       subscriber_id_, /*TODO*/ 10,
       [this](const rpc::Address &address) { return gcs_rpc_client_; }, &io_service);
@@ -92,7 +91,6 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(
-      // TODO This needs to be our own address.
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
       [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); }));

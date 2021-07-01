@@ -147,16 +147,13 @@ class SubscriberChannel : public SubscribeChannelInterface {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      RAY_LOG(ERROR) << "Couldn't find publisher " << publisher_id;
       return absl::nullopt;
     }
     auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
     bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
     if (!exist) {
-      RAY_LOG(ERROR) << "Couldn't find key" << key_id;
       return absl::nullopt;
     }
-    RAY_LOG(ERROR) << "Found and returning a callback";
     return absl::optional<SubscriptionCallback>{callback_it->second.first};
   }
 
