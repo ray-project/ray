@@ -516,6 +516,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             export_dir (str): Local writable directory.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
 

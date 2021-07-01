@@ -1211,6 +1211,8 @@ class Trainer(Trainable):
         Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1474,7 +1476,8 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         if ExportFormat.ONNX in export_formats:
             path = os.path.join(export_dir, ExportFormat.ONNX)
-            self.export_policy_model(path, onnx=11)
+            self.export_policy_model(
+                path, onnx=int(os.getenv("ONNX_OPSET", "11")))
             exported[ExportFormat.ONNX] = path
         return exported
 

@@ -2469,6 +2469,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/export/cartpole_dqn_export",
+    main = "examples/export/cartpole_dqn_export.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/cartpole_dqn_export.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_tf",
+    main = "examples/export/onnx_tf.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/onnx_tf.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_torch",
+    main = "examples/export/onnx_torch.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/onnx_torch.py"],
+)
+
+py_test(
     name = "contrib/bandits/examples/lin_ts",
     main = "contrib/bandits/examples/simple_context_bandit.py",
     tags = ["examples", "examples_T"],
