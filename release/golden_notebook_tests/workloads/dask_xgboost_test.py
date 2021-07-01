@@ -7,8 +7,7 @@ import ray
 from ray.util.dask import ray_dask_get
 from xgboost_ray import RayDMatrix, RayParams, train
 
-FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-           "00280/HIGGS.csv.gz"
+FILE_S3_URI = "s3://ray-ci-higgs/HIGGS.csv"
 
 
 def test():
@@ -16,7 +15,7 @@ def test():
 
     dask.config.set(scheduler=ray_dask_get)
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    data = dd.read_csv(FILE_URL, names=colnames)
+    data = dd.read_csv(FILE_S3_URI, names=colnames)
     if args.smoke_test:
         data = data.head(n=1000)
 
@@ -53,11 +52,7 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     args = parser.parse_args()
 
-    address = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
-    if address.startswith("anyscale://"):
-        ray.client(address=address).job_name(job_name).connect()
-    else:
-        ray.init(address="auto")
+    ray.client().job_name(job_name).connect()
 
     test()

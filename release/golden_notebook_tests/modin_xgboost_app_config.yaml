@@ -7,10 +7,10 @@ python:
   pip_packages:
     - pytest
     - modin
+    - s3fs
   conda_packages: [ ]
 
 post_build_cmds:
   - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-#  - pip uninstall -y modin || true
+  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
