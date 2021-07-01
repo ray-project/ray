@@ -1,5 +1,6 @@
 import builtins
 from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
+from pathlib import Path
 
 if TYPE_CHECKING:
     import pyarrow
@@ -26,8 +27,14 @@ def autoinit_ray(f):
 def _parse_paths(paths: Union[str, List[str]]
                  ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
     from pyarrow import fs
+    def parse_single_path(path: str):
+        if Path(path).exists():
+            return fs.LocalFileSystem(), path
+        else:
+            return fs.FileSystem.from_uri(path)
+
     if isinstance(paths, str):
-        return fs.FileSystem.from_uri(paths)
+        return parse_single_path(paths)
 
     if not isinstance(paths, list) or any(not isinstance(p, str)
                                           for p in paths):
@@ -36,8 +43,8 @@ def _parse_paths(paths: Union[str, List[str]]
     else:
         if len(paths) == 0:
             raise ValueError("No data provided")
-        parsed_results = [fs.FileSystem.from_uri(path) for path in paths]
-        paths = []
+
+        parsed_results = [parse_single_path(path) for path in paths]
         fses, paths = zip(*parsed_results)
         unique_fses = set(map(type, fses))
         if len(unique_fses) > 1:

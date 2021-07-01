@@ -109,6 +109,10 @@ def test_uri_parser():
     assert path == "/local/path"
     assert fs.type_name == "local"
 
+    fs, path = _parse_paths("./")
+    assert path == "./"
+    assert fs.type_name == "local"
+
     fs, path = _parse_paths("s3://bucket/dir")
     assert path == "bucket/dir"
     assert fs.type_name == "s3"
