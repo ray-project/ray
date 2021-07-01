@@ -14,7 +14,7 @@ Lifetime of a Ray Serve Instance
 ================================
 
 Ray Serve instances run on top of Ray clusters and are started using :mod:`serve.start <ray.serve.start>`.
-Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create the backends and endpoints that will be used to serve your Python code (including ML models).
+Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
 The Serve instance will be torn down when the script exits.
 
 When running on a long-lived Ray cluster (e.g., one started using ``ray start`` and connected
@@ -51,7 +51,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
       time.sleep(5)
       print(serve.list_deployments())
 
-2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto", namespace="serve")`` in your Serve script(s) (you can specify any namespace that you like). You can run multiple scripts to update your backends over time.
+2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto", namespace="serve")`` in your Serve script(s) (this is the Ray namespace, not Kubernetes namespace, and you can specify any namespace that you like). You can run multiple scripts to update your deployments over time.
 
 .. code-block:: bash
 
