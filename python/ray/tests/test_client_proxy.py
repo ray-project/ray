@@ -44,12 +44,12 @@ def test_proxy_manager_lifecycle(shutdown_only):
     grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
 
     proc = pm._get_server_for_client(client)
-    assert proc.port == port_one
+    assert proc.port == port_one, f"Free Ports are: [{port_one}, {port_two}]"
 
     log_files_path = os.path.join(pm.node.get_session_dir_path(), "logs",
                                   "ray_client_server*")
     files = glob(log_files_path)
-    assert any(port_one in f for f in files)
+    assert any(str(port_one) in f for f in files)
 
     proc.process_handle_future.result().process.wait(10)
     # Wait for reconcile loop
