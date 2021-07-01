@@ -154,7 +154,7 @@ template class GcsTable<PlacementGroupID, ScheduleData>;
 
 GcsActorTable::GcsActorTable(std::shared_ptr<StoreClient> &store_client,
                              std::function<void(const rpc::ChannelType channel_type,
-                                                const rpc::PubMessage &pub_message,
+                                                rpc::PubMessage &pub_message,
                                                 const std::string &key_id_binary)>
                                  publish_change)
     : GcsTableWithJobId(store_client, publish_change) {
@@ -163,9 +163,12 @@ GcsActorTable::GcsActorTable(std::shared_ptr<StoreClient> &store_client,
 
 Status GcsActorTable::Put(const ActorID &key, const ActorTableData &value,
                           const StatusCallback &callback) {
+  RAY_LOG(ERROR) << "PUTTING actor: " << key;
   return GcsTableWithJobId::Put(key, value, [this, key, value, callback](Status status) {
+    RAY_LOG(ERROR) << "DONE PUTTING actor: " << key;
     callback(status);
     if (status.ok() && publish_change_) {
+      RAY_LOG(ERROR) << "Sending message now." << key;
       rpc::PubMessage message;
       message.mutable_actor_table_data()->CopyFrom(value);
       publish_change_(rpc::ChannelType::GCS_ACTOR_CHANNEL, message, key.Binary());

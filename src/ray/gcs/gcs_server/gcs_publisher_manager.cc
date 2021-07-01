@@ -35,8 +35,11 @@ void GcsPublisherManager::Stop() {
 }
 
 void GcsPublisherManager::Publish(const rpc::ChannelType channel_type,
-                                  const rpc::PubMessage pub_message,
+                                  rpc::PubMessage &pub_message,
                                   const std::string key_id_binary) {
+  RAY_LOG(ERROR) << "PUBLISHING MESSAGE!!!";
+  pub_message.set_key_id(key_id_binary);
+  pub_message.set_channel_type(channel_type);
   publisher_service_.post([this, channel_type, pub_message, key_id_binary]() {
     grpc_publisher_.Publish(channel_type, pub_message, key_id_binary);
   });
@@ -46,6 +49,7 @@ void GcsPublisherManager::HandlePubsubLongPolling(
     const rpc::PubsubLongPollingRequest &request, rpc::PubsubLongPollingReply *reply,
     rpc::SendReplyCallback callback) {
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+  RAY_LOG(ERROR) << "Got long polling request";
   auto wrapped_callback = [callback = std::move(callback), reply](
                               Status status, std::function<void()> success,
                               std::function<void(void)> failure) {
@@ -59,6 +63,7 @@ void GcsPublisherManager::HandlePubsubCommandBatch(
     const rpc::PubsubCommandBatchRequest &request, rpc::PubsubCommandBatchReply *reply,
     rpc::SendReplyCallback callback) {
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+  RAY_LOG(ERROR) << "Got a command from: " << subscriber_id;
 
   Status status = Status::OK();
 
@@ -67,6 +72,7 @@ void GcsPublisherManager::HandlePubsubCommandBatch(
       grpc_publisher_.UnregisterSubscription(command.channel_type(), subscriber_id,
                                              command.key_id());
     } else if (command.has_subscribe_message()) {
+      RAY_LOG(ERROR) << "Registering subscription " << subscriber_id;
       grpc_publisher_.RegisterSubscription(command.channel_type(), subscriber_id,
                                            command.key_id());
     } else {

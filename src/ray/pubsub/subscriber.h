@@ -127,35 +127,6 @@ class SubscriberChannel : public SubscribeChannelInterface {
       const rpc::Address &publisher_address,
       const rpc::PubMessage &pub_message) const override;
 
-  /* SubscriptionCallback GetCallbackForPubMessage( */
-  /*     const rpc::Address &publisher_address, */
-  /*     const rpc::PubMessage &pub_message) const override { */
-  /*   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-   */
-  /*   auto subscription_it = subscription_map_.find(publisher_id); */
-  /*   // If there's no more subscription, do nothing. */
-  /*   if (subscription_it == subscription_map_.end()) { */
-  /*     return nullptr; */
-  /*   } */
-
-  /*   const auto channel_type = pub_message.channel_type(); */
-  /*   const auto key_id = KeyIdType::FromBinary(pub_message.key_id()); */
-  /*   RAY_CHECK(channel_type == channel_type_); */
-  /*   RAY_LOG(DEBUG) << "key id " << key_id << " information was published from " */
-  /*                  << publisher_id; */
-
-  /*   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address,
-   * key_id); */
-  /*   cum_published_messages_++; */
-  /*   if (maybe_subscription_callback.has_value()) { */
-  /*     cum_processed_messages_++; */
-  /*     // If the object id is still subscribed, return a subscribe callback. */
-  /*     return std::move(maybe_subscription_callback.value()); */
-  /*   } else { */
-  /*     return nullptr; */
-  /*   } */
-  /* } */
-
   void HandlePublisherFailure(const rpc::Address &publisher_address) override;
 
   bool SubscriptionExists(const PublisherID &publisher_id) override {
@@ -176,13 +147,16 @@ class SubscriberChannel : public SubscribeChannelInterface {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
+      RAY_LOG(ERROR) << "Couldn't find publisher " << publisher_id;
       return absl::nullopt;
     }
     auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
     bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
     if (!exist) {
+      RAY_LOG(ERROR) << "Couldn't find key" << key_id;
       return absl::nullopt;
     }
+    RAY_LOG(ERROR) << "Found and returning a callback";
     return absl::optional<SubscriptionCallback>{callback_it->second.first};
   }
 

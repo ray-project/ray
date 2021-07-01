@@ -59,11 +59,18 @@ void GcsServer::Start() {
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
+  if (config_.grpc_pubsub_enabled) {
+    // Init pubsub publisher
+    InitPublisherManager();
+  }
+
   // Init gcs table storage.
   gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
       redis_client_,
-      [](const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
-         const std::string &key_id_binary) {});
+      [this](const rpc::ChannelType channel_type, rpc::PubMessage &pub_message,
+             const std::string &key_id_binary) {
+        publisher_manager_->Publish(channel_type, pub_message, key_id_binary);
+      });
 
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
@@ -71,11 +78,6 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  if (config_.grpc_pubsub_enabled) {
-    // Init pubsub publisher
-    InitPublisherManager();
-  }
-
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
@@ -361,6 +363,7 @@ void GcsServer::InitPublisherManager() {
       std::make_unique<GcsPublisherManager>(publisher_manager_io_service_);
   publisher_service_.reset(
       new rpc::PublisherGrpcService(publisher_manager_io_service_, *publisher_manager_));
+  publisher_manager_->Start();
   rpc_server_.RegisterService(*publisher_service_);
 }
 

@@ -32,7 +32,7 @@ class GcsPublisherManager : public rpc::PublisherHandler {
   void Start();
   void Stop();
 
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage pub_message,
+  void Publish(const rpc::ChannelType channel_type, rpc::PubMessage &pub_message,
                const std::string key_id_binary);
 
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,

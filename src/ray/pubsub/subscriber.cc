@@ -28,21 +28,30 @@ void SubscriberChannel<KeyIdType>::Subscribe(
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
   cum_subscribe_requests_++;
-  RAY_LOG(ERROR) << "Getting publisher id";
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(ERROR) << "Got publisher id";
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
+
+  RAY_LOG(ERROR) << "Registering callback for " << publisher_id << "\t" << key_id;
+  subscription_map_[publisher_id].subscription_callback_map.emplace(key_id, std::make_pair(std::move(subscription_callback),
+                                                                                           std::move(subscription_failure_callback)))
+    .second;
 
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
-    subscription_it =
-        subscription_map_.emplace(publisher_id, SubscriptionInfo<KeyIdType>()).first;
+    RAY_CHECK(false) << "WTF";
   }
-  RAY_CHECK(subscription_it != subscription_map_.end());
-  RAY_CHECK(subscription_it->second.subscription_callback_map
-                .emplace(key_id, std::make_pair(std::move(subscription_callback),
-                                                std::move(subscription_failure_callback)))
-                .second);
+  RAY_LOG(ERROR) << "Inserted element with id: " << subscription_it->first;
+
+  // auto subscription_it = subscription_map_.find(publisher_id);
+  // if (subscription_it == subscription_map_.end()) {
+  //   subscription_it =
+  //       subscription_map_.emplace(publisher_id, SubscriptionInfo<KeyIdType>()).first;
+  // }
+  // RAY_CHECK(subscription_it != subscription_map_.end());
+  // RAY_CHECK(subscription_it->second.subscription_callback_map
+  //               .emplace(key_id, std::make_pair(std::move(subscription_callback),
+  //                                               std::move(subscription_failure_callback)))
+  //               .second);
 }
 
 template <typename KeyIdType>
@@ -51,6 +60,7 @@ bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_add
   cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
+  RAY_LOG(ERROR) << "Attempting to unsubscribe from: " << publisher_id << "\t" << key_id;
 
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
@@ -86,6 +96,11 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
+    RAY_LOG(ERROR) << "Couldn't find subscription, publisher: " << publisher_id;
+    RAY_LOG(ERROR) << "subscription_map size: " << subscription_map_.size();
+    for (const auto &pair : subscription_map_) {
+      RAY_LOG(ERROR) << "\t" << pair.first;
+    }
     return nullptr;
   }
 
@@ -98,10 +113,12 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   cum_published_messages_++;
   if (maybe_subscription_callback.has_value()) {
+    RAY_LOG(ERROR) << "Returning a callback";
     cum_processed_messages_++;
     // If the object id is still subscribed, return a subscribe callback.
     return std::move(maybe_subscription_callback.value());
   } else {
+    RAY_LOG(ERROR) << "Returning a nullptr";
     return nullptr;
   }
 }
@@ -174,6 +191,7 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
 
+  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Subscribing on " << channel_type << " to " << ActorID::FromBinary(key_id_binary);
   Channel(channel_type)
       ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
@@ -209,7 +227,7 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
 
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
+  RAY_LOG(ERROR) << "Make a long polling request to " << publisher_id;
   auto publisher_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
@@ -225,14 +243,13 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
 void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address,
                                            const Status &status,
                                            const rpc::PubsubLongPollingReply &reply) {
-  RAY_LOG(ERROR) << "Got long polling response!";
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
+  RAY_LOG(ERROR) << "[" << subscriber_id_ << "] Long polling request has replied from " << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
 
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
-    RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
+    RAY_LOG(ERROR) << "A worker is dead. subscription_failure_callback will be invoked. "
                       "Publisher id: "
                    << publisher_id;
 
@@ -250,7 +267,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // unsubscribe the publisher because there are other entries that subscribe from the
       // publisher.
       if (msg.has_failure_message()) {
-        RAY_LOG(DEBUG) << "Failure message has published from a channel " << channel_type;
+        RAY_LOG(ERROR) << "Failure message has published from a channel " << channel_type;
+        RAY_LOG(ERROR) << "Error: " << msg.DebugString();
         Channel(channel_type)->HandlePublisherFailure(publisher_address);
         continue;
       }
@@ -261,9 +279,13 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       // Post to the provided io service so that the callback is
       // always running on the io service thread.
       if (!subscription_callback) {
+        RAY_LOG(ERROR) << "Skipping due to no callback";
+        RAY_LOG(ERROR) << "Channel is: " << channel_type;
+        // RAY_LOG(ERROR) << "Entire reply was: " << reply.DebugString();
         continue;
       }
 
+      RAY_LOG(ERROR) << "Posting callback";
       callback_service_->post([subscription_callback = std::move(subscription_callback),
                                msg = std::move(msg)]() { subscription_callback(msg); },
                               "Subscriber.HandleLongPollingResponse");
@@ -313,6 +335,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
 
     command_batch_sent_.emplace(publisher_id);
     auto publisher_client = get_client_(publisher_address);
+    RAY_LOG(ERROR) << "Publishing command batch!!!";
     publisher_client->PubsubCommandBatch(
         command_batch_request,
         [this, publisher_address, publisher_id](

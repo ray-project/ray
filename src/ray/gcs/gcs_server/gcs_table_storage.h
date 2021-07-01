@@ -55,7 +55,7 @@ class GcsTable {
  public:
   explicit GcsTable(std::shared_ptr<StoreClient> &store_client,
                     std::function<void(const rpc::ChannelType channel_type,
-                                       const rpc::PubMessage &pub_message,
+                                       rpc::PubMessage &pub_message,
                                        const std::string &key_id_binary)>
                         publish_change)
       : store_client_(store_client), publish_change_(publish_change) {}
@@ -102,7 +102,7 @@ class GcsTable {
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
   std::function<void(const rpc::ChannelType channel_type,
-                     const rpc::PubMessage &pub_message,
+                     rpc::PubMessage &pub_message,
                      const std::string &key_id_binary)>
       publish_change_;
 };
@@ -118,7 +118,7 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
   explicit GcsTableWithJobId(std::shared_ptr<StoreClient> &store_client,
                              std::function<void(const rpc::ChannelType channel_type,
-                                                const rpc::PubMessage &pub_message,
+                                                rpc::PubMessage &pub_message,
                                                 const std::string &key_id_binary)>
                                  publish_change)
       : GcsTable<Key, Data>(store_client, publish_change) {}
@@ -177,7 +177,7 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
   explicit GcsActorTable(std::shared_ptr<StoreClient> &store_client,
                          std::function<void(const rpc::ChannelType channel_type,
-                                            const rpc::PubMessage &pub_message,
+                                            rpc::PubMessage &pub_message,
                                             const std::string &key_id_binary)>
                              publish_change);
 
@@ -314,7 +314,7 @@ class GcsTableStorage {
  public:
   explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client,
                            std::function<void(const rpc::ChannelType channel_type,
-                                              const rpc::PubMessage &pub_message,
+                                              rpc::PubMessage &pub_message,
                                               const std::string &key_id_binary)>
                                publish_change)
       : store_client_(store_client),
@@ -422,7 +422,7 @@ class GcsTableStorage {
  protected:
   std::shared_ptr<StoreClient> store_client_;
   std::function<void(const rpc::ChannelType channel_type,
-                     const rpc::PubMessage &pub_message,
+                     rpc::PubMessage &pub_message,
                      const std::string &key_id_binary)>
       publish_change_;
   std::unique_ptr<GcsJobTable> job_table_;
@@ -449,7 +449,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
  public:
   explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client,
                                 std::function<void(const rpc::ChannelType channel_type,
-                                                   const rpc::PubMessage &pub_message,
+                                                   rpc::PubMessage &pub_message,
                                                    const std::string &key_id_binary)>
                                     publish_change)
       : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client),
@@ -463,7 +463,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service,
                                    std::function<void(const rpc::ChannelType channel_type,
-                                                      const rpc::PubMessage &pub_message,
+                                                      rpc::PubMessage &pub_message,
                                                       const std::string &key_id_binary)>
                                        publish_change)
       : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service),

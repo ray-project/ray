@@ -268,6 +268,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     gcs_address.set_ip_address(client_impl_->GetGcsServerAddress().first);
     gcs_address.set_port(client_impl_->GetGcsServerAddress().second);
     auto subscription_callback = [actor_id, subscribe](const rpc::PubMessage &message) {
+      RAY_LOG(ERROR) << "Got a subscription!";
       RAY_CHECK(message.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
       RAY_CHECK(message.has_actor_table_data());
       ActorID id = ActorID::FromBinary(message.actor_table_data().actor_id());
