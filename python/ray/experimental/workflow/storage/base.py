@@ -226,3 +226,8 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             A dataclass of the step fields.
         """
+
+    @property
+    @abstractmethod
+    def storage_url(self) -> str:
+        """Get the URL of the storage."""
