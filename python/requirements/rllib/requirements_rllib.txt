@@ -14,7 +14,7 @@ torchvision==0.9.1+cpu;sys_platform!="darwin"
 # Environment adapters.
 # ---------------------
 # Atari
-atari_py==0.2.6
+atari_py==0.2.9
 gym[atari]==0.18.3
 # Kaggle envs.
 kaggle_environments==1.7.11
