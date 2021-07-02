@@ -10,7 +10,7 @@ from ray.serve.long_poll import LongPollHost
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 
 
-class EndpointState:
+class EndpointStateManager:
     """Manages all state for endpoints in the system.
 
     This class is *not* thread safe, so any state-modifying methods should be

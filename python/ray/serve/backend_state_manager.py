@@ -42,7 +42,7 @@ class ActorReplicaWrapper:
     This is primarily defined so that we can mock out actual Ray operations
     for unit testing.
 
-    *All Ray API calls should be made here, not in BackendState.*
+    *All Ray API calls should be made here, not in BackendStateManager.*
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
@@ -154,7 +154,13 @@ class ActorReplicaWrapper:
             self._health_check_ref = self._actor_handle.run_forever.remote()
 
         ready, _ = ray.wait([self._health_check_ref], timeout=0)
-        return len(ready) == 0
+
+        rst = len(ready) == 0
+        print(f"check_health -> {rst}")
+        print(f"ready: {ready}")
+        print(f"==== ray.get: {ray.get(ready)}")
+    
+        return rst
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
@@ -521,7 +527,7 @@ class ReplicaStateContainer:
         return repr(self._replicas)
 
 
-class BackendState:
+class BackendStateManager:
     """Manages all state for backends in the system.
 
     This class is *not* thread safe, so any state-modifying methods should be
@@ -864,6 +870,9 @@ class BackendState:
             ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
             ReplicaState.RUNNING
         ])
+        print(f"current replicas: {current_replicas}")
+        print(f"target_replicas replicas: {target_replicas}")
+        print(f"current replica states: {self._replicas[backend_tag]}")
 
         delta_replicas = target_replicas - current_replicas
         if delta_replicas == 0:
@@ -886,6 +895,7 @@ class BackendState:
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, target_version))
+                print(f"Adding SHOULD_START to replica_tag: {replica_tag}, backend_tag: {backend_tag}")
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -900,6 +910,7 @@ class BackendState:
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
+                print(f"Adding SHOULD_STOP to replica_tag: {replica}, backend_tag: {backend_tag}")
                 replica.set_should_stop(graceful_shutdown_timeout_s)
                 self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
                                                 replica)
