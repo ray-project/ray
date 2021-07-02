@@ -80,8 +80,8 @@ class RemoteFunction:
                              "`asyncio.get_event_loop.run_until(f())`. "
                              "See more at docs.ray.io/async_api.html")
         self._language = language
-        self._function = _inject_tracing_into_function(function)
         self._function_name = (function.__module__ + "." + function.__name__)
+        self._function = _inject_tracing_into_function(function)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
