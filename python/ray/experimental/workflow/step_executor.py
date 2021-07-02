@@ -132,8 +132,10 @@ def commit_step(ret: Union[Workflow, Any],
             explanation.
     """
     store = workflow_storage.WorkflowStorage()
+    if isinstance(ret, Workflow):
+        store.save_subworkflow(ret)
     step_id = workflow_context.get_current_step_id()
-    store.commit_step(step_id, ret, outer_most_step_id)
+    store.save_step_output(step_id, ret, outer_most_step_id)
 
 
 @ray.remote
