@@ -2,6 +2,7 @@
 #include "hiredis/hiredis.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace api {
@@ -106,6 +107,13 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
+  rpc::JobConfig job_config;
+  for (auto path : ConfigInternal::Instance().code_search_path) {
+    job_config.add_code_search_path(path);
+  }
+  std::string serialized_job_config;
+  RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
+  options.serialized_job_config = serialized_job_config;
   CoreWorkerProcess::Initialize(options);
 }
 

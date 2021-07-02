@@ -4,7 +4,7 @@ cc_binary(
         "*.cc",
     ]),
     args = [
-        "--ray-dynamic-library-path $(location example.so)",
+        "--ray-code-search-path $(location example.so)",
     ],
     data = [
         "example.so",

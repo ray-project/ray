@@ -24,7 +24,7 @@ class ConfigInternal {
 
   int node_manager_port = 62665;
 
-  std::string dynamic_library_path = "";
+  std::list<std::string> code_search_path;
 
   std::string plasma_store_socket_name = "";
 

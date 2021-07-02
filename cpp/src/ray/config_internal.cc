@@ -1,4 +1,4 @@
-
+#include <boost/dll/runtime_symbol_info.hpp>
 #include "gflags/gflags.h"
 
 #include "config_internal.h"
@@ -9,8 +9,8 @@ DEFINE_string(ray_redis_password, "",
               "Prevents external clients without the password from connecting to Redis "
               "if provided.");
 
-DEFINE_string(ray_dynamic_library_path, "",
-              "The local path of application's dynamic library.");
+DEFINE_string(ray_code_search_path, "",
+              "The search path of application's dynamic libraries.");
 
 DEFINE_string(ray_job_id, "", "Assigned job id.");
 
@@ -36,8 +36,8 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     SetRedisAddress(config.address);
   }
   run_mode = config.local_mode ? RunMode::SINGLE_PROCESS : RunMode::CLUSTER;
-  if (!config.dynamic_library_path.empty()) {
-    dynamic_library_path = config.dynamic_library_path;
+  if (!config.code_search_path.empty()) {
+    code_search_path = config.code_search_path;
   }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
@@ -46,8 +46,22 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     // Parse config from command line.
     gflags::ParseCommandLineFlags(argc, argv, true);
 
-    if (!FLAGS_ray_dynamic_library_path.empty()) {
-      dynamic_library_path = FLAGS_ray_dynamic_library_path;
+    if (!FLAGS_ray_code_search_path.empty()) {
+      // Code search path like this "/path1/xxx.so:/path2".
+      code_search_path.clear();
+      std::string separator = ":";
+      unsigned int start = 0;
+      auto end = FLAGS_ray_code_search_path.find(separator);
+      if (end == std::string::npos) {
+        code_search_path.emplace_back(FLAGS_ray_code_search_path);
+      } else {
+        while (end != std::string::npos) {
+          code_search_path.emplace_back(
+              FLAGS_ray_code_search_path.substr(start, end - start));
+          start = end + separator.length();
+          end = FLAGS_ray_code_search_path.find(separator, start);
+        }
+      }
     }
     if (!FLAGS_ray_address.empty()) {
       SetRedisAddress(FLAGS_ray_address);
@@ -79,8 +93,14 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     gflags::ShutDownCommandLineFlags();
   }
   if (worker_type == WorkerType::DRIVER) {
-    RAY_CHECK(run_mode == RunMode::SINGLE_PROCESS || !dynamic_library_path.empty())
-        << "Please add a local dynamic library by '--ray-dynamic-library-path'";
+    if (run_mode == RunMode::CLUSTER && code_search_path.size() == 0) {
+      auto program_path = boost::dll::program_location().parent_path();
+      RAY_LOG(WARNING) << "No code search path found yet. "
+                       << "The program location path " << program_path
+                       << " will be added for searching dynamic libraries by default."
+                       << "And you can add some search paths by '--ray-code-search-path'";
+      code_search_path.emplace_back(program_path.string());
+    }
   }
 };
 

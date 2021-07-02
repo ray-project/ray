@@ -74,6 +74,7 @@ genrule(
         "ray_api",
         "libray_api.so",
     ],
+    tags = ["no-cache"],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
@@ -142,7 +143,7 @@ cc_test(
         "src/ray/test/cluster/*.cc",
     ]),
     args = [
-        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
+        "--ray-code-search-path=$(location cluster_mode_test.so)",
     ],
     copts = COPTS,
     data = [

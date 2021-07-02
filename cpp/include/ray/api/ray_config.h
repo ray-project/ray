@@ -1,6 +1,7 @@
 
 #pragma once
 #include <ray/api/ray_exception.h>
+#include <list>
 #include <memory>
 #include <string>
 #include "boost/optional.hpp"
@@ -16,10 +17,9 @@ class RayConfig {
   // Whether or not to run this application in a local mode. This is used for debugging.
   bool local_mode = false;
 
-  // The dynamic library path which contains remote fuctions of users.
-  // This parameter is not used when the application runs in local mode.
-  // TODO(guyang.sgy): Put this param into job config instead.
-  std::string dynamic_library_path = "";
+  // A list of directories or dynamic library files that specify the search path for user
+  // code. This parameter is not used when the application runs in local mode.
+  std::list<std::string> code_search_path;
 
   /* The following are unstable parameters and their use is discouraged. */
 
