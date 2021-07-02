@@ -298,6 +298,12 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
+TEST_F(GlobalStateAccessorTest, TestInternalKVPutGetString) {
+  ASSERT_TRUE(global_state_->PutInternalKVString("key", "value"));
+  ASSERT_EQ(global_state_->GetInternalKVString("key")->compare("value"), 0);
+}
+
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

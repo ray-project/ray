@@ -254,7 +254,13 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
                              placement_group_info_grpc_client_, )
 
-  /// Operations for kv (Get, Put, Del, Exists)
+  /// Operations for kv (Get, Put). String type.
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGetString,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPutString,
+                             internal_kv_grpc_client_, )
+
+  /// Operations for kv (Get, Put, Del, Exists). For "value" field in Hash type.
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
                              internal_kv_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,

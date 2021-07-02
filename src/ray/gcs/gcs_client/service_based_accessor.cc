@@ -1341,6 +1341,36 @@ ServiceBasedInternalKVAccessor::ServiceBasedInternalKVAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVGetString(
+    const std::string &key, const OptionalItemCallback<std::string> &callback) {
+  rpc::InternalKVGetStringRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVGetString(
+      req, [callback](const Status &status, const rpc::InternalKVGetStringReply &reply) {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
+          callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVPutString(
+    const std::string &key, const std::string &value, bool overwrite,
+    const StatusCallback &callback) {
+  rpc::InternalKVPutStringRequest req;
+  req.set_key(key);
+  req.set_value(value);
+  req.set_overwrite(overwrite);
+  RAY_LOG(INFO) << "wangtao 1366";
+  client_impl_->GetGcsRpcClient().InternalKVPutString(
+      req, [callback](const Status &status, const rpc::InternalKVPutStringReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
     const std::string &key, const OptionalItemCallback<std::string> &callback) {
   rpc::InternalKVGetRequest req;

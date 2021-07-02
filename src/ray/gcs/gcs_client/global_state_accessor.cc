@@ -260,5 +260,20 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKVString(const std::string &key) {
+  std::string value;
+  Status status = gcs_client_->InternalKV().GetString(key, value);
+  if (status.ok()) {
+    return std::make_unique<std::string>(value);
+  } else {
+    return nullptr;
+  }
+}
+
+bool GlobalStateAccessor::PutInternalKVString(const std::string &key, const std::string &value, bool overwrite) {
+  Status status = gcs_client_->InternalKV().PutString(key, value, overwrite);
+  return status.ok();
+}
+
 }  // namespace gcs
 }  // namespace ray

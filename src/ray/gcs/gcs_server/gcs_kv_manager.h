@@ -27,6 +27,14 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
   explicit GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(redis_client) {}
 
+  void HandleInternalKVGetString(const rpc::InternalKVGetStringRequest &request,
+                           rpc::InternalKVGetStringReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
+
+  void HandleInternalKVPutString(const rpc::InternalKVPutStringRequest &request,
+                           rpc::InternalKVPutStringReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
+
   void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
                            rpc::InternalKVGetReply *reply,
                            rpc::SendReplyCallback send_reply_callback);

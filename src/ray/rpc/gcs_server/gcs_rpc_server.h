@@ -521,9 +521,13 @@ class PlacementGroupInfoGrpcService : public GrpcService {
 class InternalKVGcsServiceHandler {
  public:
   virtual ~InternalKVGcsServiceHandler() = default;
-  virtual void HandleInternalKVKeys(const InternalKVKeysRequest &request,
-                                    InternalKVKeysReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleInternalKVGetString(const InternalKVGetStringRequest &request,
+                                   InternalKVGetStringReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVPutString(const InternalKVPutStringRequest &request,
+                                   InternalKVPutStringReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleInternalKVGet(const InternalKVGetRequest &request,
                                    InternalKVGetReply *reply,
@@ -540,6 +544,10 @@ class InternalKVGcsServiceHandler {
   virtual void HandleInternalKVExists(const InternalKVExistsRequest &request,
                                       InternalKVExistsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVKeys(const InternalKVKeysRequest &request,
+                                    InternalKVKeysReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 class InternalKVGrpcService : public GrpcService {
@@ -553,6 +561,8 @@ class InternalKVGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGetString);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPutString);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);

@@ -421,9 +421,12 @@ class ServiceBasedInternalKVAccessor : public InternalKVAccessor {
   explicit ServiceBasedInternalKVAccessor(ServiceBasedGcsClient *client_impl);
   ~ServiceBasedInternalKVAccessor() override = default;
 
-  Status AsyncInternalKVKeys(
-      const std::string &prefix,
-      const OptionalItemCallback<std::vector<std::string>> &callback) override;
+
+  Status AsyncInternalKVGetString(const std::string &key,
+                            const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncInternalKVPutString(const std::string &key, const std::string &value,
+                            bool overwrite,
+                            const StatusCallback &callback) override;
   Status AsyncInternalKVGet(const std::string &key,
                             const OptionalItemCallback<std::string> &callback) override;
   Status AsyncInternalKVPut(const std::string &key, const std::string &value,
@@ -433,6 +436,9 @@ class ServiceBasedInternalKVAccessor : public InternalKVAccessor {
                                const OptionalItemCallback<bool> &callback) override;
   Status AsyncInternalKVDel(const std::string &key,
                             const StatusCallback &callback) override;
+  Status AsyncInternalKVKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

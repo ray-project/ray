@@ -3,6 +3,41 @@
 namespace ray {
 namespace gcs {
 
+void GcsInternalKVManager::HandleInternalKVGetString(
+    const rpc::InternalKVGetStringRequest &request, rpc::InternalKVGetStringReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  std::vector<std::string> cmd = {"GET", request.key()};
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        if (!redis_reply->IsNil()) {
+          reply->set_value(redis_reply->ReadAsString());
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        } else {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                             Status::NotFound("Failed to find the key"));
+        }
+      }));
+}
+
+void GcsInternalKVManager::HandleInternalKVPutString(
+    const rpc::InternalKVPutStringRequest &request, rpc::InternalKVPutStringReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "wangtao 25"; 
+  std::vector<std::string> cmd = {request.overwrite() ? "SET" : "SETNX", request.key(),
+                                  request.value()};
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [&request, reply, send_reply_callback](auto redis_reply) {
+        if (!request.overwrite() && !redis_reply->IsNil()) {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        } else if (request.overwrite() && redis_reply->ReadAsInteger() == 1) {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        } else {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                             Status::RedisError("Failed to SET/SETNX the key"));
+        }
+      }));
+}
+
 void GcsInternalKVManager::HandleInternalKVGet(
     const rpc::InternalKVGetRequest &request, rpc::InternalKVGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {

@@ -489,6 +489,25 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+message InternalKVGetStringRequest {
+  bytes key = 1;
+}
+
+message InternalKVGetStringReply {
+  GcsStatus status = 1;
+  bytes value = 2;
+}
+
+message InternalKVPutStringRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message InternalKVPutStringReply {
+  GcsStatus status = 1;
+}
+
 message InternalKVGetRequest {
   bytes key = 1;
 }
@@ -538,10 +557,19 @@ message InternalKVKeysReply {
 
 // Service for KV storage
 service InternalKVGcsService {
+  // Get String type value of specified key from GCS Service.
+  rpc InternalKVGetString(InternalKVGetStringRequest) returns (InternalKVGetStringReply);
+  // Put String type kv pair to GCS Service.
+  rpc InternalKVPutString(InternalKVPutStringRequest) returns (InternalKVPutStringReply);
+  // Get Hash type value of specified key with field "value" from GCC Service.
   rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  // Put Hash type value with specified key and field "value" to GCS Service.
   rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
+  // Remove "value" field from Hash type value of specified key in GCS Service.
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
+  // Check if "value" field exists in Hash type value of specified key in GCS Service.
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
+  // Get all keys with specified prefix from GCS Service.
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
