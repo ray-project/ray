@@ -22,6 +22,7 @@
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
@@ -1264,46 +1265,6 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-WorkerCacheKey::WorkerCacheKey(
-    const std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string serialized_runtime_env)
-    : override_environment_variables(override_environment_variables),
-      serialized_runtime_env(serialized_runtime_env) {}
-
-bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
-  return Hash() == k.Hash();
-}
-
-bool WorkerCacheKey::EnvIsEmpty() const {
-  return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
-}
-
-std::size_t WorkerCacheKey::Hash() const {
-  // Cache the hash value.
-  if (!hash_) {
-    if (EnvIsEmpty()) {
-      // It's useful to have the same predetermined value for both unspecified and empty
-      // runtime envs.
-      hash_ = 0;
-    } else {
-      std::vector<std::pair<std::string, std::string>> env_vars(
-          override_environment_variables.begin(), override_environment_variables.end());
-      // The environment doesn't depend the order of the variables, so the hash should not
-      // either.  Sort the variables so different permutations yield the same hash.
-      std::sort(env_vars.begin(), env_vars.end());
-      for (auto &pair : env_vars) {
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-
-      boost::hash_combine(hash_, serialized_runtime_env);
-    }
-  }
-  return hash_;
-}
-
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 }  // namespace raylet
 
