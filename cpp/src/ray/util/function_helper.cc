@@ -90,8 +90,8 @@ std::string FunctionHelper::LoadAllRemoteFunctions(
   return names_str;
 }
 
-void ParseDynamicLibrary(boost::filesystem::path path,
-                         std::list<boost::filesystem::path> &dynamic_libraries) {
+void FindDynamicLibrary(boost::filesystem::path path,
+                        std::list<boost::filesystem::path> &dynamic_libraries) {
 #if defined(_WIN32)
   static const std::unordered_set<std::string> dynamic_library_extension = {".dll"};
 #elif __APPLE__
@@ -100,45 +100,48 @@ void ParseDynamicLibrary(boost::filesystem::path path,
 #else
   static const std::unordered_set<std::string> dynamic_library_extension = {".so"};
 #endif
-  auto absolute_path = boost::filesystem::absolute(path);
-  auto extension = boost::filesystem::extension(absolute_path);
+  auto extension = boost::filesystem::extension(path);
   if (dynamic_library_extension.find(extension) != dynamic_library_extension.end()) {
-    RAY_LOG(INFO) << absolute_path << " dynamic library found.";
-    dynamic_libraries.emplace_back(absolute_path);
+    RAY_LOG(INFO) << path << " dynamic library found.";
+    dynamic_libraries.emplace_back(path);
   }
 }
 
 void FunctionHelper::LoadFunctionsFromPaths(const std::list<std::string> paths) {
   std::list<boost::filesystem::path> dynamic_libraries;
+  // Lookup dynamic libraries from paths.
   for (auto path : paths) {
     if (boost::filesystem::is_directory(path)) {
       for (auto &entry :
            boost::make_iterator_range(boost::filesystem::directory_iterator(path), {})) {
-        ParseDynamicLibrary(entry, dynamic_libraries);
+        FindDynamicLibrary(entry, dynamic_libraries);
       }
     } else if (boost::filesystem::exists(path)) {
-      ParseDynamicLibrary(path, dynamic_libraries);
+      FindDynamicLibrary(path, dynamic_libraries);
     } else {
       RAY_LOG(WARNING) << path << " dynamic library not found.";
     }
   }
-  // // TODO(guyang.sgy): support multiple dynamic libraries.
-  // // We support only one dynamic library now.
-  // RAY_CHECK(dynamic_libraries.size() == 1);
+
+  // Try to load all found libraries.
   for (auto lib : dynamic_libraries) {
     LoadDll(lib);
   }
 }
 
+// Return a pair which contains a executable entry function and a remote function pointer.
 std::pair<EntryFuntion, const void *> FunctionHelper::GetExecutableFunctions(
     const std::string &function_name, bool is_member_function) {
   for (auto &entry : remote_funcs_) {
     if (!is_member_function) {
+      // Actor remote function.
+      // Lookup function pointer.
       auto it = entry.second.first.find(function_name);
       if (it == entry.second.first.end()) {
         continue;
       }
       const void *func_ptr = static_cast<const void *>(&it->second);
+      // Lookup entry function.
       auto entry_it = entry_funcs_.find(entry.first);
       if (entry_it == entry_funcs_.end()) {
         continue;
@@ -146,11 +149,14 @@ std::pair<EntryFuntion, const void *> FunctionHelper::GetExecutableFunctions(
       auto entry_function = entry_it->second;
       return std::make_pair(entry_function, func_ptr);
     } else {
+      // Normal remote function or actor creation function.
+      // Lookup function pointer.
       auto it = entry.second.second.find(function_name);
       if (it == entry.second.second.end()) {
         continue;
       }
       const void *func_ptr = static_cast<const void *>(&it->second);
+      // Lookup entry function.
       auto entry_it = entry_funcs_.find(entry.first);
       if (entry_it == entry_funcs_.end()) {
         continue;
@@ -159,7 +165,6 @@ std::pair<EntryFuntion, const void *> FunctionHelper::GetExecutableFunctions(
       return std::make_pair(entry_function, func_ptr);
     }
   }
-  // return std::make_pair(nullptr, nullptr);
 
   throw RayException("Executable functions not found, the function name " +
                      function_name);

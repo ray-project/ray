@@ -53,8 +53,10 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
       unsigned int start = 0;
       auto end = FLAGS_ray_code_search_path.find(separator);
       if (end == std::string::npos) {
+        // A single path without separator.
         code_search_path.emplace_back(FLAGS_ray_code_search_path);
       } else {
+        // Multiple path with separator.
         while (end != std::string::npos) {
           code_search_path.emplace_back(
               FLAGS_ray_code_search_path.substr(start, end - start));
@@ -92,14 +94,22 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     }
     gflags::ShutDownCommandLineFlags();
   }
-  if (worker_type == WorkerType::DRIVER) {
-    if (run_mode == RunMode::CLUSTER && code_search_path.size() == 0) {
+  if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
+    if (code_search_path.size() == 0) {
       auto program_path = boost::dll::program_location().parent_path();
       RAY_LOG(WARNING) << "No code search path found yet. "
                        << "The program location path " << program_path
                        << " will be added for searching dynamic libraries by default."
                        << "And you can add some search paths by '--ray-code-search-path'";
       code_search_path.emplace_back(program_path.string());
+    } else {
+      // Convert all the paths to absolute path to support configuring relative paths in
+      // driver.
+      std::list<std::string> absolute_path;
+      for (auto path : code_search_path) {
+        absolute_path.emplace_back(boost::filesystem::absolute(path).string());
+      }
+      code_search_path = absolute_path;
     }
   }
 };

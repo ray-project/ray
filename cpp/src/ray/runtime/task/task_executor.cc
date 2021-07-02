@@ -18,7 +18,7 @@ msgpack::sbuffer TaskExecutionHandler(const void *func_ptr, const std::string &f
                                       const std::vector<msgpack::sbuffer> &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
   if (func_ptr == nullptr && func_name.empty()) {
-    return PackError("Both function pointer and function name of task are empty");
+    return PackError("Both function pointer and function name of task are empty.");
   }
 
   msgpack::sbuffer result;
@@ -89,9 +89,9 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
   try {
     auto funcs = FunctionHelper::GetInstance().GetExecutableFunctions(
         func_name, actor_ptr != nullptr);
-    RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
+    RAY_LOG(DEBUG) << "Get executable function" << func_name << " ok.";
     auto result = funcs.first(funcs.second, func_name, args_buffer, actor_ptr);
-    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
+    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (ray::api::RayException &e) {
