@@ -463,7 +463,7 @@ def rollout(agent,
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
                     if p_use_lstm:
-                        a_action, p_state, _ = agent.compute_action(
+                        a_action, p_state, _ = agent.compute_single_action(
                             a_obs,
                             state=agent_states[agent_id],
                             prev_action=prev_actions[agent_id],
@@ -471,7 +471,7 @@ def rollout(agent,
                             policy_id=policy_id)
                         agent_states[agent_id] = p_state
                     else:
-                        a_action = agent.compute_action(
+                        a_action = agent.compute_single_action(
                             a_obs,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
