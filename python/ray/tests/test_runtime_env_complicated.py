@@ -635,11 +635,11 @@ def test_env_installation_nonblocking(shutdown_only):
         for i in range(int(total_sleep_s / gap_s)):
             start = time.time()
             ray.get(f.remote())
-            time.sleep(gap_s)
             # Env installation takes around 10 to 60 seconds.  If we fail the
             # below assert, we can be pretty sure an env installation blocked
             # the task.
             assert time.time() - start < 0.1
+            time.sleep(gap_s)
 
     assert_tasks_finish_quickly()
 
