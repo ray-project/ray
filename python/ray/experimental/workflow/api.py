@@ -8,7 +8,7 @@ import ray
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow.common import Workflow
-from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
+from ray.experimental.workflow.step_function import WorkflowStepFunction
 from ray.experimental.workflow.step_executor import postprocess_workflow_step
 from ray.experimental.workflow.storage import (
     Storage, create_storage, get_global_storage, set_global_storage)

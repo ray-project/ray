@@ -5,7 +5,7 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
+from ray.experimental.workflow.step_function import WorkflowStepFunction
 
 
 class WorkflowStepNotRecoverableError(Exception):
