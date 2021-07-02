@@ -29,9 +29,9 @@ def get_global_storage() -> Storage:
     return _global_storage
 
 
-def set_global_storage(storage_url: str) -> None:
+def set_global_storage(storage: Storage) -> None:
     global _global_storage
-    _global_storage = create_storage(storage_url)
+    _global_storage = storage
 
 
 __all__ = ("Storage", "create_storage", "get_global_storage",

@@ -1,5 +1,7 @@
 from collections import deque
+import re
 from typing import Tuple, List, Optional, Callable, Set, Iterator
+import unicodedata
 import uuid
 
 from dataclasses import dataclass
@@ -28,6 +30,23 @@ class WorkflowInputs:
     workflows: List[str]
 
 
+def slugify(value: str, allow_unicode=False):
+    """Adopted from
+    https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, dots or hyphens. Also strip leading and
+    trailing whitespace.
+    """
+    if allow_unicode:
+        value = unicodedata.normalize("NFKC", value)
+    else:
+        value = unicodedata.normalize("NFKD", value).encode(
+            "ascii", "ignore").decode("ascii")
+    value = re.sub(r"[^\w.\-]", "", value).strip()
+    return re.sub(r"[-\s]+", "-", value)
+
+
 class Workflow:
     def __init__(self, original_function: Callable,
                  step_execution_function: StepExecutionFunction,
@@ -43,7 +62,8 @@ class Workflow:
 
         self._executed: bool = False
         self._output: Optional[WorkflowOutputType] = None
-        self._step_id: StepID = uuid.uuid4().hex
+        self._step_id: StepID = slugify(
+            original_function.__qualname__) + "." + uuid.uuid4().hex
         # When we resuming the workflow, we do not want to override the DAG
         # of the original workflow. This tag helps skip it.
         self.skip_saving_workflow_dag: bool = False

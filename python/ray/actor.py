@@ -719,7 +719,7 @@ class ActorClass:
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.5.  Please use "
+                           "will be removed in Ray 1.6.  Please use "
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 

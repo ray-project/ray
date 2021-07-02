@@ -757,6 +757,21 @@ def test_decorator_complex(shutdown_only):
     assert ray.get(a.g.remote()) == "new2"
 
 
+def test_container_option_serialize():
+    runtime_env = {
+        "container": {
+            "image": "ray:latest",
+            "run_options": ["--name=test"]
+        }
+    }
+    job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
+    job_config_serialized = job_config.serialize()
+    # job_config_serialized is JobConfig protobuf serialized string,
+    # job_config.runtime_env.raw_json has container_option info
+    # job_config.serialized_runtime_env also has container_option info
+    assert job_config_serialized.count(b"image") == 2
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
