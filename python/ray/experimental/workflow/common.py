@@ -64,9 +64,6 @@ class Workflow:
         self._output: Optional[WorkflowOutputType] = None
         self._step_id: StepID = slugify(
             original_function.__qualname__) + "." + uuid.uuid4().hex
-        # When we resuming the workflow, we do not want to override the DAG
-        # of the original workflow. This tag helps skip it.
-        self.skip_saving_workflow_dag: bool = False
 
     @property
     def executed(self) -> bool:

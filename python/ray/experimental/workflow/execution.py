@@ -78,11 +78,17 @@ def resume(workflow_id: str,
         store = get_global_storage()
     else:
         raise TypeError("'storage' should be None, str, or Storage type.")
+    storage_url = get_global_storage().storage_url
     r = recovery.resume_workflow_job(workflow_id, store)
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
     if isinstance(r, ray.ObjectRef):
         return r
-    # skip saving the DAG of a recovery workflow
-    r.skip_saving_workflow_dag = True
-    return run(r, store, workflow_id)
+    try:
+        workflow_context.init_workflow_step_context(workflow_id, storage_url)
+        rref = r.execute()
+        logger.info(f"Workflow job {workflow_id} started.")
+        output = flatten_workflow_output(workflow_id, rref)
+    finally:
+        workflow_context.set_workflow_step_context(None)
+    return output

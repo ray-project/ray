@@ -226,12 +226,11 @@ class WorkflowStorage:
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
             assert not ret.executed
-            if not ret.skip_saving_workflow_dag:
-                for w in ret.iter_workflows_in_dag():
-                    self._write_step_inputs(w.id, w.get_inputs())
-                assert step_id != ret.id
-                self._storage.save_step_output_metadata(
-                    self._workflow_id, step_id, {"output_step_id": ret.id})
+            for w in ret.iter_workflows_in_dag():
+                self._write_step_inputs(w.id, w.get_inputs())
+            assert step_id != ret.id
+            self._storage.save_step_output_metadata(self._workflow_id, step_id,
+                                                    {"output_step_id": ret.id})
             dynamic_output_id = ret.id
         else:
             # This workflow step returns a object.
