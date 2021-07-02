@@ -375,7 +375,7 @@ class AWSNodeProvider(NodeProvider):
                 _ = conf.pop("SubnetId", None)
                 security_group_ids = conf.pop("SecurityGroupIds", None)
                 if security_group_ids is not None:
-                    conf["NetworkInterfaces"][0]["Groups"] = maybe_security_group_ids
+                    conf["NetworkInterfaces"][0]["Groups"] = security_group_ids
 
                 created = self.ec2_fail_fast.create_instances(**conf)
                 created_nodes_dict = {n.id: n for n in created}
