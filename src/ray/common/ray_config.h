@@ -29,7 +29,7 @@ class RayConfig {
 /// method called `name()` for a given config item.
 ///
 /// Configs defined in this way can be overriden by setting the env variable
-/// RAY_{name}=value where {name} is the capitalized variable name.
+/// RAY_{name}=value where {name} is the variable name.
 ///
 /// \param type Type of the config item.
 /// \param name Name of the config item.
@@ -37,7 +37,7 @@ class RayConfig {
 #define RAY_CONFIG(type, name, default_value)                                     \
  private:                                                                         \
   type name##_ =                                                                  \
-      ReadEnv<type>("RAY_" + absl::AsciiStrToUpper(#name), #type, default_value); \
+      ReadEnv<type>("RAY_" #name, #type, default_value); \
                                                                                   \
  public:                                                                          \
   inline type name() { return name##_; }

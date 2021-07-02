@@ -114,7 +114,10 @@ RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
-RAY_CONFIG(float, scheduler_spread_threshold, 0.5)
+RAY_CONFIG(float, scheduler_spread_threshold,
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -420,6 +423,8 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_task_scheduling_enabled, false)
+RAY_CONFIG(bool, gcs_task_scheduling_enabled,
+           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
