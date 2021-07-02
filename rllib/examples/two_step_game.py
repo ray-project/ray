@@ -146,6 +146,9 @@ if __name__ == "__main__":
         "env": "grouped_twostep" if group else TwoStepGame,
     })
 
+    if args.as_test:
+        config["seed"] = 1234
+
     results = tune.run(args.run, stop=stop, config=config, verbose=2)
 
     if args.as_test:

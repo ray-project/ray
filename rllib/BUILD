@@ -2462,7 +2462,7 @@ py_test(
 py_test(
     name = "examples/two_step_game_qmix",
     main = "examples/two_step_game.py",
-    tags = ["examples", "examples_T", "flaky"],
+    tags = ["examples", "examples_T"],
     size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
