@@ -97,28 +97,6 @@ void TestSetupUtil::FlushRedisServer(const int &port) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
-std::string TestSetupUtil::StartObjectStore(
-    const boost::optional<std::string> &socket_name) {
-  std::string socket_suffix;
-  if (socket_name) {
-    socket_suffix = *socket_name;
-  } else {
-    socket_suffix = ObjectID::FromRandom().Hex();
-  }
-  std::string store_socket_name =
-      ray::JoinPaths(ray::GetUserTempDir(), "store" + socket_suffix);
-  std::vector<std::string> cmdargs(
-      {TEST_STORE_EXEC_PATH, "-m", "10000000", "-s", store_socket_name});
-  RAY_LOG(DEBUG) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true, store_socket_name + ".pid").second);
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  return store_socket_name;
-}
-
-void TestSetupUtil::StopObjectStore(const std::string &store_socket_name) {
-  KillProcessBySocketName(store_socket_name);
-}
-
 std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
   std::string gcs_server_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
@@ -136,25 +114,29 @@ void TestSetupUtil::StopGcsServer(const std::string &gcs_server_socket_name) {
   KillProcessBySocketName(gcs_server_socket_name);
 }
 
-std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
-                                       const std::string &node_ip_address,
+std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
                                        const int &port, const std::string &redis_address,
-                                       const std::string &resource) {
+                                       const std::string &resource,
+                                       std::string *store_socket_name) {
   std::string raylet_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
+  std::string plasma_store_socket_name =
+      ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
       {TEST_RAYLET_EXEC_PATH, "--raylet_socket_name=" + raylet_socket_name,
-       "--store_socket_name=" + store_socket_name, "--object_manager_port=0",
+       "--store_socket_name=" + plasma_store_socket_name, "--object_manager_port=0",
        "--node_manager_port=" + std::to_string(port),
        "--node_ip_address=" + node_ip_address, "--redis_address=" + redis_address,
        "--redis_port=6379", "--min-worker-port=0", "--max-worker-port=0",
        "--maximum_startup_concurrency=10", "--static_resource_list=" + resource,
        "--python_worker_command=" +
-           CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, store_socket_name,
-                              raylet_socket_name, std::to_string(port)})});
+           CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, plasma_store_socket_name,
+                              raylet_socket_name, std::to_string(port)}),
+       "--object_store_memory=10000000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  *store_socket_name = plasma_store_socket_name;
   return raylet_socket_name;
 }
 
@@ -252,9 +234,6 @@ std::string TEST_REDIS_CLIENT_EXEC_PATH;
 std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 std::vector<int> TEST_REDIS_SERVER_PORTS;
-
-/// Path to object store executable binary.
-std::string TEST_STORE_EXEC_PATH;
 
 /// Path to gcs server executable binary.
 std::string TEST_GCS_SERVER_EXEC_PATH;

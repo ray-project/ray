@@ -130,16 +130,6 @@ void QuotaAwarePolicy::RemoveObject(const ObjectID &object_id) {
   EvictionPolicy::RemoveObject(object_id);
 }
 
-void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID> &object_ids) {
-  for (const auto &object_id : object_ids) {
-    if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
-      int64_t size = per_client_cache_[owned_by_client_[object_id]]->Remove(object_id);
-      per_client_cache_[owned_by_client_[object_id]]->Add(object_id, size);
-    }
-  }
-  EvictionPolicy::RefreshObjects(object_ids);
-}
-
 void QuotaAwarePolicy::ClientDisconnected(Client *client) {
   if (per_client_cache_.find(client) == per_client_cache_.end()) {
     return;

@@ -1,71 +1,114 @@
 import argparse
 import os
 from collections import OrderedDict
+import sys
+import time
+import subprocess
+from typing import List
 
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
 
-parser = argparse.ArgumentParser(
-    description="Helper script to upload files to S3 bucket")
-parser.add_argument("--path", type=str)
-parser.add_argument("--destination", type=str)
-args = parser.parse_args()
 
-assert os.path.exists(args.path)
-assert args.destination in {"wheels", "containers"}
-assert "BUILDKITE_JOB_ID" in os.environ
-assert "BUILDKITE_COMMIT" in os.environ
+def retry(f):
+    def inner():
+        resp = None
+        for _ in range(5):
+            resp = f()
+            print("Getting Presigned URL, status_code", resp.status_code)
+            if resp.status_code >= 500:
+                print("errored, retrying...")
+                print(resp.text)
+                time.sleep(5)
+            else:
+                return resp
+        if resp is None or resp.status_code >= 500:
+            print("still errorred after many retries")
+            sys.exit(1)
 
-is_dir = os.path.isdir(args.path)
+    return inner
 
-# # Assume the caller role from the instance
-# sts_client = boto3.client('sts')
-# assumed_role_object = sts_client.assume_role(
-#     RoleArn="arn:aws:iam::029272617770:role/presigner_caller_role",
-#     RoleSessionName="ProdSessionFromBK")
-# credentials = assumed_role_object["Credentials"]
 
-# # Construct the HTTP auth to call the API gateway
-# auth = AWSRequestsAuth(
-#     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-#     aws_region="us-west-2",
-#     aws_service="execute-api",
-#     aws_access_key=credentials["AccessKeyId"],
-#     aws_secret_access_key=credentials["SecretAccessKey"],
-#     aws_token=credentials["SessionToken"],
-# )
-auth = BotoAWSRequestsAuth(
-    aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-    aws_region="us-west-2",
-    aws_service="execute-api",
-)
+@retry
+def perform_auth():
+    auth = BotoAWSRequestsAuth(
+        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+        aws_region="us-west-2",
+        aws_service="execute-api",
+    )
+    resp = requests.get(
+        "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+        auth=auth,
+        params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
+    return resp
 
-resp = requests.get(
-    "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
-    auth=auth,
-    params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
-print("Getting Presigned URL", resp.status_code)
 
-sha = os.environ["BUILDKITE_COMMIT"]
-if is_dir:
-    paths = [os.path.join(args.path, f) for f in os.listdir(args.path)]
-else:
-    paths = [args.path]
-print("Planning to upload", paths)
+def handle_docker_login(resp):
+    pwd = resp.json()["docker_password"]
+    subprocess.call(
+        ["docker", "login", "--username", "raytravisbot", "--password", pwd])
 
-for path in paths:
-    fn = os.path.split(path)[-1]
-    if args.destination == "wheels":
-        c = resp.json()["presigned_wheels"]
-        of = OrderedDict(c["fields"])
-        of["key"] = f"scratch/bk/{sha}/{fn}"
-    elif args.destination == "containers":
-        c = resp.json()["presigned_containers"]
-        of = OrderedDict(c["fields"])
-        of["key"] = f"{sha}/{fn}"
+
+def gather_paths(dir_path) -> List[str]:
+    assert os.path.exists(dir_path)
+    if os.path.isdir(dir_path):
+        paths = [os.path.join(dir_path, f) for f in os.listdir(dir_path)]
     else:
-        raise ValueError("Unknown destination")
+        paths = [dir_path]
+    return paths
 
-    of["file"] = open(path, "rb")
-    r = requests.post(c["url"], files=of)
-    print(f"Uploaded {path} to {of['key']}", r.status_code)
+
+dest_resp_mapping = {
+    "wheels": "presigned_resp_prod_wheels",
+    "branch_wheels": "presigned_resp_prod_wheels",
+    "jars": "presigned_resp_prod_wheels",
+    "branch_jars": "presigned_resp_prod_wheels",
+    "logs": "presigned_logs",
+}
+
+
+def upload_paths(paths, resp, destination):
+    dest_key = dest_resp_mapping[destination]
+    c = resp.json()[dest_key]
+    of = OrderedDict(c["fields"])
+
+    sha = os.environ["BUILDKITE_COMMIT"]
+    branch = os.environ["BUILDKITE_BRANCH"]
+    bk_job_id = os.environ["BUILDKITE_JOB_ID"]
+
+    for path in paths:
+        fn = os.path.split(path)[-1]
+        of["key"] = {
+            "wheels": f"latest/{fn}",
+            "branch_wheels": f"{branch}/{sha}/{fn}",
+            "jars": f"jars/latest/{fn}",
+            "branch_jars": f"jars/{branch}/{sha}/{fn}",
+            "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}"
+        }[destination]
+        of["file"] = open(path, "rb")
+        r = requests.post(c["url"], files=of)
+        print(f"Uploaded {path} to {of['key']}", r.status_code)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Helper script to upload files to S3 bucket")
+    parser.add_argument("--path", type=str, required=False)
+    parser.add_argument("--destination", type=str)
+    args = parser.parse_args()
+
+    assert args.destination in {
+        "branch_jars", "branch_wheels", "jars", "logs", "wheels",
+        "docker_login"
+    }
+    assert "BUILDKITE_JOB_ID" in os.environ
+    assert "BUILDKITE_COMMIT" in os.environ
+
+    resp = perform_auth()
+
+    if args.destination == "docker_login":
+        handle_docker_login(resp)
+    else:
+        paths = gather_paths(args.path)
+        print("Planning to upload", paths)
+        upload_paths(paths, resp, args.destination)

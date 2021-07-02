@@ -2,36 +2,29 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
+#include <boost/dll.hpp>
 #include <memory>
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
+
 namespace internal {
-
 /// Execute remote functions by networking stream.
-inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_t size) {
-  msgpack::sbuffer result;
-  do {
-    try {
-      auto p = ray::api::Serializer::Deserialize<std::tuple<std::string>>(data, size);
-      auto &func_name = std::get<0>(p);
-      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
-      if (func_ptr == nullptr) {
-        result = PackReturnValue(internal::ErrorCode::FAIL,
-                                 "unknown function: " + func_name, 0);
-        break;
-      }
+msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
+                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      msgpack::sbuffer *actor_ptr);
 
-      result = (*func_ptr)(data, size);
-    } catch (const std::exception &ex) {
-      result = PackReturnValue(internal::ErrorCode::FAIL, ex.what());
-    }
-  } while (0);
+BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
 
-  return result;
-}
+FunctionManager &GetFunctionManager();
+BOOST_DLL_ALIAS(internal::GetFunctionManager, GetFunctionManager);
+
+std::vector<std::string> GetRemoteFunctionNames();
+BOOST_DLL_ALIAS(internal::GetRemoteFunctionNames, GetRemoteFunctionNames);
 }  // namespace internal
 
 namespace api {
@@ -56,18 +49,19 @@ class TaskExecutor {
 
   static void Invoke(
       const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
-      AbstractRayRuntime *runtime, const uintptr_t base_addr,
+      AbstractRayRuntime *runtime,
       std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
       absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
-      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+      ray::TaskType task_type, const std::string task_name,
+      const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<std::shared_ptr<ray::RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      std::vector<std::shared_ptr<ray::RayObject>> *results,
+      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   virtual ~TaskExecutor(){};
 

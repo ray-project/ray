@@ -140,10 +140,15 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
+      -python/ray/serve:test_backend_worker # memory error
+      -python/ray/serve:test_controller_crashes # timeout
       -python/ray/tests:test_actor_advanced # timeout
+      -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
+      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
@@ -153,7 +158,10 @@ test_python() {
       -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
+      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_failure
+      -python/ray/tests:test_failure_2
+      -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -168,11 +176,11 @@ test_python() {
       -python/ray/tests:test_placement_group # timeout and OOM
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
+      -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_cluster_launcher
-      -python/ray/tests:test_k8s_operator_examples
-      -python/ray/tests:test_k8s_operator_mock
+      -python/ray/tests:test_k8s_operator_unit_tests
+      -python/ray/tests:test_tracing  # tracing not enabled on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -191,7 +199,10 @@ test_python() {
 test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
+  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  # run cluster mode test with external cluster
+  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
+    --test_arg=--ray-redis-password="1234"
   # run the cpp example
   bazel run //cpp/example:example
 
@@ -217,7 +228,8 @@ install_npm_project() {
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
-    npm ci -q
+    npm i -g yarn
+    yarn
   fi
 }
 
@@ -228,13 +240,14 @@ build_dashboard_front_end() {
     (
       cd ray/new_dashboard/client
 
-      if [ -z "${BUILDKITE-}" ]; then
+      # skip nvm activation on buildkite linux instances.
+      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
         nvm use --silent node
       fi
       install_npm_project
-      npm run -s build
+      yarn build
     )
   fi
 }
@@ -336,8 +349,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      # Remove suppress_output for now to avoid timeout
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -518,7 +530,7 @@ build() {
     install_cython_examples
   fi
 
-  if [ "${RAY_DEFAULT_BUILD-}" = 1 ] || [ "${LINT-}" = 1 ]; then
+  if [ "${LINT-}" = 1 ]; then
     install_go
   fi
 

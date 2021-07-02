@@ -130,7 +130,13 @@ def cli(logging_level, logging_format):
     type=int,
     default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
-def dashboard(cluster_config_file, cluster_name, port, remote_port):
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+def dashboard(cluster_config_file, cluster_name, port, remote_port,
+              no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
@@ -147,7 +153,8 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
         exec_cluster(
             cluster_config_file,
             override_cluster_name=cluster_name,
-            port_forward=port_forward)
+            port_forward=port_forward,
+            no_config_cache=no_config_cache)
         click.echo("Successfully established connection.")
     except Exception as e:
         raise click.ClickException(
@@ -429,6 +436,28 @@ def debug(address):
     default=False,
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
+@click.option(
+    "--tracing-startup-hook",
+    type=str,
+    hidden=True,
+    default=None,
+    help="The function that sets up tracing with a tracing provider, remote "
+    "span processor, and additional instruments. See docs.ray.io/tracing.html "
+    "for more info.")
+@click.option(
+    "--worker-setup-hook",
+    hidden=True,
+    default=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "environment for the worker process.")
+@click.option(
+    "--runtime-env-setup-hook",
+    hidden=True,
+    default=ray_constants.DEFAULT_RUNTIME_ENV_SETUP_HOOK,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "runtime env in agent.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -439,7 +468,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, log_style, log_color, verbose):
+          metrics_export_port, no_monitor, tracing_startup_hook,
+          worker_setup_hook, runtime_env_setup_hook, log_style, log_color,
+          verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -450,10 +481,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
-    redis_address = None
-    if address is not None:
-        (redis_address, redis_address_ip,
-         redis_address_port) = services.validate_redis_address(address)
     try:
         resources = json.loads(resources)
     except Exception:
@@ -461,7 +488,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                          cf.bold("--resources"))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold("--resources='\"CustomResource3\": 1, "
+            cf.bold("--resources='{\"CustomResource3\": 1, "
                     "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "
@@ -500,7 +527,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        no_monitor=no_monitor,
+        tracing_startup_hook=tracing_startup_hook,
+        worker_setup_hook=worker_setup_hook,
+        runtime_env_setup_hook=runtime_env_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -519,14 +549,36 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if redis_address is not None:
-            cli_logger.abort(
-                "`{}` starts a new Redis server, `{}` should not be set.",
-                cf.bold("--head"), cf.bold("--address"))
-
-            raise Exception("If --head is passed in, a Redis server will be "
-                            "started, so a Redis address should not be "
-                            "provided.")
+        if address is not None:
+            cli_logger.print(
+                "Will use value of `{}` as remote Redis server address(es). "
+                "If the primary one is not reachable, we starts new one(s) "
+                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
+            external_addresses = address.split(",")
+            reachable = False
+            try:
+                [primary_redis_ip, port] = external_addresses[0].split(":")
+                ray._private.services.wait_for_redis_to_start(
+                    primary_redis_ip, port, password=redis_password)
+                reachable = True
+            # We catch a generic Exception here in case someone later changes
+            # the type of the exception.
+            except Exception:
+                cli_logger.print(
+                    "The primary external redis server `{}` is not reachable. "
+                    "Will starts new one(s) with `{}` in local.",
+                    cf.bold(external_addresses[0]), cf.bold("--port"))
+            if reachable:
+                ray_params.update_if_absent(
+                    external_addresses=external_addresses)
+                if len(external_addresses) > 1:
+                    num_redis_shards = len(external_addresses) - 1
+                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                    cli_logger.warning(
+                        "`{}` should not be specified as empty string if "
+                        "external redis server(s) `{}` points to requires "
+                        "password.", cf.bold("--redis-password"),
+                        cf.bold("--address"))
 
         node_ip_address = services.get_node_ip_address()
 
@@ -554,7 +606,18 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
+
         redis_address = node.redis_address
+        if temp_dir is None:
+            # Default temp directory.
+            temp_dir = ray._private.utils.get_user_temp_dir()
+        # Using the user-supplied temp dir unblocks on-prem
+        # users who can't write to the default temp.
+        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
+        # TODO: Consider using the custom temp_dir for this file across the
+        # code base. (https://github.com/ray-project/ray/issues/16458)
+        with open(current_cluster_path, "w") as f:
+            print(redis_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -595,6 +658,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(cf.bold("  ray stop"))
     else:
         # Start Ray on a non-head node.
+        redis_address = None
+        if address is not None:
+            (redis_address, redis_address_ip,
+             redis_address_port) = services.validate_redis_address(address)
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
@@ -775,6 +842,13 @@ def stop(force, verbose, log_style, log_color):
             cli_logger.warning("Try running the command again, or use `{}`.",
                                cf.bold("--force"))
 
+    try:
+        os.remove(
+            os.path.join(ray._private.utils.get_user_temp_dir(),
+                         "ray_current_cluster"))
+    except OSError:
+        # This just means the file doesn't exist.
+        pass
     # Wait for the processes to actually stop.
     psutil.wait_procs(stopped, timeout=2)
 
@@ -1359,6 +1433,12 @@ def timeline(address):
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 @click.option(
+    "--units",
+    type=click.Choice(["B", "KB", "MB", "GB"]),
+    default="B",
+    help="Specify unit metrics for displaying object sizes \
+(e.g. B, KB, MB, GB).")
+@click.option(
     "--no-format",
     is_flag=True,
     type=bool,
@@ -1370,14 +1450,21 @@ terminal width is less than 137 characters.")
     is_flag=True,
     default=False,
     help="Display plasma store stats only.")
-def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
+@click.option(
+    "--num-entries",
+    "--n",
+    type=int,
+    default=None,
+    help="Specify number of sorted entries per group.")
+def memory(address, redis_password, group_by, sort_by, units, no_format,
+           stats_only, num_entries):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by,
-                               no_format, stats_only)
+                               units, no_format, stats_only, num_entries)
     print(f"{header}\n{mem_stats}")
 
 
@@ -1445,13 +1532,21 @@ def status(address, redis_password):
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def local_dump(stream: bool = False,
                output: Optional[str] = None,
                logs: bool = True,
                debug_state: bool = True,
                pip: bool = True,
                processes: bool = True,
-               processes_verbose: bool = False):
+               processes_verbose: bool = False,
+               tempfile: Optional[str] = None):
     """Collect local data and package into an archive.
 
     Usage:
@@ -1468,7 +1563,8 @@ def local_dump(stream: bool = False,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
 
 
 @cli.command()
@@ -1540,6 +1636,13 @@ def local_dump(stream: bool = False,
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
+@click.option(
+    "--tempfile",
+    "-T",
+    required=False,
+    type=str,
+    default=None,
+    help="Temporary file to use")
 def cluster_dump(cluster_config_file: Optional[str] = None,
                  host: Optional[str] = None,
                  ssh_user: Optional[str] = None,
@@ -1551,7 +1654,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
                  debug_state: bool = True,
                  pip: bool = True,
                  processes: bool = True,
-                 processes_verbose: bool = False):
+                 processes_verbose: bool = False,
+                 tempfile: Optional[str] = None):
     """Get log data from one or more nodes.
 
     Best used with Ray cluster configs:
@@ -1578,7 +1682,8 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
         debug_state=debug_state,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose)
+        processes_verbose=processes_verbose,
+        tempfile=tempfile)
     if archive_path:
         click.echo(f"Created archive: {archive_path}")
     else:
@@ -1599,6 +1704,66 @@ def global_gc(address):
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
+
+
+@cli.command(name="health-check", hidden=True)
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+@click.option(
+    "--component",
+    required=False,
+    type=str,
+    help="Health check for a specific component. Currently supports: "
+    "[ray_client_server]")
+def healthcheck(address, redis_password, component):
+    """
+    This is NOT a public api.
+
+    Health check a Ray or a specific component. Exit code 0 is healthy.
+    """
+
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+
+    if not component:
+        # If no component is specified, we are health checking the core. If
+        # client creation or ping fails, we will still exit with a non-zero
+        # exit code.
+        redis_client.ping()
+        sys.exit(0)
+
+    report_str = redis_client.hget(f"healthcheck:{component}", "value")
+    if not report_str:
+        # Status was never updated
+        sys.exit(1)
+
+    report = json.loads(report_str)
+
+    # TODO (Alex): We probably shouldn't rely on time here, but cloud providers
+    # have very well synchronized NTP servers, so this should be fine in
+    # practice.
+    cur_time = time.time()
+    report_time = float(report["time"])
+
+    # If the status is too old, the service has probably already died.
+    delta = cur_time - report_time
+    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+
+    if time_ok:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 @cli.command()

@@ -26,8 +26,9 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
-               rpc::WorkerType worker_type, const std::string &ip_address,
+Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
+               const Language &language, rpc::WorkerType worker_type,
+               const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
@@ -38,6 +39,7 @@ Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &l
       port_(-1),
       connection_(connection),
       assigned_job_id_(job_id),
+      runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
@@ -63,6 +65,16 @@ Process Worker::GetProcess() const { return proc_; }
 void Worker::SetProcess(Process proc) {
   RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
   proc_ = std::move(proc);
+}
+
+Process Worker::GetShimProcess() const {
+  RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
+  return shim_proc_;
+}
+
+void Worker::SetShimProcess(Process proc) {
+  RAY_CHECK(shim_proc_.IsNull());  // this procedure should not be called multiple times
+  shim_proc_ = std::move(proc);
 }
 
 Language Worker::GetLanguage() const { return language_; }
@@ -115,6 +127,8 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
+
+int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.IsNil())

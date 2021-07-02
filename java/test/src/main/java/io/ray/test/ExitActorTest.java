@@ -2,6 +2,7 @@ package io.ray.test;
 
 import static io.ray.runtime.util.SystemUtil.pid;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -96,7 +97,7 @@ public class ExitActorTest extends BaseTest {
         Ray.actor(ExitingActor::new)
             .setMaxRestarts(10000)
             // Set dummy JVM options to start a worker process with only one worker.
-            .setJvmOptions(" ")
+            .setJvmOptions(ImmutableList.of("-Ddummy=value"))
             .remote();
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));

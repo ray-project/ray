@@ -196,6 +196,8 @@ Resources
 
     :ref:`CPU <cluster-configuration-CPU>`: int
     :ref:`GPU <cluster-configuration-GPU>`: int
+    :ref:`object_store_memory <cluster-configuration-object-store-memory>`: int
+    :ref:`memory <cluster-configuration-memory>`: int
     <custom_resource1>: int
     <custom_resource2>: int
     ...
@@ -658,6 +660,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
+If ``--shm-size=<>`` is manually added to ``run_options``, this is *automatically* set to ``True``, meaning that Ray will defer to the user-provided value.
 
 * **Required:** No
 * **Importance:** Low
@@ -903,7 +906,7 @@ The user that Ray will authenticate with when launching new nodes.
 
         The globally unique project ID to use for deployment of the Ray cluster.
 
-        * **Required:** No
+        * **Required:** Yes
         * **Importance:** Low
         * **Type:** String
         * **Default:** ``null``
@@ -965,7 +968,7 @@ The minimum number of workers to maintain for this node type regardless of utili
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`.
+The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
 * **Required:** No
 * **Importance:** High
@@ -1046,6 +1049,66 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
+        
+.. _cluster-configuration-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        
+ .. _cluster-configuration-object-store-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-node-docker:
 
@@ -1080,7 +1143,7 @@ Minimal configuration
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-minimal.yaml
             :language: yaml
-
+            
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 

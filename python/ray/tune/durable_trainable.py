@@ -18,9 +18,6 @@ class DurableTrainable(Trainable):
     Supports checkpointing to and restoring from remote storage. To use this
     class, implement the same private methods as ray.tune.Trainable.
 
-    .. warning:: This class is currently **experimental** and may
-        be subject to change.
-
     Run this with Tune as follows. Setting `sync_to_driver=False` disables
     syncing to the driver to avoid keeping redundant checkpoints around, as
     well as preventing the driver from syncing up the same checkpoint.

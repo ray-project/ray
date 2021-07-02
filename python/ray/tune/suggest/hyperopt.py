@@ -363,12 +363,12 @@ class HyperOptSearch(Searcher):
         self.rstate.set_state(state["rstate"])
 
     def save(self, checkpoint_path: str):
-        with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(self.get_state(), outputFile)
+        with open(checkpoint_path, "wb") as f:
+            pickle.dump(self.get_state(), f)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as inputFile:
-            trials_object = pickle.load(inputFile)
+        with open(checkpoint_path, "rb") as f:
+            trials_object = pickle.load(f)
 
         if isinstance(trials_object, tuple):
             self._hpopt_trials = trials_object[0]
@@ -424,14 +424,14 @@ class HyperOptSearch(Searcher):
                                                np.log(domain.upper), quantize))
                     return hpo.base.pyll.scope.int(
                         hpo.hp.qloguniform(par, np.log(domain.lower),
-                                           np.log(domain.upper), 1.0))
+                                           np.log(domain.upper - 1), 1.0))
                 elif isinstance(sampler, Uniform):
                     if quantize:
                         return hpo.base.pyll.scope.int(
-                            hpo.hp.quniform(par, domain.lower, domain.upper,
-                                            quantize))
+                            hpo.hp.quniform(par, domain.lower,
+                                            domain.upper - 1, quantize))
                     return hpo.hp.uniformint(
-                        par, domain.lower, high=domain.upper)
+                        par, domain.lower, high=domain.upper - 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return hpo.hp.choice(par, [

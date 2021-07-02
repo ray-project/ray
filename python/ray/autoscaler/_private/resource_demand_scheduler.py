@@ -11,8 +11,10 @@ import copy
 import numpy as np
 import logging
 import collections
-from numbers import Number
-from typing import List, Dict
+from numbers import Real
+from typing import Dict
+from typing import List
+from typing import Optional
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
@@ -35,7 +37,7 @@ NodeType = str
 NodeTypeConfigDict = str
 
 # e.g., {"GPU": 1}.
-ResourceDict = Dict[str, Number]
+ResourceDict = Dict[str, Real]
 
 # e.g., "node-1".
 NodeID = str
@@ -733,9 +735,9 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 
 
 def _utilization_score(node_resources: ResourceDict,
-                       resources: List[ResourceDict]) -> float:
+                       resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources
+    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
@@ -754,8 +756,17 @@ def _utilization_score(node_resources: ResourceDict,
 
     util_by_resources = []
     for k, v in node_resources.items():
+        # Don't divide by zero.
+        if v < 1:
+            # Could test v == 0 on the nose, but v < 1 feels safer.
+            # (Note that node resources are integers.)
+            continue
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
+
+    # Could happen if node_resources has only zero values.
+    if not util_by_resources:
+        return None
 
     # Prioritize using all resources first, then prioritize overall balance
     # of multiple resources.

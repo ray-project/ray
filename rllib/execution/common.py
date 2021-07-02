@@ -5,7 +5,9 @@ from ray.util.iter_metrics import MetricsContext
 
 # Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
+AGENT_STEPS_SAMPLED_COUNTER = "num_agent_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"
+AGENT_STEPS_TRAINED_COUNTER = "num_agent_steps_trained"
 
 # Counters to track target network updates.
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"

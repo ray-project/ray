@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -33,13 +34,11 @@ namespace gcs {
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
-    const ray::JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &driver_ip_address, int64_t driver_pid,
-    const ray::rpc::JobConfig &job_config = {}) {
+    const ray::JobID &job_id, bool is_dead, const std::string &driver_ip_address,
+    int64_t driver_pid, const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
-  job_info_ptr->set_timestamp(timestamp);
   job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
   *job_info_ptr->mutable_config() = job_config;
@@ -50,9 +49,18 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type, const std::string &error_msg, double timestamp,
     const JobID &job_id = JobID::Nil()) {
+  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
   error_info_ptr->set_type(error_type);
-  error_info_ptr->set_error_message(error_msg);
+  if (error_msg.length() > max_error_msg_size_bytes) {
+    std::ostringstream stream;
+    stream << "The message size exceeds " << std::to_string(max_error_msg_size_bytes)
+           << " bytes. Find the full log from the log files. Here is abstract: "
+           << error_msg.substr(0, max_error_msg_size_bytes);
+    error_info_ptr->set_error_message(stream.str());
+  } else {
+    error_info_ptr->set_error_message(error_msg);
+  }
   error_info_ptr->set_timestamp(timestamp);
   error_info_ptr->set_job_id(job_id.Binary());
   return error_info_ptr;

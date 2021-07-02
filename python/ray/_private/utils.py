@@ -1,6 +1,8 @@
 import binascii
 import errno
+import functools
 import hashlib
+import importlib
 import logging
 import math
 import multiprocessing
@@ -13,7 +15,9 @@ import threading
 import time
 from typing import Optional
 import uuid
+import warnings
 
+import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
@@ -902,3 +906,173 @@ def get_conda_env_dir(env_name):
             " not found in conda envs directory. Run `conda env list` to " +
             "verify the name is correct.")
     return env_dir
+
+
+def get_call_location(back=1):
+    """
+    Get the location (filename and line number) of a function caller, `back`
+    frames up the stack.
+
+    Args:
+        back (int): The number of frames to go up the stack, not including this
+            function.
+    """
+    stack = inspect.stack()
+    try:
+        frame = stack[back + 1]
+        return f"{frame.filename}:{frame.lineno}"
+    except IndexError:
+        return "UNKNOWN"
+
+
+# Used to only print a deprecation warning once for a given function if we
+# don't wish to spam the caller.
+_PRINTED_WARNING = set()
+
+
+# The following is inspired by
+# https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
+def deprecated(instructions=None,
+               removal_release=None,
+               removal_date=None,
+               warn_once=True):
+    """
+    Creates a decorator for marking functions as deprecated. The decorator
+    will log a deprecation warning on the first (or all, see `warn_once` arg)
+    invocations, and will otherwise leave the wrapped function unchanged.
+
+    Args:
+        instructions (str): Instructions for the caller to update their code.
+        removal_release (str): The release in which this deprecated function
+            will be removed. Only one of removal_release and removal_date
+            should be specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        removal_date (str): The date on which this deprecated function will be
+            removed. Only one of removal_release and removal_date should be
+            specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        warn_once (bool): If true, the deprecation warning will only be logged
+            on the first invocation. Otherwise, the deprecation warning will
+            be logged on every invocation. Defaults to True.
+
+    Returns:
+        A decorator to be used for wrapping deprecated functions.
+    """
+    if removal_release is not None and removal_date is not None:
+        raise ValueError(
+            "Only one of removal_release and removal_date should be specified."
+        )
+
+    def deprecated_wrapper(func):
+        @functools.wraps(func)
+        def new_func(*args, **kwargs):
+            global _PRINTED_WARNING
+            if func not in _PRINTED_WARNING:
+                if warn_once:
+                    _PRINTED_WARNING.add(func)
+                msg = ("From {}: {} (from {}) is deprecated and will ".format(
+                    get_call_location(), func.__name__,
+                    func.__module__) + "be removed " +
+                       (f"in version {removal_release}."
+                        if removal_release is not None else
+                        f"after {removal_date}"
+                        if removal_date is not None else "in a future version")
+                       + (f" {instructions}"
+                          if instructions is not None else ""))
+                warnings.warn(msg)
+            return func(*args, **kwargs)
+
+        return new_func
+
+    return deprecated_wrapper
+
+
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
+
+    For example, the following are equivalent:
+        MyClass = import_attr("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported attr
+    """
+    if full_path is None:
+        raise TypeError("import path cannot be None")
+    last_period_idx = full_path.rfind(".")
+    attr_name = full_path[last_period_idx + 1:]
+    module_name = full_path[:last_period_idx]
+    module = importlib.import_module(module_name)
+    return getattr(module, attr_name)
+
+
+def get_wheel_filename(
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Returns the filename used for the nightly Ray wheel.
+
+    Args:
+        sys_platform (str): The platform as returned by sys.platform. Examples:
+            "darwin", "linux", "win32"
+        ray_version (str): The Ray version as returned by ray.__version__ or
+            `ray --version`.  Examples: "2.0.0.dev0"
+        py_version (str):
+            The major and minor Python versions concatenated.  Examples: "36",
+            "37", "38"
+    Returns:
+        The wheel file name.  Examples:
+            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    """
+    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
+                                              " '37', or '38'")
+
+    os_strings = {
+        "darwin": "macosx_10_13_x86_64"
+        if py_version == "38" else "macosx_10_13_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
+                                        " 'linux', or 'win32'")
+
+    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
+                      f"cp{py_version}{'m' if py_version != '38' else ''}"
+                      f"-{os_strings[sys_platform]}.whl")
+
+    return wheel_filename
+
+
+def get_master_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel from a specific commit."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+            f"{ray_commit}/{filename}")
+
+
+def get_release_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel for a specific release."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
+            f"{ray_version}/{ray_commit}/{filename}")
+    # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
+    # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
+    # 4_x86_64.whl

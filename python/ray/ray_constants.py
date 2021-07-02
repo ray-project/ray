@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+
+        logger.debug(f"Found {key} in environment, but value must "
+                     f"be an integer. Got: {value}. Returning "
+                     f"provided default {default}.")
+        return default
     return default
 
 
@@ -40,6 +47,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
+
+RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -130,6 +139,7 @@ REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
@@ -141,7 +151,7 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Number of attempts to ping the Redis server. See
 # `services.py:wait_for_redis_to_start`.
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 12)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -165,7 +175,6 @@ PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
@@ -223,6 +232,13 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
+# The default module path to a Python function that sets up the worker env.
+DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
+
+# The default module path to a Python function that sets up runtime envs.
+DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
+    "ray.workers.setup_runtime_env.setup_runtime_env"
+
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -235,3 +251,12 @@ MAX_INT64_VALUE = 9223372036854775807
 
 # Object Spilling related constants
 DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
+
+GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
+
+HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
+
+# Filename of "shim process" that sets up Python worker environment.
+# Should be kept in sync with kSetupWorkerFilename in
+# src/ray/common/constants.h.
+SETUP_WORKER_FILENAME = "setup_worker.py"

@@ -72,14 +72,10 @@ DEFAULT_CONFIG = with_common_config({
         "custom_model": None,  # Use this to define a custom policy model.
         "custom_model_config": {},
     },
-    # Unsquash actions to the upper and lower bounds of env's action space.
-    # Ignored for discrete action spaces.
-    "normalize_actions": True,
+    # Actions are already normalized, no need to clip them further.
+    "clip_actions": False,
 
     # === Learning ===
-    # Disable setting done=True at end of episode. This should be set to True
-    # for infinite-horizon MDPs (e.g., many continuous control problems).
-    "no_done_at_end": False,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
     # Initial value to use for the entropy weight alpha.
@@ -87,7 +83,7 @@ DEFAULT_CONFIG = with_common_config({
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
-    "target_entropy": None,
+    "target_entropy": "auto",
     # N-step target updates. If >1, sars' tuples in trajectories will be
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
@@ -167,8 +163,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for SAC!")
+    if config["num_gpus"] > 1 and config["framework"] != "torch":
+        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
 
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
@@ -177,6 +173,11 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
+
+    if config["simple_optimizer"] != DEPRECATED_VALUE or \
+            config["simple_optimizer"] is False:
+        logger.warning("`simple_optimizer` must be True (or unset) for SAC!")
+        config["simple_optimizer"] = True
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

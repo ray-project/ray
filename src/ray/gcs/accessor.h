@@ -53,7 +53,7 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
   /// Register actor to GCS asynchronously.
@@ -86,17 +86,6 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const StatusCallback &callback) = 0;
-
-  /// Subscribe to any register or update operations of actors.
-  ///
-  /// \param subscribe Callback that will be called each time when an actor is registered
-  /// or updated.
-  /// \param done Callback that will be called when subscription is complete and we
-  /// are ready to receive notification.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) = 0;
 
   /// Subscribe to any update operations of an actor.
   ///
@@ -183,98 +172,14 @@ class JobInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
+  /// Increment and get next job id. This is not idempotent.
+  ///
+  /// \param done Callback that will be called when request successfully.
+  /// \return Status
+  virtual Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) = 0;
+
  protected:
   JobInfoAccessor() = default;
-};
-
-/// \class TaskInfoAccessor
-/// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
-/// This class includes all the methods that are related to accessing
-/// task information in the GCS.
-class TaskInfoAccessor {
- public:
-  virtual ~TaskInfoAccessor() {}
-
-  /// Add a task to GCS asynchronously.
-  ///
-  /// \param data_ptr The task that will be added to GCS.
-  /// \param callback Callback that will be called after task has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-                          const StatusCallback &callback) = 0;
-
-  /// Get task information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGet(const TaskID &task_id,
-                          const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
-
-  /// Add a task lease to GCS asynchronously.
-  ///
-  /// \param data_ptr The task lease that will be added to GCS.
-  /// \param callback Callback that will be called after task lease has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-                                   const StatusCallback &callback) = 0;
-
-  /// Get task lease information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGetTaskLease(
-      const TaskID &task_id,
-      const OptionalItemCallback<rpc::TaskLeaseData> &callback) = 0;
-
-  /// Subscribe asynchronously to the event that the given task lease is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task lease is
-  /// updated or the task lease is empty currently.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-      const StatusCallback &done) = 0;
-
-  /// Cancel subscription to a task lease asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id) = 0;
-
-  /// Attempt task reconstruction to GCS asynchronously.
-  ///
-  /// \param data_ptr The task reconstruction that will be added to GCS.
-  /// \param callback Callback that will be called after task reconstruction
-  /// has been added to GCS.
-  /// \return Status
-  virtual Status AttemptTaskReconstruction(
-      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-      const StatusCallback &callback) = 0;
-
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
-
-  /// Check if the specified task lease is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task lease is unsubscribed.
-  virtual bool IsTaskLeaseUnsubscribed(const TaskID &task_id) = 0;
-
- protected:
-  TaskInfoAccessor() = default;
 };
 
 /// `ObjectInfoAccessor` is a sub-interface of `GcsClient`.
@@ -741,7 +646,7 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_name The name of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name,
+      const std::string &placement_group_name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.
@@ -770,6 +675,98 @@ class PlacementGroupInfoAccessor {
 
  protected:
   PlacementGroupInfoAccessor() = default;
+};
+
+class InternalKVAccessor {
+ public:
+  virtual ~InternalKVAccessor() = default;
+
+  /// Asynchronously list keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param callback Callback that will be called after scanning.
+  /// \return Status
+  virtual Status AsyncInternalKVKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
+
+  /// Asynchronously get the value for a given key.
+  ///
+  /// \param key The key to lookup.
+  /// \param callback Callback that will be called after get the value.
+  virtual Status AsyncInternalKVGet(
+      const std::string &key, const OptionalItemCallback<std::string> &callback) = 0;
+
+  /// Asynchronously set the value for a given key.
+  ///
+  /// \param key The key in <key, value> pair
+  /// \param value The value associated with the key
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+                                    bool overwrite,
+                                    const OptionalItemCallback<int> &callback) = 0;
+
+  /// Asynchronously check the existence of a given key
+  ///
+  /// \param key The key to check
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVExists(const std::string &key,
+                                       const OptionalItemCallback<bool> &callback) = 0;
+
+  /// Asynchronously delete a key
+  ///
+  /// \param key The key to delete
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVDel(const std::string &key,
+                                    const StatusCallback &callback) = 0;
+
+  // These are sync functions of the async above
+
+  /// List keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param value It's an output parameter. It'll be set to the keys with `prefix`
+  /// \return Status
+  Status Keys(const std::string &prefix, std::vector<std::string> &value);
+
+  /// Set the <key, value> in the store
+  ///
+  /// \param key The key of the pair
+  /// \param value The value of the pair
+  /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
+  ///     exists.
+  /// \param added It's an output parameter. It'll be set to be true if
+  ///     any row is added.
+  /// \return Status
+  Status Put(const std::string &key, const std::string &value, bool overwrite,
+             bool &added);
+
+  /// Retrive the value associated with a key
+  ///
+  /// \param key The key to lookup
+  /// \param value It's an output parameter. It'll be set to the value of the key
+  /// \return Status
+  Status Get(const std::string &key, std::string &value);
+
+  /// Delete the key
+  ///
+  /// \param key The key to delete
+  /// \return Status
+  Status Del(const std::string &key);
+
+  /// Check existence of a key in the store
+  ///
+  /// \param key The key to check
+  /// \param exist It's an output parameter. It'll be true if the key exists in the
+  ///    system. Otherwise, it'll be set to be false.
+  /// \return Status
+  Status Exists(const std::string &key, bool &exist);
+
+ protected:
+  InternalKVAccessor() = default;
 };
 
 }  // namespace gcs

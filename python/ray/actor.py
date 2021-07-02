@@ -1,7 +1,6 @@
 import inspect
 import logging
 import weakref
-import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -22,6 +21,10 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.exceptions import AsyncioActorExit
+from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
+                                             _tracing_actor_method_invocation,
+                                             _inject_tracing_into_class)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +134,7 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @_tracing_actor_method_invocation
     def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
@@ -219,6 +223,7 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
+            method = inspect.unwrap(method)
             is_bound = (is_class_method(method)
                         or is_static_method(modified_class, method_name))
 
@@ -262,6 +267,9 @@ class ActorClassMetadata:
         memory: The heap memory quota for this actor.
         object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        accelerator_type: The specified type of accelerator required for the
+            node on which this actor runs.
+        runtime_env: The runtime environment for this actor.
         last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -274,7 +282,8 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, accelerator_type):
+                 object_store_memory, resources, accelerator_type,
+                 runtime_env):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -290,6 +299,7 @@ class ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.accelerator_type = accelerator_type
+        self.runtime_env = runtime_env
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -348,7 +358,7 @@ class ActorClass:
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
                                  max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources,
-                                 accelerator_type):
+                                 accelerator_type, runtime_env):
         for attribute in [
                 "remote",
                 "_remote",
@@ -380,7 +390,7 @@ class ActorClass:
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type)
+            resources, accelerator_type, runtime_env)
 
         return self
 
@@ -388,13 +398,13 @@ class ActorClass:
     def _ray_from_function_descriptor(
             cls, language, actor_creation_function_descriptor, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type):
+            resources, accelerator_type, runtime_env):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type)
+            object_store_memory, resources, accelerator_type, runtime_env)
 
         return self
 
@@ -426,7 +436,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -477,6 +487,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @_tracing_actor_creation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -491,7 +502,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
-                placement_group=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -525,7 +536,9 @@ class ActorClass:
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
             placement_group: the placement group this actor belongs to,
-                or None if it doesn't belong to any group.
+                or None if it doesn't belong to any group. Setting to "default"
+                autodetects the placement group based on the current setting of
+                placement_group_capture_child_tasks.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
@@ -625,9 +638,11 @@ class ActorClass:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -694,10 +709,19 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+        if runtime_env is None:
+            runtime_env = meta.runtime_env
         if runtime_env:
-            parsed = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = parsed.to_worker_env_vars(
-                override_environment_variables)
+            runtime_env_dict = runtime_support.RuntimeEnvDict(
+                runtime_env).get_parsed_dict()
+        else:
+            runtime_env_dict = {}
+
+        if override_environment_variables:
+            logger.warning("override_environment_variables is deprecated and "
+                           "will be removed in Ray 1.6.  Please use "
+                           ".options(runtime_env={'env_vars': {...}}).remote()"
+                           "instead.")
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -716,6 +740,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
+            runtime_env_dict=runtime_env_dict,
             override_environment_variables=override_environment_variables
             or dict())
 
@@ -1017,8 +1042,9 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               accelerator_type, max_restarts, max_task_retries):
+               accelerator_type, max_restarts, max_task_retries, runtime_env):
     Class = modify_class(cls)
+    _inject_tracing_into_class(Class)
 
     if max_restarts is None:
         max_restarts = 0
@@ -1042,7 +1068,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type)
+        accelerator_type, runtime_env)
 
 
 def exit_actor():
@@ -1065,10 +1091,9 @@ def exit_actor():
 
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise an interrupt signal to the main thread to tell it to exit.
+        # raise a custom error to the main thread to tell it to exit.
         if worker.core_worker.current_actor_is_asyncio():
-            _thread.interrupt_main()
-            return
+            raise AsyncioActorExit()
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.

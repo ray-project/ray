@@ -15,6 +15,7 @@ from torchvision.models import resnet18
 
 
 # __doc_define_servable_begin__
+@serve.deployment(route_prefix="/image_predict")
 class ImageModel:
     def __init__(self):
         self.model = resnet18(pretrained=True).eval()
@@ -49,12 +50,7 @@ class ImageModel:
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
 serve.start()
-serve.create_backend("resnet18:v0", ImageModel)
-serve.create_endpoint(
-    "predictor",
-    backend="resnet18:v0",
-    route="/image_predict",
-    methods=["POST"])
+ImageModel.deploy()
 # __doc_deploy_end__
 
 # __doc_query_begin__

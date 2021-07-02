@@ -40,7 +40,8 @@ class UsageTrackingDict(dict):
     @property
     def data(self):
         # Make sure, if we use UsageTrackingDict wrapping a SampleBatch,
-        # one can still do: sample_batch.data[some_key].
+        # one can still do: sample_batch.data[some_key] even if it has been
+        # deprecated.
         return self
 
     def __getitem__(self, key):

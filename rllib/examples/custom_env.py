@@ -30,12 +30,36 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=0.1)
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=50,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=0.1,
+    help="Reward at which we stop training.")
 
 
 class SimpleCorridor(gym.Env):
@@ -116,7 +140,8 @@ if __name__ == "__main__":
     # Can also register the env creator function explicitly with:
     # register_env("corridor", lambda config: SimpleCorridor(config))
     ModelCatalog.register_custom_model(
-        "my_model", TorchCustomModel if args.torch else CustomModel)
+        "my_model", TorchCustomModel
+        if args.framework == "torch" else CustomModel)
 
     config = {
         "env": SimpleCorridor,  # or "corridor" if registered above
@@ -131,7 +156,7 @@ if __name__ == "__main__":
         },
         "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
         "num_workers": 1,  # parallelism
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {

@@ -49,6 +49,9 @@ class WorkerInterface {
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
   virtual void SetProcess(Process proc) = 0;
+  /// Return the worker shim process.
+  virtual Process GetShimProcess() const = 0;
+  virtual void SetShimProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
@@ -64,6 +67,7 @@ class WorkerInterface {
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual void MarkDetachedActor() = 0;
@@ -117,9 +121,9 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
-         rpc::WorkerType worker_type, const std::string &ip_address,
-         std::shared_ptr<ClientConnection> connection,
+  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
+         const Language &language, rpc::WorkerType worker_type,
+         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -134,6 +138,9 @@ class Worker : public WorkerInterface {
   /// Return the worker process.
   Process GetProcess() const;
   void SetProcess(Process proc);
+  /// Return this worker shim process.
+  Process GetShimProcess() const;
+  void SetShimProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
@@ -149,6 +156,7 @@ class Worker : public WorkerInterface {
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
+  int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
   void MarkDetachedActor();
@@ -211,6 +219,9 @@ class Worker : public WorkerInterface {
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
+  /// The worker's shim process. The shim process PID is the same with worker process PID,
+  /// except starting worker process in container.
+  Process shim_proc_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.
@@ -230,6 +241,10 @@ class Worker : public WorkerInterface {
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
   JobID assigned_job_id_;
+  /// The hash of the worker's assigned runtime env.  We use this in the worker
+  /// pool to cache and reuse workers with the same runtime env, because
+  /// installing runtime envs from scratch can be slow.
+  const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is

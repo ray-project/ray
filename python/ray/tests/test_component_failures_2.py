@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import (
     RayTestTimeoutException,
     get_other_nodes,
@@ -35,6 +35,9 @@ def ray_start_workers_separate_multinode(request):
 
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
+
+    if num_nodes == 4 and sys.platform == "win32":
+        pytest.skip("Failing on Windows.")
 
     @ray.remote
     def get_pids():
@@ -147,7 +150,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
         "num_cpus": 8,
         "num_nodes": 4,
         "_system_config": {
-            "num_heartbeats_timeout": 100
+            "num_heartbeats_timeout": 10
         },
     }],
     indirect=True)
@@ -155,10 +158,6 @@ def test_raylet_failed(ray_start_cluster):
     cluster = ray_start_cluster
     # Kill all raylets on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
-
-    # The plasma stores should still be alive on the worker nodes.
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
-                           True)
 
 
 def test_get_address_info_after_raylet_died(ray_start_cluster_head):
@@ -176,7 +175,7 @@ def test_get_address_info_after_raylet_died(ray_start_cluster_head):
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
-        lambda: not cluster.global_state.node_table()[0]["Alive"])
+        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30)
     with pytest.raises(RuntimeError):
         get_address_info()
 

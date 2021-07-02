@@ -47,7 +47,8 @@ class LogstreamClient:
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Graceful shutdown. We've cancelled our own connection.
                 logger.info("Cancelling logs channel")
-            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                              grpc.StatusCode.RESOURCE_EXHAUSTED):
                 # TODO(barakmich): The server may have
                 # dropped. In theory, we can retry, as per
                 # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
@@ -56,9 +57,8 @@ class LogstreamClient:
                 logger.info("Server disconnected from logs channel")
             else:
                 # Some other, unhandled, gRPC error
-                logger.error(
+                logger.exception(
                     f"Got Error from logger channel -- shutting down: {e}")
-                raise e
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.

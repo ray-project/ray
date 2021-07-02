@@ -3,10 +3,12 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
 
 from ray._raylet import (
-    Count as CythonCount,
+    Sum as CythonCount,
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+# Sum is used for CythonCount because it allows incrementing by positive
+# values that are different from one.
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +167,7 @@ class Counter(Metric):
                                    self._tag_keys)
 
     def __reduce__(self):
-        deserializer = Count
+        deserializer = self.__class__
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
@@ -233,8 +235,9 @@ class Histogram(Metric):
         super().__init__(name, description, tag_keys)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
-                "boundaries argument should be provided when using the "
-                "Histogram class. e.g., Histogram(boundaries=[1.0, 2.0])")
+                "boundaries argument should be provided when using "
+                "the Histogram class. e.g., "
+                "Histogram(\"name\", boundaries=[1.0, 2.0])")
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
                                        self.boundaries, self._tag_keys)

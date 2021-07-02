@@ -28,8 +28,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
@@ -47,7 +45,6 @@ enum class PlasmaError;
 }  // namespace flatbuf
 
 using flatbuf::PlasmaError;
-using ray::object_manager::protocol::ObjectInfoT;
 
 struct GetRequest;
 
@@ -55,9 +52,13 @@ class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              bool hugepages_enabled, const std::string &socket_name,
-              uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
-              std::function<void()> object_store_full_callback);
+              std::string fallback_directory, bool hugepages_enabled,
+              const std::string &socket_name, uint32_t delay_on_oom_ms,
+              float object_spilling_threshold,
+              ray::SpillObjectsCallback spill_objects_callback,
+              std::function<void()> object_store_full_callback,
+              ray::AddObjectCallback add_object_callback,
+              ray::DeleteObjectCallback delete_object_callback);
 
   ~PlasmaStore();
 
@@ -86,6 +87,7 @@ class PlasmaStore {
   ///        device_num = 1 corresponds to GPU0,
   ///        device_num = 2 corresponds to GPU1, etc.
   /// \param client The client that created the object.
+  /// \param fallback_allocator Whether to allow falling back to the fs allocator
   /// \param result The object that has been created.
   /// \return One of the following error codes:
   ///  - PlasmaError::OK, if the object was created successfully.
@@ -98,8 +100,9 @@ class PlasmaStore {
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, int64_t data_size,
-                           int64_t metadata_size, int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject *result);
+                           int64_t metadata_size, plasma::flatbuf::ObjectSource source,
+                           int device_num, const std::shared_ptr<Client> &client,
+                           bool fallback_allocator, PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -158,11 +161,6 @@ class PlasmaStore {
   /// \param client The client making this request.
   void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
 
-  /// Subscribe a file descriptor to updates about new sealed objects.
-  ///
-  /// \param client The client making this request.
-  void SubscribeToUpdates(const std::shared_ptr<Client> &client);
-
   /// Connect a new client to the PlasmaStore.
   ///
   /// \param error The error code from the acceptor.
@@ -172,9 +170,6 @@ class PlasmaStore {
   ///
   /// \param client The client that is disconnected.
   void DisconnectClient(const std::shared_ptr<Client> &client);
-
-  void SendNotifications(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectInfoT> &object_info);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
@@ -191,23 +186,6 @@ class PlasmaStore {
   /// Return the plasma object bytes that are consumed by core workers.
   int64_t GetConsumedBytes();
 
-  void SetNotificationListener(
-      const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
-    notification_listener_ = notification_listener;
-    if (notification_listener_) {
-      // Push notifications to the new subscriber about existing sealed objects.
-      for (const auto &entry : store_info_.objects) {
-        if (entry.second->state == ObjectState::PLASMA_SEALED) {
-          ObjectInfoT info;
-          info.object_id = entry.first.Binary();
-          info.data_size = entry.second->data_size;
-          info.metadata_size = entry.second->metadata_size;
-          notification_listener_->ProcessStoreAdd(info);
-        }
-      }
-    }
-  }
-
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
@@ -223,22 +201,30 @@ class PlasmaStore {
     // created by the object manager.
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
-    RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
-    size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    if (!RayConfig::instance().plasma_unlimited()) {
+      RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+    }
+    size_t available = 0;
+    if (num_bytes_in_use < PlasmaAllocator::GetFootprintLimit()) {
+      available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    }
     callback(available);
   }
+
+  void PrintDebugDump() const;
+
+  // NOTE(swang): This will iterate through all objects in the
+  // object store, so it should be called sparingly.
+  std::string GetDebugDump() const;
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        PlasmaObject *object);
+                                        bool fallback_allocator, PlasmaObject *object,
+                                        bool *spilling_required);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
-
-  void PushNotification(ObjectInfoT *object_notification);
-
-  void PushNotifications(const std::vector<ObjectInfoT> &object_notifications);
 
   void AddToClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
                             const std::shared_ptr<Client> &client);
@@ -246,14 +232,14 @@ class PlasmaStore {
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
   /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(GetRequest *get_request);
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
   void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
 
-  void ReturnFromGet(GetRequest *get_req);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
@@ -264,7 +250,7 @@ class PlasmaStore {
 
   uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
                           ptrdiff_t *offset, const std::shared_ptr<Client> &client,
-                          bool is_create, PlasmaError *error);
+                          bool is_create, bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();
@@ -285,23 +271,34 @@ class PlasmaStore {
   QuotaAwarePolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests_;
-  /// The registered client for receiving notifications.
-  std::unordered_set<std::shared_ptr<Client>> notification_clients_;
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 
-  std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
   /// A callback to asynchronously spill objects when space is needed. The
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
   /// NOTE: This function should guarantee the thread-safety because the callback is
   /// shared with the main raylet thread.
-  ray::SpillObjectsCallback spill_objects_callback_;
+  const ray::SpillObjectsCallback spill_objects_callback_;
+
+  /// A callback to asynchronously notify that an object is sealed.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
+  const ray::AddObjectCallback add_object_callback_;
+
+  /// A callback to asynchronously notify that an object is deleted.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
+  const ray::DeleteObjectCallback delete_object_callback_;
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
+
+  /// The percentage of object store memory used above which spilling is triggered.
+  const float object_spilling_threshold_;
 
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;
@@ -313,6 +310,9 @@ class PlasmaStore {
   /// serviceable because there is not enough memory. The request will be
   /// retried when this timer expires.
   std::shared_ptr<boost::asio::deadline_timer> create_timer_;
+
+  /// Timer for printing debug information.
+  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_;
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
@@ -339,6 +339,13 @@ class PlasmaStore {
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
+
+  /// Whether we have dumped debug information on OOM yet. This limits dump
+  /// (which can be expensive) to once per OOM event.
+  bool dumped_on_oom_ = false;
+
+  /// A running total of the objects that have ever been created on this node.
+  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

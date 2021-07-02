@@ -7,7 +7,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
-import ray._private.cluster_utils
+import ray.cluster_utils
 
 
 @pytest.fixture
@@ -55,6 +55,7 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
         ]))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_2_nodes",
     [{

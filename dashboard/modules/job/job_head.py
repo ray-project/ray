@@ -1,15 +1,21 @@
+import json
 import logging
 import asyncio
 
 import aiohttp.web
 from aioredis.pubsub import Receiver
+from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.gcs_utils
-import ray.new_dashboard.modules.job.job_consts as job_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.modules.job import job_consts
+from ray.new_dashboard.modules.job.job_description import JobDescription
+from ray.core.generated import agent_manager_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import job_agent_pb2
+from ray.core.generated import job_agent_pb2_grpc
 from ray.new_dashboard.datacenter import (
     DataSource,
     GlobalSignals,
@@ -30,6 +36,39 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         # JobInfoGcsServiceStub
         self._gcs_job_info_stub = None
+
+    @routes.post("/jobs")
+    async def submit_job(self, req) -> aiohttp.web.Response:
+        job_description_data = dict(await req.json())
+        # Validate the job description data.
+        try:
+            JobDescription(**job_description_data)
+        except Exception as ex:
+            return dashboard_utils.rest_response(
+                success=False, message=f"Failed to submit job: {ex}")
+
+        # TODO(fyrestone): Choose a random agent to start the driver
+        # for this job.
+        node_id, ports = next(iter(DataSource.agents.items()))
+        ip = DataSource.node_id_to_ip[node_id]
+        address = f"{ip}:{ports[1]}"
+        options = (("grpc.enable_http_proxy", 0), )
+        channel = aiogrpc.insecure_channel(address, options=options)
+        stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
+        request = job_agent_pb2.InitializeJobEnvRequest(
+            job_description=json.dumps(job_description_data))
+        # TODO(fyrestone): It's better not to wait the RPC InitializeJobEnv.
+        reply = await stub.InitializeJobEnv(request)
+        # TODO(fyrestone): We should reply a job id for the submitted job.
+        if reply.status == agent_manager_pb2.AGENT_RPC_STATUS_OK:
+            logger.info("Succeeded to submit job.")
+            return dashboard_utils.rest_response(
+                success=True, message="Job submitted.")
+        else:
+            logger.info("Failed to submit job.")
+            return dashboard_utils.rest_response(
+                success=False,
+                message=f"Failed to submit job: {reply.error_message}")
 
     @routes.get("/jobs")
     @dashboard_utils.aiohttp_cache

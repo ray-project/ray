@@ -365,9 +365,18 @@ class AWSNodeProvider(NodeProvider):
                 conf.update({
                     "MinCount": 1,
                     "MaxCount": count,
-                    "SubnetId": subnet_id,
+                    "NetworkInterfaces": [{
+                        "AssociatePublicIpAddress": True,
+                        "DeviceIndex": 0,
+                        "SubnetId": subnet_id,
+                    }],
                     "TagSpecifications": tag_specs
                 })
+                _ = conf.pop("SubnetId", None)
+                security_group_ids = conf.pop("SecurityGroupIds", None)
+                if security_group_ids is not None:
+                    conf["NetworkInterfaces"][0]["Groups"] = security_group_ids
+
                 created = self.ec2_fail_fast.create_instances(**conf)
                 created_nodes_dict = {n.id: n for n in created}
 
@@ -399,12 +408,12 @@ class AWSNodeProvider(NodeProvider):
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
-                    # todo: err msg
                     cli_logger.abort(
-                        "Failed to launch instances. Max attempts exceeded.")
-                    raise exc
+                        "Failed to launch instances. Max attempts exceeded.",
+                        exc=exc,
+                    )
                 else:
-                    cli_logger.print(
+                    cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
         return created_nodes_dict

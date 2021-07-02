@@ -12,6 +12,10 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
+        external_addresses (str): The address of external Redis server to
+            connect to, in format of "ip1:port1,ip2:port2,...".  If this
+            address is provided, then ray won't start Redis instances in the
+            head node but use external Redis server(s) instead.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -68,6 +72,12 @@ class RayParams:
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
+        setup_worker_path (str): The path of the Python file that will run
+            worker_setup_hook to set up the environment for the worker process.
+        worker_setup_hook (str): The module path to a Python function that will
+            be imported and run to set up the environment for the worker.
+        runtime_env_setup_hook (str): The module path to a Python function that
+            will be imported and run to set up the runtime env in agent.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -108,6 +118,7 @@ class RayParams:
     """
 
     def __init__(self,
+                 external_addresses=None,
                  redis_address=None,
                  num_cpus=None,
                  num_gpus=None,
@@ -135,6 +146,10 @@ class RayParams:
                  redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                  plasma_directory=None,
                  worker_path=None,
+                 setup_worker_path=None,
+                 worker_setup_hook=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
+                 runtime_env_setup_hook=ray_constants.
+                 DEFAULT_RUNTIME_ENV_SETUP_HOOK,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
@@ -151,9 +166,11 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 tracing_startup_hook=None,
                  no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
+        self.external_addresses = external_addresses
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -180,6 +197,9 @@ class RayParams:
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
+        self.setup_worker_path = setup_worker_path
+        self.worker_setup_hook = worker_setup_hook
+        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
@@ -191,6 +211,7 @@ class RayParams:
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
@@ -320,7 +341,7 @@ class RayParams:
 
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
-            if self.min_worker_port is None and self.min_worker_port is None:
+            if self.min_worker_port is None and self.max_worker_port is None:
                 self.min_worker_port = 0
                 self.max_worker_port = 0
 
@@ -342,6 +363,12 @@ class RayParams:
                 elif self.max_worker_port <= self.min_worker_port:
                     raise ValueError("max_worker_port must be higher than "
                                      "min_worker_port.")
+
+        if self.ray_client_server_port is not None:
+            if (self.ray_client_server_port < 1024
+                    or self.ray_client_server_port > 65535):
+                raise ValueError("ray_client_server_port must be an integer "
+                                 "between 1024 and 65535.")
 
         if self.resources is not None:
             assert "CPU" not in self.resources, (

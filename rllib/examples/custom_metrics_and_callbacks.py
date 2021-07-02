@@ -18,7 +18,11 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=2000)
 
 
@@ -26,14 +30,22 @@ class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker: RolloutWorker, base_env: BaseEnv,
                          policies: Dict[str, Policy],
                          episode: MultiAgentEpisode, env_index: int, **kwargs):
+        # Make sure this episode has just been started (only initial obs
+        # logged so far).
+        assert episode.length == 0, \
+            "ERROR: `on_episode_start()` callback should be called right " \
+            "after env reset!"
         print("episode {} (env-idx={}) started.".format(
             episode.episode_id, env_index))
-
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+        # Make sure this episode is ongoing.
+        assert episode.length > 0, \
+            "ERROR: `on_episode_step()` callback should not be called right " \
+            "after env reset!"
         pole_angle = abs(episode.last_observation_for()[2])
         raw_angle = abs(episode.last_raw_obs_for()[2])
         assert pole_angle == raw_angle
@@ -42,6 +54,11 @@ class MyCallbacks(DefaultCallbacks):
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
                        policies: Dict[str, Policy], episode: MultiAgentEpisode,
                        env_index: int, **kwargs):
+        # Make sure this episode is really done.
+        assert episode.batch_builder.policy_collectors[
+            "default_policy"].buffers["dones"][-1], \
+            "ERROR: `on_episode_end()` should only be called " \
+            "after episode is done!"
         pole_angle = np.mean(episode.user_data["pole_angles"])
         print("episode {} (env-idx={}) ended with length {} and pole "
               "angles {}".format(episode.episode_id, env_index, episode.length,
@@ -89,7 +106,7 @@ if __name__ == "__main__":
             "env": "CartPole-v0",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }).trials
@@ -104,6 +121,7 @@ if __name__ == "__main__":
     assert "callback_ok" in trials[0].last_result
 
     # Verify `on_learn_on_batch` custom metrics are there (per policy).
-    info_custom_metrics = custom_metrics["default_policy"]
-    print(info_custom_metrics)
-    assert "sum_actions_in_train_batch" in info_custom_metrics
+    if args.framework == "torch":
+        info_custom_metrics = custom_metrics["default_policy"]
+        print(info_custom_metrics)
+        assert "sum_actions_in_train_batch" in info_custom_metrics

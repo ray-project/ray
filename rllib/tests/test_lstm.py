@@ -8,6 +8,7 @@ from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
@@ -121,6 +122,7 @@ class TestRNNSequencing(unittest.TestCase):
                 "train_batch_size": 10,
                 "sgd_minibatch_size": 10,
                 "num_sgd_iter": 1,
+                "simple_optimizer": True,
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
@@ -196,17 +198,15 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1"))
         if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
             batch0, batch1 = batch1, batch0  # sort minibatches
-        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4, 2])
-        self.assertEqual(batch1["seq_lens"].tolist(), [4, 3, 3])
-        self.assertEqual(batch0["sequences"].tolist(), [
+        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4])
+        self.assertEqual(batch1["seq_lens"].tolist(), [4, 3])
+        check(batch0["sequences"], [
             [[0], [1], [2], [3]],
             [[4], [5], [6], [7]],
-            [[8], [9], [0], [0]],
         ])
-        self.assertEqual(batch1["sequences"].tolist(), [
+        check(batch1["sequences"], [
             [[8], [9], [10], [11]],
             [[12], [13], [14], [0]],
-            [[0], [1], [2], [0]],
         ])
 
         # second epoch: 20 observations get split into 2 minibatches of 8
@@ -217,17 +217,15 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3"))
         if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
             batch2, batch3 = batch3, batch2
-        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4, 2])
-        self.assertEqual(batch3["seq_lens"].tolist(), [4, 4, 2])
-        self.assertEqual(batch2["sequences"].tolist(), [
-            [[0], [1], [2], [3]],
-            [[4], [5], [6], [7]],
-            [[8], [9], [0], [0]],
-        ])
-        self.assertEqual(batch3["sequences"].tolist(), [
+        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4])
+        self.assertEqual(batch3["seq_lens"].tolist(), [2, 4])
+        check(batch2["sequences"], [
             [[5], [6], [7], [8]],
             [[9], [10], [11], [12]],
+        ])
+        check(batch3["sequences"], [
             [[13], [14], [0], [0]],
+            [[0], [1], [2], [3]],
         ])
 
 

@@ -1,6 +1,5 @@
 import logging
 import gym
-from gym import wrappers as gym_wrappers
 import numpy as np
 from typing import Callable, List, Optional, Tuple
 
@@ -95,12 +94,18 @@ class VectorEnv:
         """
         raise NotImplementedError
 
-    # Experimental method.
-    def try_render_at(self, index: Optional[int] = None) -> None:
+    # TODO: (sven) Experimental method. Make @PublicAPI at some point.
+    def try_render_at(self, index: Optional[int] = None) -> \
+            Optional[np.ndarray]:
         """Renders a single environment.
 
         Args:
             index (Optional[int]): An optional sub-env index to render.
+
+        Returns:
+            Optional[np.ndarray]: Either a numpy RGB image
+                (shape=(w x h x 3) dtype=uint8) or None in case
+                rendering is handled directly by this method.
         """
         pass
 
@@ -144,18 +149,6 @@ class _VectorizedGymEnv(VectorEnv):
         # VectorEnv.
         while len(self.envs) < num_envs:
             self.envs.append(make_env(len(self.envs)))
-
-        # Wrap all envs with video recorder if necessary.
-        if policy_config is not None and policy_config.get("record_env"):
-
-            def wrapper_(env):
-                return gym_wrappers.Monitor(
-                    env=env,
-                    directory=policy_config["record_env"],
-                    video_callable=lambda _: True,
-                    force=True)
-
-            self.envs = [wrapper_(e) for e in self.envs]
 
         super().__init__(
             observation_space=observation_space

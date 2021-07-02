@@ -3,22 +3,26 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
-    unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, \
+    get_base_struct_from_space, normalize_action, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +158,10 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_actions: bool = False,
+            clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
+            normalize_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -171,7 +176,10 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            clip_actions (bool): Should actions be clipped?
+            normalize_actions (bool): Should actions be normalized according to
+                the Policy's action space?
+            clip_actions (bool): Should actions be clipped according to the
+                Policy's action space?
             explore (Optional[bool]): Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
@@ -187,6 +195,12 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
+        normalize_actions = \
+            normalize_actions if normalize_actions is not None \
+            else self.config["normalize_actions"]
+        clip_actions = clip_actions if clip_actions is not None else \
+            self.config["clip_actions"]
+
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
@@ -230,7 +244,10 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        if clip_actions:
+        if normalize_actions:
+            single_action = normalize_action(single_action,
+                                             self.action_space_struct)
+        elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
 
@@ -249,10 +266,6 @@ class Policy(metaclass=ABCMeta):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Note: This is an experimental API method.
-
-        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
-        (also only supported for torch).
         Uses the currently "forward-pass-registered" samples from the collector
         to construct the input_dict for the Model.
 
@@ -279,11 +292,7 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config.get("_use_trajectory_view_api", False) else
-            s.unsqueeze(0)
-            if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
-            for k, s in input_dict.items() if k[:9] == "state_in_"
+            s for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
@@ -428,7 +437,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_info(self) -> Dict[str, TensorType]:
+    def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the current exploration information of this policy.
 
         This information depends on the policy's Exploration object.
@@ -437,7 +446,12 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: Serializable information on the
                 `self.exploration` object.
         """
-        return self.exploration.get_info()
+        return self.exploration.get_state()
+
+    # TODO: (sven) Deprecate this method.
+    def get_exploration_info(self) -> Dict[str, TensorType]:
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @DeveloperAPI
     def is_recurrent(self) -> bool:
@@ -468,22 +482,28 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        """Saves all local state.
+        """Returns all local state.
 
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
-        return self.get_weights()
+        state = {
+            "weights": self.get_weights(),
+            "global_timestep": self.global_timestep,
+        }
+        return state
 
     @DeveloperAPI
     def set_state(self, state: object) -> None:
-        """Restores all local state.
+        """Restores all local state to the provided `state`.
 
         Args:
-            state (obj): Serialized local state.
+            state (object): The new state to set this policy to. Can be
+                obtained by calling `Policy.get_state()`.
         """
-        self.set_weights(state)
+        self.set_weights(state["weights"])
+        self.global_timestep = state["global_timestep"]
 
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
@@ -504,15 +524,6 @@ class Policy(metaclass=ABCMeta):
         Note: The file format will depend on the deep learning framework used.
         See the child classed of Policy and their `export_model`
         implementations for more details.
-
-        Args:
-            export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
 
         Args:
             export_dir (str): Local writable directory.
@@ -569,7 +580,8 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.OBS: ViewRequirement(
+                space=self.observation_space, used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
@@ -620,20 +632,25 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(
-            {k: v
-             for k, v in self._dummy_batch.items()})
+        self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict, explore=False)
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False)
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
                     used_for_compute_actions=False)
+        for key in self._dummy_batch.accessed_keys:
+            if key not in self.view_requirements:
+                self.view_requirements[key] = ViewRequirement()
+            self.view_requirements[key].used_for_compute_actions = True
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -650,8 +667,11 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+            postprocessed_batch["seq_lens"] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.is_training = True
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
@@ -663,8 +683,7 @@ class Policy(metaclass=ABCMeta):
             stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
                                 self._dummy_batch.accessed_keys | \
@@ -750,7 +769,7 @@ class Policy(metaclass=ABCMeta):
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
-        return SampleBatch(ret, _dont_check_lens=True)
+        return SampleBatch(ret)
 
     def _update_model_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.
@@ -761,39 +780,57 @@ class Policy(metaclass=ABCMeta):
         """
         self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
+
         obj = model or self
+        if model and not hasattr(model, "view_requirements"):
+            model.view_requirements = {
+                SampleBatch.OBS: ViewRequirement(space=self.observation_space)
+            }
+        view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        for i, state in enumerate(obj.get_initial_state()):
-            space = Box(-1.0, 1.0, shape=state.shape) if \
-                hasattr(state, "shape") else state
-            view_reqs = model.view_requirements if model else \
-                self.view_requirements
+        init_state = []
+        if hasattr(obj, "get_initial_state") and callable(
+                obj.get_initial_state):
+            init_state = obj.get_initial_state()
+        else:
+            # Add this functionality automatically for new native model API.
+            if tf and isinstance(model, tf.keras.Model) and \
+                    "state_in_0" not in view_reqs:
+                obj.get_initial_state = lambda: [
+                    np.zeros_like(view_req.space.sample())
+                    for k, view_req in model.view_requirements.items()
+                    if k.startswith("state_in_")]
+            else:
+                obj.get_initial_state = lambda: []
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
+
+        for i, state in enumerate(init_state):
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
+            fw = np if isinstance(state, np.ndarray) else torch if \
+                torch and torch.is_tensor(state) else None
+            if fw:
+                space = Box(-1.0, 1.0, shape=state.shape) if \
+                    fw.all(state == 0.0) else state
+            else:
+                space = state
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
+                used_for_compute_actions=True,
                 batch_repeat_value=self.config.get("model", {}).get(
                     "max_seq_len", 1),
                 space=space)
             view_reqs["state_out_{}".format(i)] = ViewRequirement(
                 space=space, used_for_training=True)
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
 
-def clip_action(action, action_space):
-    """Clips all actions in `flat_actions` according to the given Spaces.
-
-    Args:
-        flat_actions (List[np.ndarray]): The (flattened) list of single action
-            components. List will have len=1 for "primitive" action Spaces.
-        flat_space (List[Space]): The (flattened) list of single action Space
-            objects. Has to be of same length as `flat_actions`.
-
-    Returns:
-        List[np.ndarray]: Flattened list of single clipped "primitive" actions.
-    """
-
-    def map_(a, s):
-        if isinstance(s, gym.spaces.Box):
-            a = np.clip(a, s.low, s.high)
-        return a
-
-    return tree.map_structure(map_, action, action_space)
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        deprecation_warning("export_checkpoint", "save")
+        raise NotImplementedError

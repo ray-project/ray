@@ -1007,41 +1007,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
-    def testBackwardsCompat(self):
-        class TestTrain(Trainable):
-            def _setup(self, config):
-                self.state = {"hi": 1, "iter": 0}
-
-            def _train(self):
-                self.state["iter"] += 1
-                return {"timesteps_this_iter": 1, "done": True}
-
-            def _save(self, path):
-                return self.state
-
-            def _restore(self, state):
-                self.state = state
-
-        test_trainable = TestTrain()
-        checkpoint_1 = test_trainable.save()
-        test_trainable.train()
-        checkpoint_2 = test_trainable.save()
-        self.assertNotEqual(checkpoint_1, checkpoint_2)
-        test_trainable.restore(checkpoint_2)
-        self.assertEqual(test_trainable.state["iter"], 1)
-        test_trainable.restore(checkpoint_1)
-        self.assertEqual(test_trainable.state["iter"], 0)
-
-        trials = run_experiments({
-            "foo": {
-                "run": TestTrain,
-                "checkpoint_at_end": True
-            }
-        })
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(trial.has_checkpoint())
-
     def testLogToFile(self):
         def train(config, reporter):
             import sys
@@ -1286,6 +1251,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return dict(metric=len(self.data), done=True)
 
         trainable = tune.with_parameters(TestTrainable, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testWithParameters3(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+
+            def step(self):
+                return dict(metric=len(self.data), done=True)
+
+        new_data = Data()
+        ref = ray.put(new_data)
+        trainable = tune.with_parameters(TestTrainable, data=ref)
         # ray.cloudpickle will crash for some reason
         import cloudpickle as cp
         dumped = cp.dumps(trainable)

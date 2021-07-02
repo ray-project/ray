@@ -32,20 +32,16 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
       raylet_store_socket_names_.resize(num_nodes);
     }
 
-    // start plasma store.
-    for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = TestSetupUtil::StartObjectStore();
-    }
-
     // start gcs server
     gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
-          raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_ + i, "127.0.0.1",
-          "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
+      raylet_socket_names_[i] =
+          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
+                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+                                     &raylet_store_socket_names_[i]);
     }
   }
 
@@ -53,10 +49,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Stop raylet store and actors";
     for (const auto &raylet_socket_name : raylet_socket_names_) {
       TestSetupUtil::StopRaylet(raylet_socket_name);
-    }
-
-    for (const auto &store_socket_name : raylet_store_socket_names_) {
-      TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
     TestSetupUtil::StopGcsServer(gcs_server_socket_name_);

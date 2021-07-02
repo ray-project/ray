@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -40,9 +41,6 @@ namespace rpc {
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER)
 
-#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER)
-
 #define STATS_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(StatsGcsService, HANDLER)
 
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
@@ -50,6 +48,9 @@ namespace rpc {
 
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
+
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -77,6 +78,10 @@ class JobInfoGcsServiceHandler {
   virtual void HandleReportJobError(const ReportJobErrorRequest &request,
                                     ReportJobErrorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNextJobID(const GetNextJobIDRequest &request,
+                                  GetNextJobIDReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -99,6 +104,7 @@ class JobInfoGrpcService : public GrpcService {
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
     JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
+    JOB_INFO_SERVICE_RPC_HANDLER(GetNextJobID);
   }
 
  private:
@@ -361,59 +367,6 @@ class ObjectInfoGrpcService : public GrpcService {
   ObjectInfoGcsServiceHandler &service_handler_;
 };
 
-class TaskInfoGcsServiceHandler {
- public:
-  virtual ~TaskInfoGcsServiceHandler() = default;
-
-  virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
-                                  AddTaskLeaseReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTaskLease(const GetTaskLeaseRequest &request,
-                                  GetTaskLeaseReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAttemptTaskReconstruction(
-      const AttemptTaskReconstructionRequest &request,
-      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `TaskInfoGcsService`.
-class TaskInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(instrumented_io_context &io_service,
-                               TaskInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
-    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);
-  }
-
- private:
-  /// The grpc async service object.
-  TaskInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  TaskInfoGcsServiceHandler &service_handler_;
-};
-
 class StatsGcsServiceHandler {
  public:
   virtual ~StatsGcsServiceHandler() = default;
@@ -542,7 +495,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// \param[in] handler The service handler that actually handle the requests.
   explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
                                          PlacementGroupInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+      : GrpcService(io_service), service_handler_(handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -565,16 +518,63 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
+class InternalKVGcsServiceHandler {
+ public:
+  virtual ~InternalKVGcsServiceHandler() = default;
+  virtual void HandleInternalKVKeys(const InternalKVKeysRequest &request,
+                                    InternalKVKeysReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVGet(const InternalKVGetRequest &request,
+                                   InternalKVGetReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVPut(const InternalKVPutRequest &request,
+                                   InternalKVPutReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVDel(const InternalKVDelRequest &request,
+                                   InternalKVDelReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVExists(const InternalKVExistsRequest &request,
+                                      InternalKVExistsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+};
+
+class InternalKVGrpcService : public GrpcService {
+ public:
+  explicit InternalKVGrpcService(instrumented_io_context &io_service,
+                                 InternalKVGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
+  }
+
+ private:
+  InternalKVGcsService::AsyncService service_;
+  InternalKVGcsServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using HeartbeatInfoHandler = HeartbeatInfoGcsServiceHandler;
 using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
-using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
+using InternalKVHandler = InternalKVGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

@@ -125,7 +125,7 @@ class ResourceSpec(
         assert "object_store_memory" not in resources, resources
 
         if node_ip_address is None:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
@@ -138,7 +138,7 @@ class ResourceSpec(
         num_gpus = self.num_gpus
         gpu_ids = ray._private.utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
-        # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+        # exceed the amount allowed by CUDA_VISIBLE_DEVICES.
         if (num_gpus is not None and gpu_ids is not None
                 and num_gpus > len(gpu_ids)):
             raise ValueError("Attempting to start raylet with {} GPUs, "

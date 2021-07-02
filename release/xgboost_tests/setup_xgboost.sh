@@ -1,6 +1,13 @@
 #!/bin/bash
 
-pip install pytest xgboost_ray
+pip install pytest
+# Uninstall any existing xgboost_ray repositories
+pip uninstall -y xgboost_ray || true
+
+# Install xgboost package
+pip install -U "${XGBOOST_RAY_PACKAGE:-xgboost_ray}"
+
+# Create test dataset
 sudo mkdir -p /data || true
 sudo chown ray:1000 /data || true
 rm -rf /data/classification.parquet || true

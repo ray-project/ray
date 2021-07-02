@@ -2,8 +2,11 @@
 # yapf: disable
 
 # __import_lightning_begin__
+import math
+
 import torch
 import pytorch_lightning as pl
+from filelock import FileLock
 from torch.utils.data import DataLoader, random_split
 from torch.nn import functional as F
 from torchvision.datasets import MNIST
@@ -12,8 +15,6 @@ import os
 # __import_lightning_end__
 
 # __import_tune_begin__
-import shutil
-import tempfile
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
@@ -99,7 +100,8 @@ class LightningMNISTClassifier(pl.LightningModule):
             transforms.ToTensor(),
             transforms.Normalize((0.1307, ), (0.3081, ))
         ])
-        return MNIST(data_dir, train=True, download=True, transform=transform)
+        with FileLock(os.path.expanduser("~/.data.lock")):
+            return MNIST(data_dir, train=True, download=True, transform=transform)
 
     def prepare_data(self):
         mnist_train = self.download_data(self.data_dir)
@@ -127,11 +129,13 @@ def train_mnist(config):
 
 
 # __tune_train_begin__
-def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
+def train_mnist_tune(config, num_epochs=10, num_gpus=0):
+    data_dir = os.path.expanduser("~/data")
     model = LightningMNISTClassifier(config, data_dir)
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -150,12 +154,13 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 # __tune_train_checkpoint_begin__
 def train_mnist_tune_checkpoint(config,
                                 checkpoint_dir=None,
-                                data_dir=None,
                                 num_epochs=10,
                                 num_gpus=0):
+    data_dir = os.path.expanduser("~/data")
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -188,9 +193,6 @@ def train_mnist_tune_checkpoint(config,
 
 # __tune_asha_begin__
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
-    LightningMNISTClassifier.download_data(data_dir)
-
     config = {
         "layer_1_size": tune.choice([32, 64, 128]),
         "layer_2_size": tune.choice([64, 128, 256]),
@@ -210,7 +212,6 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
     analysis = tune.run(
         tune.with_parameters(
             train_mnist_tune,
-            data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
         resources_per_trial={
@@ -227,15 +228,11 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_asha_end__
 
 
 # __tune_pbt_begin__
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
-    LightningMNISTClassifier.download_data(data_dir)
-
     config = {
         "layer_1_size": tune.choice([32, 64, 128]),
         "layer_2_size": tune.choice([64, 128, 256]),
@@ -257,7 +254,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
     analysis = tune.run(
         tune.with_parameters(
             train_mnist_tune_checkpoint,
-            data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
         resources_per_trial={
@@ -274,7 +270,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_pbt_end__
 
 

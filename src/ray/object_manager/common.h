@@ -5,7 +5,6 @@
 #include <functional>
 
 #include "ray/common/id.h"
-#include "ray/object_manager/format/object_manager_generated.h"
 
 namespace ray {
 
@@ -17,8 +16,28 @@ using SpillObjectsCallback = std::function<bool()>;
 using SpaceReleasedCallback = std::function<void()>;
 
 /// A callback to call when a spilled object needs to be returned to the object store.
-using RestoreSpilledObjectCallback =
-    std::function<void(const ObjectID &, const std::string &, const NodeID &,
-                       std::function<void(const ray::Status &)>)>;
+using RestoreSpilledObjectCallback = std::function<void(
+    const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+
+/// A struct that includes info about the object.
+struct ObjectInfo {
+  ObjectID object_id;
+  int64_t data_size;
+  int64_t metadata_size;
+  /// Owner's raylet ID.
+  NodeID owner_raylet_id;
+  /// Owner's IP address.
+  std::string owner_ip_address;
+  /// Owner's port.
+  int owner_port;
+  /// Owner's worker ID.
+  WorkerID owner_worker_id;
+};
+
+// A callback to call when an object is added to the shared memory store.
+using AddObjectCallback = std::function<void(const ObjectInfo &)>;
+
+// A callback to call when an object is removed from the shared memory store.
+using DeleteObjectCallback = std::function<void(const ObjectID &)>;
 
 }  // namespace ray

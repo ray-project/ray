@@ -19,6 +19,9 @@
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/io/ray/runtime/generated/*
 
+# Files genrated by c++ worker should be ignored.
+cpp/example/thirdparty/
+
 # Redis temporary files
 *dump.rdb
 
@@ -186,3 +189,11 @@ tools/prometheus*
 # ray project files
 project-id
 .mypy_cache/
+
+# gitpod cache related
+.pip-cache/
+.bazel-cache/
+
+# release test related
+.anyscale.yaml
+test_state.json

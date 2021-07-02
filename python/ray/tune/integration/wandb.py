@@ -1,6 +1,6 @@
 import os
 import pickle
-from collections.abc import Iterable
+from collections.abc import Sequence
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -31,7 +31,7 @@ def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
-    if isinstance(obj, Iterable) and len(obj) > 0:
+    if isinstance(obj, Sequence) and len(obj) > 0:
         return isinstance(obj[0], _VALID_ITERABLE_TYPES)
     return isinstance(obj, _VALID_TYPES)
 
@@ -194,6 +194,7 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
+        os.environ["WANDB_START_METHOD"] = "fork"
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
@@ -299,8 +300,7 @@ class WandbLoggerCallback(LoggerCallback):
                  **kwargs):
         self.project = project
         self.group = group
-        self.api_key_file = os.path.expanduser(
-            api_key_file) if api_key_file else None
+        self.api_key_path = api_key_file
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
@@ -310,6 +310,8 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self):
+        self.api_key_file = os.path.expanduser(self.api_key_path) if \
+            self.api_key_path else None
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):
@@ -558,6 +560,7 @@ class WandbTrainableMixin:
             config=_config)
         wandb_init_kwargs.update(wandb_config)
 
+        os.environ["WANDB_START_METHOD"] = "fork"
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
