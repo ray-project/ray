@@ -93,6 +93,7 @@ cc_library(
     deps = [
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
+        ":pubsub_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -229,6 +230,28 @@ cc_library(
         ":runtime_env_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# pubsub.
+cc_grpc_library(
+    name = "pubsub_cc_grpc",
+    srcs = ["//src/ray/protobuf:pubsub_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "pubsub_rpc",
+    copts = COPTS,
+    deps = [
+        "pubsub_cc_grpc",
+        ":grpc_common_lib",
+        ":ray_common",
     ],
 )
 
@@ -528,10 +551,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":grpc_common_lib",
-        ":ray_common",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:pubsub_cc_proto",
+        ":pubsub_rpc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -1254,6 +1274,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
+        ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
     ],
@@ -1935,7 +1956,6 @@ filegroup(
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",

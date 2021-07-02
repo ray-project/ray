@@ -1,15 +1,11 @@
-from typing import Optional
-from ray.experimental.workflow import storage
+from typing import Optional, List
 
 
 class WorkflowStepContext:
-    # TODO(suquark): we have to skip some type hints here, because we are
-    # still not quite sure what should be the correct type. It will finalize
-    # we we receive enough feedback about the API.
     def __init__(self,
-                 workflow_id=None,
-                 workflow_root_dir=None,
-                 workflow_scope=None):
+                 workflow_id: str = None,
+                 storage_url: str = None,
+                 workflow_scope: List[str] = None):
         """
         The structure for saving workflow step context. The context provides
         critical info (e.g. where to checkpoint, which is its parent step)
@@ -17,29 +13,32 @@ class WorkflowStepContext:
 
         Args:
             workflow_id: The workflow job ID.
-            workflow_root_dir: The working directory of the workflow, used for
-                checkpointing etc.
+            storage_url: The storage of the workflow, used for checkpointing.
             workflow_scope: The "calling stack" of the current workflow step.
                 It describe the parent workflow steps.
         """
         self.workflow_id = workflow_id
-        self.workflow_root_dir = workflow_root_dir
+        self.storage_url = storage_url
         self.workflow_scope = workflow_scope or []
 
     def __reduce__(self):
-        return WorkflowStepContext, (self.workflow_id, self.workflow_root_dir,
+        return WorkflowStepContext, (self.workflow_id, self.storage_url,
                                      self.workflow_scope)
 
 
 _context: Optional[WorkflowStepContext] = None
 
 
-def init_workflow_step_context(workflow_id, workflow_root_dir) -> None:
+def init_workflow_step_context(workflow_id, storage_url) -> None:
+    """Initialize the workflow step context.
+
+    Args:
+        workflow_id: The ID of the workflow.
+        storage_url: The storage the workflow is using.
+    """
     global _context
-    if workflow_root_dir is not None:
-        storage.set_global_storage(workflow_root_dir)
     assert workflow_id is not None
-    _context = WorkflowStepContext(workflow_id, workflow_root_dir)
+    _context = WorkflowStepContext(workflow_id, storage_url)
 
 
 def get_workflow_step_context() -> Optional[WorkflowStepContext]:
@@ -67,7 +66,3 @@ def get_current_step_id() -> str:
 
 def get_scope():
     return _context.workflow_scope
-
-
-def get_workflow_root_dir():
-    return _context.workflow_root_dir

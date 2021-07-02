@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -989,6 +990,7 @@ def rsync(config_file: str,
           use_internal_ip: bool = False,
           no_config_cache: bool = False,
           all_nodes: bool = False,
+          should_bootstrap: bool = True,
           _runner: ModuleType = subprocess) -> None:
     """Rsyncs files.
 
@@ -1003,6 +1005,7 @@ def rsync(config_file: str,
         use_internal_ip (bool): Whether the provided ip_address is
             public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
+        should_bootstrap: whether to bootstrap cluster config before syncing
     """
     if bool(source) != bool(target):
         cli_logger.abort(
@@ -1017,7 +1020,8 @@ def rsync(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config, no_config_cache=no_config_cache)
+    if should_bootstrap:
+        config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
     if source and target:
@@ -1175,7 +1179,8 @@ def get_local_dump_archive(stream: bool = False,
                            debug_state: bool = True,
                            pip: bool = True,
                            processes: bool = True,
-                           processes_verbose: bool = False) -> Optional[str]:
+                           processes_verbose: bool = False,
+                           tempfile: Optional[str] = None) -> Optional[str]:
     if stream and output:
         raise ValueError(
             "You can only use either `--output` or `--stream`, but not both.")
@@ -1187,7 +1192,7 @@ def get_local_dump_archive(stream: bool = False,
         processes=processes,
         processes_verbose=processes_verbose)
 
-    with Archive() as archive:
+    with Archive(file=tempfile) as archive:
         get_all_local_data(archive, parameters)
 
     tmp = archive.file
@@ -1199,7 +1204,7 @@ def get_local_dump_archive(stream: bool = False,
         return None
 
     target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
-    os.rename(tmp, target)
+    shutil.move(tmp, target)
     cli_logger.print(f"Created local data archive at {target}")
 
     return target
@@ -1216,7 +1221,8 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
                              debug_state: bool = True,
                              pip: bool = True,
                              processes: bool = True,
-                             processes_verbose: bool = False) -> Optional[str]:
+                             processes_verbose: bool = False,
+                             tempfile: Optional[str] = None) -> Optional[str]:
 
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
@@ -1281,7 +1287,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         processes=processes,
         processes_verbose=processes_verbose)
 
-    with Archive() as archive:
+    with Archive(file=tempfile) as archive:
         if local:
             create_archive_for_local_and_remote_nodes(
                 archive, remote_nodes=nodes, parameters=parameters)
@@ -1300,7 +1306,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
     else:
         output = os.path.expanduser(output)
 
-    os.rename(archive.file, output)
+    shutil.move(archive.file, output)
     return output
 
 

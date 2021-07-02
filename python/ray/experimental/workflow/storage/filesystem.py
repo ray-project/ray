@@ -248,3 +248,7 @@ class FilesystemStorageImpl(Storage):
             args_exists=(step_dir / STEP_ARGS).exists(),
             func_body_exists=(step_dir / STEP_FUNC_BODY).exists(),
         )
+
+    @property
+    def storage_url(self) -> str:
+        return str(self._workflow_root_dir)

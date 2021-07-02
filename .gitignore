@@ -19,6 +19,9 @@
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/io/ray/runtime/generated/*
 
+# Files genrated by c++ worker should be ignored.
+cpp/example/thirdparty/
+
 # Redis temporary files
 *dump.rdb
 

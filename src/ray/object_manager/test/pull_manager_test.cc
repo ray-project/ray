@@ -31,24 +31,37 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this]() { num_object_store_full_calls_++; }) {}
+            [this]() { num_object_store_full_calls_++; },
+            [this](const ObjectID &object_id) { return PinReturn(); }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
     ASSERT_TRUE(pull_manager_.wait_request_bundles_.empty());
     ASSERT_TRUE(pull_manager_.task_argument_bundles_.empty());
+    ASSERT_EQ(pull_manager_.num_active_bundles_, 0);
     ASSERT_EQ(pull_manager_.highest_get_req_id_being_pulled_, 0);
     ASSERT_EQ(pull_manager_.highest_wait_req_id_being_pulled_, 0);
     ASSERT_EQ(pull_manager_.highest_task_req_id_being_pulled_, 0);
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
-    // Most tests should not throw OOM.
-    ASSERT_EQ(num_object_store_full_calls_, 0);
+    ASSERT_TRUE(pull_manager_.pinned_objects_.empty());
+    ASSERT_EQ(pull_manager_.pinned_objects_size_, 0);
+  }
+
+  int NumPinnedObjects() { return pull_manager_.pinned_objects_.size(); }
+
+  std::unique_ptr<RayObject> PinReturn() {
+    if (allow_pin_) {
+      return std::make_unique<RayObject>(rpc::ErrorType::OBJECT_IN_PLASMA);
+    } else {
+      return nullptr;
+    }
   }
 
   NodeID self_node_id_;
   bool object_is_local_;
+  bool allow_pin_ = false;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
   int num_object_store_full_calls_;
@@ -63,11 +76,13 @@ class PullManagerTest : public PullManagerTestWithCapacity,
  public:
   PullManagerTest() : PullManagerTestWithCapacity(1) {}
 
-  void AssertNumActiveRequestsEquals(size_t num_requests) {
+  void AssertNumActiveRequestsEquals(int64_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.object_pull_requests_.size(), num_requests);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
+
+  int64_t NumBytesBeingPulled() { return pull_manager_.num_bytes_being_pulled_; }
 };
 
 class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
@@ -75,12 +90,16 @@ class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
  public:
   PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10) {}
 
-  void AssertNumActiveRequestsEquals(size_t num_requests) {
+  void AssertNumActiveRequestsEquals(int64_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
 
-  bool IsUnderCapacity(size_t num_bytes_requested) {
+  void AssertNumActiveBundlesEquals(int64_t num_bundles) {
+    ASSERT_EQ(pull_manager_.num_active_bundles_, num_bundles);
+  }
+
+  bool IsUnderCapacity(int64_t num_bytes_requested) {
     return num_bytes_requested <= pull_manager_.num_bytes_available_;
   }
 };
@@ -422,6 +441,66 @@ TEST_P(PullManagerTest, TestBasic) {
   AssertNoLeaks();
 }
 
+TEST_P(PullManagerTest, TestPinActiveObjects) {
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(3);
+  auto oids = ObjectRefsToIds(refs);
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 1);
+  }
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
+  }
+  ASSERT_EQ(num_send_pull_request_calls_, oids.size());
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  AssertNumActiveRequestsEquals(oids.size());
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(4);
+
+  // Check we pin objects belonging to active bundles.
+  allow_pin_ = true;
+  ASSERT_EQ(NumPinnedObjects(), 0);
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 1);
+  pull_manager_.PinNewObjectIfNeeded(oids[0]);
+  // Now we have more space (object manager should also report more space used),
+  // so remaining quota would go back to 1 on the avail memory report.
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 2);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+  pull_manager_.PinNewObjectIfNeeded(oids[0]);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+
+  // Check do not pin objects belonging to inactive bundles.
+  auto refs2 = CreateObjectRefs(1);
+  auto oids2 = ObjectRefsToIds(refs2);
+  auto req_id2 = pull_manager_.Pull(refs2, BundlePriority::TASK_ARGS, &objects_to_locate);
+  for (size_t i = 0; i < oids2.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids2[i]));
+    pull_manager_.OnLocationChange(oids2[i], client_ids, "", NodeID::Nil(), 1000);
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids2[i]));
+  }
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(4);
+  pull_manager_.PinNewObjectIfNeeded(oids2[0]);
+  ASSERT_EQ(NumPinnedObjects(), 1);
+
+  // The object is unpinned on cancel.
+  pull_manager_.CancelPull(req_id);
+  pull_manager_.CancelPull(req_id2);
+  ASSERT_EQ(NumPinnedObjects(), 0);
+  ASSERT_EQ(pull_manager_.RemainingQuota(), 4);
+
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerTest, TestDeduplicateBundles) {
   auto prio = BundlePriority::TASK_ARGS;
   if (GetParam()) {
@@ -579,45 +658,38 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
-    ASSERT_EQ(num_object_store_full_calls_, 0);
+    AssertNumActiveBundlesEquals(1);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
+    }
     return;
   }
 
-  AssertNumActiveRequestsEquals(0);
-  ASSERT_EQ(num_object_store_full_calls_, 1);
-  for (auto &oid : oids) {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 1);
-  }
-  ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  // No new pull requests after the next tick.
-  fake_time_ += 10;
-  auto prev_pull_requests = num_send_pull_request_calls_;
-  for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
-    ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-  }
-
-  // Increase the available memory again.
-  pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size);
-  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  AssertNumActiveRequestsEquals(oids.size());
-  ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
-  ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests + oids.size());
-
-  // OOM was not triggered a second time.
-  ASSERT_EQ(num_object_store_full_calls_, 1);
-  num_object_store_full_calls_ = 0;
-  for (auto &oid : oids) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 1);
+  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
+    AssertNumActiveRequestsEquals(0);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    }
+    for (auto &oid : oids) {
+      ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
+      ASSERT_EQ(num_abort_calls_[oid], 1);
+    }
+    ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  } else {
+    AssertNumActiveRequestsEquals(3);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    }
+    for (auto &oid : oids) {
+      ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
+      ASSERT_EQ(num_abort_calls_[oid], 0);
+    }
+    ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   }
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
     ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-    ASSERT_EQ(num_abort_calls_[oid], 2);
   }
   AssertNoLeaks();
 }
@@ -654,9 +726,12 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
+  num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
-    int num_requests_expected =
+    int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
+    int num_requests_expected = std::max(
+        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
     if (RayConfig::instance().plasma_unlimited() && GetParam()) {
       num_requests_expected = num_requests;
     }
@@ -675,10 +750,12 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (num_requests_expected == 0) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    } else {
-      ASSERT_EQ(num_object_store_full_calls_, 0);
+    if (!RayConfig::instance().plasma_unlimited()) {
+      if (num_requests_quota == num_requests_expected) {
+        ASSERT_EQ(num_object_store_full_calls_, 0);
+      } else {
+        ASSERT_EQ(num_object_store_full_calls_, 1);
+      }
     }
     for (size_t i = 0; i < req_ids.size(); i++) {
       if ((int)i < num_requests_expected) {

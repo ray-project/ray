@@ -52,7 +52,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import _random_string, check_oversized_pickle
+from ray._private.utils import check_oversized_pickle
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -170,6 +170,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def worker_id(self):
+        return self.core_worker.get_worker_id().binary()
+
+    @property
     def should_capture_child_tasks_in_placement_group(self):
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
@@ -215,6 +219,9 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+                ray.client().connect()
+                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -1190,18 +1197,10 @@ def connect(node,
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
-        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
-        worker.worker_id = _random_string()
     else:
         # This is the code path of driver mode.
         if job_id is None:
             job_id = ray.state.next_job_id()
-        # When tasks are executed on remote workers in the context of multiple
-        # drivers, the current job ID is used to keep track of which job is
-        # responsible for the task so that error messages will be propagated to
-        # the correct driver.
-        worker.worker_id = ray._private.utils.compute_driver_id_from_job(
-            job_id).binary()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
@@ -1447,6 +1446,10 @@ def get(object_refs, *, timeout=None):
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
+
+    Ordering for an input list of object refs is preserved for each object
+    returned. That is, if an object ref to A precedes an object ref to B in the
+    input list, then A will precede B in the returned list.
 
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
@@ -1753,6 +1756,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
+                   runtime_env=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1782,7 +1786,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries)
+                num_returns, max_calls, max_retries, runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1804,7 +1808,7 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
                                         accelerator_type, max_restarts,
-                                        max_task_retries)
+                                        max_task_retries, runtime_env)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1909,9 +1913,8 @@ def remote(*args, **kwargs):
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
-            Note: can only be set via `.options()`.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This
@@ -1927,29 +1930,20 @@ def remote(*args, **kwargs):
         return make_decorator(worker=worker)(args[0])
 
     # Parse the keyword arguments from the decorator.
+    valid_kwargs = [
+        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
+        "resources", "accelerator_type", "max_calls", "max_restarts",
+        "max_task_retries", "max_retries", "runtime_env"
+    ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
-                    "'memory', 'object_store_memory', 'resources', "
-                    "'max_calls', or 'max_restarts', like "
+                    f"the arguments in the list {valid_kwargs}, for example "
                     "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
-        assert key in [
-            "num_returns",
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "accelerator_type",
-            "max_calls",
-            "max_restarts",
-            "max_task_retries",
-            "max_retries",
-        ], error_string
+        assert key in valid_kwargs, error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
@@ -1971,6 +1965,7 @@ def remote(*args, **kwargs):
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
+    runtime_env = kwargs.get("runtime_env")
 
     return make_decorator(
         num_returns=num_returns,
@@ -1984,4 +1979,5 @@ def remote(*args, **kwargs):
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,
         max_retries=max_retries,
+        runtime_env=runtime_env,
         worker=worker)
