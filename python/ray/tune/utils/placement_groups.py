@@ -108,7 +108,8 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = bundles
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs

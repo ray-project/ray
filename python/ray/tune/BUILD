@@ -204,6 +204,14 @@ py_test(
 )
 
 py_test(
+    name = "test_soft_imports",
+    size = "small",
+    srcs = ["tests/test_soft_imports.py"],
+    deps = [":tune_lib"],
+    tags = ["soft_imports"],
+)
+
+py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
@@ -375,11 +383,29 @@ py_test(
 )
 
 py_test(
+    name = "blendsearch_example",
+    size = "small",
+    srcs = ["examples/blendsearch_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "bohb_example",
     size = "small",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
+)
+
+py_test(
+    name = "cfo_example",
+    size = "small",
+    srcs = ["examples/cfo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(
@@ -412,14 +438,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_horovod.py"],
     tags = ["exclusive", "example", "py37"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_horovod_client",
-    size = "medium",
-    srcs = ["tests/test_horovod_client.py"],
-    tags = ["exclusive", "client", "py37"],
     deps = [":tune_lib"],
 )
 
@@ -568,7 +586,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "medium",
+    size = "large",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
@@ -813,6 +831,20 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+# --------------------------------------------------------------------
+# Tune related tests from the ../../../../release directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "medium",
+    srcs = ["examples/horovod_cifar_pbt_example.py"],
+    tags = ["exlusive", "pytorch", "example", "release", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

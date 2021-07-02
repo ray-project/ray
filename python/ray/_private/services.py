@@ -254,6 +254,41 @@ def find_redis_address_or_die():
     return redis_addresses.pop()
 
 
+def wait_for_node(redis_address,
+                  node_plasma_store_socket_name,
+                  redis_password=None,
+                  timeout=30):
+    """Wait until this node has appeared in the client table.
+
+    Args:
+        redis_address (str): The redis address.
+        node_plasma_store_socket_name (str): The
+            plasma_store_socket_name for the given node which we wait for.
+        redis_password (str): the redis password.
+        timeout: The amount of time in seconds to wait before raising an
+            exception.
+
+    Raises:
+        TimeoutError: An exception is raised if the timeout expires before
+            the node appears in the client table.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    global_state = ray.state.GlobalState()
+    global_state._initialize_global_state(redis_address, redis_password)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        clients = global_state.node_table()
+        object_store_socket_names = [
+            client["ObjectStoreSocketName"] for client in clients
+        ]
+        if node_plasma_store_socket_name in object_store_socket_names:
+            return
+        else:
+            time.sleep(0.1)
+    raise TimeoutError("Timed out while waiting for node to startup.")
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -267,16 +302,26 @@ def get_address_info_from_redis_helper(redis_address,
             "Redis has started but no raylets have registered yet.")
 
     relevant_client = None
+    head_node_client = None
     for client_info in client_table:
         if not client_info["Alive"]:
             continue
         client_node_ip_address = client_info["NodeManagerAddress"]
-        if (client_node_ip_address == node_ip_address
-                or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())
-                or client_node_ip_address == redis_ip_address):
+        if client_node_ip_address == node_ip_address:
             relevant_client = client_info
             break
+        if ((client_node_ip_address == "127.0.0.1"
+             and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
+            head_node_client = client_info
+
+    if relevant_client is None and head_node_client is not None:
+        logger.info(f"This node has an IP address of {node_ip_address}, "
+                    "while we can not found the matched Raylet address. "
+                    "This maybe come from when you connect the Ray cluster "
+                    "with a different IP address or connect a container.")
+        relevant_client = head_node_client
+
     if relevant_client is None:
         raise RuntimeError(
             f"This node has an IP address of {node_ip_address}, and Ray "
@@ -810,6 +855,7 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 fate_share=None,
+                external_addresses=None,
                 port_denylist=None):
     """Start the Redis global state store.
 
@@ -853,39 +899,49 @@ def start_redis(node_ip_address,
 
     processes = []
 
-    redis_executable = REDIS_EXECUTABLE
-    redis_modules = [REDIS_MODULE]
-
-    redis_stdout_file, redis_stderr_file = redirect_files[0]
-    # If no port is given, fallback to default Redis port for the primary
-    # shard.
-    if port is None:
-        port = ray_constants.DEFAULT_PORT
-        num_retries = 20
+    if external_addresses is not None:
+        primary_redis_address = external_addresses[0]
+        [primary_redis_ip, port] = primary_redis_address.split(":")
+        port = int(port)
+        redis_address = address(primary_redis_ip, port)
+        primary_redis_client = create_redis_client(
+            "%s:%s" % (primary_redis_ip, port), password=password)
+        # Deleting the key to avoid duplicated rpush.
+        primary_redis_client.delete("RedisShards")
     else:
-        num_retries = 1
-    # Start the primary Redis shard.
-    port, p = _start_redis_instance(
-        redis_executable,
-        modules=redis_modules,
-        port=port,
-        password=password,
-        redis_max_clients=redis_max_clients,
-        num_retries=num_retries,
-        # Below we use None to indicate no limit on the memory of the
-        # primary Redis shard.
-        redis_max_memory=None,
-        stdout_file=redis_stdout_file,
-        stderr_file=redis_stderr_file,
-        fate_share=fate_share,
-        port_denylist=port_denylist)
-    processes.append(p)
-    redis_address = address(node_ip_address, port)
+        redis_executable = REDIS_EXECUTABLE
+        redis_modules = [REDIS_MODULE]
+
+        redis_stdout_file, redis_stderr_file = redirect_files[0]
+        # If no port is given, fallback to default Redis port for the primary
+        # shard.
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
+            num_retries = 20
+        else:
+            num_retries = 1
+        # Start the primary Redis shard.
+        port, p = _start_redis_instance(
+            redis_executable,
+            modules=redis_modules,
+            port=port,
+            password=password,
+            redis_max_clients=redis_max_clients,
+            num_retries=num_retries,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
+            redis_max_memory=None,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file,
+            fate_share=fate_share,
+            port_denylist=port_denylist)
+        processes.append(p)
+        redis_address = address(node_ip_address, port)
+        primary_redis_client = redis.StrictRedis(
+            host=node_ip_address, port=port, password=password)
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    primary_redis_client = redis.StrictRedis(
-        host=node_ip_address, port=port, password=password)
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
@@ -910,37 +966,41 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
-        redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
-        redis_shard_port = redis_shard_ports[i]
-        # If no shard port is given, try to start this shard's Redis instance
-        # on the port right after the last shard's port.
-        if redis_shard_port is None:
-            redis_shard_port = last_shard_port + 1
-            num_retries = 20
+        if external_addresses is not None and len(external_addresses) > 1:
+            shard_address = external_addresses[i + 1]
         else:
-            num_retries = 1
+            redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
+            redis_executable = REDIS_EXECUTABLE
+            redis_modules = [REDIS_MODULE]
+            redis_shard_port = redis_shard_ports[i]
+            # If no shard port is given, try to start this shard's Redis
+            # instance on the port right after the last shard's port.
+            if redis_shard_port is None:
+                redis_shard_port = last_shard_port + 1
+                num_retries = 20
+            else:
+                num_retries = 1
 
-        redis_shard_port, p = _start_redis_instance(
-            redis_executable,
-            modules=redis_modules,
-            port=redis_shard_port,
-            password=password,
-            redis_max_clients=redis_max_clients,
-            num_retries=num_retries,
-            redis_max_memory=redis_max_memory,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            fate_share=fate_share,
-            port_denylist=port_denylist)
-        processes.append(p)
+            redis_shard_port, p = _start_redis_instance(
+                redis_executable,
+                modules=redis_modules,
+                port=redis_shard_port,
+                password=password,
+                redis_max_clients=redis_max_clients,
+                num_retries=num_retries,
+                redis_max_memory=redis_max_memory,
+                stdout_file=redis_stdout_file,
+                stderr_file=redis_stderr_file,
+                fate_share=fate_share,
+                port_denylist=port_denylist)
+            processes.append(p)
 
-        shard_address = address(node_ip_address, redis_shard_port)
+            shard_address = address(node_ip_address, redis_shard_port)
+            last_shard_port = redis_shard_port
+
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
-        last_shard_port = redis_shard_port
 
     return redis_address, redis_shards, processes
 
@@ -1339,6 +1399,7 @@ def start_raylet(redis_address,
                  worker_path,
                  setup_worker_path,
                  worker_setup_hook,
+                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1380,6 +1441,8 @@ def start_raylet(redis_address,
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
+        runtime_env_setup_hook (str): The module path to a Python function that
+            will be imported and run to set up the runtime env in agent.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1512,7 +1575,9 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
         f"--runtime-env-dir={resource_dir}",
+        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1661,7 +1726,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         f"--ray-plasma-store-socket-name={plasma_store_name}",
         f"--ray-raylet-socket-name={raylet_name}",
         "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-redis-address={redis_address}",
+        f"--ray-address={redis_address}",
         f"--ray-redis-password={redis_password}",
         f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
         f"--ray-node-ip-address={node_ip_address}"

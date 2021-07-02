@@ -3,18 +3,18 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
-    unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, \
+    get_base_struct_from_space, normalize_action, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -158,9 +158,10 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_actions: bool = False,
+            clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
+            normalize_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -175,7 +176,10 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            clip_actions (bool): Should actions be clipped?
+            normalize_actions (bool): Should actions be normalized according to
+                the Policy's action space?
+            clip_actions (bool): Should actions be clipped according to the
+                Policy's action space?
             explore (Optional[bool]): Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
@@ -191,6 +195,12 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
+        normalize_actions = \
+            normalize_actions if normalize_actions is not None \
+            else self.config["normalize_actions"]
+        clip_actions = clip_actions if clip_actions is not None else \
+            self.config["clip_actions"]
+
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
@@ -234,7 +244,10 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        if clip_actions:
+        if normalize_actions:
+            single_action = normalize_action(single_action,
+                                             self.action_space_struct)
+        elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
 
@@ -424,7 +437,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_info(self) -> Dict[str, TensorType]:
+    def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the current exploration information of this policy.
 
         This information depends on the policy's Exploration object.
@@ -433,7 +446,12 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: Serializable information on the
                 `self.exploration` object.
         """
-        return self.exploration.get_info()
+        return self.exploration.get_state()
+
+    # TODO: (sven) Deprecate this method.
+    def get_exploration_info(self) -> Dict[str, TensorType]:
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @DeveloperAPI
     def is_recurrent(self) -> bool:
@@ -464,22 +482,28 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        """Saves all local state.
+        """Returns all local state.
 
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
-        return self.get_weights()
+        state = {
+            "weights": self.get_weights(),
+            "global_timestep": self.global_timestep,
+        }
+        return state
 
     @DeveloperAPI
     def set_state(self, state: object) -> None:
-        """Restores all local state.
+        """Restores all local state to the provided `state`.
 
         Args:
-            state (obj): Serialized local state.
+            state (object): The new state to set this policy to. Can be
+                obtained by calling `Policy.get_state()`.
         """
-        self.set_weights(state)
+        self.set_weights(state["weights"])
+        self.global_timestep = state["global_timestep"]
 
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
@@ -500,15 +524,6 @@ class Policy(metaclass=ABCMeta):
         Note: The file format will depend on the deep learning framework used.
         See the child classed of Policy and their `export_model`
         implementations for more details.
-
-        Args:
-            export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
 
         Args:
             export_dir (str): Local writable directory.
@@ -810,23 +825,12 @@ class Policy(metaclass=ABCMeta):
             view_reqs["state_out_{}".format(i)] = ViewRequirement(
                 space=space, used_for_training=True)
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
 
-def clip_action(action, action_space):
-    """Clips all actions in `flat_actions` according to the given Spaces.
-
-    Args:
-        flat_actions (List[np.ndarray]): The (flattened) list of single action
-            components. List will have len=1 for "primitive" action Spaces.
-        flat_space (List[Space]): The (flattened) list of single action Space
-            objects. Has to be of same length as `flat_actions`.
-
-    Returns:
-        List[np.ndarray]: Flattened list of single clipped "primitive" actions.
-    """
-
-    def map_(a, s):
-        if isinstance(s, gym.spaces.Box):
-            a = np.clip(a, s.low, s.high)
-        return a
-
-    return tree.map_structure(map_, action, action_space)
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        deprecation_warning("export_checkpoint", "save")
+        raise NotImplementedError

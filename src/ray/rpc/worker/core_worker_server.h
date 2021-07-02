@@ -29,12 +29,12 @@ namespace rpc {
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_CORE_WORKER_RPC_HANDLERS                                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask)                       \
+  RPC_SERVICE_HANDLER(CoreWorkerService, StealTasks)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete) \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, SubscribeForObjectEviction)     \
   RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling)              \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PubsubCommandBatch)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, AddObjectLocationOwner)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoveObjectLocationOwner)      \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectLocationsOwner)        \
@@ -53,12 +53,12 @@ namespace rpc {
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(StealTasks)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SubscribeForObjectEviction)     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocationOwner)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocationOwner)      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectLocationsOwner)        \

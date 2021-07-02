@@ -14,6 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -289,10 +290,7 @@ class TFPolicy(Policy):
 
         if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches.update({
-                "model": self.model.metrics() if isinstance(
-                    self.model, ModelV2) else self.model.custom_stats()
-            })
+            self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._loss = loss
 
@@ -478,8 +476,13 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
+    def get_exploration_state(self) -> Dict[str, TensorType]:
+        return self.exploration.get_state(sess=self.get_session())
+
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.exploration.get_info(sess=self.get_session())
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @override(Policy)
     @DeveloperAPI
@@ -500,17 +503,24 @@ class TFPolicy(Policy):
                 len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self._sess.run(self._optimizer_variables.variables)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state(self.get_session())
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             self._optimizer_variables.set_weights(optimizer_vars)
-        # Then the Policy's (NN) weights.
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(
+                state=state["_exploration_state"], sess=self.get_session())
+
+        # Set the Policy's (NN) weights.
         super().set_state(state)
 
     @override(Policy)
@@ -527,12 +537,14 @@ class TFPolicy(Policy):
                     graph=self._sess.graph))
             builder.save()
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
+        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:
