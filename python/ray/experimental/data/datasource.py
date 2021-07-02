@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
-from ray.experimental.data.impl.block import Block, ListBlock
+from ray.experimental.data.impl.block import Block, SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 T = TypeVar("T")
@@ -143,7 +143,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                     pyarrow.Table.from_arrays(
                         [np.arange(start, start + count)], names=["value"]))
             else:
-                return ListBlock(list(builtins.range(start, start + count)))
+                return SimpleBlock(list(builtins.range(start, start + count)))
 
         i = 0
         while i < n:

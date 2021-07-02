@@ -17,7 +17,7 @@ import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     ReadTask
-from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
+from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
