@@ -80,17 +80,8 @@ def resume(workflow_id: str,
         store = get_global_storage()
     else:
         raise TypeError("'storage' should be None, str, or Storage type.")
-    storage_url = get_global_storage().storage_url
-    r = recovery.resume_workflow_job(workflow_id, store)
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
-    if isinstance(r, ray.ObjectRef):
-        return r
-    try:
-        workflow_context.init_workflow_step_context(workflow_id, storage_url)
-        rref = execute_workflow(r)
-        output = flatten_workflow_output(workflow_id, rref)
-        logger.info(f"Workflow job {workflow_id} started.")
-    finally:
-        workflow_context.set_workflow_step_context(None)
+    output = recovery.resume_workflow_job(workflow_id, store)
+    logger.info(f"Workflow job {workflow_id} resumed.")
     return output
