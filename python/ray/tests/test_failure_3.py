@@ -90,6 +90,7 @@ def test_async_actor_task_retries(ray_start_regular):
         if ray.get(signal.cur_num_waiters.remote()) > 0:
             break
         time.sleep(.1)
+    assert ray.get(signal.cur_num_waiters.remote()) > 0
     # seqno 2
     ref_2 = dying.set_should_exit.remote()
     assert ray.get(ref_2) is None
