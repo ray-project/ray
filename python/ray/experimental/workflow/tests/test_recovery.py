@@ -5,7 +5,7 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import RayTaskError, ObjectLostError
+from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
 from ray.experimental.workflow.recovery import WorkflowNotResumableError
@@ -63,7 +63,7 @@ def test_recovery_simple():
     ray.init()
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
-    with pytest.raises(ObjectLostError):
+    with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
         output = workflow.run(simple.step("x"), workflow_id=workflow_id)
         ray.get(output)
@@ -81,7 +81,7 @@ def test_recovery_complex():
     ray.init()
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
-    with pytest.raises(RayTaskError):
+    with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
         output = workflow.run(complex.step("x"), workflow_id=workflow_id)
         ray.get(output)
