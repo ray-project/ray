@@ -83,8 +83,34 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         checkpoint_at_end=True)
 
 
-def get_best_model(best_model_checkpoint_path):
-    model_state = torch.load(best_model_checkpoint_path)
+def get_remote_model(remote_model_checkpoint_path):
+    address = os.environ.get("RAY_ADDRESS")
+    if address is not None and address.startswith("anyscale://"):
+        # Download training results to local client.
+        local_dir = "~/ray_results"
+        # TODO(matt): remove the following line when Anyscale Connect
+        # supports tilde expansion.
+        local_dir = os.path.expanduser(local_dir)
+        remote_dir = "/home/ray/ray_results/"
+        ray.client().download_results(
+            local_dir=local_dir, remote_dir=remote_dir)
+
+        # Compute local path.
+        rel_model_checkpoint_path = os.path.relpath(
+            remote_model_checkpoint_path, remote_dir)
+        local_model_checkpoint_path = os.path.join(local_dir,
+                                                   rel_model_checkpoint_path)
+
+        # Load model reference.
+        return get_model(local_model_checkpoint_path)
+    else:
+        get_best_model_remote = ray.remote(get_model)
+        return ray.get(
+            get_best_model_remote.remote(remote_model_checkpoint_path))
+
+
+def get_model(model_checkpoint_path):
+    model_state = torch.load(model_checkpoint_path)
 
     model = ResNet18(None)
     model.conv1 = nn.Conv2d(
@@ -189,8 +215,7 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint
-    get_best_model_remote = ray.remote(get_best_model)
-    model_id = ray.get(get_best_model_remote.remote(best_checkpoint))
+    model_id = get_remote_model(best_checkpoint)
 
     print("Setting up Serve.")
     setup_serve(model_id)
