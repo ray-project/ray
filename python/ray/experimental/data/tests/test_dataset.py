@@ -10,8 +10,8 @@ import pytest
 import ray
 
 from ray.util.dask import ray_dask_get
-
 from ray.tests.conftest import *  # noqa
+from ray.experimental.data.datasource import DummyOutputDatasource
 import ray.experimental.data.tests.util as util
 
 
@@ -27,6 +27,22 @@ def test_basic(ray_start_regular_shared):
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+def test_write_datasource(ray_start_regular_shared):
+    output = DummyOutputDatasource()
+    ds = ray.experimental.data.range(10, parallelism=2)
+    ds.write_datasource(output)
+    assert output.num_ok == 1
+    assert output.num_failed == 0
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
+
+    ray.get(output.data_sink.set_enabled.remote(False))
+    with pytest.raises(ValueError):
+        ds.write_datasource(output)
+    assert output.num_ok == 1
+    assert output.num_failed == 1
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
 def test_empty_dataset(ray_start_regular_shared):

@@ -2,17 +2,22 @@ import logging
 from pathlib import Path
 import functools
 import builtins
-from typing import List, Any, Union, Optional, Tuple, Callable, TYPE_CHECKING
+import inspect
+from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
+    TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
     import pandas
     import dask
+    import mars
     import modin
     import pyspark
 
 import ray
 from ray.experimental.data.dataset import Dataset
+from ray.experimental.data.datasource import Datasource, RangeDatasource, \
+    ReadTask
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
@@ -20,16 +25,19 @@ from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
+T = TypeVar("T")
+
 logger = logging.getLogger(__name__)
 
 
-def autoinit_ray(f):
+def autoinit_ray(f: Callable) -> Callable:
     @functools.wraps(f)
     def wrapped(*a, **kw):
         if not ray.is_initialized():
             ray.client().connect()
         return f(*a, **kw)
 
+    setattr(wrapped, "__signature__", inspect.signature(f))
     return wrapped
 
 
@@ -202,34 +210,8 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     Returns:
         Dataset holding the integers.
     """
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
-    block_size = max(1, n // parallelism)
-
-    @ray.remote
-    def gen_block(start: int, count: int) -> SimpleBlock:
-        builder = SimpleBlock.builder()
-        for value in builtins.range(start, start + count):
-            builder.add(value)
-        return builder.build()
-
-    i = 0
-    while i < n:
-
-        def make_call(start: int, count: int) -> ObjectRef[Block]:
-            return lambda: gen_block.remote(start, count)
-
-        count = min(block_size, n - i)
-        calls.append(make_call(i, count))
-        metadata.append(
-            BlockMetadata(
-                num_rows=count,
-                size_bytes=8 * count,
-                schema=int,
-                input_files=None))
-        i += block_size
-
-    return Dataset(LazyBlockList(calls, metadata))
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
 @autoinit_ray
@@ -249,36 +231,37 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
-    import pyarrow
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
-    block_size = max(1, n // parallelism)
-    i = 0
+
+@autoinit_ray
+def read_datasource(datasource: Datasource[T],
+                    parallelism: int = 200,
+                    **read_args) -> Dataset[T]:
+    """Read a dataset from a custom data source.
+
+    Args:
+        datasource: The datasource to read data from.
+        parallelism: The requested parallelism of the read.
+        read_args: Additional kwargs to pass to the datasource impl.
+
+    Returns:
+        Dataset holding the data read from the datasource.
+    """
+
+    read_tasks = datasource.prepare_read(parallelism, **read_args)
 
     @ray.remote
-    def gen_block(start: int, count: int) -> "ArrowBlock":
-        return ArrowBlock(
-            pyarrow.Table.from_pydict({
-                "value": list(builtins.range(start, start + count))
-            }))
+    def remote_read(task: ReadTask) -> Block[T]:
+        return task()
 
-    while i < n:
+    calls: List[Callable[[], ObjectRef[Block[T]]]] = []
+    metadata: List[BlockMetadata] = []
 
-        def make_call(start: int, count: int) -> ObjectRef[Block]:
-            return lambda: gen_block.remote(start, count)
-
-        start = block_size * i
-        count = min(block_size, n - i)
-        calls.append(make_call(start, count))
-        schema = pyarrow.Table.from_pydict({"value": [0]}).schema
-        metadata.append(
-            BlockMetadata(
-                num_rows=count,
-                size_bytes=8 * count,
-                schema=schema,
-                input_files=None))
-        i += block_size
+    for task in read_tasks:
+        calls.append(lambda task=task: remote_read.remote(task))
+        metadata.append(task.get_metadata())
 
     return Dataset(LazyBlockList(calls, metadata))
 
@@ -336,12 +319,7 @@ def read_parquet(paths: Union[str, List[str]],
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
     for pieces in nonempty_tasks:
-
-        def make_call(
-                pieces: List[pq.ParquetDatasetPiece]) -> ObjectRef[Block]:
-            return lambda: gen_read.remote(pieces)
-
-        calls.append(make_call(pieces))
+        calls.append(lambda pieces=pieces: gen_read.remote(pieces))
         piece_metadata = [p.metadata for p in pieces]
         metadata.append(
             BlockMetadata(
@@ -505,7 +483,9 @@ def read_binary_files(
             filesystem=filesystem))
 
 
-def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
+@autoinit_ray
+def from_dask(df: "dask.DataFrame",
+              parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
@@ -523,6 +503,21 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
+@autoinit_ray
+def from_mars(df: "mars.DataFrame",
+              parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a MARS dataframe.
+
+    Args:
+        df: A MARS dataframe, which must be executed by MARS-on-Ray.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframe.
+    """
+    raise NotImplementedError  # P1
+
+
+@autoinit_ray
 def from_modin(df: "modin.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
@@ -537,6 +532,7 @@ def from_modin(df: "modin.DataFrame",
     raise NotImplementedError  # P1
 
 
+@autoinit_ray
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
@@ -560,6 +556,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
+@autoinit_ray
 def from_spark(df: "pyspark.sql.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
