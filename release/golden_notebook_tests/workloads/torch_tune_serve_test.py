@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+import time
 
 import ray
 import requests
@@ -194,6 +196,8 @@ def test_predictions(test_mode=False):
     print("Labels = {}. Predictions = {}. {} out of {} are correct.".format(
         list(labels), predictions, correct, num_to_test))
 
+    return correct / float(num_to_test)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -203,6 +207,8 @@ if __name__ == "__main__":
         default=False,
         help="Finish quickly for testing.")
     args = parser.parse_args()
+
+    start = time.time()
 
     job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
     ray.client().job_name(job_name).connect()
@@ -221,6 +227,16 @@ if __name__ == "__main__":
     setup_serve(model_id)
 
     print("Testing Prediction Service.")
-    test_predictions(args.smoke_test)
+    accuracy = test_predictions(args.smoke_test)
+
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+        "accuracy": accuracy,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/torch_tune_serve_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
     print("Test Successful!")
