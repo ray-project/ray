@@ -4,7 +4,7 @@ import logging
 
 from ray.tune.trainable import Trainable
 from ray.tune.logger import Logger, LoggerCallback
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
@@ -130,6 +130,7 @@ class MLflowLoggerCallback(LoggerCallback):
             self.client.log_param(run_id=run_id, key=key, value=value)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
         run_id = self._trial_runs[trial]
         for key, value in result.items():
             try:
@@ -140,7 +141,7 @@ class MLflowLoggerCallback(LoggerCallback):
                                  key, value))
                 continue
             self.client.log_metric(
-                run_id=run_id, key=key, value=value, step=iteration)
+                run_id=run_id, key=key, value=value, step=step)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
