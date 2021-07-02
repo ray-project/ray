@@ -100,7 +100,7 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
   }
   cum_processed_messages_++;
   // If the object id is still subscribed, run a callback to the callback io service.
-  std::string channel_name =
+  const auto &channel_name =
       rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
   callback_service_->post(
       [subscription_callback = std::move(maybe_subscription_callback.value()),
@@ -159,7 +159,7 @@ bool SubscriberChannel<KeyIdType>::HandlePublisherFailureInternal(
     const rpc::Address &publisher_address, const KeyIdType &key_id) {
   auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
   if (maybe_failure_callback.has_value()) {
-    std::string channel_name =
+    const auto &channel_name =
         rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
     callback_service_->post([failure_callback = std::move(maybe_failure_callback.value()),
                              key_id]() { failure_callback(key_id.Binary()); },
@@ -174,7 +174,7 @@ template <typename KeyIdType>
 std::string SubscriberChannel<KeyIdType>::DebugString() const {
   std::stringstream result;
   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-  std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
+  const auto &channel_name = descriptor->FindValueByNumber(channel_type_)->name();
   result << "Channel " << channel_name;
   result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
   result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
