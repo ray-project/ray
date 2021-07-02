@@ -33,7 +33,7 @@ public class LoggingUtil {
       ConfigurationBuilder<BuiltConfiguration> builder =
           ConfigurationBuilderFactory.newConfigurationBuilder();
 
-      builder.setStatusLevel(Level.DEBUG);
+      builder.setStatusLevel(Level.INFO);
       builder.setConfigurationName("DefaultLogger");
 
       // create a console appender
@@ -45,7 +45,7 @@ public class LoggingUtil {
           builder
               .newLayout("PatternLayout")
               .addAttribute("pattern", config.getString("ray.logging.pattern")));
-      RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
+      RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO);
       rootLogger.add(builder.newAppenderRef("Console"));
 
       builder.add(appenderBuilder);
@@ -62,7 +62,7 @@ public class LoggingUtil {
 
       ConfigurationBuilder<BuiltConfiguration> builder =
           ConfigurationBuilderFactory.newConfigurationBuilder();
-      builder.setStatusLevel(Level.DEBUG);
+      builder.setStatusLevel(Level.INFO);
       builder.setConfigurationName("DefaultLogger");
 
       // TODO(qwang): We can use rayConfig.logLevel instead.
