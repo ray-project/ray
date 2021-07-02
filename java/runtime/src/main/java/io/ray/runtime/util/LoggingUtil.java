@@ -49,7 +49,6 @@ public class LoggingUtil {
       rootLogger.add(builder.newAppenderRef("Console"));
 
       builder.add(appenderBuilder);
-      rootLogger.add(builder.newAppenderRef("LogToRollingFile"));
       builder.add(rootLogger);
       Configurator.reconfigure(builder.build());
 
