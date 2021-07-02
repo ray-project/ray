@@ -56,6 +56,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
             self.action_space = act_space
 
     def seed(self, seed=None):
+        if not hasattr(self.env, "seed"):
+            # This is a silent fail. However, OpenAI gyms also silently fail
+            # here.
+            return
+
         self.env.seed(seed)
 
     def reset(self):
