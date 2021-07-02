@@ -533,6 +533,7 @@ class PlacementGroupManager:
 
         Args:
             trial (Trial): Return placement group of this trial.
+
         Returns:
             Boolean indicating if the placement group was returned.
         """
@@ -540,6 +541,7 @@ class PlacementGroupManager:
             return True
 
         pgf = trial.placement_group_factory
+
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
