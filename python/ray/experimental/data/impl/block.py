@@ -1,8 +1,10 @@
 import sys
-from typing import TypeVar, List, Generic, Iterator, Any, TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
+    TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
+    import pyarrow
 
 # TODO(ekl) shouldn't Ray provide an ObjectRef type natively?
 ObjectRef = List
@@ -15,6 +17,18 @@ class BlockBuilder(Generic[T]):
 
     def build(self) -> "Block[T]":
         raise NotImplementedError
+
+
+class BlockMetadata:
+    def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
+                 schema: Union[type, "pyarrow.lib.Schema"],
+                 input_files: List[str]):
+        if input_files is None:
+            input_files = []
+        self.num_rows: Optional[int] = num_rows
+        self.size_bytes: Optional[int] = size_bytes
+        self.schema: Optional[Any] = schema
+        self.input_files: List[str] = input_files
 
 
 class Block(Generic[T]):
@@ -36,26 +50,33 @@ class Block(Generic[T]):
     def schema(self) -> Any:
         raise NotImplementedError
 
+    def get_metadata(self, input_files: List[str]) -> BlockMetadata:
+        return BlockMetadata(
+            num_rows=self.num_rows(),
+            size_bytes=self.size_bytes(),
+            schema=self.schema(),
+            input_files=input_files)
+
     @staticmethod
     def builder() -> BlockBuilder[T]:
         raise NotImplementedError
 
 
-class ListBlockBuilder(BlockBuilder[T]):
+class SimpleBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         self._items = []
 
     def add(self, item: T) -> None:
         self._items.append(item)
 
-    def add_block(self, block: "ListBlock[T]") -> None:
+    def add_block(self, block: "SimpleBlock[T]") -> None:
         self._items.extend(block._items)
 
-    def build(self) -> "ListBlock[T]":
-        return ListBlock(self._items)
+    def build(self) -> "SimpleBlock[T]":
+        return SimpleBlock(self._items)
 
 
-class ListBlock(Block):
+class SimpleBlock(Block):
     def __init__(self, items):
         self._items = items
 
@@ -63,13 +84,13 @@ class ListBlock(Block):
         return len(self._items)
 
     def iter_rows(self) -> Iterator[T]:
-        return self._items.__iter__()
+        return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> "ListBlock[T]":
+    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlock[T]":
         view = self._items[start:end]
         if copy:
             view = view.copy()
-        return ListBlock(view)
+        return SimpleBlock(view)
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
@@ -85,5 +106,5 @@ class ListBlock(Block):
             return None
 
     @staticmethod
-    def builder() -> ListBlockBuilder[T]:
-        return ListBlockBuilder()
+    def builder() -> SimpleBlockBuilder[T]:
+        return SimpleBlockBuilder()

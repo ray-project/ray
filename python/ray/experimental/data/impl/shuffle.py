@@ -2,9 +2,9 @@ import math
 from typing import TypeVar, List
 
 import ray
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.impl.block import Block, BlockMetadata
 from ray.experimental.data.impl.progress_bar import ProgressBar
-from ray.experimental.data.impl.block_list import BlockMetadata, BlockList
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
@@ -60,10 +60,9 @@ def simple_shuffle(input_blocks: BlockList[T],
             *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
-    new_blocks = [s[0] for s in shuffle_reduce_out]
-    new_metadata = [s[1] for s in shuffle_reduce_out]
-    reduce_bar.block_until_complete(new_blocks)
-    new_metadata = ray.get(new_metadata)
+    new_blocks, new_metadata = zip(*shuffle_reduce_out)
+    reduce_bar.block_until_complete(list(new_blocks))
+    new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
-    return BlockList(new_blocks, new_metadata)
+    return BlockList(list(new_blocks), list(new_metadata))

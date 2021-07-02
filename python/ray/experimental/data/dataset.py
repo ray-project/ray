@@ -1,6 +1,8 @@
 import logging
-from typing import List, Any, Callable, Iterable, Iterator, Generic, TypeVar, \
-    Optional, Union, TYPE_CHECKING
+from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
+    Dict, Optional, Union, TYPE_CHECKING
+
+import os
 
 if TYPE_CHECKING:
     import pyarrow
@@ -11,14 +13,20 @@ if TYPE_CHECKING:
     import pyspark
     import ray.util.sgd
 
+import collections
+import itertools
+import numpy as np
+
 import ray
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
-from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
+from ray.experimental.data.impl.arrow_block import (
+    DelegatingArrowBlockBuilder, ArrowBlock)
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -33,7 +41,7 @@ class Dataset(Generic[T]):
     Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
     also determines the unit of parallelism. The default block type is the
     ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
-    Python objects are represented with ``ListBlock`` (a plain Python list).
+    Python objects are represented with ``SimpleBlock`` (a plain Python list).
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -47,6 +55,7 @@ class Dataset(Generic[T]):
 
     def __init__(self, blocks: BlockList[T]):
         self._blocks: BlockList[T] = blocks
+        assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -128,7 +137,51 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        raise NotImplementedError  # P0
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
+        import pyarrow as pa
+        import pandas as pd
+
+        def transform(block: Block[T]) -> Block[U]:
+            total_rows = block.num_rows()
+            max_batch_size = batch_size
+            if max_batch_size is None:
+                max_batch_size = total_rows
+
+            builder = DelegatingArrowBlockBuilder()
+
+            for start in range(0, total_rows, max_batch_size):
+                # Build a block for each batch.
+                end = min(total_rows, start + max_batch_size)
+                view = block.slice(start, end, copy=False)
+                if batch_format == "pandas":
+                    view = view.to_pandas()
+                elif batch_format == "pyarrow":
+                    view = view._table
+                else:
+                    raise ValueError(
+                        f"The given batch format: {batch_format} "
+                        f"is invalid. Supported batch type: {BatchType}")
+
+                applied = fn(view)
+                if isinstance(applied, list):
+                    applied = SimpleBlock(applied)
+                elif isinstance(applied, pd.core.frame.DataFrame):
+                    applied = ArrowBlock(pa.Table.from_pandas(applied))
+                elif isinstance(applied, pa.Table):
+                    applied = ArrowBlock(applied)
+                else:
+                    raise ValueError("The map batch UDF returns a type "
+                                     f"{type(applied)}, which is not allowed. "
+                                     "The return type must be either list, "
+                                     "pandas.DataFrame, or pyarrow.Table")
+                builder.add_block(applied)
+
+            return builder.build()
+
+        compute = get_compute(compute)
+
+        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
                  fn: Callable[[T], Iterable[U]],
@@ -241,7 +294,126 @@ class Dataset(Generic[T]):
         Returns:
             A list of ``n`` disjoint dataset splits.
         """
-        raise NotImplementedError  # P1
+        if n <= 0:
+            raise ValueError(f"The num of splits {n} is not positive.")
+
+        if locality_hints and len(locality_hints) != n:
+            raise ValueError(
+                f"The length of locality_hints {len(locality_hints)} "
+                "doesn't equal the number of splits {n}.")
+
+        block_refs = list(self._blocks)
+        metadata_mapping = {
+            b: m
+            for b, m in zip(self._blocks, self._blocks.get_metadata())
+        }
+
+        if locality_hints is None:
+            return [
+                Dataset(
+                    BlockList(
+                        list(blocks), [metadata_mapping[b] for b in blocks]))
+                for blocks in np.array_split(block_refs, n)
+            ]
+
+        # If the locality_hints is set, we use a two-round greedy algorithm
+        # to co-locate the blocks with the actors based on block
+        # and actor's location (node_id).
+        #
+        # The split algorithm tries to allocate equally-sized blocks regardless
+        # of locality. Thus we first calculate the expected number of blocks
+        # for each split.
+        #
+        # In the first round, for each actor, we look for all blocks that
+        # match the actor's node_id, then allocate those matched blocks to
+        # this actor until we reach the limit(expected number).
+        #
+        # In the second round: fill each actor's allocation with
+        # remaining unallocated blocks until we reach the limit.
+
+        ray.wait(block_refs, num_returns=len(block_refs))
+
+        def build_allocation_size_map(num_blocks: int,
+                                      actors: List[Any]) -> Dict[Any, int]:
+            """Given the total number of blocks and a list of actors, calcuate
+            the expected number of blocks to allocate for each actor.
+            """
+            num_actors = len(actors)
+            num_blocks_per_actor = num_blocks // num_actors
+            num_blocks_left = num_blocks - num_blocks_per_actor * n
+            num_blocks_by_actor = {}
+            for i, actor in enumerate(actors):
+                num_blocks_by_actor[actor] = num_blocks_per_actor
+                if i < num_blocks_left:
+                    num_blocks_by_actor[actor] += 1
+            return num_blocks_by_actor
+
+        def build_block_refs_by_node_id(blocks: List[ObjectRef[Block]]
+                                        ) -> Dict[str, List[ObjectRef[Block]]]:
+            """Build the reverse index from node_id to block_refs. For
+            simplicity, if the block is stored on multiple nodes we
+            only pick the first one.
+            """
+            block_ref_locations = ray.experimental.get_object_locations(blocks)
+            block_refs_by_node_id = collections.defaultdict(list)
+            for block_ref in blocks:
+                node_ids = block_ref_locations.get(block_ref, {}).get(
+                    "node_ids", [])
+                node_id = node_ids[0] if node_ids else None
+                block_refs_by_node_id[node_id].append(block_ref)
+            return block_refs_by_node_id
+
+        def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
+            """Build a map from a actor to its node_id.
+            """
+            actors_state = ray.state.actors()
+            return {
+                actor: actors_state.get(actor._actor_id.hex(), {}).get(
+                    "Address", {}).get("NodeID")
+                for actor in actors
+            }
+
+        # expected number of blocks to be allocated for each actor
+        expected_block_count_by_actor = build_allocation_size_map(
+            len(block_refs), locality_hints)
+        # the reverse index from node_id to block_refs
+        block_refs_by_node_id = build_block_refs_by_node_id(block_refs)
+        # the map from actor to its node_id
+        node_id_by_actor = build_node_id_by_actor(locality_hints)
+
+        allocation_per_actor = collections.defaultdict(list)
+
+        # In the first round, for each actor, we look for all blocks that
+        # match the actor's node_id, then allocate those matched blocks to
+        # this actor until we reach the limit(expected number)
+        for actor in locality_hints:
+            node_id = node_id_by_actor[actor]
+            matching_blocks = block_refs_by_node_id[node_id]
+            expected_block_count = expected_block_count_by_actor[actor]
+            allocation = []
+            while matching_blocks and len(allocation) < expected_block_count:
+                allocation.append(matching_blocks.pop())
+            allocation_per_actor[actor] = allocation
+
+        # In the second round: fill each actor's allocation with
+        # remaining unallocated blocks until we reach the limit
+        remaining_block_refs = list(
+            itertools.chain.from_iterable(block_refs_by_node_id.values()))
+        for actor in locality_hints:
+            while len(allocation_per_actor[actor]
+                      ) < expected_block_count_by_actor[actor]:
+                allocation_per_actor[actor].append(remaining_block_refs.pop())
+
+        assert len(remaining_block_refs) == 0, len(remaining_block_refs)
+
+        return [
+            Dataset(
+                BlockList(
+                    allocation_per_actor[actor],
+                    [metadata_mapping[b]
+                     for b in allocation_per_actor[actor]]))
+            for actor in locality_hints
+        ]
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]],
@@ -282,7 +454,7 @@ class Dataset(Generic[T]):
         Examples:
             >>> ds.limit(100).map(lambda x: x * 2).take()
 
-        Time complexity: O(1)
+        Time complexity: O(limit specified)
 
         Args:
             limit: The size of the dataset to truncate to.
@@ -408,6 +580,7 @@ class Dataset(Generic[T]):
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
+        # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
             if m.schema:
                 return m.schema
@@ -456,7 +629,8 @@ class Dataset(Generic[T]):
             raise ValueError(
                 "Could not retrieve the input files of this dataset.")
 
-    def write_parquet(path: str,
+    def write_parquet(self,
+                      path: str,
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None
                       ) -> None:
         """Write the dataset to parquet.
@@ -470,14 +644,29 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path in the filesystem to write to.
+            path: The path to the destination root directory, where Parquet
+                files will be written to..
             filesystem: The filesystem implementation to write to.
         """
-        raise NotImplementedError  # P0
+        import pyarrow.parquet as pq
 
-    def write_json(path: str,
-                   filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                   ) -> None:
+        @ray.remote
+        def parquet_write(write_path, block):
+            logger.debug(
+                f"Writing {block.num_rows()} records to {write_path}.")
+            with pq.ParquetWriter(write_path, block._table.schema) as writer:
+                writer.write_table(block._table)
+
+        refs = [
+            parquet_write.remote(
+                os.path.join(path, f"data{block_idx}.parquet"), block)
+            for block_idx, block in enumerate(self._blocks)
+        ]
+
+        # Block until writing is done.
+        ray.get(refs)
+
+    def write_json(self, path: str) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -489,14 +678,26 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path in the filesystem to write to.
-            filesystem: The filesystem implementation to write to.
+            path: The path to the destination root directory, where json
+                files will be written to..
         """
-        raise NotImplementedError  # P0
 
-    def write_csv(path: str,
-                  filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                  ) -> None:
+        @ray.remote
+        def json_write(write_path: str, block: ArrowBlock):
+            logger.debug(
+                f"Writing {block.num_rows()} records to {write_path}.")
+            block.to_pandas().to_json(write_path, orient="records")
+
+        refs = [
+            json_write.remote(
+                os.path.join(path, f"data{block_idx}.json"), block)
+            for block_idx, block in enumerate(self._blocks)
+        ]
+
+        # Block until writing is done.
+        ray.get(refs)
+
+    def write_csv(self, path: str) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -508,10 +709,25 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path in the filesystem to write to.
-            filesystem: The filesystem implementation to write to.
+            path: The path to the destination root directory, where csv
+                files will be written to..
         """
-        raise NotImplementedError  # P0
+
+        @ray.remote
+        def csv_write(write_path: str, block: ArrowBlock):
+            logger.debug(
+                f"Writing {block.num_rows()} records to {write_path}.")
+            block.to_pandas().to_csv(
+                write_path, mode="a", header=True, index=False)
+
+        refs = [
+            csv_write.remote(
+                os.path.join(path, f"data{block_idx}.csv"), block)
+            for block_idx, block in enumerate(self._blocks)
+        ]
+
+        # Block until writing is done.
+        ray.get(refs)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
@@ -562,7 +778,8 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
 
-        for block in self.iter_batches(prefetch_blocks=prefetch_blocks):
+        for ref in self._blocks:
+            block = ray.get(ref)
             for row in block.iter_rows():
                 yield row
 
@@ -589,12 +806,7 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
-        if prefetch_blocks > 0:
-            raise NotImplementedError  # P1
-
-        for b in self._blocks:
-            block = ray.get(b)
-            yield block
+        raise NotImplementedError  # P1
 
     def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
         """Return a dataset that can be used for Torch distributed training.
@@ -617,14 +829,38 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_dask(self) -> "dask.DataFrame":
-        """Convert this dataset into a Dask dataframe.
+        """Convert this dataset into a Dask DataFrame.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        Note that this function will set the Dask scheduler to Dask-on-Ray
+        globally, via the config.
 
         Time complexity: O(1)
 
         Returns:
-            A Dask dataframe created from this dataset.
+            A Dask DataFrame created from this dataset.
         """
-        raise NotImplementedError  # P1
+        import dask
+        import dask.dataframe as dd
+        from ray.util.client.common import ClientObjectRef
+        from ray.util.dask import ray_dask_get
+
+        dask.config.set(scheduler=ray_dask_get)
+
+        @dask.delayed
+        def block_to_df(block: ArrowBlock):
+            if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
+                raise ValueError(
+                    "Dataset.to_dask() must be used with Dask-on-Ray, please "
+                    "set the Dask scheduler to ray_dask_get (located in "
+                    "ray.util.dask).")
+            return block._table.to_pandas()
+
+        # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
+        # once that's implemented.
+        ddf = dd.from_delayed([block_to_df(block) for block in self._blocks])
+        return ddf
 
     def to_mars(self) -> "mars.DataFrame":
         """Convert this dataset into a MARS dataframe.
@@ -649,12 +885,19 @@ class Dataset(Generic[T]):
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a set of Pandas dataframes.
 
+        This is only supported for datasets convertible to Arrow records.
+
         Time complexity: O(1)
 
         Returns:
             A list of remote Pandas dataframes created from this dataset.
         """
-        raise NotImplementedError  # P1
+
+        @ray.remote
+        def block_to_df(block: ArrowBlock):
+            return block._table.to_pandas()
+
+        return [block_to_df.remote(block) for block in self._blocks]
 
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.

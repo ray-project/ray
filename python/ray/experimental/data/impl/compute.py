@@ -1,8 +1,8 @@
 from typing import TypeVar, Iterable, Any
 
 import ray
-from ray.experimental.data.impl.block import Block, ObjectRef
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
+from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
@@ -37,12 +37,11 @@ class TaskPool(ComputePool):
             wrapped_fn.remote(b, m)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
-        new_blocks = [r[0] for r in refs]
-        new_metadata = [r[1] for r in refs]
+        new_blocks, new_metadata = zip(*refs)
 
-        map_bar.block_until_complete(new_blocks)
-        new_metadata = ray.get(new_metadata)
-        return BlockList(new_blocks, new_metadata)
+        map_bar.block_until_complete(list(new_blocks))
+        new_metadata = ray.get(list(new_metadata))
+        return BlockList(list(new_blocks), list(new_metadata))
 
 
 class ActorPool(ComputePool):

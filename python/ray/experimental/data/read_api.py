@@ -1,4 +1,5 @@
 import logging
+import functools
 import builtins
 import inspect
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
@@ -17,8 +18,11 @@ from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     ReadTask
 from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
+from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
+from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
 T = TypeVar("T")
@@ -27,15 +31,102 @@ logger = logging.getLogger(__name__)
 
 
 def autoinit_ray(f: Callable) -> Callable:
+    @functools.wraps(f)
     def wrapped(*a, **kw):
         if not ray.is_initialized():
             ray.client().connect()
         return f(*a, **kw)
 
-    wrapped.__name__ = f.__name__
-    wrapped.__doc__ = f.__doc__
     setattr(wrapped, "__signature__", inspect.signature(f))
     return wrapped
+
+
+def _expand_directory(path: str,
+                      filesystem: "pyarrow.fs.FileSystem",
+                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
+    """
+    Expand the provided directory path to a list of file paths.
+
+    Args:
+        path: The directory path to expand.
+        filesystem: The filesystem implementation that should be used for
+            reading these files.
+        exclude_prefixes: The file relative path prefixes that should be
+            excluded from the returned file set. Default excluded prefixes are
+            "." and "_".
+
+    Returns:
+        A list of file paths contained in the provided directory.
+    """
+    from pyarrow.fs import FileSelector
+    selector = FileSelector(path, recursive=True)
+    files = filesystem.get_file_info(selector)
+    base_path = selector.base_dir
+    filtered_paths = []
+    for file_ in files:
+        if not file_.is_file:
+            continue
+        file_path = file_.path
+        if not file_path.startswith(base_path):
+            continue
+        relative = file_path[len(base_path):]
+        if any(relative.startswith(prefix) for prefix in [".", "_"]):
+            continue
+        filtered_paths.append(file_path)
+    # We sort the paths to guarantee a stable order.
+    return sorted(filtered_paths)
+
+
+def _resolve_paths_and_filesystem(
+        paths: Union[str, List[str]],
+        filesystem: "pyarrow.fs.FileSystem" = None
+) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
+    """
+    Resolves and normalizes all provided paths, infers a filesystem from the
+    paths and ensures that all paths use the same filesystem, and expands all
+    directory paths to the underlying file paths.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation that should be used for
+            reading these files. If None, a filesystem will be inferred. If not
+            None, the provided filesystem will still be validated against all
+            filesystems inferred from the provided paths to ensure
+            compatibility.
+    """
+    from pyarrow.fs import FileType, _resolve_filesystem_and_path
+
+    if isinstance(paths, str):
+        paths = [paths]
+    elif (not isinstance(paths, list)
+          or any(not isinstance(p, str) for p in paths)):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+    elif len(paths) == 0:
+        raise ValueError("Must provide at least one path.")
+
+    resolved_paths = []
+    for path in paths:
+        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+            path, filesystem)
+        if filesystem is None:
+            filesystem = resolved_filesystem
+        elif type(resolved_filesystem) != type(filesystem):
+            raise ValueError("All paths must use same filesystem.")
+        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_paths.append(resolved_path)
+
+    expanded_paths = []
+    for path in resolved_paths:
+        file_info = filesystem.get_file_info(path)
+        if file_info.type == FileType.Directory:
+            expanded_paths.extend(_expand_directory(path, filesystem))
+        elif file_info.type == FileType.File:
+            expanded_paths.append(path)
+        else:
+            raise FileNotFoundError(path)
+    return expanded_paths, filesystem
 
 
 @autoinit_ray
@@ -58,7 +149,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = ListBlock.builder()
+        builder = SimpleBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
@@ -228,8 +319,12 @@ def read_json(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_json(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_json_args: Other json read options to pass to pyarrow.
@@ -237,7 +332,34 @@ def read_json(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    import pyarrow as pa
+    from pyarrow import json
+    import numpy as np
+
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+    @ray.remote(num_returns=2)
+    def json_read(read_paths: List[str]):
+        logger.debug(f"Reading {len(read_paths)} files.")
+        tables = []
+        for read_path in read_paths:
+            with filesystem.open_input_file(read_path) as f:
+                tables.append(
+                    json.read_json(
+                        f,
+                        read_options=json.ReadOptions(use_threads=False),
+                        **arrow_json_args))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
+
+    res = [
+        json_read.remote(read_paths)
+        for read_paths in np.array_split(paths, parallelism)
+        if len(read_paths) > 0
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -254,8 +376,12 @@ def read_csv(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_csv(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_csv_args: Other csv read options to pass to pyarrow.
@@ -263,7 +389,34 @@ def read_csv(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    import pyarrow as pa
+    from pyarrow import csv
+    import numpy as np
+
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+    @ray.remote(num_returns=2)
+    def csv_read(read_paths: List[str]):
+        logger.debug(f"Reading {len(read_paths)} files.")
+        tables = []
+        for read_path in read_paths:
+            with filesystem.open_input_file(read_path) as f:
+                tables.append(
+                    csv.read_csv(
+                        f,
+                        read_options=csv.ReadOptions(use_threads=False),
+                        **arrow_csv_args))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
+
+    res = [
+        csv_read.remote(read_paths)
+        for read_paths in np.array_split(paths, parallelism)
+        if len(read_paths) > 0
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -292,21 +445,32 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    dataset = from_items(paths, parallelism=parallelism)
+    return dataset.map(
+        lambda path: _reader.read_file(
+            path,
+            include_paths=include_paths,
+            filesystem=filesystem))
 
 
 @autoinit_ray
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create a dataset from a Dask dataframe.
+    """Create a dataset from a Dask DataFrame.
 
     Args:
-        df: A Dask dataframe, which must be executed by Dask-on-Ray.
+        df: A Dask DataFrame.
 
     Returns:
-        Dataset holding Arrow records read from the dataframe.
+        Dataset holding Arrow records read from the DataFrame.
     """
-    raise NotImplementedError  # P1
+    import dask
+    from ray.util.dask import ray_dask_get
+
+    partitions = df.to_delayed()
+    persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
+    return from_pandas(
+        [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
 @autoinit_ray
@@ -350,7 +514,16 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
-    raise NotImplementedError  # P1
+    import pyarrow as pa
+
+    @ray.remote(num_returns=2)
+    def df_to_block(df: "pandas.DataFrame"):
+        block = ArrowBlock(pa.table(df))
+        return block, block.get_metadata(input_files=None)
+
+    res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray

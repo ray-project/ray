@@ -24,6 +24,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -143,8 +144,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Process a new client connection.
   ///
@@ -620,18 +620,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
+  /// A pool of workers.
+  WorkerPool worker_pool_;
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `CoreWorkerClient`s.
+  rpc::ClientCallManager client_call_manager_;
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+  /// The raylet client to initiate the pubsub to core workers (owners).
+  /// It is used to subscribe objects to evict.
+  std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  /// The object table. This is shared between the object manager and node
+  /// manager.
+  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
   plasma::PlasmaClient store_client_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The object table. This is shared with the object manager.
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
@@ -649,8 +660,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
 
-  /// A pool of workers.
-  WorkerPool worker_pool_;
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
@@ -666,13 +675,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The agent manager RPC service.
   std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
   rpc::AgentManagerGrpcService agent_manager_service_;
-
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
-  /// as well as all `CoreWorkerClient`s.
-  rpc::ClientCallManager client_call_manager_;
-
-  /// Pool of RPC client connections to core workers.
-  rpc::CoreWorkerClientPool worker_rpc_pool_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
