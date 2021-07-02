@@ -200,7 +200,7 @@ class StandardAutoscaler:
             should_keep_worker_of_node_type, node_type_counts = \
                 self._keep_worker_of_node_type(node_id, node_type_counts)
             if ((should_keep_worker_of_node_type
-                    or not nodes_allowed_to_terminate.get(node_id, True))
+                 or not nodes_allowed_to_terminate.get(node_id, True))
                     and self.launch_config_ok(node_id)):
                 continue
 
@@ -480,12 +480,13 @@ class StandardAutoscaler:
                 # The node type has been deleted from the cluster config.
                 # Don't keep the node.
                 return False, new_node_type_counts
-            node_type_counts[node_type] += 1
+            new_node_type_counts[node_type] += 1
             min_workers = self.available_node_types[node_type].get(
                 "min_workers", 0)
             max_workers = self.available_node_types[node_type].get(
                 "max_workers", 0)
-            if node_type_counts[node_type] <= min(min_workers, max_workers):
+            if new_node_type_counts[node_type] <= min(min_workers,
+                                                      max_workers):
                 return True, new_node_type_counts
 
         return False, new_node_type_counts
