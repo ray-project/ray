@@ -1265,7 +1265,6 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-
 }  // namespace raylet
 
 }  // namespace ray

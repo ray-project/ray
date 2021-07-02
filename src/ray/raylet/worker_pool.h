@@ -40,7 +40,6 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
-
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
