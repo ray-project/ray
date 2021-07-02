@@ -14,11 +14,11 @@ Lifetime of a Ray Serve Instance
 ================================
 
 Ray Serve instances run on top of Ray clusters and are started using :mod:`serve.start <ray.serve.start>`.
-Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create the backends and endpoints that will be used to serve your Python code (including ML models).
+Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
 The Serve instance will be torn down when the script exits.
 
 When running on a long-lived Ray cluster (e.g., one started using ``ray start`` and connected
-to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance as a long-running
+to using ``ray.init(address="auto", namespace="serve")``, you can also deploy a Ray Serve instance as a long-running
 service using ``serve.start(detached=True)``. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
@@ -51,7 +51,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
       time.sleep(5)
       print(serve.list_deployments())
 
-2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto")`` in your Serve script(s). You can run multiple scripts to update your backends over time.
+2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto", namespace="serve")`` in your Serve script(s) (this is the Ray namespace, not Kubernetes namespace, and you can specify any namespace that you like). You can run multiple scripts to update your deployments over time.
 
 .. code-block:: bash
 
@@ -64,7 +64,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   from ray import serve
 
   # This will connect to the running Ray cluster.
-  ray.init(address="auto")
+  ray.init(address="auto", namespace="serve")
 
   @serve.deployment
   def my_func(request):
@@ -165,7 +165,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     from ray import serve
 
     # Connect to the running Ray cluster.
-    ray.init(address="auto")
+    ray.init(address="auto", namespace="serve")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
     serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
