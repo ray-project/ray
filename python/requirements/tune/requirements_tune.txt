@@ -24,7 +24,7 @@ matplotlib==3.4.2; python_version >= '3.7'
 mlflow==1.17.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post3
-optuna==2.6.0
+optuna==2.8.0
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3
