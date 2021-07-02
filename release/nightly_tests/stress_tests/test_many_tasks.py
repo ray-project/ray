@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 ray.init(address="auto")
 
+
 @ray.remote(num_cpus=1)
 def f(size, *xs):
     return np.ones(size, dtype=np.uint8)
@@ -84,7 +85,9 @@ def stage2(smoke=False):
         for i in range(20):
             logger.info("Iteration %s. Cumulative time %s seconds", i,
                         time.time() - start_time)
-            x_ids = [f.remote(0, *x_ids) for _ in range(num_tasks_per_iteration)]
+            x_ids = [
+                f.remote(0, *x_ids) for _ in range(num_tasks_per_iteration)
+            ]
         ray.get(x_ids)
         stage_2_iterations.append(time.time() - iteration_start)
         logger.info("Finished after %s seconds.", time.time() - start_time)
@@ -161,7 +164,7 @@ def stage4():
 def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-nodes", type=int, default=100)
-    parser.add_argument("--smoke-test", action='store_true')
+    parser.add_argument("--smoke-test", action="store_true")
     return parser.parse_known_args()
 
 
