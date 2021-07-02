@@ -3,6 +3,7 @@ import shutil
 
 from unittest.mock import patch
 import dask.dataframe as dd
+import math
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -306,6 +307,37 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
+
+
+def test_iter_batches(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
+    dfs = [df1, df2, df3]
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+
+    # Default.
+    for batch, df in zip(ds.iter_batches(), dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
+
+    # pyarrow.Table format.
+    for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
+        assert isinstance(batch, pa.Table)
+        assert batch.equals(pa.Table.from_pandas(df))
+
+    # Batch size.
+    batches = [batch for batch in ds.iter_batches(batch_size=2)]
+    assert len(batches) == (math.ceil(len(df1) / 2) + math.ceil(len(df2) / 2) +
+                            math.ceil(len(df3) / 2))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Prefetch.
+    for batch, df in zip(ds.iter_batches(prefetch_blocks=1), dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):

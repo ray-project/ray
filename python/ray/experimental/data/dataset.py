@@ -810,8 +810,31 @@ class Dataset(Generic[T]):
         Returns:
             A list of iterators over record batches.
         """
-
-        raise NotImplementedError  # P1
+        blocks = list(iter(self._blocks))
+        for curr_block_idx in range(len(blocks)):
+            # Prefetch blocks.
+            ray.wait(
+                blocks[curr_block_idx:curr_block_idx + prefetch_blocks],
+                num_returns=1,
+                fetch_local=True)
+            # Get the current block.
+            block = ray.get(blocks[curr_block_idx])
+            total_rows = block.num_rows()
+            max_batch_size = batch_size
+            if max_batch_size is None:
+                max_batch_size = total_rows
+            for start in range(0, total_rows, max_batch_size):
+                end = min(total_rows, start + max_batch_size)
+                view = block.slice(start, end, copy=False)
+                if batch_format == "pandas":
+                    view = view.to_pandas()
+                elif batch_format == "pyarrow":
+                    view = view._table
+                else:
+                    raise ValueError(
+                        f"The given batch format: {batch_format} "
+                        f"is invalid. Supported batch type: {BatchType}")
+                yield view
 
     def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
         """Return a Torch data iterator over this dataset.
