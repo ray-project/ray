@@ -1,8 +1,8 @@
-import cv2
 import gym
 import numpy as np
 import os
 from pathlib import Path
+from skimage import io
 import unittest
 
 from ray.rllib.models.preprocessors import GenericPixelPreprocessor
@@ -30,7 +30,7 @@ class TestConvTranspose2DStack(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent
         img_file = os.path.join(rllib_dir,
                                 "tests/data/images/obstacle_tower.png")
-        img = cv2.imread(img_file).astype(np.float32)
+        img = io.imread(img_file).astype(np.float32)
         # Preprocess.
         img = preprocessor.transform(img)
         # Make channels first.
