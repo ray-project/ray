@@ -81,6 +81,7 @@ def run_same_policy(args, stop):
 
 def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     """Run heuristic policies vs a learned agent.
+
     The learned agent should eventually reach a reward of ~5 with
     use_lstm=False, and ~7 with use_lstm=True. The reason the LSTM policy
     can perform better is since it can distinguish between the always_same vs
