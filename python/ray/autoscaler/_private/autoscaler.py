@@ -1,6 +1,6 @@
 from collections import defaultdict, namedtuple, Counter
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Tuple
 from urllib3.exceptions import MaxRetryError
 import copy
 import logging
@@ -197,9 +197,11 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            if (self._keep_worker_of_node_type(node_id, node_type_counts)
-                    or not nodes_allowed_to_terminate.get(
-                        node_id, True)) and self.launch_config_ok(node_id):
+            should_keep_worker_of_node_type, node_type_counts = \
+                self._keep_worker_of_node_type(node_id, node_type_counts)
+            if ((should_keep_worker_of_node_type
+                    or not nodes_allowed_to_terminate.get(node_id, True))
+                    and self.launch_config_ok(node_id)):
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
@@ -449,9 +451,9 @@ class StandardAutoscaler:
                 nodes_allowed_to_terminate[node_id] = False
         return nodes_allowed_to_terminate
 
-    def _keep_worker_of_node_type(
-            self, node_id: NodeID,
-            node_type_counts: Dict[NodeType, int]) -> bool:
+    def _keep_worker_of_node_type(self, node_id: NodeID,
+                                  node_type_counts: Dict[NodeType, int]
+                                  ) -> Tuple[bool, Dict[NodeType, int]]:
         """Determines if a worker should be kept based on the min_workers
         constraint of the worker's node_type.
 
@@ -461,31 +463,32 @@ class StandardAutoscaler:
         (b) Deleting the node would violate the min_workers constraint for that
             worker's node_type.
 
-        Also updates the counter dict (node_type_counts), which is passed in by
-        reference.
+        Also updates and returns the dictionary of node type counts.
 
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
             bool: True if the node should be kept. False otherwise.
+            Dict[NodeType, int]: Updated node type counts
         """
+        new_node_type_counts = copy.deepcopy(node_type_counts)
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             if node_type not in self.available_node_types:
                 # The node type has been deleted from the cluster config.
                 # Don't keep the node.
-                return False
+                return False, new_node_type_counts
             node_type_counts[node_type] += 1
             min_workers = self.available_node_types[node_type].get(
                 "min_workers", 0)
             max_workers = self.available_node_types[node_type].get(
                 "max_workers", 0)
             if node_type_counts[node_type] <= min(min_workers, max_workers):
-                return True
+                return True, new_node_type_counts
 
-        return False
+        return False, new_node_type_counts
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
