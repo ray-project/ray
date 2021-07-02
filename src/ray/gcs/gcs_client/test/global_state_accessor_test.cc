@@ -303,7 +303,6 @@ TEST_F(GlobalStateAccessorTest, TestInternalKVPutGetString) {
   ASSERT_EQ(global_state_->GetInternalKVString("key")->compare("value"), 0);
 }
 
-
 }  // namespace ray
 
 int main(int argc, char **argv) {

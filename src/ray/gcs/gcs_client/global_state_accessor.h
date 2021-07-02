@@ -168,9 +168,20 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
+  /// Get value of a key from GCS Service.
+  ///
+  /// \param key The key to look up.
+  /// \return The value.
   std::unique_ptr<std::string> GetInternalKVString(const std::string &key);
 
-  bool PutInternalKVString(const std::string &key, const std::string &value, bool overwrite = false);
+  /// Put key-value pair to GCS Service.
+  ///
+  /// \param key The key to put.
+  /// \param value The value to put.
+  /// \param overwrite Whether to overwrite.
+  /// \return True if successes.
+  bool PutInternalKVString(const std::string &key, const std::string &value,
+                           bool overwrite = false);
 
  private:
   /// MultiItem transformation helper in template style.

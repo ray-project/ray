@@ -522,12 +522,12 @@ class InternalKVGcsServiceHandler {
  public:
   virtual ~InternalKVGcsServiceHandler() = default;
   virtual void HandleInternalKVGetString(const InternalKVGetStringRequest &request,
-                                   InternalKVGetStringReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
+                                         InternalKVGetStringReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleInternalKVPutString(const InternalKVPutStringRequest &request,
-                                   InternalKVPutStringReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
+                                         InternalKVPutStringReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleInternalKVGet(const InternalKVGetRequest &request,
                                    InternalKVGetReply *reply,

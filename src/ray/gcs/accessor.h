@@ -694,9 +694,9 @@ class InternalKVAccessor {
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPutString(const std::string &key, const std::string &value,
-                                    bool overwrite,
-                                    const StatusCallback &callback) = 0;
+  virtual Status AsyncInternalKVPutString(const std::string &key,
+                                          const std::string &value, bool overwrite,
+                                          const StatusCallback &callback) = 0;
 
   /// Asynchronously get the Hash type value with "value" field for a given key.
   ///

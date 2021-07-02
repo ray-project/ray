@@ -1363,7 +1363,6 @@ Status ServiceBasedInternalKVAccessor::AsyncInternalKVPutString(
   req.set_key(key);
   req.set_value(value);
   req.set_overwrite(overwrite);
-  RAY_LOG(INFO) << "wangtao 1366";
   client_impl_->GetGcsRpcClient().InternalKVPutString(
       req, [callback](const Status &status, const rpc::InternalKVPutStringReply &reply) {
         callback(status);

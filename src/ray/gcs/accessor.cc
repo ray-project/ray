@@ -19,15 +19,11 @@ namespace ray {
 namespace gcs {
 
 Status InternalKVAccessor::PutString(const std::string &key, const std::string &value,
-                               bool overwrite) {
+                                     bool overwrite) {
   std::promise<Status> ret_promise;
-  RAY_LOG(INFO) << "wangtao 24"; 
   RAY_CHECK_OK(AsyncInternalKVPutString(
       key, value, overwrite,
-      [&ret_promise](Status status) {
-        RAY_LOG(INFO) << "wangtao 28"; 
-        ret_promise.set_value(status);
-      }));
+      [&ret_promise](Status status) { ret_promise.set_value(status); }));
   return ret_promise.get_future().get();
 }
 
@@ -56,12 +52,13 @@ Status InternalKVAccessor::Keys(const std::string &prefix,
 
 Status InternalKVAccessor::GetString(const std::string &key, std::string &value) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVGetString(key, [&ret_promise, &value](Status status, auto &v) {
-    if (v) {
-      value = *v;
-    }
-    ret_promise.set_value(status);
-  }));
+  RAY_CHECK_OK(
+      AsyncInternalKVGetString(key, [&ret_promise, &value](Status status, auto &v) {
+        if (v) {
+          value = *v;
+        }
+        ret_promise.set_value(status);
+      }));
   return ret_promise.get_future().get();
 }
 

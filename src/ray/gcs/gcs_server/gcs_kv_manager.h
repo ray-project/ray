@@ -28,12 +28,12 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
       : redis_client_(redis_client) {}
 
   void HandleInternalKVGetString(const rpc::InternalKVGetStringRequest &request,
-                           rpc::InternalKVGetStringReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+                                 rpc::InternalKVGetStringReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback);
 
   void HandleInternalKVPutString(const rpc::InternalKVPutStringRequest &request,
-                           rpc::InternalKVPutStringReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+                                 rpc::InternalKVPutStringReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback);
 
   void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
                            rpc::InternalKVGetReply *reply,

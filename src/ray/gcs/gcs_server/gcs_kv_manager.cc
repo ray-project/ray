@@ -22,7 +22,6 @@ void GcsInternalKVManager::HandleInternalKVGetString(
 void GcsInternalKVManager::HandleInternalKVPutString(
     const rpc::InternalKVPutStringRequest &request, rpc::InternalKVPutStringReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "wangtao 25"; 
   std::vector<std::string> cmd = {request.overwrite() ? "SET" : "SETNX", request.key(),
                                   request.value()};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
