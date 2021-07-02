@@ -527,9 +527,12 @@ class PlacementGroupManager:
     def return_pg(self, trial: "Trial"):
         """Return pg, making it available for other trials to use.
 
+        This will only return a placement group if a staged placement
+        group can be replaced by it. If not, it will destroy the placement
+        group.
+
         Args:
             trial (Trial): Return placement group of this trial.
-
         Returns:
             Boolean indicating if the placement group was returned.
         """
@@ -537,10 +540,18 @@ class PlacementGroupManager:
             return True
 
         pgf = trial.placement_group_factory
-
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
+
+        staged_pg = self._unstage_unused_pg(pgf)
+
+        # Could not replace
+        if not staged_pg:
+            self.remove_pg(pg)
+            return False
+
         self._ready[pgf].add(pg)
+        self.remove_pg(staged_pg)
 
         return True
 
