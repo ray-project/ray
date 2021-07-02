@@ -74,7 +74,6 @@ genrule(
         "ray_api",
         "libray_api.so",
     ],
-    tags = ["no-cache"],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
@@ -118,6 +117,7 @@ genrule(
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
+    tags = ["no-cache"],
     visibility = ["//visibility:public"],
 )
 
