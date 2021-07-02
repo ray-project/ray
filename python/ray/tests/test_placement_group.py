@@ -29,6 +29,18 @@ class Increase:
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_zero(ray_start_cluster, connect_to_client):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    ray.get(pg.ready())
+    a = Actor.options(num_cpus=1, placement_group=pg).remote()
+    ray.get(pg.ready())
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_pack(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)
     class Actor(object):

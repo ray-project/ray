@@ -112,11 +112,8 @@ bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id
 
 std::string GetOriginalResourceName(const std::string &resource) {
   auto idx = resource.find("_group_");
-  if (idx > 0) {
-    return resource.substr(0, idx);
-  } else {
-    return "";
-  }
+  RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
+  return resource.substr(0, idx);
 }
 
 }  // namespace ray
