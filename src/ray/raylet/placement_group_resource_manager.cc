@@ -111,7 +111,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
       cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
     } else {
       cluster_resource_scheduler_->AddLocalResourceInstances(
-          resource_name, {std::numeric_limits<double>::max()});
+          resource_name, {1000.0});
     }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();

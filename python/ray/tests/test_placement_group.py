@@ -38,11 +38,18 @@ def test_placement_zero(ray_start_cluster, connect_to_client):
         def v(self):
             return 10
 
-    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
-    ray.get(pg.ready())
-    a = Actor.options(num_cpus=1, placement_group=pg).remote()
-    ray.get(a.v.remote())
-    ray.get(pg.ready())
+    cluster = ray_start_cluster
+    num_nodes = 2
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    with connect_to_client_or_not(connect_to_client):
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+        ray.get(pg.ready())
+        a = Actor.options(num_cpus=1, placement_group=pg).remote()
+        ray.get(a.v.remote())
+        ray.get(pg.ready())
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
