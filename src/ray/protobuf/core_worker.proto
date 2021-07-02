@@ -180,26 +180,6 @@ message WaitForActorOutOfScopeRequest {
 message WaitForActorOutOfScopeReply {
 }
 
-message PubsubLongPollingRequest {
-  /// The address of the subscriber that sends a long polling request.
-  Address subscriber_address = 1;
-}
-
-message PubsubLongPollingReply {
-  /// The object ids that are published.
-  repeated PubMessage pub_messages = 1;
-}
-
-message PubsubCommandBatchRequest {
-  /// The id of the subscriber.
-  bytes subscriber_id = 1;
-  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
-  repeated Command commands = 2;
-}
-
-message PubsubCommandBatchReply {
-}
-
 message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
@@ -219,30 +199,11 @@ message RemoveObjectLocationOwnerReply {
 }
 
 message GetObjectLocationsOwnerRequest {
-  bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  // The version of the last location update. Only updates more recent than this version
-  // will be returned. -1 indicates that the current location data should
-  // always be returned.
-  int64 last_version = 3;
+  WorkerObjectLocationsSubMessage object_location_request = 1;
 }
 
 message GetObjectLocationsOwnerReply {
-  // The IDs of the nodes that this object appeared on or was evicted by.
-  repeated bytes node_ids = 1;
-  // The size of the object in bytes.
-  uint64 object_size = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 4;
-  // The version of the returned location updates.
-  int64 current_version = 5;
-  // The ID of the node that stores the primary copy in plasma.
-  // This could be Nil if the object has been evicted or inlined.
-  bytes primary_node_id = 6;
+  WorkerObjectLocationsPubMessage object_location_info = 1;
 }
 
 message KillActorRequest {

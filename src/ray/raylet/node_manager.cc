@@ -170,44 +170,10 @@ void HeartbeatSender::Heartbeat() {
 NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config,
                          const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
       io_service_(io_service),
-      object_manager_(
-          io_service, self_node_id, object_manager_config, object_directory,
-          [this](const ObjectID &object_id, const std::string &object_url,
-                 std::function<void(const ray::Status &)> callback) {
-            GetLocalObjectManager().AsyncRestoreSpilledObject(object_id, object_url,
-                                                              callback);
-          },
-          [this](const ObjectID &object_id) {
-            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
-          },
-          [this]() {
-            // This callback is called from the plasma store thread.
-            // NOTE: It means the local object manager should be thread-safe.
-            io_service_.post(
-                [this]() { GetLocalObjectManager().SpillObjectUptoMaxThroughput(); },
-                "NodeManager.SpillObjects");
-            return GetLocalObjectManager().IsSpillingInProgress();
-          },
-          [this]() {
-            // Post on the node manager's event loop since this
-            // callback is called from the plasma store thread.
-            // This will help keep node manager lock-less.
-            io_service_.post([this]() { TriggerGlobalGC(); }, "NodeManager.GlobalGC");
-          },
-          /*add_object_callback=*/
-          [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
-          /*delete_object_callback=*/
-          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }),
       gcs_client_(gcs_client),
-      object_directory_(object_directory),
-      periodical_runner_(io_service),
-      report_resources_period_ms_(config.report_resources_period_ms),
-      temp_dir_(config.temp_dir),
-      initial_config_(config),
       worker_pool_(io_service, self_node_id_, config.node_manager_address,
                    config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,
@@ -217,14 +183,73 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      client_call_manager_(io_service),
+      worker_rpc_pool_(client_call_manager_),
+      core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
+          self_node_id_, RayConfig::instance().max_command_batch_size(),
+          /*get_client=*/
+          [this](const rpc::Address &address) {
+            return worker_rpc_pool_.GetOrConnect(address);
+          },
+          &io_service_)),
+      object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
+          io_service_, gcs_client_, core_worker_subscriber_.get(),
+          [this](const ObjectID &obj_id, const ErrorType &error_type) {
+            rpc::ObjectReference ref;
+            ref.set_object_id(obj_id.Binary());
+            MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+          })),
+      object_manager_(
+          io_service, self_node_id, object_manager_config, object_directory_.get(),
+          [this](const ObjectID &object_id, const std::string &object_url,
+                 std::function<void(const ray::Status &)> callback) {
+            GetLocalObjectManager().AsyncRestoreSpilledObject(object_id, object_url,
+                                                              callback);
+          },
+          /*get_spilled_object_url=*/
+          [this](const ObjectID &object_id) {
+            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
+          },
+          /*spill_objects_callback=*/
+          [this]() {
+            // This callback is called from the plasma store thread.
+            // NOTE: It means the local object manager should be thread-safe.
+            io_service_.post(
+                [this]() { GetLocalObjectManager().SpillObjectUptoMaxThroughput(); },
+                "NodeManager.SpillObjects");
+            return GetLocalObjectManager().IsSpillingInProgress();
+          },
+          /*object_store_full_callback=*/
+          [this]() {
+            // Post on the node manager's event loop since this
+            // callback is called from the plasma store thread.
+            // This will help keep node manager lock-less.
+            io_service_.post([this]() { TriggerGlobalGC(); }, "NodeManager.GlobalGC");
+          },
+          /*add_object_callback=*/
+          [this](const ObjectInfo &object_info) { HandleObjectLocal(object_info); },
+          /*delete_object_callback=*/
+          [this](const ObjectID &object_id) { HandleObjectMissing(object_id); },
+          /*pin_object=*/
+          [this](const ObjectID &object_id) {
+            std::vector<ObjectID> object_ids = {object_id};
+            std::vector<std::unique_ptr<RayObject>> results;
+            std::unique_ptr<RayObject> result;
+            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+              result = std::move(results[0]);
+            }
+            return result;
+          }),
+      periodical_runner_(io_service),
+      report_resources_period_ms_(config.report_resources_period_ms),
+      temp_dir_(config.temp_dir),
+      initial_config_(config),
       dependency_manager_(object_manager_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
       agent_manager_service_handler_(
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
-      client_call_manager_(io_service),
-      worker_rpc_pool_(client_call_manager_),
       local_object_manager_(
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
@@ -244,11 +269,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/
-          std::make_shared<pubsub::Subscriber>(
-              self_node_id_, config.node_manager_address, config.node_manager_port,
-              RayConfig::instance().max_command_batch_size(), worker_rpc_pool_,
-              &io_service_)),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -385,14 +406,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
-
-  // Subscribe to resource usage batches from the monitor.
-  const auto &resource_usage_batch_added =
-      [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchReceived(resource_usage_batch);
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-      resource_usage_batch_added, /*done*/ nullptr));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -556,7 +569,8 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
-  cluster_task_manager_->FillResourceUsage(resources_data);
+  cluster_task_manager_->FillResourceUsage(
+      resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
@@ -730,7 +744,6 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
-  std::ostringstream error_message;
   if (any_pending && resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
     // Trigger global GC to hopefully free up resource slots.
@@ -741,6 +754,7 @@ void NodeManager::WarnResourceDeadlock() {
       return;
     }
 
+    std::ostringstream error_message;
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. It requires "
@@ -910,7 +924,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
 
   if (node_id == self_node_id_) {
     // The resource update is on the local node, check if we can reschedule tasks.
-    cluster_task_manager_->ScheduleInfeasibleTasks();
+    cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
 
@@ -1295,7 +1309,7 @@ void NodeManager::DisconnectClient(
     // Return the resources that were being used by this worker.
     cluster_task_manager_->ReleaseWorkerResources(worker);
 
-    // Since some resources may have been released, we can try to dispatch more tasks. YYY
+    // Since some resources may have been released, we can try to dispatch more tasks.
     cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
     // The client is a driver.
@@ -1410,7 +1424,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (worker && !worker->GetAssignedTaskId().IsNil()) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
-      dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
+      dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), refs);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -1614,7 +1628,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(
         task.GetTaskSpecification().GetMessage());
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
@@ -1646,7 +1659,6 @@ void NodeManager::HandleCommitBundleResources(
   placement_group_resource_manager_->CommitBundle(bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  cluster_task_manager_->ScheduleInfeasibleTasks();
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -1681,7 +1693,6 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  cluster_task_manager_->ScheduleInfeasibleTasks();
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1758,6 +1769,8 @@ void NodeManager::MarkObjectsAsFailed(
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
+    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
+                   << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_.TryCreateImmediately(
@@ -1906,7 +1919,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
     runtime_env_manager_.AddURIReference(actor_id.Hex(), job_config->runtime_env());
-    ;
   }
 }
 
@@ -2042,6 +2054,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << gcs_client_->DebugString();
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << dependency_manager_.DebugString();
+  result << "\n" << core_worker_subscriber_->DebugString();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "

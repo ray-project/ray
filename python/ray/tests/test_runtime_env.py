@@ -26,14 +26,15 @@ try:
 except:
     pass
 
-job_config = ray.job_config.JobConfig(
-    runtime_env={runtime_env}
-)
-
-if not job_config.runtime_env:
-    job_config=None
-
 try:
+    job_config = ray.job_config.JobConfig(
+        runtime_env={runtime_env}
+    )
+
+    if not job_config.runtime_env:
+        job_config=None
+
+
     if os.environ.get("USE_RAY_CLIENT"):
         ray.client("{address}").env({runtime_env}).namespace("").connect()
     else:
@@ -690,6 +691,85 @@ def test_get_release_wheel_url():
                 url = get_release_wheel_url(commit, sys_platform, version,
                                             py_version)
                 assert requests.head(url).status_code == 200, url
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+def test_decorator_task(ray_start_cluster_head):
+    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    def f():
+        return os.environ.get("foo")
+
+    assert ray.get(f.remote()) == "bar"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+def test_decorator_actor(ray_start_cluster_head):
+    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    class A:
+        def g(self):
+            return os.environ.get("foo")
+
+    a = A.remote()
+    assert ray.get(a.g.remote()) == "bar"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+def test_decorator_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(
+            runtime_env={"env_vars": {
+                "foo": "job"
+            }}))
+
+    @ray.remote
+    def env_from_job():
+        return os.environ.get("foo")
+
+    assert ray.get(env_from_job.remote()) == "job"
+
+    @ray.remote(runtime_env={"env_vars": {"foo": "task"}})
+    def f():
+        return os.environ.get("foo")
+
+    assert ray.get(f.remote()) == "task"
+
+    @ray.remote(runtime_env={"env_vars": {"foo": "actor"}})
+    class A:
+        def g(self):
+            return os.environ.get("foo")
+
+    a = A.remote()
+    assert ray.get(a.g.remote()) == "actor"
+
+    # Test that runtime_env can be overridden by specifying .options().
+
+    assert ray.get(
+        f.options(runtime_env={
+            "env_vars": {
+                "foo": "new"
+            }
+        }).remote()) == "new"
+
+    a = A.options(runtime_env={"env_vars": {"foo": "new2"}}).remote()
+    assert ray.get(a.g.remote()) == "new2"
+
+
+def test_container_option_serialize():
+    runtime_env = {
+        "container": {
+            "image": "ray:latest",
+            "run_options": ["--name=test"]
+        }
+    }
+    job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
+    job_config_serialized = job_config.serialize()
+    # job_config_serialized is JobConfig protobuf serialized string,
+    # job_config.runtime_env.raw_json has container_option info
+    # job_config.serialized_runtime_env also has container_option info
+    assert job_config_serialized.count(b"image") == 2
 
 
 if __name__ == "__main__":

@@ -28,6 +28,8 @@ message CreateRuntimeEnvReply {
   AgentRpcStatus status = 1;
   // The error message.
   string error_message = 2;
+  // Runtime env context.
+  string serialized_runtime_env_context = 3;
 }
 
 message DeleteRuntimeEnvRequest {
