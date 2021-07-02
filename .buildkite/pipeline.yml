@@ -139,7 +139,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-post_wheel_build,-worker-nest-container
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -169,15 +169,15 @@
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install docker
-    # We build image ray-nest-container:nightly-py36-cpu which have installed podman,but not push it.
+    # We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
     # And we save this image to a tarball, so that we can load it to podman image storage in the
     # nested-container which run tests. And in this nested-container, Raylet will start ray worker
     # process in double-nested-container.
-    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-nest-container
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-worker-container
     - mkdir /ray-mount/containers
-    - docker save -o /ray-mount/containers/images.tar rayproject/ray-nest-container:nightly-py36-cpu
+    - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
     - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
-      rayproject/ray-nest-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
+      rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -330,6 +330,7 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/... python/ray/experimental/data/...
 
 - label: ":book: Doc tests and examples"
