@@ -93,7 +93,7 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None, destroy_pg=False):
+    def stop_trial(self, trial, error=False, error_msg=None):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -121,7 +121,7 @@ class TrialExecutor:
         assert trial.status == Trial.RUNNING, trial.status
         try:
             self.save(trial, Checkpoint.MEMORY)
-            self.stop_trial(trial, destroy_pg=trial.has_new_resources)
+            self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")
@@ -163,6 +163,9 @@ class TrialExecutor:
 
     def on_step_end(self, trial_runner):
         """A hook called after running one step of the trial event loop."""
+        pass
+
+    def force_reconcilation_on_next_step_end(self):
         pass
 
     def on_no_available_trials(self, trial_runner):

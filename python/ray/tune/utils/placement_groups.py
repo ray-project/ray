@@ -123,6 +123,15 @@ class PlacementGroupFactory:
     def head_cpus(self):
         return self._bundles[0].get("CPU", None)
 
+    @property
+    def required_resources(self) -> Dict[str, float]:
+        """Returns a dict containing the sums of all resources"""
+        resources = {}
+        for bundle in self._bundles:
+            for k, v in bundle.items():
+                resources[k] = resources.get(k, 0) + v
+        return resources
+
     def _bind(self):
         sig = signature(placement_group)
         try:

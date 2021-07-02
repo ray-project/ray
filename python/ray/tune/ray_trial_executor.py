@@ -478,8 +478,7 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None,
-                    destroy_pg=False):
+    def _stop_trial(self, trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -525,17 +524,8 @@ class RayTrialExecutor(TrialExecutor):
                 if should_destroy_actor:
                     logger.debug("Trial %s: Destroying actor.", trial)
 
-                    if destroy_pg:
-                        # (yard1) this is a temporary solution until
-                        # reconcilation is fixed
-                        pg = self._pg_manager.clean_trial_placement_group(
-                            trial)
-                        if pg is not None:
-                            self._pg_manager.remove_pg(pg)
-                    else:
-                        # Try to return the placement group for other
-                        # trials to use
-                        self._pg_manager.return_pg(trial)
+                    # Try to return the placement group for other trials to use
+                    self._pg_manager.return_pg(trial)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
@@ -589,11 +579,10 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None, destroy_pg=False):
+    def stop_trial(self, trial, error=False, error_msg=None):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(
-            trial, error=error, error_msg=error_msg, destroy_pg=destroy_pg)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:
@@ -954,6 +943,9 @@ class RayTrialExecutor(TrialExecutor):
             self.last_pg_recon = time.time()
 
         self._pg_manager.cleanup()
+
+    def force_reconcilation_on_next_step_end(self):
+        self.last_pg_recon = -float("inf")
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves the trial's state to a checkpoint asynchronously.

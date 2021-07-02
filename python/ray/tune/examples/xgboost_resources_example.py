@@ -1,19 +1,22 @@
-from ray.tune.suggest.basic_variant import BasicVariantGenerator
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial
+from typing import Union
 import sklearn.datasets
 import sklearn.metrics
 import os
-from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
-from ray.tune import Trainable
+import math
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from xgboost.core import Booster
 import pickle
 
 import ray
 from ray import tune
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
-from xgboost.core import Booster
+from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
+from ray.tune import Trainable
+from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.suggest.basic_variant import BasicVariantGenerator
+from ray.tune.trial import Trial
+from ray.tune import trial_runner
 
 
 def train_breast_cancer(config: dict):
@@ -123,48 +126,44 @@ def tune_xgboost():
         grace_period=1,
         reduction_factor=2)
 
-    def resource_allocation_function(trial_runner, trial, result,
-                                     base_trial_resource):
+    def resource_allocation_function(
+            trial_runner: "trial_runner.TrialRunner", trial: Trial,
+            result: dict,
+            base_trial_resource) -> Union[None, dict, PlacementGroupFactory]:
         if result["training_iteration"] < 1:
-            return False
+            return None
+
+        min_cpu = base_trial_resource.required_resources["CPU"]
 
         # only start dynamic resource allocation after a sufficient
         # number of trials has been completed
-        if trial_runner.search_alg.total_samples - (
-                len(trial_runner.get_trials()) - len(
-                    trial_runner.get_live_trials())) > 8:
-            return False
 
-        used_resources = trial_runner.trial_executor._pg_manager.total_used_resources(
-            trial_runner.trial_executor._committed_resources).get("CPU", 0)
-        total_available_resources = trial_runner.trial_executor._avail_resources.cpu
-        total_pending_resources = sum([
-            trial.resources.cpu for t in trial_runner.get_trials()
-            if t is not trial and t.status == Trial.PENDING
+        # todo make this use placement group factories
+        total_available_resources = (
+            trial_runner.trial_executor._avail_resources.cpu)
+        upper_resource_limit = math.ceil(total_available_resources / len(
+            trial_runner.get_live_trials()) / min_cpu)
+        if upper_resource_limit <= min_cpu:
+            return None
+
+        used_resources = sum([
+            trial.resources.cpu for t in trial_runner.get_live_trials()
+            if t is not trial
         ])
-        free_resources = total_available_resources - used_resources - total_pending_resources
-        new_cpu = trial.resources.cpu
-        print(
-            f"Trial {trial} ({trial.resources.cpu}) free resources {free_resources}"
-        )
-        if free_resources > 0:
-            if trial.resources.cpu > free_resources:
-                new_cpu = max(free_resources, 1)
-            else:
-                new_cpu = trial.resources.cpu + max(
-                    1, free_resources // len(trial_runner.get_live_trials()))
-        elif free_resources < 0:
-            if trial.resources.cpu > free_resources:
-                new_cpu = max(trial.resources.cpu + free_resources, 1)
+        free_resources = total_available_resources - used_resources
+        print(f"Trial {trial} ({trial.resources.cpu}) free resources",
+              f"{free_resources} upper limit {upper_resource_limit}")
+        new_cpu = min(upper_resource_limit,
+                      max(min_cpu + free_resources, min_cpu))
         if new_cpu == trial.resources.cpu:
-            return False
+            return None
         return {"cpu": new_cpu, "gpu": 0}
 
     scheduler = ResourceChangingScheduler(base_scheduler,
                                           resource_allocation_function)
 
     search = BasicVariantGenerator(
-        #max_concurrent=4
+        # max_concurrent=4
     )
 
     analysis = tune.run(
@@ -178,6 +177,8 @@ def tune_xgboost():
         num_samples=1,
         checkpoint_at_end=True,
         scheduler=scheduler)
+
+    assert analysis.results_df["training_iteration"].max() == 16
 
     return analysis
 
