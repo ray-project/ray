@@ -1601,7 +1601,7 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     }
     auto bundle_label =
         FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
-    new_resources[bundle_label] = 0;
+    new_resources[bundle_label] = 1.;
     return new_resources;
   }
   return resources;

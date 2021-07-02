@@ -62,7 +62,14 @@ void ClusterResourceScheduler::AddOrUpdateNode(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
-  nodes_.insert_or_assign(node_id, Node(node_resources));
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    // This node is new, so add it to the map.
+    nodes_.emplace(node_id, node_resources);
+  } else {
+    // This node exists, so update its resources.
+    it->second = Node(node_resources);
+  }
 }
 
 bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
@@ -771,14 +778,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
       FreeTaskResourceInstances(task_allocation);
       return false;
     }
-  }
-
-  for (const auto &placement_resource : resource_request.placement_resources) {
-    if (!local_resources_.custom_resources.count(placement_resource)) {
-      FreeTaskResourceInstances(task_allocation);
-      return false;
-    }
-    task_allocation->placement_resources.insert(placement_resource);
   }
   return true;
 }

@@ -110,7 +110,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
           task_resource_instances.Get(original_resource_name, string_id_map);
       cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
     } else {
-      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, {0.});
+      cluster_resource_scheduler_->AddLocalResourceInstances(
+          resource_name, {std::numeric_limits<double>::max()});
     }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();

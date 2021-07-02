@@ -82,9 +82,6 @@ ResourceRequest ResourceMapToResourceRequest(
     } else {
       int64_t id = string_to_int_map.Insert(resource.first);
       resource_request.custom_resources[id] = resource.second;
-      if (!GetOriginalResourceName(resource.first).empty()) {
-        resource_request.placement_resources.insert(id);
-      }
     }
   }
 
@@ -127,7 +124,6 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
       resource_request.custom_resources[it->first] += it->second[j];
     }
   }
-  resource_request.placement_resources = placement_resources;
   return resource_request;
 }
 
@@ -465,7 +461,7 @@ bool ResourceRequest::IsEmpty() const {
       return false;
     }
   }
-  return placement_resources.empty();
+  return true;
 }
 
 std::string ResourceRequest::DebugString() const {

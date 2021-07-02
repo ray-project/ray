@@ -221,8 +221,6 @@ def placement_group(bundles: List[Dict[str, float]],
             # Make sure the memory resource can be
             # transformed to memory unit.
             to_memory_units(bundle["memory"], True)
-        if "cpu" not in bundle:
-            bundle["cpu"] = 0
 
     if lifetime is None:
         detached = False

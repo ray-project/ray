@@ -273,7 +273,6 @@ class RemoteFunction:
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
-        print(resources)
         if runtime_env is None:
             runtime_env = self._runtime_env
         if runtime_env:

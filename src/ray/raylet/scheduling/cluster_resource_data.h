@@ -63,8 +63,6 @@ class ResourceRequest {
   std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
   std::unordered_map<int64_t, FixedPoint> custom_resources;
-  /// Set of placement resource id
-  std::unordered_set<int64_t> placement_resources;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -75,7 +73,6 @@ class ResourceRequest {
 // allocated to a task.
 class TaskResourceInstances {
  public:
-  std::unordered_set<int64_t> placement_resources;
   /// The list of instances of each predifined resource allocated to a task.
   std::vector<std::vector<FixedPoint>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
