@@ -1106,23 +1106,71 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const size_t data_size,
                                const std::vector<ObjectID> &contained_object_ids,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                               bool created_by_worker) {
+                               bool created_by_worker,
+                               const std::shared_ptr<rpc::Address> owner_address) {
+  if (options_.is_local_mode) {
+    RAY_CHECK(owner_address == nullptr)
+        << "Specifying owner in `ray.put` is not allowed when running in local mode.";
+  }
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
-  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
-                                     CurrentCallSite(), data_size + metadata->Size(),
-                                     /*is_reconstructable=*/false,
-                                     NodeID::FromBinary(rpc_address_.raylet_id()));
-  if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(data_size) < max_direct_call_object_size_)) {
+  rpc::Address real_owner_address =
+      owner_address != nullptr ? *owner_address : rpc_address_;
+  bool owned_by_us = WorkerID::FromBinary(real_owner_address.worker_id()) ==
+                     WorkerID::FromBinary(rpc_address_.worker_id());
+  auto status = Status::OK();
+  if (owned_by_us) {
+    reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
+                                       CurrentCallSite(), data_size + metadata->Size(),
+                                       /*is_reconstructable=*/false,
+                                       NodeID::FromBinary(rpc_address_.raylet_id()));
+  } else {
+    // Because in the remote worker's `HandleAssignObjectOwner`,
+    // a `WaitForRefRemoved` RPC request will be sent back to
+    // the current worker. So we need to make sure ref count is > 0
+    // by invoking `AddLocalReference` first.
+    AddLocalReference(*object_id);
+    RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
+                                                     real_owner_address));
+
+    // Remote call `AssignObjectOwner()`.
+    rpc::AssignObjectOwnerRequest request;
+    request.set_object_id(object_id->Binary());
+    request.mutable_borrower_address()->CopyFrom(rpc_address_);
+    request.set_call_site(CurrentCallSite());
+
+    for (auto &contained_object_id : contained_object_ids) {
+      request.add_contained_object_ids(contained_object_id.Binary());
+    }
+    request.set_object_size(data_size + metadata->Size());
+    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
+    std::promise<Status> status_promise;
+    conn->AssignObjectOwner(request,
+                            [&status_promise](const Status &returned_status,
+                                              const rpc::AssignObjectOwnerReply &reply) {
+                              status_promise.set_value(returned_status);
+                            });
+    // Block until the remote call `AssignObjectOwner` returns.
+    status = status_promise.get_future().get();
+  }
+
+  if ((options_.is_local_mode ||
+       (RayConfig::instance().put_small_object_in_memory_store() &&
+        static_cast<int64_t>(data_size) < max_direct_call_object_size_)) &&
+      owned_by_us) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    auto status = plasma_store_provider_->Create(metadata, data_size, *object_id,
-                                                 /* owner_address = */ rpc_address_, data,
-                                                 created_by_worker);
+    if (status.ok()) {
+      auto status = plasma_store_provider_->Create(metadata, data_size, *object_id,
+                                                   /* owner_address = */ rpc_address_,
+                                                   data, created_by_worker);
+    }
     if (!status.ok() || !data) {
-      reference_counter_->RemoveOwnedObject(*object_id);
+      if (owned_by_us) {
+        reference_counter_->RemoveOwnedObject(*object_id);
+      } else {
+        RemoveLocalReference(*object_id);
+      }
       return status;
     }
   }
@@ -1143,22 +1191,30 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
   }
 }
 
-Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object) {
-  auto status = SealExisting(object_id, pin_object);
-  if (!status.ok()) {
+Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
+                             const std::shared_ptr<rpc::Address> owner_address) {
+  bool owned_by_us = owner_address != nullptr
+                         ? WorkerID::FromBinary(owner_address->worker_id()) ==
+                               WorkerID::FromBinary(rpc_address_.worker_id())
+                         : true;
+  auto status = SealExisting(object_id, pin_object, owner_address);
+  if (status.ok()) return status;
+  if (owned_by_us) {
     reference_counter_->RemoveOwnedObject(object_id);
+  } else {
+    RemoveLocalReference(object_id);
   }
   return status;
 }
 
 Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
-                                const absl::optional<rpc::Address> &owner_address) {
+                                const std::shared_ptr<rpc::Address> owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     local_raylet_client_->PinObjectIDs(
-        owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
+        owner_address != nullptr ? *owner_address : rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
@@ -2140,9 +2196,10 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   if (!return_object) {
     return status;
   }
-  absl::optional<rpc::Address> caller_address(
-      options_.is_local_mode ? absl::optional<rpc::Address>()
-                             : worker_context_.GetCurrentTask()->CallerAddress());
+  std::shared_ptr<rpc::Address> caller_address =
+      options_.is_local_mode ? nullptr
+                             : std::make_shared<rpc::Address>(
+                                   worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(return_id, /*pin_object=*/true, caller_address);
     if (!status.ok()) {
@@ -2857,6 +2914,27 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
                       },
                       // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+}
+
+void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
+                                         rpc::AssignObjectOwnerReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  rpc::Address borrower_address = request.borrower_address();
+  std::string call_site = request.call_site();
+  // Get a list of contained object ids.
+  std::vector<ObjectID> contained_object_ids;
+  contained_object_ids.reserve(request.contained_object_ids_size());
+  for (const auto &id_binary : request.contained_object_ids()) {
+    contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
+  }
+  reference_counter_->AddOwnedObject(
+      object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
+      /*is_reconstructable=*/false,
+      /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
+  reference_counter_->AddBorrowerAddress(object_id, borrower_address);
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

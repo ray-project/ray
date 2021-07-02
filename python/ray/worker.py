@@ -241,7 +241,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None):
+    def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -255,6 +255,7 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
+            owner_address: The serialized address of object's owner.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -286,7 +287,9 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref))
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -1516,22 +1519,43 @@ def get(object_refs, *, timeout=None):
 
 
 @client_mode_hook
-def put(value):
+def put(value, *, _owner=None):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
+        _owner: The `ActorHandle` or serialized address of object's owner.
 
     Returns:
         The object ref assigned to this value.
     """
     worker = global_worker
     worker.check_connected()
+
+    if _owner is None:
+        serialize_owner_address = None
+    elif isinstance(_owner, bytes):
+        serialize_owner_address = _owner
+    elif isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray.state.state.global_state_accessor` is not None
+        ray.state.state._check_connected()
+        owner_address = ray.gcs_utils.ActorTableData.FromString(
+            ray.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id)).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(
+                f"{_owner} is not alive, it's worker_id is empty!")
+        serialize_owner_address = owner_address.SerializeToString()
+    else:
+        raise TypeError(f"Expect an serialized owner address(bytes) or an "
+                        f"`ray.actor.ActorHandle`, but got: {type(_owner)}")
+
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value)
+            object_ref = worker.put_object(
+                value, owner_address=serialize_owner_address)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

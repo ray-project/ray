@@ -1125,6 +1125,27 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
   return true;
 }
 
+void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
+                                          const rpc::Address &borrower_address) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+
+  RAY_CHECK(it->second.owned_by_us)
+      << "AddBorrowerAddress should only be used for owner references.";
+
+  rpc::WorkerAddress borrower_worker_address = rpc::WorkerAddress(borrower_address);
+  RAY_CHECK(borrower_worker_address.worker_id != rpc_address_.worker_id)
+      << "The borrower cannot be the owner itself";
+
+  RAY_LOG(DEBUG) << "Add borrower " << borrower_address.DebugString() << " for object "
+                 << object_id;
+  auto inserted = it->second.borrowers.insert(borrower_worker_address).second;
+  if (inserted) {
+    WaitForRefRemoved(it, borrower_worker_address);
+  }
+}
+
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
