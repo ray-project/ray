@@ -290,7 +290,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     } else {
       int relevant_client_index = -1;
       int head_node_client_index = -1;
-      for (int i = 0; i < nodes.size(); i++) {
+      for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
         const auto &node = nodes[i];
         std::string ip_address = node.node_manager_address();
         if (ip_address == node_ip_address) {
