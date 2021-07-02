@@ -22,6 +22,7 @@ from ray.tune.result import (
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
 
@@ -73,7 +74,7 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        self._disable_ipython()
+        disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -493,14 +494,6 @@ class Trainable:
             True if reset was successful else False.
         """
         return False
-
-    def _disable_ipython(self):
-        """Disable output of IPython HTML objects."""
-        try:
-            from IPython.core.interactiveshell import InteractiveShell
-            InteractiveShell.clear_instance()
-        except Exception:
-            pass
 
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
