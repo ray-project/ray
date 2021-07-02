@@ -426,3 +426,6 @@ RAY_CONFIG(bool, gcs_task_scheduling_enabled,
                getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
+
+/// If enabled, raylet will report resources only when resources are changed.
+RAY_CONFIG(bool, enable_light_weight_resource_report, true)

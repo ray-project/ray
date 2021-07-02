@@ -140,7 +140,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
       ray stop
       ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665 --include-dashboard false
-      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so --ray-redis-address=127.0.0.1:6379
+      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so --ray-address=127.0.0.1:6379
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
