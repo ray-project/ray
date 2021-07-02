@@ -2,7 +2,7 @@ from collections import deque
 import gym
 from gym import spaces
 import numpy as np
-import skimage
+from skimage import color, transform
 
 
 def is_atari(env):
@@ -219,8 +219,8 @@ class WarpFrame(gym.ObservationWrapper):
             dtype=np.uint8)
 
     def observation(self, frame):
-        frame = skimage.color.rgb2gray(frame)
-        frame = skimage.transform.resize(frame, (self.height, self.width))
+        frame = color.rgb2gray(frame)
+        frame = transform.resize(frame, (self.height, self.width))
         return frame[:, :, None]
 
 
