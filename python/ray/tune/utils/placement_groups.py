@@ -662,6 +662,15 @@ class PlacementGroupManager:
             pgf_expected[trial.placement_group_factory] += \
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
 
+        # Ensure that unexpected placement groups are accounted for
+        for pgf in self._staging:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
+        for pgf in self._ready:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
         # Count cached placement groups
         for pg, pgf in self._cached_pgs.items():
             current_counts[pgf] += 1
