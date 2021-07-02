@@ -34,9 +34,12 @@ def test_placement_zero(ray_start_cluster, connect_to_client):
     class Actor:
         def __init__(self):
             pass
+        def v(self):
+            return 10
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
     ray.get(pg.ready())
     a = Actor.options(num_cpus=1, placement_group=pg).remote()
+    ray.get(a.v.remote())
     ray.get(pg.ready())
 
 
