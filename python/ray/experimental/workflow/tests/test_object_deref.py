@@ -70,12 +70,15 @@ def receive_data(data: np.ndarray):
 def test_object_deref():
     ray.init()
 
+    # TODO(suquark): "share_fate_with_driver=True" is a workaround, because
+    # we do not support ObjectRef checkpointing yet.
     output = workflow.run(
         deref_check.step(
             ray.put(42), nested_ref.remote(), [nested_ref.remote()],
             nested_workflow.step(10), [nested_workflow.step(9)], [{
                 "output": nested_workflow.step(7)
-            }]), )
+            }]),
+        share_fate_with_driver=True)
     assert ray.get(output)
 
     x = empty_list.step()

@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 def run(entry_workflow: Workflow,
         storage: Optional[Union[str, Storage]] = None,
-        workflow_id: Optional[str] = None) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None,
+        share_fate_with_driver: bool = False) -> ray.ObjectRef:
     """
     Run a workflow asynchronously.
 
@@ -28,6 +29,9 @@ def run(entry_workflow: Workflow,
             checkpointing.
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
+        share_fate_with_driver: If True, the workflow fail when the driver
+            failed. Otherwise its lifetime is managed by a detached named
+            actor.
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
@@ -47,8 +51,17 @@ def run(entry_workflow: Workflow,
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
         commit_step(entry_workflow)
-        rref = execute_workflow(entry_workflow)
-        output = flatten_workflow_output(workflow_id, rref)
+        if share_fate_with_driver:
+            rref = execute_workflow(entry_workflow)
+            output = flatten_workflow_output(workflow_id, rref)
+        else:
+            # TODO(suquark): Move this to a detached named actor,
+            # so the workflow shares fate with the actor.
+            # The current plan is resuming the workflow on the detached named
+            # actor. This is extremely simple to implement, but I am not sure
+            # of its performance.
+            output = recovery.resume_workflow_job(workflow_id,
+                                                  get_global_storage())
         logger.info(f"Workflow job {workflow_id} started.")
     finally:
         workflow_context.set_workflow_step_context(None)
