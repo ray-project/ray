@@ -74,7 +74,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         const SchedulingKey scheduling_key(
             task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
-                                            : ActorID::Nil());
+                                            : ActorID::Nil(),
+            task_spec.GetRuntimeEnvHash(), task_spec.JobId());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
