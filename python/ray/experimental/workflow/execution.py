@@ -7,7 +7,8 @@ import ray
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow.common import Workflow
-from ray.experimental.workflow.step_executor import postprocess_workflow_step
+from ray.experimental.workflow.step_executor import (commit_step,
+                                                     execute_workflow)
 from ray.experimental.workflow.storage import (
     Storage, create_storage, get_global_storage, set_global_storage)
 from ray.experimental.workflow.workflow_access import flatten_workflow_output
@@ -45,9 +46,10 @@ def run(entry_workflow: Workflow,
                 f"\"{storage_url}\"].")
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
-        rref = postprocess_workflow_step(entry_workflow)
-        logger.info(f"Workflow job {workflow_id} started.")
+        commit_step(entry_workflow)
+        rref = execute_workflow(entry_workflow)
         output = flatten_workflow_output(workflow_id, rref)
+        logger.info(f"Workflow job {workflow_id} started.")
     finally:
         workflow_context.set_workflow_step_context(None)
     return output
@@ -86,9 +88,9 @@ def resume(workflow_id: str,
         return r
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
-        rref = r.execute()
-        logger.info(f"Workflow job {workflow_id} started.")
+        rref = execute_workflow(r)
         output = flatten_workflow_output(workflow_id, rref)
+        logger.info(f"Workflow job {workflow_id} started.")
     finally:
         workflow_context.set_workflow_step_context(None)
     return output

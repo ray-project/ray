@@ -84,7 +84,7 @@ class Workflow:
 
         Args:
             outer_most_step_id: See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+                "step_executor.execute_workflow" for explanation.
         """
         if self.executed:
             return self._output

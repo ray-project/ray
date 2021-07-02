@@ -125,7 +125,7 @@ class WorkflowStorage:
 
         Args:
             outer_most_step_id: ID of outer_most_step. See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+                "step_executor.execute_workflow" for explanation.
             dynamic_output_step_id: ID of dynamic_step.
         """
         metadata = self._storage.load_step_output_metadata(
@@ -221,7 +221,7 @@ class WorkflowStorage:
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow step.
             outer_most_step_id: See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+                "step_executor.execute_workflow" for explanation.
         """
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
