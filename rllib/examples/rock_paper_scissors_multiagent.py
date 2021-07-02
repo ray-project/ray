@@ -144,6 +144,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
 
 def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.
+
     This performs about the same as the default loss does."""
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
