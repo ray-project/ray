@@ -159,7 +159,7 @@ class ActorReplicaWrapper:
         print(f"check_health -> {rst}")
         print(f"ready: {ready}")
         print(f"==== ray.get: {ray.get(ready)}")
-    
+
         return rst
 
     def force_stop(self):
@@ -895,7 +895,9 @@ class BackendStateManager:
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, target_version))
-                print(f"Adding SHOULD_START to replica_tag: {replica_tag}, backend_tag: {backend_tag}")
+                print(
+                    f"Adding SHOULD_START to replica_tag: {replica_tag}, backend_tag: {backend_tag}"
+                )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -910,7 +912,9 @@ class BackendStateManager:
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
-                print(f"Adding SHOULD_STOP to replica_tag: {replica}, backend_tag: {backend_tag}")
+                print(
+                    f"Adding SHOULD_STOP to replica_tag: {replica}, backend_tag: {backend_tag}"
+                )
                 replica.set_should_stop(graceful_shutdown_timeout_s)
                 self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
                                                 replica)
