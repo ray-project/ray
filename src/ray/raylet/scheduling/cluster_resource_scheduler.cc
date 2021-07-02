@@ -1020,6 +1020,10 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
   }
+
+  if (!RayConfig::instance().enable_light_weight_resource_report()) {
+    resources_data.set_resources_available_changed(true);
+  }
 }
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap

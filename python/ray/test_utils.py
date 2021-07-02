@@ -247,6 +247,34 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
+def wait_for_num_nodes(num_nodes: int, timeout_s: int):
+    curr_nodes = 0
+    start = time.time()
+    next_feedback = start
+    max_time = start + timeout_s
+    while not curr_nodes >= num_nodes:
+        now = time.time()
+
+        if now >= max_time:
+            raise RuntimeError(
+                f"Maximum wait time reached, but only "
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+
+        if now >= next_feedback:
+            passed = now - start
+            print(f"Waiting for more nodes to come up: "
+                  f"{curr_nodes}/{num_nodes} "
+                  f"({passed:.0f} seconds passed)")
+            next_feedback = now + 10
+
+        time.sleep(5)
+        curr_nodes = len(ray.nodes())
+
+    passed = time.time() - start
+    print(f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
+          f"{passed:.0f} seconds")
+
+
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
     current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
