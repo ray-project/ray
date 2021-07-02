@@ -21,17 +21,8 @@
 
 namespace plasma {
 
-ObjectTableEntry::ObjectTableEntry() : pointer(nullptr), ref_count(0) {}
+LocalObject::LocalObject() : pointer(nullptr), ref_count(0) {}
 
-ObjectTableEntry::~ObjectTableEntry() { pointer = nullptr; }
-
-ObjectTableEntry *GetObjectTableEntry(const ObjectTable &object_table,
-                                      const ObjectID &object_id) {
-  auto it = object_table.find(object_id);
-  if (it == object_table.end()) {
-    return NULL;
-  }
-  return it->second.get();
-}
+LocalObject::~LocalObject() { pointer = nullptr; }
 
 }  // namespace plasma

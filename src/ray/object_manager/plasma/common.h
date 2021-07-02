@@ -46,11 +46,16 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
-/// ObjectTableEntry stores the memory allocation information of a Plasma Object.
-struct ObjectTableEntry {
-  ObjectTableEntry();
+/// LocalObject stores the memory allocation information of a Plasma Object.
+struct LocalObject {
+  LocalObject();
 
-  ~ObjectTableEntry();
+  ~LocalObject();
+
+  int64_t GetObjectSize() const {
+    return object_info.data_size + object_info.metadata_size;
+  }
+
   /// Pointer to the object data. Needed to free the object.
   uint8_t *pointer;
   /// Ray object info;
@@ -66,9 +71,4 @@ struct ObjectTableEntry {
   /// The source of the object. Used for debugging purposes.
   plasma::flatbuf::ObjectSource source;
 };
-
-/// ObjectTable stores the mapping from an ObjectID to its memory allocation infomation
-/// in PlasmaStore.
-typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTable;
-
 }  // namespace plasma

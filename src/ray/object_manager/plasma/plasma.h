@@ -79,16 +79,6 @@ struct PlasmaStoreConfig {
   const std::string fallback_directory;
 };
 
-/// Get an entry from the object table and return NULL if the object_id
-/// is not present.
-///
-/// \param object_table The object table.
-/// \param object_id The object_id of the entry we are looking for.
-/// \return The entry associated with the object_id or NULL if the object_id
-///         is not present.
-ObjectTableEntry *GetObjectTableEntry(const ObjectTable &object_table,
-                                      const ObjectID &object_id);
-
 /// Globally accessible reference to plasma store configuration.
 extern const PlasmaStoreConfig *plasma_config;
 

@@ -65,8 +65,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
   return ray::ObjectID::FromBinary(request->object_id()->str());
 }
 
-void CreatePlasmaObject(const ObjectTableEntry &entry, PlasmaObject *object,
-                        bool check_sealed) {
+void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_sealed) {
   RAY_DCHECK(object != nullptr);
   if (check_sealed) {
     RAY_DCHECK(entry.state == ObjectState::PLASMA_SEALED);
@@ -161,8 +160,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       plasma_config_{.hugepages_enabled = hugepages_enabled,
                      .directory = directory,
                      .fallback_directory = fallback_directory},
-      object_table_(),
-      eviction_policy_(object_table_, PlasmaAllocator::GetFootprintLimit()),
+      object_store_(),
+      eviction_policy_(object_store_, PlasmaAllocator::GetFootprintLimit()),
       spill_objects_callback_(spill_objects_callback),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
@@ -199,12 +198,8 @@ const PlasmaStoreConfig *PlasmaStore::GetPlasmaStoreConfig() const {
 
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
-<<<<<<< HEAD
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
-                                       const ObjectTableEntry *entry,
-=======
-void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
->>>>>>> ea9e2c089 (simplify store)
+                                       const LocalObject *entry,
                                        const std::shared_ptr<Client> &client) {
   // Check if this client is already using the object.
   if (client->object_ids.find(object_id) != client->object_ids.end()) {
@@ -215,7 +210,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, const ObjectTa
   if (entry->ref_count == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_.BeginObjectAccess(object_id);
-    num_bytes_in_use_ += entry->object_info.data_size + entry->object_info.metadata_size;
+    num_bytes_in_use_ += entry->GetObjectSize();
   }
   // Increase reference count.
   entry->ref_count++;
@@ -342,8 +337,7 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
 
-  // Move to object_table_.
-  auto entry = GetObjectTableEntry(object_table_, object_info.object_id);
+  auto entry = object_store_.GetObject(object_info.object_id);
   if (entry != nullptr) {
     // There is already an object with the same ID in the Plasma Store, so
     // ignore this request.
@@ -365,29 +359,17 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
     return PlasmaError::OutOfMemory;
   }
 
-  RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
-  auto ptr = std::make_unique<ObjectTableEntry>();
-  entry =
-      object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();
-  entry->pointer = pointer;
-  entry->object_info = object_info;
-  entry->state = ObjectState::PLASMA_CREATED;
-  entry->create_time = std::time(nullptr);
-  entry->construct_duration = -1;
-  entry->source = source;
+  entry = object_store_.CreateObject(pointer, object_info, source);
 
-  CreatePlasmaObject(*entry, result, /* check sealed */ false);
+  ToPlasmaObject(*entry, result, /* check sealed */ false);
 
   // Notify the eviction policy that this object was created. This must be done
   // immediately before the call to AddToClientObjectIds so that the
   // eviction policy does not have an opportunity to evict the object.
   eviction_policy_.ObjectCreated(object_id, true);
   // Record that this client is using this object.
-  AddToClientObjectIds(object_info.object_id, object_table_[object_info.object_id].get(),
-                       client);
-  num_objects_unsealed_++;
-  num_bytes_unsealed_ += object_info.data_size + object_info.metadata_size;
-  num_bytes_created_total_ += object_info.data_size + object_info.metadata_size;
+  AddToClientObjectIds(object_info.object_id, entry, client);
+
   return PlasmaError::OK;
 }
 
@@ -495,9 +477,9 @@ void PlasmaStore::UpdateObjectGetRequests(const ObjectID &object_id) {
   size_t num_requests = get_requests.size();
   for (size_t i = 0; i < num_requests; ++i) {
     auto get_req = get_requests[index];
-    auto entry = GetObjectTableEntry(object_table_, object_id);
+    auto entry = object_store_.GetObject(object_id);
     RAY_CHECK(entry != nullptr);
-    CreatePlasmaObject(*entry, &get_req->objects[object_id], /* check sealed */ true);
+    ToPlasmaObject(*entry, &get_req->objects[object_id], /* check sealed */ true);
     get_req->num_satisfied += 1;
     // Record the fact that this client will be using this object and will
     // be responsible for releasing this object.
@@ -532,10 +514,10 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
   for (auto object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
-    auto entry = GetObjectTableEntry(object_table_, object_id);
+    auto entry = object_store_.GetObject(object_id);
     if (entry && entry->state == ObjectState::PLASMA_SEALED) {
       // Update the get request to take into account the present object.
-      CreatePlasmaObject(*entry, &get_req->objects[object_id], /* checksealed */ true);
+      ToPlasmaObject(*entry, &get_req->objects[object_id], /* checksealed */ true);
       get_req->num_satisfied += 1;
       // If necessary, record that this client is using this object. In the case
       // where entry == NULL, this will be called from SealObject.
@@ -567,7 +549,7 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
 }
 
 int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
-                                           const ObjectTableEntry *entry,
+                                           const LocalObject *entry,
                                            const std::shared_ptr<Client> &client) {
   auto it = client->object_ids.find(object_id);
   if (it != client->object_ids.end()) {
@@ -579,8 +561,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
-      num_bytes_in_use_ -=
-          entry->object_info.data_size + entry->object_info.metadata_size;
+      num_bytes_in_use_ -= entry->GetObjectSize();
       RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
                      << ", num bytes in use is now " << num_bytes_in_use_;
       if (deletion_cache_.count(object_id) == 0) {
@@ -603,65 +584,46 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   }
 }
 
-// TODO:Move to ObjectTable
-void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
-  auto entry = GetObjectTableEntry(&store_info_, object_id);
-  if (entry == nullptr) {
-    RAY_LOG(WARNING) << object_id << " has already been deleted.";
-    return;
-  }
-  auto buff_size = entry->object_info.data_size + entry->object_info.metadata_size;
-  if (entry->device_num == 0) {
-    RAY_LOG(DEBUG) << "Erasing object: " << object_id
-                   << ", address: " << static_cast<void *>(object->pointer)
-                   << ", size:" << buff_size;
-    PlasmaAllocator::Free(entry->pointer, buff_size);
-  }
-  if (entry->state == ObjectState::PLASMA_CREATED) {
-    num_bytes_unsealed_ -=
-        entry->object_info.data_size + entry->object_info.metadata_size;
-    num_objects_unsealed_--;
-  }
-  if (entry->ref_count > 0) {
-    // A client was using this object.
-    num_bytes_in_use_ -= entry->object_info.data_size + entry->object_info.metadata_size;
-    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
-                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
-  }
-  object_table_.erase(object_id);
-}
+//// TODO:Move to ObjectTable
+//void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
+//  auto entry = GetObjectTableEntry(&store_info_, object_id);
+//  if (entry == nullptr) {
+//    RAY_LOG(WARNING) << object_id << " has already been deleted.";
+//    return;
+//  }
+//  auto buff_size = entry->object_info.data_size + entry->object_info.metadata_size;
+//  if (entry->device_num == 0) {
+//    RAY_LOG(DEBUG) << "Erasing object: " << object_id
+//                   << ", address: " << static_cast<void *>(object->pointer)
+//                   << ", size:" << buff_size;
+//    PlasmaAllocator::Free(entry->pointer, buff_size);
+//  }
+//  if (entry->state == ObjectState::PLASMA_CREATED) {
+//    num_bytes_unsealed_ -=
+//        entry->object_info.data_size + entry->object_info.metadata_size;
+//    num_objects_unsealed_--;
+//  }
+//  if (entry->ref_count > 0) {
+//    // A client was using this object.
+//    num_bytes_in_use_ -= entry->object_info.data_size + entry->object_info.metadata_size;
+//    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+//                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
+//  }
+//  object_table_.erase(object_id);
+//}
 
 void PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client) {
-  auto entry = GetObjectTableEntry(object_table_, object_id);
+  auto entry = object_store_.GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
   RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
 }
 
-// Check if an object is present.
-ObjectStatus PlasmaStore::ContainsObject(const ObjectID &object_id) {
-  auto entry = GetObjectTableEntry(object_table_, object_id);
-  return entry && entry->state == ObjectState::PLASMA_SEALED
-             ? ObjectStatus::OBJECT_FOUND
-             : ObjectStatus::OBJECT_NOT_FOUND;
-}
-
-// TODO: move to ObjectTable.
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   for (size_t i = 0; i < object_ids.size(); ++i) {
     RAY_LOG(DEBUG) << "sealing object " << object_ids[i];
-    auto entry = GetObjectTableEntry(object_table_, object_ids[i]);
-    RAY_CHECK(entry != nullptr);
-    RAY_CHECK(entry->state == ObjectState::PLASMA_CREATED);
-    // Set the state of object to SEALED.
-    entry->state = ObjectState::PLASMA_SEALED;
-    // Set object construction duration.
-    entry->construct_duration = std::time(nullptr) - entry->create_time;
-
-    num_objects_unsealed_--;
-    num_bytes_unsealed_ -=
-        entry->object_info.data_size + entry->object_info.metadata_size;
+    auto entry = object_store_.SealObject(object_ids[i]);
 
     add_object_callback_(entry->object_info);
   }
@@ -673,7 +635,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
 
 int PlasmaStore::AbortObject(const ObjectID &object_id,
                              const std::shared_ptr<Client> &client) {
-  auto entry = GetObjectTableEntry(object_table_, object_id);
+  auto entry = object_store_.GetObject(object_id);
   RAY_CHECK(entry != nullptr) << "To abort an object it must be in the object table.";
   RAY_CHECK(entry->state != ObjectState::PLASMA_SEALED)
       << "To abort an object it must not have been sealed.";
@@ -683,15 +645,23 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
     // perform the abort.
     return 0;
   } else {
+    if (entry->ref_count > 0) {
+      // A client was using this object.
+      num_bytes_in_use_ -=
+          entry->object_info.data_size + entry->object_info.metadata_size;
+      RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                     << object_id << ", num bytes in use is now " << num_bytes_in_use_;
+    }
+
     // The client requesting the abort is the creator. Free the object.
-    EraseFromObjectTable(object_id);
+    object_store_.DeleteObject(object_id);
     client->object_ids.erase(it);
     return 1;
   }
 }
 
 PlasmaError PlasmaStore::DeleteObject(ObjectID &object_id) {
-  auto entry = GetObjectTableEntry(object_table_, object_id);
+  auto entry = object_store_.GetObject(object_id);
   // TODO(rkn): This should probably not fail, but should instead throw an
   // error. Maybe we should also support deleting objects that have been
   // created but not sealed.
@@ -716,18 +686,16 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID &object_id) {
 
   eviction_policy_.RemoveObject(object_id);
 
-  // This should call EvictObjects.
-  EraseFromObjectTable(object_id);
+  object_store_.DeleteObject(object_id);
   // Inform all subscribers that the object has been deleted.
   delete_object_callback_(object_id);
   return PlasmaError::OK;
 }
 
 void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
-  // Move to object_table
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
-    auto entry = GetObjectTableEntry(object_table_, object_id);
+    auto entry = object_store_.GetObject(object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
     // created but not sealed.
@@ -737,7 +705,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
     RAY_CHECK(entry->ref_count == 0)
         << "To evict an object, there must be no clients currently using it.";
     // Erase the object entry and send a deletion notification.
-    EraseFromObjectTable(object_id);
+    object_store_.DeleteObject(object_id);
     // Inform all subscribers that the object has been deleted.
     delete_object_callback_(object_id);
   }
@@ -757,21 +725,21 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  std::unordered_map<ObjectID, ObjectTableEntry *> sealed_objects;
+  std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
   for (const auto &object_id : client->object_ids) {
-    auto it = object_table_.find(object_id);
-    if (it == object_table_.end()) {
+    auto entry = object_store_.GetObject(object_id);
+    if (entry == nullptr) {
       continue;
     }
 
-    if (it->second->state == ObjectState::PLASMA_SEALED) {
+    if (entry->state == ObjectState::PLASMA_SEALED) {
       // Add sealed objects to a temporary list of object IDs. Do not perform
       // the remove here, since it potentially modifies the object_ids table.
-      sealed_objects[it->first] = it->second.get();
+      sealed_objects[object_id] = entry;
     } else {
       // Abort unsealed object.
       // Don't call AbortObject() because client->object_ids would be modified.
-      EraseFromObjectTable(object_id);
+      object_store_.DeleteObject(object_id);
     }
   }
 
@@ -868,7 +836,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
-    if (ContainsObject(object_id) == ObjectStatus::OBJECT_FOUND) {
+    if (object_store_.ContainsObject(object_id) == ObjectStatus::OBJECT_FOUND) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
     } else {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 0));
@@ -970,7 +938,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // The lock is acquired when a request is received to the plasma store.
   // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
-  auto entry = GetObjectTableEntry(object_table_, object_id);
+  auto entry = object_store_.GetObject(object_id);
   return entry->ref_count == 1;
 }
 
@@ -984,81 +952,16 @@ void PlasmaStore::PrintDebugDump() const {
 std::string PlasmaStore::GetDebugDump() const {
   // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
-
   buffer << "========== Plasma store: =================\n";
-  size_t num_objects_spillable = 0;
-  size_t num_bytes_spillable = 0;
-  size_t num_objects_unsealed = 0;
-  size_t num_bytes_unsealed = 0;
-  size_t num_objects_in_use = 0;
-  size_t num_bytes_in_use = 0;
-  size_t num_objects_evictable = 0;
-  size_t num_bytes_evictable = 0;
-
-  size_t num_objects_created_by_worker = 0;
-  size_t num_bytes_created_by_worker = 0;
-  size_t num_objects_restored = 0;
-  size_t num_bytes_restored = 0;
-  size_t num_objects_received = 0;
-  size_t num_bytes_received = 0;
-  size_t num_objects_errored = 0;
-  size_t num_bytes_errored = 0;
-  for (const auto &obj_entry : object_table_) {
-    const auto &obj = obj_entry.second;
-    if (obj->state == ObjectState::PLASMA_CREATED) {
-      num_objects_unsealed++;
-      num_bytes_unsealed += obj->object_info.data_size;
-    } else if (obj->ref_count == 1 && obj->source == fb::ObjectSource::CreatedByWorker) {
-      num_objects_spillable++;
-      num_bytes_spillable += obj->object_info.data_size;
-    } else if (obj->ref_count > 0) {
-      num_objects_in_use++;
-      num_bytes_in_use += obj->object_info.data_size;
-    } else {
-      num_bytes_evictable++;
-      num_bytes_evictable += obj->object_info.data_size;
-    }
-
-    if (obj->source == fb::ObjectSource::CreatedByWorker) {
-      num_objects_created_by_worker++;
-      num_bytes_created_by_worker += obj->object_info.data_size;
-    } else if (obj->source == fb::ObjectSource::RestoredFromStorage) {
-      num_objects_restored++;
-      num_bytes_restored += obj->object_info.data_size;
-    } else if (obj->source == fb::ObjectSource::ReceivedFromRemoteRaylet) {
-      num_objects_received++;
-      num_bytes_received += obj->object_info.data_size;
-    } else if (obj->source == fb::ObjectSource::ErrorStoredByRaylet) {
-      num_objects_errored++;
-      num_bytes_errored += obj->object_info.data_size;
-    }
-  }
-
   buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
          << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
-  buffer << "- num bytes created total: " << num_bytes_created_total_ << "\n";
+  buffer << "- num bytes created total: " << object_store_.GetNumBytesCreatedTotal()
+         << "\n";
   auto num_pending_requests = create_request_queue_.NumPendingRequests();
   auto num_pending_bytes = create_request_queue_.NumPendingBytes();
   buffer << num_pending_requests << " pending objects of total size "
          << num_pending_bytes / 1024 / 1024 << "MB\n";
-  buffer << "- objects spillable: " << num_objects_spillable << "\n";
-  buffer << "- bytes spillable: " << num_bytes_spillable << "\n";
-  buffer << "- objects unsealed: " << num_objects_unsealed << "\n";
-  buffer << "- bytes unsealed: " << num_bytes_unsealed << "\n";
-  buffer << "- objects in use: " << num_objects_in_use << "\n";
-  buffer << "- bytes in use: " << num_bytes_in_use << "\n";
-  buffer << "- objects evictable: " << num_objects_evictable << "\n";
-  buffer << "- bytes evictable: " << num_bytes_evictable << "\n";
-  buffer << "\n";
-
-  buffer << "- objects created by worker: " << num_objects_created_by_worker << "\n";
-  buffer << "- bytes created by worker: " << num_bytes_created_by_worker << "\n";
-  buffer << "- objects restored: " << num_objects_restored << "\n";
-  buffer << "- bytes restored: " << num_bytes_restored << "\n";
-  buffer << "- objects received: " << num_objects_received << "\n";
-  buffer << "- bytes received: " << num_bytes_received << "\n";
-  buffer << "- objects errored: " << num_objects_errored << "\n";
-  buffer << "- bytes errored: " << num_bytes_errored << "\n";
+  object_store_.GetDebugDump(buffer);
   return buffer.str();
 }
 

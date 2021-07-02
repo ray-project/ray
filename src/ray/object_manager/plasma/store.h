@@ -32,6 +32,7 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -140,13 +141,6 @@ class PlasmaStore {
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID> &object_ids);
 
-  /// Check if the plasma store contains an object:
-  ///
-  /// \param object_id Object ID that will be checked.
-  /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
-  /// not
-  ObjectStatus ContainsObject(const ObjectID &object_id);
-
   /// Record the fact that a particular client is no longer using an object.
   ///
   /// \param object_id The object ID of the object that is being released.
@@ -184,15 +178,17 @@ class PlasmaStore {
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    RAY_CHECK((num_bytes_unsealed_ > 0 && num_objects_unsealed_ > 0) ||
-              (num_bytes_unsealed_ == 0 && num_objects_unsealed_ == 0))
+    RAY_CHECK((object_store_.GetNumBytesUnsealed() > 0 &&
+               object_store_.GetNumObjectsUnsealed() > 0) ||
+              (object_store_.GetNumBytesUnsealed() == 0 &&
+               object_store_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    RAY_CHECK(num_bytes_in_use_ >= object_store_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
     int64_t num_bytes_in_use =
-        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
+        static_cast<int64_t>(num_bytes_in_use_ - object_store_.GetNumBytesUnsealed());
     if (!RayConfig::instance().plasma_unlimited()) {
       RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     }
@@ -218,7 +214,7 @@ class PlasmaStore {
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
 
-  void AddToClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
+  void AddToClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
                             const std::shared_ptr<Client> &client);
 
   /// Remove a GetRequest and clean up the relevant data structures.
@@ -235,10 +231,8 @@ class PlasmaStore {
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id, const ObjectTableEntry *entry,
+  int RemoveFromClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
                                 const std::shared_ptr<Client> &client);
-
-  void EraseFromObjectTable(const ObjectID &object_id);
 
   uint8_t *AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
                           bool is_create, bool fallback_allocator, PlasmaError *error);
@@ -256,8 +250,8 @@ class PlasmaStore {
   ray::local_stream_socket socket_;
   /// The plasma store configs
   PlasmaStoreConfig plasma_config_;
-  // object tables store all objects in plasma store.
-  ObjectTable object_table_;
+  // object_store_ stores all objects in plasma store.
+  ObjectStore object_store_;
   /// The state that is managed by the eviction policy.
   EvictionPolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
@@ -321,22 +315,12 @@ class PlasmaStore {
   /// called get on.
   size_t num_bytes_in_use_ = 0;
 
-  /// Total number of bytes allocated to objects that are created but not yet
-  /// sealed.
-  size_t num_bytes_unsealed_ = 0;
-
-  /// Number of objects that are created but not sealed.
-  size_t num_objects_unsealed_ = 0;
-
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
   bool dumped_on_oom_ = false;
-
-  /// A running total of the objects that have ever been created on this node.
-  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

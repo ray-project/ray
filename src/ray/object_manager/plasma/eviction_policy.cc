@@ -90,14 +90,10 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(const ObjectTable &object_table, int64_t max_size)
-    : EvictionPolicy(std::make_unique<PlasmaAllocatorAccessor>(object_table), max_size) {}
-
-EvictionPolicy::EvictionPolicy(
-    std::unique_ptr<AllocatorAccessorInterface> allocator_accessor, int64_t max_size)
+EvictionPolicy::EvictionPolicy(const ObjectStore &object_store, int64_t max_size)
     : pinned_memory_bytes_(0),
       cache_("global lru", max_size),
-      allocator_accessor_(std::move(allocator_accessor)) {}
+      object_store_(object_store) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
                                              std::vector<ObjectID> *objects_to_evict) {
@@ -118,17 +114,17 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
                                      std::vector<ObjectID> *objects_to_evict) {
   // Check if there is enough space to create the object.
   int64_t required_space =
-      allocator_accessor_->GetAllocated() + size - allocator_accessor_->GetCapacity();
+      object_store_.GetNumBytesAllocated() + size - object_store_.GetNumBytesCapacity();
   // Try to free up at least as much space as we need right now but ideally
   // up to 20% of the total capacity.
   int64_t space_to_free =
-      std::max(required_space, allocator_accessor_->GetCapacity() / 5);
+      std::max(required_space, object_store_.GetNumBytesCapacity() / 5);
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
   RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
                  << objects_to_evict->size() << " objects to free up "
                  << num_bytes_evicted << " bytes. The number of bytes in use (before "
-                 << "this eviction) is " << allocator_accessor_->GetAllocated() << ".";
+                 << "this eviction) is " << object_store_.GetNumBytesAllocated() << ".";
   return required_space - num_bytes_evicted;
 }
 
@@ -151,25 +147,8 @@ void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
 }
 
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
-  return allocator_accessor_->GetObjectSize(object_id);
+  return object_store_.GetObject(object_id)->GetObjectSize();
 }
 
 std::string EvictionPolicy::DebugString() const { return cache_.DebugString(); }
-
-PlasmaAllocatorAccessor::PlasmaAllocatorAccessor(const ObjectTable &object_table)
-    : object_table_(object_table) {}
-
-int64_t PlasmaAllocatorAccessor::GetObjectSize(const ObjectID &object_id) const {
-  auto entry = GetObjectTableEntry(object_table_, object_id);
-  return entry->object_info.data_size + entry->object_info.metadata_size;
-}
-
-int64_t PlasmaAllocatorAccessor::GetAllocated() const {
-  return PlasmaAllocator::Allocated();
-}
-
-int64_t PlasmaAllocatorAccessor::GetCapacity() const {
-  return PlasmaAllocator::GetFootprintLimit();
-}
-
 }  // namespace plasma

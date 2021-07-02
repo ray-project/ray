@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
@@ -89,27 +90,6 @@ class LRUCache {
   int64_t bytes_evicted_total_;
 };
 
-/// Accessor to Allocator information for evicition policies.
-class AllocatorAccessorInterface {
- public:
-  virtual ~AllocatorAccessorInterface() = default;
-  virtual int64_t GetObjectSize(const ObjectID &object_id) const = 0;
-  virtual int64_t GetAllocated() const = 0;
-  virtual int64_t GetCapacity() const = 0;
-};
-
-/// Access to Plasma allocation information.
-class PlasmaAllocatorAccessor : public AllocatorAccessorInterface {
- public:
-  explicit PlasmaAllocatorAccessor(const ObjectTable &object_table);
-  int64_t GetObjectSize(const ObjectID &object_id) const override;
-  int64_t GetAllocated() const override;
-  int64_t GetCapacity() const override;
-
- private:
-  const ObjectTable &object_table_;
-};
-
 /// The eviction policy.
 class EvictionPolicy {
  public:
@@ -117,7 +97,7 @@ class EvictionPolicy {
   ///
   /// \param object_table Reference to the object_table
   /// \param max_size Max size in bytes total of objects to store.
-  explicit EvictionPolicy(const ObjectTable &object_table, int64_t max_size);
+  EvictionPolicy(const ObjectStore &object_store, int64_t max_size);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -184,10 +164,6 @@ class EvictionPolicy {
 
   int64_t GetPinnedMemoryBytes() const { return pinned_memory_bytes_; }
 
- private:
-  EvictionPolicy(std::unique_ptr<AllocatorAccessorInterface> allocator_accessor,
-                 int64_t max_size);
-
  protected:
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;
@@ -198,7 +174,7 @@ class EvictionPolicy {
   /// Datastructure for the LRU cache.
   LRUCache cache_;
 
-  std::unique_ptr<AllocatorAccessorInterface> allocator_accessor_;
+  const ObjectStore &object_store_;
 };
 
 }  // namespace plasma
