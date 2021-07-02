@@ -516,8 +516,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         torch.version.cuda) >= 10.2:
                     os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
                 else:
-                    # Not all Operations support this.
-                    torch.use_deterministic_algorithms(True)
+                    from distutils.version import LooseVersion
+                    if LooseVersion(
+                            torch.__version__) >= LooseVersion("1.8.0"):
+                        # Not all Operations support this.
+                        torch.use_deterministic_algorithms(True)
+                    else:
+                        torch.set_determinstic(True)
                 # This is only for Convolution no problem.
                 torch.backends.cudnn.deterministic = True
             # Tf2.x.
