@@ -753,8 +753,7 @@ def get_or_create_head_node(config: Dict[str, Any],
 def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
                             new_head_node_type: str,
                             provider: NodeProvider) -> bool:
-    """
-    Decides whether a new head node needs to be created.
+    """Decides whether a new head node needs to be created.
 
     We need a new head if at least one of the following holds:
     (a) There isn't an existing head node

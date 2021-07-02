@@ -464,11 +464,11 @@ class ResourceDemandScheduler:
                 logger.error(
                     f"Missing entry for node_type {node_type} in "
                     f"cluster config: {self.node_types} under entry "
-                    f"available_node_types. This node's resources will be "
-                    f"ignored. If you are using an unmanaged node, manually "
+                    "available_node_types. This node's resources will be "
+                    "ignored. If you are using an unmanaged node, manually "
                     f"set the {TAG_RAY_NODE_KIND} tag to "
                     f"\"{NODE_KIND_UNMANAGED}\" in your cloud provider's "
-                    f"management console.")
+                    "management console.")
                 return None
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
