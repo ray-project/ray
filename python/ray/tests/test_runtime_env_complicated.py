@@ -13,7 +13,8 @@ import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray._private.runtime_env import RuntimeEnvDict
 from ray.job_config import JobConfig
-from ray.test_utils import run_string_as_driver
+from ray.test_utils import (run_string_as_driver,
+                            run_string_as_driver_nonblocking)
 
 
 @pytest.fixture(scope="session")
@@ -595,6 +596,20 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
             assert ray.get(f.remote())
 
 
+install_env_script = """
+import ray
+import time
+job_config = ray.job_config.JobConfig(runtime_env={env})
+ray.init(address="auto", job_config=job_config)
+@ray.remote
+def f():
+    return "hello"
+f.remote()
+# Give the env 5 seconds to begin installing in a new worker.
+time.sleep(5)
+"""
+
+
 @pytest.mark.skipif(
     os.environ.get("CI") is None,
     reason="This test is only run on CI because it uses the built Ray wheel.")
@@ -602,8 +617,8 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
-    env = {"env_vars": {"TEST_123": "123"}}
-    job_config = ray.job_config.JobConfig(runtime_env=env)
+    env1 = {"pip": ["pip-install-test==0.5"]}
+    job_config = ray.job_config.JobConfig(runtime_env=env1)
 
     ray.init(job_config=job_config)
 
@@ -611,25 +626,35 @@ def test_env_installation_nonblocking(shutdown_only):
     def f():
         return "hello"
 
-    # Warm up a worker for the first env, in case it takes time to start.
+    # Warm up a worker because it takes time to start.
     ray.get(f.remote())
 
-    def assert_tasks_finish_quickly():
-        for i in range(10):
+    def assert_tasks_finish_quickly(total_sleep_s=0.1):
+        """Call f every 0.01 seconds for total time total_sleep_s."""
+        gap_s = 0.01
+        for i in range(int(total_sleep_s / gap_s)):
             start = time.time()
             ray.get(f.remote())
-            time.sleep(0.01)
+            time.sleep(gap_s)
             # Env installation takes around 10 to 60 seconds.  If we fail the
             # below assert, we can be pretty sure an env installation blocked
             # the task.
             assert time.time() - start < 0.1
 
     assert_tasks_finish_quickly()
-    ref = f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote()
-    # Check that installing the new env above does not block other tasks.
+
+    env2 = {"pip": ["pip-install-test==0.5", "requests"]}
+    f.options(runtime_env=env2).remote()
+    # Check that installing env2 above does not block tasks using env1.
     assert_tasks_finish_quickly()
 
-    assert ray.get(ref) == "hello"
+    proc = run_string_as_driver_nonblocking(
+        install_env_script.format(env=env1))
+    # Check that installing env1 in a new worker in the script above does not
+    # block other tasks that use env1.
+    assert_tasks_finish_quickly(total_sleep_s=5)
+    proc.kill()
+    proc.wait()
 
 
 if __name__ == "__main__":
