@@ -1,6 +1,6 @@
 import logging
-from typing import List, Any, Callable, Iterator, Generic, TypeVar, \
-    Generator, Optional, Union, TYPE_CHECKING, Dict
+from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
+    Dict, Optional, Union, TYPE_CHECKING
 
 import os
 
@@ -18,15 +18,17 @@ import ray
 import numpy as np
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, ListBlock
+from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 U = TypeVar("U")
 BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
+
+logger = logging.getLogger(__name__)
 
 
 class Dataset(Generic[T]):
@@ -35,7 +37,7 @@ class Dataset(Generic[T]):
     Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
     also determines the unit of parallelism. The default block type is the
     ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
-    Python objects are represented with ``ListBlock`` (a plain Python list).
+    Python objects are represented with ``SimpleBlock`` (a plain Python list).
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -46,8 +48,9 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block[T]]]):
-        self._blocks: List[ObjectRef[Block[T]]] = blocks
+    def __init__(self, blocks: BlockList[T]):
+        self._blocks: BlockList[T] = blocks
+        assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self, fn: Callable[[T], U], compute="tasks",
             **ray_remote_args) -> "Dataset[U]":
@@ -131,8 +134,7 @@ class Dataset(Generic[T]):
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                # Note: if the block is a list, it doesn't support zero-copy.
-                view = block.slice(start, end)
+                view = block.slice(start, end, copy=False)
                 if batch_format == "pandas":
                     view = view.to_pandas()
                 elif batch_format == "pyarrow":
@@ -144,7 +146,7 @@ class Dataset(Generic[T]):
 
                 applied = fn(view)
                 if isinstance(applied, list):
-                    applied = ListBlock(applied)
+                    applied = SimpleBlock(applied)
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = ArrowBlock(pa.Table.from_pandas(applied))
                 elif isinstance(applied, pa.Table):
@@ -163,7 +165,7 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
-                 fn: Callable[[T], Iterator[U]],
+                 fn: Callable[[T], Iterable[U]],
                  compute="tasks",
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
@@ -282,10 +284,16 @@ class Dataset(Generic[T]):
                 "doesn't equal the number of splits {n}.")
 
         block_refs = list(self._blocks)
+        metadata_mapping = {
+            b: m
+            for b, m in zip(self._blocks, self._blocks.get_metadata())
+        }
 
         if locality_hints is None:
             return [
-                Dataset(list(blocks))
+                Dataset(
+                    BlockList(
+                        list(blocks), [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
             ]
 
@@ -380,7 +388,12 @@ class Dataset(Generic[T]):
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
         return [
-            Dataset(allocation_per_actor[actor]) for actor in locality_hints
+            Dataset(
+                BlockList(
+                    allocation_per_actor[actor],
+                    [metadata_mapping[b]
+                     for b in allocation_per_actor[actor]]))
+            for actor in locality_hints
         ]
 
     def sort(self,
@@ -430,7 +443,46 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-        raise NotImplementedError  # P1
+
+        @ray.remote
+        def get_num_rows(block: Block[T]) -> int:
+            return block.num_rows()
+
+        @ray.remote(num_returns=2)
+        def truncate(block: Block[T], meta: BlockMetadata,
+                     count: int) -> (Block[T], BlockMetadata):
+            logger.debug("Truncating last block to size: {}".format(count))
+            new_block = block.slice(0, count, copy=True)
+            new_meta = BlockMetadata(
+                num_rows=new_block.num_rows(),
+                size_bytes=new_block.size_bytes(),
+                schema=meta.schema,
+                input_files=meta.input_files)
+            return new_block, new_meta
+
+        count = 0
+        out_blocks = []
+        out_metadata = []
+        for b, m in zip(self._blocks, self._blocks.get_metadata()):
+            if m.num_rows is None:
+                num_rows = ray.get(get_num_rows.remote(b))
+            else:
+                num_rows = m.num_rows
+            if count + num_rows < limit:
+                out_blocks.append(b)
+                out_metadata.append(m)
+            elif count + num_rows == limit:
+                out_blocks.append(b)
+                out_metadata.append(m)
+                break
+            else:
+                new_block, new_metadata = truncate.remote(b, m, limit - count)
+                out_blocks.append(new_block)
+                out_metadata.append(ray.get(new_metadata))
+                break
+            count += num_rows
+
+        return Dataset(BlockList(out_blocks, out_metadata))
 
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
@@ -444,7 +496,7 @@ class Dataset(Generic[T]):
             A list of up to ``limit`` records from the dataset.
         """
         output = []
-        for row in self.to_local_iterator():
+        for row in self.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
@@ -464,11 +516,16 @@ class Dataset(Generic[T]):
     def count(self) -> int:
         """Count the number of records in the dataset.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism), O(1) for parquet
 
         Returns:
             The number of records in the dataset.
         """
+
+        # For parquet, we can return the count directly from metadata.
+        meta_count = self._meta_count()
+        if meta_count is not None:
+            return meta_count
 
         @ray.remote
         def count(block: Block[T]) -> int:
@@ -502,7 +559,13 @@ class Dataset(Generic[T]):
         Returns:
             The Python type or Arrow schema of the records.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        # Some blocks could be empty, in which case we cannot get their schema.
+        # TODO(ekl) validate schema is the same across different blocks.
+        for m in metadata:
+            if m.schema:
+                return m.schema
+        raise ValueError("Could not get the schema for this dataset.")
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -520,9 +583,13 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The in-memory size of the dataset in bytes.
+            The in-memory size of the dataset in bytes, or an error if the
+            in-memory size is not known.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        if not metadata or metadata[0].size_bytes is None:
+            raise ValueError("Could not estimate the size of this dataset.")
+        return sum(m.size_bytes for m in metadata)
 
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
@@ -532,7 +599,16 @@ class Dataset(Generic[T]):
         Returns:
             The list of input files used to create the dataset.
         """
-        raise NotImplementedError  # P0
+        metadata = self._blocks.get_metadata()
+        files = set()
+        for m in metadata:
+            for f in m.input_files:
+                files.add(f)
+        if files:
+            return list(files)
+        else:
+            raise ValueError(
+                "Could not retrieve the input files of this dataset.")
 
     def write_parquet(self,
                       path: str,
@@ -541,6 +617,7 @@ class Dataset(Generic[T]):
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
             >>> ds.write_parquet("s3://bucket/path")
@@ -574,6 +651,7 @@ class Dataset(Generic[T]):
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
             >>> ds.write_json("s3://bucket/path")
@@ -604,6 +682,7 @@ class Dataset(Generic[T]):
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
 
         Examples:
             >>> ds.write_csv("s3://bucket/path")
@@ -631,48 +710,51 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def to_local_iterator(self) -> Generator:
-        """Return an iterator that can be used to scan the dataset serially.
+    def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
+        """Return a local row iterator over the dataset.
 
-        Time complexity: O(1)
-
-        Returns:
-            A local iterator over the entire dataset.
-        """
-        for b in self._blocks:
-            block = ray.get(b)
-            for row in block.iter_rows():
-                yield row
-
-    def to_batch_iterators(
-            self,
-            num_shards: int,
-            batch_size: int = None,
-            output_location_prefs: List[Any] = None,
-            batch_format: str = "pandas",
-            repeatable: bool = False) -> List[Iterator[BatchType]]:
-        """Return a list of distributed iterators over record batches.
-
-        This returns a list of iterators that can be passed to Ray tasks
-        and actors, and used to read the dataset records in parallel.
+        Examples:
+            >>> for i in ray.data.range(1000000).iter_rows():
+            ...     print(i)
 
         Time complexity: O(1)
 
         Args:
-            num_shards: Number of iterators to return.
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            A local iterator over the entire dataset.
+        """
+
+        for ref in self._blocks:
+            block = ray.get(ref)
+            for row in block.iter_rows():
+                yield row
+
+    def iter_batches(self,
+                     prefetch_blocks: int = 0,
+                     batch_size: int = None,
+                     batch_format: str = "pandas") -> Iterator[BatchType]:
+        """Return a local batched iterator over the dataset.
+
+        Examples:
+            >>> for pandas_df in ray.data.range(1000000).iter_batches():
+            ...     print(pandas_df)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
-            output_location_prefs: A list of Ray actor handles of size
-                ``num_shards``. The system will try to co-locate the objects
-                given to the ith iterator with the ith actor to maximize data
-                locality.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
-            repeatable: Whether each iterator should loop over data forever
-                or stop after reading all records of the shard.
 
         Returns:
             A list of iterators over record batches.
         """
+
         raise NotImplementedError  # P1
 
     def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
@@ -739,7 +821,7 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P1
 
-    def to_pandas(self) -> Iterator[ObjectRef["pandas.DataFrame"]]:
+    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
@@ -767,7 +849,25 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P2
 
     def __repr__(self) -> str:
-        return "Dataset({} blocks)".format(len(self._blocks))
+        try:
+            schema = self.schema()
+        except ValueError:
+            schema = "Unknown schema"
+        if hasattr(schema, "names"):
+            schema_str = []
+            for n, t in zip(schema.names, schema.types):
+                if hasattr(t, "__name__"):
+                    t = t.__name__
+                schema_str.append("{}: {}".format(n, t))
+            schema_str = ", ".join(schema_str)
+            schema_str = "{" + schema_str + "}"
+        else:
+            schema_str = str(schema)
+        count = self._meta_count()
+        if count is None:
+            count = "?"
+        return "Dataset(num_rows={}, num_blocks={}, schema={})".format(
+            count, len(self._blocks), schema_str)
 
     def __str__(self) -> str:
         return repr(self)
@@ -778,3 +878,10 @@ class Dataset(Generic[T]):
             return block.num_rows()
 
         return ray.get([query.remote(b) for b in self._blocks])
+
+    def _meta_count(self) -> Optional[int]:
+        metadata = self._blocks.get_metadata()
+        if metadata and metadata[0].num_rows is not None:
+            return sum(m.num_rows for m in metadata)
+        else:
+            return None

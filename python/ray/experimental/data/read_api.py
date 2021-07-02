@@ -1,6 +1,7 @@
-import builtins
 import logging
-from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
+import functools
+import builtins
+from typing import List, Any, Union, Optional, Tuple, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -11,14 +12,18 @@ if TYPE_CHECKING:
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
 from ray.experimental.data.impl import reader as _reader
+from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
+from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
+from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
 logger = logging.getLogger(__name__)
 
 
 def autoinit_ray(f):
+    @functools.wraps(f)
     def wrapped(*a, **kw):
         if not ray.is_initialized():
             ray.client().connect()
@@ -132,15 +137,23 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     block_size = max(1, len(items) // parallelism)
 
     blocks: List[ObjectRef[Block]] = []
+    metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = ListBlock.builder()
+        builder = SimpleBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
-        blocks.append(ray.put(builder.build()))
+        block = builder.build()
+        blocks.append(ray.put(block))
+        metadata.append(
+            BlockMetadata(
+                num_rows=block.num_rows(),
+                size_bytes=block.size_bytes(),
+                schema=type(items[0]),
+                input_files=None))
         i += block_size
 
-    return Dataset(blocks)
+    return Dataset(BlockList(blocks, metadata))
 
 
 @autoinit_ray
@@ -157,22 +170,34 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     Returns:
         Dataset holding the integers.
     """
+    calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
     block_size = max(1, n // parallelism)
-    blocks: List[ObjectRef[Block]] = []
 
     @ray.remote
-    def gen_block(start: int, count: int) -> ListBlock:
-        builder = ListBlock.builder()
+    def gen_block(start: int, count: int) -> SimpleBlock:
+        builder = SimpleBlock.builder()
         for value in builtins.range(start, start + count):
             builder.add(value)
         return builder.build()
 
     i = 0
     while i < n:
-        blocks.append(gen_block.remote(i, min(block_size, n - i)))
+
+        def make_call(start: int, count: int) -> ObjectRef[Block]:
+            return lambda: gen_block.remote(start, count)
+
+        count = min(block_size, n - i)
+        calls.append(make_call(i, count))
+        metadata.append(
+            BlockMetadata(
+                num_rows=count,
+                size_bytes=8 * count,
+                schema=int,
+                input_files=None))
         i += block_size
 
-    return Dataset(blocks)
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray
@@ -192,24 +217,38 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
+    import pyarrow
+
+    calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
     block_size = max(1, n // parallelism)
-    blocks = []
     i = 0
 
     @ray.remote
     def gen_block(start: int, count: int) -> "ArrowBlock":
-        import pyarrow
-
         return ArrowBlock(
             pyarrow.Table.from_pydict({
                 "value": list(builtins.range(start, start + count))
             }))
 
     while i < n:
-        blocks.append(gen_block.remote(block_size * i, min(block_size, n - i)))
+
+        def make_call(start: int, count: int) -> ObjectRef[Block]:
+            return lambda: gen_block.remote(start, count)
+
+        start = block_size * i
+        count = min(block_size, n - i)
+        calls.append(make_call(start, count))
+        schema = pyarrow.Table.from_pydict({"value": [0]}).schema
+        metadata.append(
+            BlockMetadata(
+                num_rows=count,
+                size_bytes=8 * count,
+                schema=schema,
+                input_files=None))
         i += block_size
 
-    return Dataset(blocks)
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray
@@ -238,33 +277,53 @@ def read_parquet(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow.parquet as pq
-    import numpy as np
 
     pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
-    pieces = pq_ds.pieces
-    data_pieces = []
 
-    for piece in pieces:
-        num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
-        for i in builtins.range(num_row_groups):
-            data_pieces.append(
-                pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
-                                       piece.file_options, i,
-                                       piece.partition_keys))
-
+    read_tasks = [[] for _ in builtins.range(parallelism)]
+    # TODO(ekl) support reading row groups (maybe as an option)
+    for i, piece in enumerate(pq_ds.pieces):
+        read_tasks[i % len(read_tasks)].append(piece)
+    nonempty_tasks = [r for r in read_tasks if r]
     partitions = pq_ds.partitions
 
     @ray.remote
     def gen_read(pieces: List[pq.ParquetDatasetPiece]):
+        import pyarrow
         logger.debug("Reading {} parquet pieces".format(len(pieces)))
-        table = piece.read(
-            columns=columns, use_threads=False, partitions=partitions)
+        tables = [
+            piece.read(
+                columns=columns, use_threads=False, partitions=partitions)
+            for piece in pieces
+        ]
+        if len(tables) > 1:
+            table = pyarrow.concat_tables(tables)
+        else:
+            table = tables[0]
         return ArrowBlock(table)
 
-    return Dataset([
-        gen_read.remote(ps) for ps in np.array_split(pieces, parallelism)
-        if len(ps) > 0
-    ])
+    calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
+    for pieces in nonempty_tasks:
+
+        def make_call(
+                pieces: List[pq.ParquetDatasetPiece]) -> ObjectRef[Block]:
+            return lambda: gen_read.remote(pieces)
+
+        calls.append(make_call(pieces))
+        piece_metadata = [p.get_metadata() for p in pieces]
+        metadata.append(
+            BlockMetadata(
+                num_rows=sum(m.num_rows for m in piece_metadata),
+                size_bytes=sum(
+                    sum(
+                        m.row_group(i).total_byte_size
+                        for i in builtins.range(m.num_row_groups))
+                    for m in piece_metadata),
+                schema=piece_metadata[0].schema.to_arrow_schema(),
+                input_files=[p.path for p in pieces]))
+
+    return Dataset(LazyBlockList(calls, metadata))
 
 
 @autoinit_ray
@@ -300,7 +359,7 @@ def read_json(paths: Union[str, List[str]],
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def json_read(read_paths: List[str]):
         logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
@@ -311,13 +370,17 @@ def read_json(paths: Union[str, List[str]],
                         f,
                         read_options=json.ReadOptions(use_threads=False),
                         **arrow_json_args))
-        return ArrowBlock(pa.concat_tables(tables))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
 
-    return Dataset([
+    res = [
         json_read.remote(read_paths)
         for read_paths in np.array_split(paths, parallelism)
         if len(read_paths) > 0
-    ])
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -353,7 +416,7 @@ def read_csv(paths: Union[str, List[str]],
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def csv_read(read_paths: List[str]):
         logger.debug(f"Reading {len(read_paths)} files.")
         tables = []
@@ -364,13 +427,17 @@ def read_csv(paths: Union[str, List[str]],
                         f,
                         read_options=csv.ReadOptions(use_threads=False),
                         **arrow_csv_args))
-        return ArrowBlock(pa.concat_tables(tables))
+        block = ArrowBlock(pa.concat_tables(tables))
+        return block, block.get_metadata(input_files=read_paths)
 
-    return Dataset([
+    res = [
         csv_read.remote(read_paths)
         for read_paths in np.array_split(paths, parallelism)
         if len(read_paths) > 0
-    ])
+    ]
+
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 @autoinit_ray
@@ -452,11 +519,14 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     """
     import pyarrow as pa
 
-    @ray.remote
+    @ray.remote(num_returns=2)
     def df_to_block(df: "pandas.DataFrame"):
-        return ArrowBlock(pa.table(df))
+        block = ArrowBlock(pa.table(df))
+        return block, block.get_metadata(input_files=None)
 
-    return Dataset([df_to_block.remote(df) for df in dfs])
+    res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 def from_spark(df: "pyspark.sql.DataFrame",
@@ -471,3 +541,9 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
+
+
+@autoinit_ray
+def from_source(source: Any) -> Dataset[Any]:
+    """Create a dataset from a generic data source."""
+    raise NotImplementedError  # P0
