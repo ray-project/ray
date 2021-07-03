@@ -20,7 +20,7 @@ def step(func: types.FunctionType) -> WorkflowStepFunction:
     Examples:
         >>> @workflow.step
         ... def book_flight(origin: str, dest: str) -> Flight:
-        ...    ...
+        ...    return Flight(...)
 
     Args:
         func: The function to turn into a workflow step.
@@ -39,15 +39,15 @@ def run(entry_workflow: "Workflow",
     Examples:
         >>> @workflow.step
         ... def book_flight(origin: str, dest: str) -> Flight:
-        ...    ...
+        ...    return Flight(...)
 
         >>> @workflow.step
         ... def book_hotel(location: str) -> Reservation:
-        ...    ...
+        ...    return Reservation(...)
 
         >>> @workflow.step
         ... def finalize_trip(bookings: List[Any]) -> Trip:
-        ...    ...
+        ...    return Trip(...)
 
         >>> flight1 = book_flight.step("OAK", "SAN")
         >>> flight2 = book_flight.step("SAN", "OAK")
