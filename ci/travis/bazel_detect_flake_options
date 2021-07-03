@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+#if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then
+if true; then
+    echo "--runs_per_test=//python/ray/tests/.*@3 --runs_per_test_detects_flakes --experimental_cancel_concurrent_tests"
+fi
