@@ -23,14 +23,10 @@ def step(func) -> WorkflowStepFunction:
     return WorkflowStepFunction(func)
 
 
-# TODO(suquark): Raise an error when calling run() on an existing workflow.
-# Maybe we can also add a run_or_resume() call.
-
-
 def run(entry_workflow: "Workflow",
         storage: "Optional[Union[str, Storage]]" = None,
         workflow_id: Optional[str] = None,
-        detached: bool = False) -> ray.ObjectRef:
+        detached: bool = True) -> ray.ObjectRef:
     """
     Run a workflow asynchronously.
 
@@ -40,18 +36,15 @@ def run(entry_workflow: "Workflow",
             checkpointing.
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
-        detached: If True, the execution of workflow is detached form
-            the driver. Otherwise the workflow shares fate with the driver
-            (i.e. if the driver failed, the workflow also failed).
+        detached: If True, the execution of the workflow is decoupled from
+            the current process. Otherwise, it will fate share with the
+            current driver, actor, or task.
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     assert ray.is_initialized()
     return execution.run(entry_workflow, storage, workflow_id, detached)
-
-
-# TODO(suquark): support recovery with ObjectRef inputs.
 
 
 def resume(workflow_id: str,
