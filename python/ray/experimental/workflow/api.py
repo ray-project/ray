@@ -30,7 +30,7 @@ def step(func) -> WorkflowStepFunction:
 def run(entry_workflow: "Workflow",
         storage: "Optional[Union[str, Storage]]" = None,
         workflow_id: Optional[str] = None,
-        share_fate_with_driver: bool = False) -> ray.ObjectRef:
+        detached: bool = False) -> ray.ObjectRef:
     """
     Run a workflow asynchronously.
 
@@ -40,16 +40,15 @@ def run(entry_workflow: "Workflow",
             checkpointing.
         workflow_id: The ID of the workflow. The ID is used to identify
             the workflow.
-        share_fate_with_driver: If True, the workflow fail when the driver
-            failed. Otherwise its lifetime is managed by a detached named
-            actor.
+        detached: If True, the execution of workflow is detached form
+            the driver. Otherwise the workflow shares fate with the driver
+            (i.e. if the driver failed, the workflow also failed).
 
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
     assert ray.is_initialized()
-    return execution.run(entry_workflow, storage, workflow_id,
-                         share_fate_with_driver)
+    return execution.run(entry_workflow, storage, workflow_id, detached)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
