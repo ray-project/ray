@@ -67,7 +67,9 @@ def receive_data(data: np.ndarray):
     return data
 
 
-def test_object_deref():
+# TODO(suquark): Support ObjectRef checkpointing.
+@pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
+def test_objectref_inputs():
     ray.init()
 
     # TODO(suquark): " detached=False" is a workaround, because
@@ -77,9 +79,13 @@ def test_object_deref():
             ray.put(42), nested_ref.remote(), [nested_ref.remote()],
             nested_workflow.step(10), [nested_workflow.step(9)], [{
                 "output": nested_workflow.step(7)
-            }]),
-        detached=False)
+            }]))
     assert ray.get(output)
+    ray.shutdown()
+
+
+def test_object_deref():
+    ray.init()
 
     x = empty_list.step()
     output = workflow.run(deref_shared.step(x, x))
