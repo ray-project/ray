@@ -33,18 +33,13 @@ any cloud. It will:
 Kubernetes Operator
 ^^^^^^^^^^^^^^^^^^^
 
-The :ref:`k8s operator <Ray-operator>` serves a very similar purpose to the
-cluster launcher, but follows the `kubernetes operator pattern
-<https://kubernetes.io/docs/concepts/extend-kubernetes/operator>`__. It's
-defined as :ref:`a helm chart <Ray-helm>` and will:
+The goal of the :ref:`Ray Kubernetes Operator <Ray-operator>` is to make it easy
+to deploy a Ray cluster on an existing Kubernetes cluster.
 
-* Create a controller (the operator).
-* Provision a new pod (head node).
-* execute shell commands to set up Ray with the provided options.
-* (optionally) run any custom, user defined setup commands.
-* Initialize the Ray cluster.
+To simplify Operator configuration, Ray provides a :ref:`a Helm chart <Ray-helm>`.
+Installing the Helm chart will create an Operator Deployment.
+The Operator manages autoscaling Ray clusters; each Ray node runs in its own K8s Pod.
 
-The operator will then serve as the autoscaler.
 
 Autoscaling with Ray
 --------------------
@@ -94,11 +89,11 @@ Deploying an application
 ------------------------
 
 The recommended way of connecting to a Ray cluster is to use the
-``Ray.client.connect()`` API and connect via the Ray Client.
+``ray.client(...).connect()`` API and connect via the Ray Client.
 
 .. note::
 
-  Using ``Ray.client.connect()`` is generally a best practice because it allows
+  Using ``ray.client(...).connect()`` is generally a best practice because it allows
   you to test your code locally, and deploy to a cluster with **no code
   changes**.
 
@@ -120,7 +115,7 @@ Monitoring and observability
 Ray comes with 3 main observability features:
 
 1. :ref:`The dashboard <Ray-dashboard>`
-2. :ref:`Ray status <monitor-cluster>`
+2. :ref:`ray status <monitor-cluster>`
 3. :ref:`Prometheus metrics <multi-node-metrics>`
 
 Monitoring the cluster via the dashboard
@@ -133,13 +128,13 @@ By default, the cluster launcher and operator will launch the dashboard, but
 not publicly expose it.
 
 If you launch your application via the cluster launcher, you can securely
-portforward local traffic to the dashboard via the ``Ray dashboard`` command
+portforward local traffic to the dashboard via the ``ray dashboard`` command
 (which establishes an SSH tunnel). The dashboard will now be visible at
 ``http://localhost:8265``.
 
-With the kubernetes operator, you will need to expose port 8265 on the head
-node, or use `kubectl to portforward
-<https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/>`__.
+The Kubernetes Operator makes the dashboard available via a Service targeting the Ray head pod.
+You can :ref:`access the dashboard <ray-k8s-dashboard>` using ``kubectl port-forward``.
+
 
 Observing the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -149,12 +144,12 @@ information from the cluster. This information, along with the status of
 starting nodes, can be accessed via the ``ray status`` command.
 
 To dump the current state of a cluster launched via the cluster launcher, you
-can run ``Ray exec cluster.yaml "Ray status"``.
+can run ``ray exec cluster.yaml "Ray status"``.
 
-For a more "live" monitoring experience, it is recommended that you run ``Ray
-status`` in a watch loop: ``Ray exec cluster.yaml "watch -n 1 Ray status"``.
+For a more "live" monitoring experience, it is recommended that you run ``ray
+status`` in a watch loop: ``ray exec cluster.yaml "watch -n 1 Ray status"``.
 
-With the kubernetes operator, you should replace ``Ray exec cluster.yaml`` with
+With the kubernetes operator, you should replace ``ray exec cluster.yaml`` with
 ``kubectl exec <head node pod>``.
 
 Prometheus metrics
@@ -223,9 +218,10 @@ architecture means that the head node will have extra stress due to GCS.
   resource on the head node is outbound bandwidth. For large clusters (see the
   scalability envelope), we recommend using machines networking characteristics
   at least as good as an r5dn.16xlarge on AWS EC2.
-* Set ``resources: {"CPU": 0}`` on the head node. Due to the heavy networking
+* Set ``resources: {"CPU": 0}`` on the head node. (For Ray clusters deployed using Helm,
+  set ``rayResources: {"CPU": 0}``.) Due to the heavy networking
   load (and the GCS and redis processes), we recommend setting the number of
-  CPUs to 0 ohn the head node to avoid scheduling additional tasks on it.
+  CPUs to 0 on the head node to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -233,9 +229,11 @@ Configuring the autoscaler
 For large, long running clusters, there are a few parameters that can be tuned.
 
 * Ensure your quotas for node types are set correctly.
-* For long running clusters, set the ``AUTOSCALER_MAX_RETRIES`` environment
+* For long running clusters, set the ``AUTOSCALER_MAX_NUM_FAILURES`` environment
   variable to a large number (or ``inf``) to avoid unexpected autoscaler
-  crashes. (Note: you may want a separate mechanism to detect if the autoscaler
+  crashes. The variable can be set by prepending \ ``export AUTOSCALER_MAX_NUM_FAILURES=inf;``
+  to the head node's Ray start command.
+  (Note: you may want a separate mechanism to detect if the autoscaler
   errors too often).
 * For large clusters, consider tuning ``upscaling_speed`` for faster
   autoscaling.

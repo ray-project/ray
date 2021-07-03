@@ -75,7 +75,8 @@ def java_function(class_name, function_name):
         None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None)  # max_retries
+        None,  # max_retries
+        None)  # runtime_env
 
 
 def java_actor_class(class_name):
@@ -96,4 +97,4 @@ def java_actor_class(class_name):
         object_store_memory=None,
         resources=None,
         accelerator_type=None,
-    )
+        runtime_env=None)

@@ -46,7 +46,7 @@
 py_test(
     name = "run_regression_tests_cartpole_a2c_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
@@ -66,7 +66,7 @@ py_test(
 py_test(
     name = "run_regression_tests_cartpole_a3c_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
@@ -113,7 +113,7 @@ py_test(
     name = "run_regression_tests_cartpole_appo_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/ppo/cartpole-appo.yaml",
@@ -140,7 +140,7 @@ py_test(
     name = "run_regression_tests_cartpole_ars_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ars/cartpole-ars.yaml"],
     args = ["--yaml-dir=tuned_examples/ars"]
@@ -150,10 +150,39 @@ py_test(
     name = "run_regression_tests_cartpole_ars_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ars/cartpole-ars.yaml"],
     args = ["--yaml-dir=tuned_examples/ars", "--framework=torch"]
+)
+
+# CQL
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
+
+py_test(
+    name = "run_regression_tests_pendulum_cql_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql", "--framework=torch"]
 )
 
 # DDPG
@@ -192,7 +221,7 @@ py_test(
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    tags = ["learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
@@ -360,6 +389,26 @@ py_test(
 )
 
 py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_ppo_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
+)
+
+py_test(
     name = "run_regression_tests_repeat_after_me_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf"],
@@ -448,7 +497,7 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_sac_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -458,10 +507,30 @@ py_test(
 py_test(
     name = "run_regression_tests_pendulum_sac_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+py_test(
+    name = "run_regression_tests_transformed_actions_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
@@ -494,6 +563,14 @@ py_test(
 #
 # Tag: agents_dir
 # --------------------------------------------------------------------
+
+# Generic (all Trainers)
+py_test(
+    name = "test_trainer",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_trainer.py"]
+)
 
 # A2/3CTrainer
 py_test(
@@ -657,7 +734,7 @@ py_test(
 py_test(
     name = "test_ddppo",
     tags = ["agents_dir", "flaky"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
 
@@ -1229,13 +1306,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "evaluation/tests/test_evaluation",
-    tags = ["evaluation"],
-    size = "medium",
-    srcs = ["evaluation/tests/test_evaluation.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["evaluation"],
     size = "medium",
@@ -1309,7 +1379,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils"],
+    tags = ["utils", "flaky"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1515,8 +1585,8 @@ py_test(
 
 py_test(
     name = "tests/test_model_imports",
-    tags = ["tests_dir", "tests_dir_M", "model_imports"],
-    size = "small",
+    tags = ["tests_dir", "tests_dir_M", "model_imports", "flaky"],
+    size = "medium",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
 )
@@ -1663,8 +1733,8 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
-    tags = ["tests_dir", "tests_dir_S"],
-    size = "medium",
+    tags = ["tests_dir", "tests_dir_S", "flaky"],
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
@@ -2007,28 +2077,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_loss_tf",
-    main = "examples/custom_loss.py",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_loss.py"],
-    args = ["--stop-iters=2", "--input-files=tests/data/cartpole"]
-)
-
-py_test(
-    name = "examples/custom_loss_torch",
-    main = "examples/custom_loss.py",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_loss.py"],
-    args = ["--framework=torch", "--stop-iters=2", "--input-files=tests/data/cartpole"]
-)
-
-py_test(
     name = "examples/custom_metrics_and_callbacks",
     main = "examples/custom_metrics_and_callbacks.py",
     tags = ["examples", "examples_C"],
@@ -2061,6 +2109,50 @@ py_test(
     size = "small",
     srcs = ["examples/custom_model_api.py"],
     args = ["--framework=torch"],
+)
+
+py_test(
+    name = "examples/custom_model_loss_and_metrics_ppo_tf",
+    main = "examples/custom_model_loss_and_metrics.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/small.json"],
+    srcs = ["examples/custom_model_loss_and_metrics.py"],
+    args = ["--run=PPO", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+)
+
+py_test(
+    name = "examples/custom_model_loss_and_metrics_ppo_torch",
+    main = "examples/custom_model_loss_and_metrics.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/small.json"],
+    srcs = ["examples/custom_model_loss_and_metrics.py"],
+    args = ["--run=PPO", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+)
+
+py_test(
+    name = "examples/custom_model_loss_and_metrics_pg_tf",
+    main = "examples/custom_model_loss_and_metrics.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/small.json"],
+    srcs = ["examples/custom_model_loss_and_metrics.py"],
+    args = ["--run=PG", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+)
+
+py_test(
+    name = "examples/custom_model_loss_and_metrics_pg_torch",
+    main = "examples/custom_model_loss_and_metrics.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/small.json"],
+    srcs = ["examples/custom_model_loss_and_metrics.py"],
+    args = ["--run=PG", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -2324,11 +2416,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/partial_gpus",
-    main = "examples/partial_gpus.py",
+    name = "examples/fractional_gpus",
+    main = "examples/fractional_gpus.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/partial_gpus.py"],
+    srcs = ["examples/fractional_gpus.py"],
     args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
 )
 
@@ -2365,6 +2457,26 @@ py_test(
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--framework=torch"],
 )
+
+# Deactivated for now due to open-spiel's dependency on an outdated
+# tensorflow-probability version.
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
 
 py_test(
     name = "examples/trajectory_view_api_tf",
@@ -2438,14 +2550,15 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
-py_test(
-    name = "examples/two_step_game_qmix",
-    main = "examples/two_step_game.py",
-    tags = ["examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
-)
+# Skipping because of high flakiness.
+#py_test(
+#    name = "examples/two_step_game_qmix",
+#    main = "examples/two_step_game.py",
+#    tags = ["examples", "examples_T", "flaky"],
+#    size = "large",
+#    srcs = ["examples/two_step_game.py"],
+#    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
+#)
 
 py_test(
     name = "contrib/bandits/examples/lin_ts",

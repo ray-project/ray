@@ -102,7 +102,8 @@ if __name__ == "__main__":
                         "agent_id": 1,
                     }),
                 },
-                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+                "policy_mapping_fn": (
+                    lambda aid, **kwargs: "pol2" if aid else "pol1"),
             },
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -118,7 +119,7 @@ if __name__ == "__main__":
                 "final_epsilon": 0.05,
             },
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
+            "mixer": grid_search([None, "qmix"]),
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
