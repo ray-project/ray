@@ -70,7 +70,7 @@ def receive_data(data: np.ndarray):
 def test_object_deref():
     ray.init()
 
-    # TODO(suquark): "share_fate_with_driver=True" is a workaround, because
+    # TODO(suquark): " detached=False" is a workaround, because
     # we do not support ObjectRef checkpointing yet.
     output = workflow.run(
         deref_check.step(
