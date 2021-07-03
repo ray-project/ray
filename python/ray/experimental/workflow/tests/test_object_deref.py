@@ -68,12 +68,19 @@ def receive_data(data: np.ndarray):
 
 
 # TODO(suquark): Support ObjectRef checkpointing.
+def test_objectref_inputs_exception():
+    ray.init()
+
+    with pytest.raises(ValueError):
+        output = workflow.run(receive_data.step(ray.put([42])))
+        assert ray.get(output)
+    ray.shutdown()
+
+
 @pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
 def test_objectref_inputs():
     ray.init()
 
-    # TODO(suquark): " detached=False" is a workaround, because
-    # we do not support ObjectRef checkpointing yet.
     output = workflow.run(
         deref_check.step(
             ray.put(42), nested_ref.remote(), [nested_ref.remote()],
