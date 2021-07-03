@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# On the Linux master build, retry core integration tests 3x to detect flakes with higher fidelity.
 
 #if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then
 if true; then
