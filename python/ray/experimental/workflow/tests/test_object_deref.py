@@ -78,7 +78,7 @@ def test_object_deref():
             nested_workflow.step(10), [nested_workflow.step(9)], [{
                 "output": nested_workflow.step(7)
             }]),
-        detached=True)
+        detached=False)
     assert ray.get(output)
 
     x = empty_list.step()
