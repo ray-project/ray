@@ -1,4 +1,5 @@
 """A simple multi-agent env with two agents playing rock paper scissors.
+
 This demonstrates running the following policies in competition:
     (1) heuristic policy of repeating the same move
     (2) heuristic policy of beating the last opponent move
@@ -81,6 +82,7 @@ def run_same_policy(args, stop):
 
 def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     """Run heuristic policies vs a learned agent.
+
     The learned agent should eventually reach a reward of ~5 with
     use_lstm=False, and ~7 with use_lstm=True. The reason the LSTM policy
     can perform better is since it can distinguish between the always_same vs
@@ -143,6 +145,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
 
 def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.
+    
     This performs about the same as the default loss does."""
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
