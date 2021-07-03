@@ -23,7 +23,7 @@ def run(entry_workflow: Workflow,
         storage: Optional[Union[str, Storage]] = None,
         workflow_id: Optional[str] = None,
         detached: bool = True) -> ray.ObjectRef:
-    """Run a workflow asynchronously. See "workflow.run()" for details."""
+    """Run a workflow asynchronously. See "api.run()" for details."""
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
@@ -61,7 +61,7 @@ def run(entry_workflow: Workflow,
 
 def resume(workflow_id: str,
            storage: Optional[Union[str, Storage]] = None) -> ray.ObjectRef:
-    """Resume a workflow asynchronously. See "workflow.resume()" for details.
+    """Resume a workflow asynchronously. See "api.resume()" for details.
     """
     if isinstance(storage, str):
         store = create_storage(storage)
