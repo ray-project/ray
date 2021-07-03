@@ -133,7 +133,7 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --runs_per_test=//python/ray/tests/.*@5
+      --runs_per_test=//python/ray/tests/.*@3
       --runs_per_test_detects_flakes
       --experimental_cancel_concurrent_tests
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
@@ -148,14 +148,14 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --runs_per_test=5
+      --runs_per_test=3
       --runs_per_test_detects_flakes
       --experimental_cancel_concurrent_tests
       python/ray/tests/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --runs_per_test=5
+      --runs_per_test=3
       --runs_per_test_detects_flakes
       --experimental_cancel_concurrent_tests
       python/ray/tests/...
@@ -165,7 +165,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky
-      --runs_per_test=5
+      --runs_per_test=3
       --runs_per_test_detects_flakes
       --experimental_cancel_concurrent_tests
       python/ray/tests/...
@@ -175,7 +175,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
-      --runs_per_test=5
+      --runs_per_test=3
       --runs_per_test_detects_flakes
       --experimental_cancel_concurrent_tests
       python/ray/tests/...
