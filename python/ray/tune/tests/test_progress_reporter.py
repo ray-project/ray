@@ -172,25 +172,36 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
-EXPECTED_SORT_RESULT_1 = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
+EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
 |   Trial name | status     | loc   |   a |   metric_1 |
 |--------------+------------+-------+-----+------------|
-|        00004 | RUNNING    | here  |   4 |        0.8 |
-|        00003 | PENDING    | here  |   3 |        0.6 |
-|        00000 | TERMINATED | here  |   0 |        0   |
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
 |        00001 | TERMINATED | here  |   1 |        0.2 |
 +--------------+------------+-------+-----+------------+
 ... 1 more trials not shown (1 TERMINATED)"""
 
-EXPECTED_SORT_RESULT_2 = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
+EXPECTED_SORT_RESULT_ASC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
 |   Trial name | status     | loc   |   a |   metric_1 |
 |--------------+------------+-------+-----+------------|
-|        00004 | RUNNING    | here  |   4 |        0.8 |
-|        00003 | PENDING    | here  |   3 |        0.6 |
-|        00002 | TERMINATED | here  |   2 |        0.4 |
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
 |        00001 | TERMINATED | here  |   1 |        0.2 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00002 | TERMINATED | here  |   2 |        0.4 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
 +--------------+------------+-------+-----+------------+
 ... 1 more trials not shown (1 TERMINATED)"""
 
@@ -455,9 +466,13 @@ class ProgressReporterTest(unittest.TestCase):
             t.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
-            t.last_result = {"config": {"a": i}, "metric_1": i / 5}
+            t.last_result = {"config": {"a": i}}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
+        # Set `metric_1` for terminated trails
+        trials[0].last_result["metric_1"] = 0.3
+        trials[1].last_result["metric_1"] = 0.2
+        trials[2].last_result["metric_1"] = 0.4
 
         class TestReporter(CLIReporter):
             def __init__(self, *args, **kwargs):
@@ -473,28 +488,39 @@ class ProgressReporterTest(unittest.TestCase):
         reporter1 = TestReporter(
             max_progress_rows=4, mode="max", metric="metric_1")
         reporter1.report(trials, done=False)
-        assert EXPECTED_SORT_RESULT_1 in reporter1._output
+        print(reporter1._output)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter1._output
 
-        # Sort by metric
+        # Sort by metric (asc)
         reporter2 = TestReporter(
+            max_progress_rows=4,
+            mode="min",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter2.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_ASC in reporter2._output
+
+        # Sort by metric (desc)
+        reporter3 = TestReporter(
             max_progress_rows=4,
             mode="max",
             metric="metric_1",
             sort_by_metric=True)
-        reporter2.report(trials, done=False)
-        assert EXPECTED_SORT_RESULT_2 in reporter2._output
+        reporter3.report(trials, done=False)
+        print(reporter3._output)
+        assert EXPECTED_SORT_RESULT_DESC in reporter3._output
 
         # Sort by metric when mode is None
-        reporter3 = TestReporter(
+        reporter4 = TestReporter(
             max_progress_rows=4, metric="metric_1", sort_by_metric=True)
-        reporter3.report(trials, done=False)
-        assert EXPECTED_SORT_RESULT_1 in reporter3._output
+        reporter4.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter4._output
 
         # Sort by metric when metric is None
-        reporter4 = TestReporter(
+        reporter5 = TestReporter(
             max_progress_rows=4, mode="max", sort_by_metric=True)
-        reporter4.report(trials, done=False)
-        assert EXPECTED_SORT_RESULT_1 in reporter4._output
+        reporter5.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
 
     def testEndToEndReporting(self):
         try:
