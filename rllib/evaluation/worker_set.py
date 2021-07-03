@@ -16,6 +16,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.tune.registry import RLLIB_INPUT, _global_registry
 
 tf1, tf, tfv = try_import_tf()
 
@@ -313,6 +314,8 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
+        elif isinstance(config["input"], str) and _global_registry.contains(RLLIB_INPUT, config["input"]):
+            input_creator = _global_registry.get(RLLIB_INPUT, config["input"])
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
