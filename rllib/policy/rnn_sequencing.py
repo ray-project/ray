@@ -170,7 +170,7 @@ def add_time_dimension(padded_inputs: TensorType,
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +
-                     padded_inputs.get_shape().as_list()[1:])
+                     list(padded_inputs.shape[1:]))
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
