@@ -59,9 +59,7 @@ def get_cloud_sync_client(remote_path):
     Raises:
         ValueError if malformed remote_dir.
     """
-    raise RuntimeError("FOUND IT NOT", remote_path, S3_PREFIX)
     if remote_path.startswith(S3_PREFIX):
-        raise RuntimeError("FOUND IT")
         if not distutils.spawn.find_executable("aws"):
             raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
