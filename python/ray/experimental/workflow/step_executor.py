@@ -82,9 +82,10 @@ def _resolve_step_inputs(
     return _args, _kwargs
 
 
-def postprocess_workflow_step(ret: Union[Workflow, Any],
-                              outer_most_step_id: Optional[StepID] = None):
-    """Execute workflow and checkpoint outputs.
+def execute_workflow(workflow: Workflow,
+                     outer_most_step_id: Optional[str] = None
+                     ) -> ray.ObjectRef:
+    """Execute workflow.
 
     To fully explain what we are doing, we need to introduce some syntax first.
     The syntax for dependencies between workflow steps
@@ -102,24 +103,39 @@ def postprocess_workflow_step(ret: Union[Workflow, Any],
     for "G", "H".
 
     Args:
-        ret: The returned object of the workflow step.
+        workflow: The workflow to be executed.
         outer_most_step_id: The ID of the outer most workflow. None if it
-            does not exists.
+            does not exists. See "step_executor.execute_workflow" for detailed
+            explanation.
+    Returns:
+        An object ref that represent the result.
+    """
+    if outer_most_step_id is None:
+        # The current workflow step returns a nested workflow, and
+        # there is no outer step for the current step. So the current
+        # step is the outer most step for the inner nested workflow
+        # steps.
+        outer_most_step_id = workflow_context.get_current_step_id()
+    # Passing down outer most step so inner nested steps would
+    # access the same outer most step.
+    return workflow.execute(outer_most_step_id)
+
+
+def commit_step(ret: Union[Workflow, Any],
+                outer_most_step_id: Optional[str] = None):
+    """Checkpoint the step output.
+
+    Args:
+        The returned object of the workflow step.
+        outer_most_step_id: The ID of the outer most workflow. None if it
+            does not exists. See "step_executor.execute_workflow" for detailed
+            explanation.
     """
     store = workflow_storage.WorkflowStorage()
-    step_id = workflow_context.get_current_step_id()
-    store.commit_step(step_id, ret, outer_most_step_id)
     if isinstance(ret, Workflow):
-        if outer_most_step_id is None:
-            # The current workflow step returns a nested workflow, and
-            # there is no outer step for the current step. So the current
-            # step is the outer most step for the inner nested workflow
-            # steps.
-            outer_most_step_id = step_id
-        # Passing down outer most step so inner nested steps would
-        # access the same outer most step.
-        return ret.execute(outer_most_step_id)
-    return ret
+        store.save_subworkflow(ret)
+    step_id = workflow_context.get_current_step_id()
+    store.save_step_output(step_id, ret, outer_most_step_id)
 
 
 @ray.remote
@@ -134,7 +150,7 @@ def _workflow_step_executor(
         context: Workflow step context. Used to access correct storage etc.
         step_id: The ID of the step.
         step_inputs: The inputs tuple of the step.
-        outer_most_step_id: See "postprocess_workflow_step" for
+        outer_most_step_id: See "step_executor.execute_workflow" for
             explanation.
 
     Returns:
@@ -148,8 +164,12 @@ def _workflow_step_executor(
     args, kwargs = _resolve_step_inputs(step_inputs)
     # Running the actual step function
     ret = func(*args, **kwargs)
-    # See "postprocess_workflow_step" for explanation of "outer_most_step_id".
-    return postprocess_workflow_step(ret, outer_most_step_id)
+    # Save workflow output
+    commit_step(ret, outer_most_step_id)
+    if isinstance(ret, Workflow):
+        # execute sub-workflow
+        return execute_workflow(ret, outer_most_step_id)
+    return ret
 
 
 def execute_workflow_step(step_func: Callable, step_id: StepID,
