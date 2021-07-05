@@ -6,6 +6,7 @@ from grpc.experimental import aio as aiogrpc
 
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.consts as dashboard_consts
+from ray.ray_constants import env_bool
 from ray.new_dashboard.utils import async_loop_forever, create_task
 from ray.new_dashboard.modules.event import event_consts
 from ray.new_dashboard.modules.event.event_utils import monitor_events
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
+@dashboard_utils.dashboard_module(
+    enable=env_bool(event_consts.EVENT_MODULE_ENVIRONMENT_KEY, False))
 class EventAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
