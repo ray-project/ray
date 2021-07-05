@@ -495,12 +495,14 @@ class Trainable:
         """
         return False
 
-    def update_resources(self, new_resources):
+    def update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
         """Fires whenever Trainable resources are changed.
 
         Args:
-            new_resources (dict|callable|PlacementGroupFactory):
-                Updated resources.
+            new_resources (PlacementGroupFactory|Resources):
+                Updated resources. Will be a PlacementGroupFactory if
+                trial uses placement groups and Resources otherwise.
         """
         return
 

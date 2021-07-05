@@ -451,19 +451,7 @@ class RayTrialExecutor(TrialExecutor):
                 return False
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
-        if trial.has_new_resources:
-            # (yard1) move to a method
-            trainable = trial.runner
-            trial.has_new_resources = False
-            with self._change_working_directory(trial):
-                with warn_if_slow("update_resources"):
-                    try:
-                        ray.get(
-                            trainable.update_resources.remote(trial.resources),
-                            timeout=DEFAULT_GET_TIMEOUT)
-                    except GetTimeoutError:
-                        logger.exception(
-                            "Trial %s: updating resources timed out.", trial)
+        self._notify_trainable_of_new_resources_if_needed(trial)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
@@ -477,6 +465,22 @@ class RayTrialExecutor(TrialExecutor):
         elif train and not trial.is_restoring:
             self._train(trial)
         return True
+
+    def _notify_trainable_of_new_resources_if_needed(self, trial: Trial):
+        if trial.has_new_resources:
+            trainable = trial.runner
+            trial.has_new_resources = False
+            with self._change_working_directory(trial):
+                with warn_if_slow("update_resources"):
+                    try:
+                        ray.get(
+                            trainable.update_resources.remote(
+                                trial.placement_group_factory if trial.
+                                uses_placement_groups else trial.resources),
+                            timeout=DEFAULT_GET_TIMEOUT)
+                    except GetTimeoutError:
+                        logger.exception(
+                            "Trial %s: updating resources timed out.", trial)
 
     def _stop_trial(self, trial, error=False, error_msg=None):
         """Stops this trial.

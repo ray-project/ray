@@ -10,40 +10,22 @@ import pickle
 
 import ray
 from ray import tune
-from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
+from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune import trial_runner
 
 
-def train_breast_cancer(config: dict):
-    # This is a simple training function to be passed into Tune
-    # Load dataset
-    data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
-    # Split into train and test set
-    train_x, test_x, train_y, test_y = train_test_split(
-        data, labels, test_size=0.25)
-    # Build input matrices for XGBoost
-    train_set = xgb.DMatrix(train_x, label=train_y)
-    test_set = xgb.DMatrix(test_x, label=test_y)
-    # Train the classifier, using the Tune callback
-    xgb.train(
-        config,
-        train_set,
-        evals=[(test_set, "eval")],
-        verbose_eval=False,
-        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")])
-
-
+# Dynamic resource allocation is currently only possible
+# with Trainable (class) API
 class BreastCancerTrainable(Trainable):
     def setup(self, config):
         self.config = config
         self.nthread = config.pop("nthread", 1)
         self.model: xgb.Booster = None
-        # This is a simple training function to be passed into Tune
         # Load dataset
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
         # Split into train and test set
@@ -68,7 +50,6 @@ class BreastCancerTrainable(Trainable):
         print(config, results)
         return {
             "eval-logloss": results["eval"]["logloss"][-1],
-            # "eval-error": results["eval"]["error"][0],
             "nthread": self.nthread
         }
 
@@ -92,8 +73,12 @@ class BreastCancerTrainable(Trainable):
         self.train_set = xgb.DMatrix(train_x, label=train_y)
         self.test_set = xgb.DMatrix(test_x, label=test_y)
 
-    def update_resources(self, new_resource):
-        self.nthread = new_resource.cpu
+    def update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        if isinstance(new_resources, PlacementGroupFactory):
+            self.nthread = new_resources.head_cpus
+        else:
+            self.nthread = new_resources.cpu
 
 
 def get_best_model_checkpoint(analysis):
@@ -126,52 +111,84 @@ def tune_xgboost():
         grace_period=1,
         reduction_factor=2)
 
-    def resource_allocation_function(
-            trial_runner: "trial_runner.TrialRunner", trial: Trial,
-            result: dict,
-            base_trial_resource) -> Union[None, dict, PlacementGroupFactory]:
+    def resource_allocation_function(trial_runner: "trial_runner.TrialRunner",
+                                     trial: Trial, result: dict,
+                                     base_trial_resource: PlacementGroupFactory
+                                     ) -> Union[None, PlacementGroupFactory]:
+        """This is a basic example of a resource allocating function.
+
+        The function naively balances free resources (CPUs and GPUs) between
+        trials, giving them all equal priority, ensuring that all resources
+        are always being used. If for some reason a trial ends up with
+        more resources than there are free ones, it will adjust downwards.
+
+        It will also ensure that trial as at least as many resources as
+        it started with (base_trial_resource).
+
+        This function returns a new PlacementGroupFactory with updated
+        resource requirements, or None. If the returned PlacementGroupFactory
+        is equal by value to the one the trial has currently, the scheduler
+        will skip the update process internally (same with None)."""
+
         if result["training_iteration"] < 1:
             return None
 
-        min_cpu = base_trial_resource.required_resources["CPU"]
+        min_cpu = base_trial_resource.required_resources.get("CPU", 0)
+        min_gpu = base_trial_resource.required_resources.get("GPU", 0)
 
-        # only start dynamic resource allocation after a sufficient
-        # number of trials has been completed
-
-        # todo make this use placement group factories
-        total_available_resources = (
+        total_available_cpus = (
             trial_runner.trial_executor._avail_resources.cpu)
-        upper_resource_limit = math.ceil(total_available_resources / len(
-            trial_runner.get_live_trials()) / min_cpu)
-        if upper_resource_limit <= min_cpu:
-            return None
+        total_available_gpus = (
+            trial_runner.trial_executor._avail_resources.gpu)
 
-        used_resources = sum([
-            trial.resources.cpu for t in trial_runner.get_live_trials()
-            if t is not trial
-        ])
-        free_resources = total_available_resources - used_resources
-        print(f"Trial {trial} ({trial.resources.cpu}) free resources",
-              f"{free_resources} upper limit {upper_resource_limit}")
-        new_cpu = min(upper_resource_limit,
-                      max(min_cpu + free_resources, min_cpu))
-        if new_cpu == trial.resources.cpu:
-            return None
-        return {"cpu": new_cpu, "gpu": 0}
+        if min_cpu == 0:
+            upper_cpu_limit = 0
+        else:
+            upper_cpu_limit = math.ceil(total_available_cpus / len(
+                trial_runner.get_live_trials()) / min_cpu)
+
+        if min_gpu == 0:
+            upper_gpu_limit = 0
+        else:
+            upper_gpu_limit = math.ceil(total_available_gpus / len(
+                trial_runner.get_live_trials()) / min_gpu)
+
+        def get_used_cpus_and_gpus(t: Trial):
+            return (t.placement_group_factory.required_resources.get("CPU", 0),
+                    t.placement_group_factory.required_resources.get("GPU", 0))
+
+        trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+
+        used_cpus_and_gpus = [
+            get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
+        ]
+        used_cpus, used_gpus = zip(*used_cpus_and_gpus)
+        used_cpus = sum(used_cpus)
+        used_gpus = sum(used_gpus)
+
+        free_cpus = total_available_cpus - used_cpus
+        free_gpus = total_available_gpus - used_gpus
+
+        new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus,
+                                           min_cpu))
+        new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus,
+                                           min_gpu))
+
+        return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
 
     scheduler = ResourceChangingScheduler(base_scheduler,
                                           resource_allocation_function)
 
-    search = BasicVariantGenerator(
-        # max_concurrent=4
-    )
+    search = BasicVariantGenerator()
 
     analysis = tune.run(
         BreastCancerTrainable,
         metric="eval-logloss",
         mode="min",
-        # You can add "gpu": 0.1 to allocate GPUs
-        resources_per_trial={"cpu": 1},
+        resources_per_trial=PlacementGroupFactory([{
+            "CPU": 1,
+            "GPU": 0
+        }]),
         config=search_space,
         search_alg=search,
         num_samples=1,
@@ -179,12 +196,12 @@ def tune_xgboost():
         scheduler=scheduler)
 
     assert analysis.results_df["training_iteration"].max() == 16
+    assert analysis.results_df["nthread"].max() > 1
 
     return analysis
 
 
 if __name__ == "__main__":
-    # os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
