@@ -183,6 +183,11 @@ class GlobalStateAccessor {
   bool PutInternalKVString(const std::string &key, const std::string &value,
                            bool overwrite = false);
 
+  /// Get the serialized system config from GCS.
+  ///
+  /// \return The serialized system config.
+  std::string GetSystemConfig();
+
  private:
   /// MultiItem transformation helper in template style.
   ///
