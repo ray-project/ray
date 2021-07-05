@@ -75,8 +75,7 @@ class ResourceChangingScheduler(TrialScheduler):
         any_resources_changed = False
 
         for trial, new_resources in self._trials_to_reallocate.items():
-            resources_changed = self.set_trial_resources(
-                trial, new_resources)
+            resources_changed = self.set_trial_resources(trial, new_resources)
             any_resources_changed = any_resources_changed or resources_changed
         self._trials_to_reallocate.clear()
 
@@ -91,7 +90,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def debug_string(self) -> str:
         return ("(ResourceChangingScheduler) "
-               f"{self._base_scheduler.debug_string()}")
+                f"{self._base_scheduler.debug_string()}")
 
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
@@ -121,7 +120,7 @@ class ResourceChangingScheduler(TrialScheduler):
             new_resources,
     ) -> bool:
         """Returns True if trial's resources are value equal to new_resources.
-        
+
         Only checks for PlacementGroupFactories at this moment.
         """
         if trial.uses_placement_groups:
@@ -153,4 +152,3 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial, new_resources):
             return new_resources
         return None
-
