@@ -44,6 +44,11 @@ class WorkflowStepFunction:
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
                 input_placeholder: RRef = ray.put((args, kwargs))
+                if object_refs:
+                    raise ValueError(
+                        "There are ObjectRefs in workflow inputs. However "
+                        "workflow currently does not support checkpointing "
+                        "ObjectRefs.")
             return Workflow(self._func, self._run_step, input_placeholder,
                             workflows, object_refs)
 

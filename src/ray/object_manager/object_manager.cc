@@ -474,7 +474,7 @@ void ObjectManager::PushObjectInternal(
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
     // Push is best effort, so do nothing here.
-    RAY_LOG(ERROR)
+    RAY_LOG(INFO)
         << "Failed to establish connection for Push with remote object manager.";
     return;
   }
