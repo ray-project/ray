@@ -782,10 +782,9 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-
-        for ref in self._blocks:
-            block = ray.get(ref)
-            for row in block.iter_rows():
+        for batch in self.iter_batches(
+                prefetch_blocks=prefetch_blocks, batch_format="blocks"):
+            for row in batch.iter_rows():
                 yield row
 
     def iter_batches(self,
@@ -848,11 +847,14 @@ class Dataset(Generic[T]):
             for block_ref in block_chunk:
                 block = ray.get(block_ref)
                 total_rows = block.num_rows()
-                block_batch_size = batch_size
-                if block_batch_size is None:
-                    block_batch_size = total_rows
+                # Short-circuit on empty block.
+                if total_rows == 0:
+                    continue
+                block_batch_size = (
+                    batch_size if batch_size is not None else total_rows)
                 if batch_buffer is not None:
-                    # Get first-batch offset into current block.
+                    # Get offset into current block in order to make the
+                    # batch buffer remainder a full batch.
                     offset = block_batch_size - batch_buffer.num_rows()
                     if offset > total_rows:
                         offset = total_rows
