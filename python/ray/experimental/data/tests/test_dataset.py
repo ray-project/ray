@@ -382,6 +382,14 @@ def test_iter_batches(ray_start_regular_shared):
         assert batch.equals(df)
 
 
+def test_lazy_loading_iter_batches_exponential_rampup(
+        ray_start_regular_shared):
+    ds = ray.experimental.data.range(32, parallelism=8)
+    expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
+    for _, expected in zip(ds.iter_batches(), expected_num_blocks):
+        assert len(ds._blocks._blocks) == expected
+
+
 def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.experimental.data.range(5)
