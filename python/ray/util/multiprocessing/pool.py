@@ -1,3 +1,4 @@
+from typing import Callable, List, Tuple, Optional, Any, Dict, Hashable
 import logging
 from multiprocessing import TimeoutError
 import os
@@ -7,6 +8,15 @@ import collections
 import threading
 import queue
 import copy
+import gc
+import sys
+try:
+    from joblib.parallel import BatchedCalls, parallel_backend
+    from joblib._parallel_backends import SafeFunction
+except ImportError:
+    BatchedCalls = None
+    parallel_backend = None
+    SafeFunction = None
 
 import ray
 from ray.util import log_once
@@ -14,6 +24,102 @@ from ray.util import log_once
 logger = logging.getLogger(__name__)
 
 RAY_ADDRESS_ENV = "RAY_ADDRESS"
+
+
+def _put_in_dict_registry(
+        obj: Any, registry_hashable: Dict[Hashable, Tuple]) -> ray.ObjectRef:
+    if obj not in registry_hashable:
+        ret = ray.put(obj)
+        registry_hashable[obj] = ret
+    else:
+        ret = registry_hashable[obj]
+    return ret
+
+
+def _put_in_list_registry(
+        obj: Any, registry: List[Tuple[Any, ray.ObjectRef]]) -> ray.ObjectRef:
+    try:
+        ret = next((ref for o, ref in registry if o is obj))
+    except StopIteration:
+        print(f"putting {obj} in store")
+        ret = ray.put(obj)
+        registry.append((obj, ret))
+    return ret
+
+
+def ray_put_if_needed(
+        obj: Any,
+        registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
+        registry_hashable: Optional[Dict[Hashable, Tuple]] = None
+) -> ray.ObjectRef:
+    """ray.put obj in object store if it's not an ObjRef and bigger than 100 bytes,
+    with support for list and dict registries"""
+    if isinstance(obj, ray.ObjectRef) or sys.getsizeof(obj) < 100:
+        return obj
+    ret = obj
+    if registry_hashable is not None:
+        try:
+            ret = _put_in_dict_registry(obj, registry_hashable)
+        except TypeError:
+            if registry is not None:
+                ret = _put_in_list_registry(obj, registry)
+    elif registry is not None:
+        ret = _put_in_list_registry(obj, registry)
+    return ret
+
+
+def ray_get_if_needed(obj: Any) -> Any:
+    """If obj is an ObjectRef, do ray.get, otherwise return obj"""
+    if isinstance(obj, ray.ObjectRef):
+        return ray.get(obj)
+    return obj
+
+
+if BatchedCalls is not None:
+
+    class RayBatchedCalls(BatchedCalls):
+        """Joblib's BatchedCalls with basic Ray object store management"""
+
+        def put_items_in_object_store(
+                self,
+                registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
+                registry_hashable: Optional[Dict[Hashable, Tuple]] = None):
+            """Puts all applicable args and kwargs in self.items into Ray
+            object store"""
+            new_items = []
+            for f, args, kwargs in self.items:
+                args = [
+                    ray_put_if_needed(arg, registry, registry_hashable)
+                    for arg in args
+                ]
+                kwargs = {
+                    k: ray_put_if_needed(v, registry, registry_hashable)
+                    for k, v in kwargs.items()
+                }
+                new_items.append((f, args, kwargs))
+            self.items = new_items
+
+        def __call__(self):
+            # Set the default nested backend to self._backend but do
+            # not set the change the default number of processes to -1
+            with parallel_backend(self._backend, n_jobs=self._n_jobs):
+                return [
+                    func(
+                        *[ray_get_if_needed(arg) for arg in args],
+                        **{k: ray_get_if_needed(v)
+                           for k, v in kwargs.items()})
+                    for func, args, kwargs in self.items
+                ]
+
+        def __reduce__(self):
+            if self._reducer_callback is not None:
+                self._reducer_callback()
+            # no need pickle the callback.
+            return (RayBatchedCalls, (self.items, (self._backend,
+                                                   self._n_jobs), None,
+                                      self._pickle_cache))
+else:
+    RayBatchedCalls = None
 
 
 # Helper function to divide a by b and round the result up.
@@ -336,6 +442,8 @@ class Pool:
         self._initargs = initargs
         self._maxtasksperchild = maxtasksperchild or -1
         self._actor_deletion_ids = []
+        self._registry = []
+        self._registry_hashable = {}
 
         if context and log_once("context_argument_warning"):
             logger.warning("The 'context' argument is not supported using "
@@ -460,10 +568,29 @@ class Pool:
         """
 
         self._check_running()
+        func = self._convert_to_ray_batched_calls_if_needed(func)
         object_ref = self._run_batch(self._random_actor_index(), func,
                                      [(args, kwargs)])
         return AsyncResult(
             [object_ref], callback, error_callback, single_result=True)
+
+    def _convert_to_ray_batched_calls_if_needed(self,
+                                                func: Callable) -> Callable:
+        """Convert joblib's BatchedCalls to RayBatchedCalls which
+        manages the object store better."""
+        if RayBatchedCalls is None:
+            return func
+        org_func = func
+        if isinstance(func, SafeFunction):
+            func = func.func
+        if isinstance(func, BatchedCalls):
+            func = RayBatchedCalls(func.items, (func._backend, func._n_jobs),
+                                   func._reducer_callback, func._pickle_cache)
+            func.put_items_in_object_store(self._registry,
+                                           self._registry_hashable)
+        else:
+            func = org_func
+        return func
 
     def _calculate_chunksize(self, iterable):
         chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
@@ -649,9 +776,12 @@ class Pool:
         outstanding work to finish.
         """
 
+        self._registry.clear()
+        self._registry_hashable.clear()
         for actor, _ in self._actor_pool:
             self._stop_actor(actor)
         self._closed = True
+        gc.collect()
 
     def terminate(self):
         """Close the pool.
