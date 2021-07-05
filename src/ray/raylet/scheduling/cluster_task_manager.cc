@@ -243,7 +243,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                        << worker->WorkerId();
         auto reply = std::get<1>(*work_it);
         auto callback = std::get<2>(*work_it);
-        Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
+        Dispatch(worker, leased_workers, allocated_instances, task, reply, callback);
       }
 
       if (!spec.GetDependencies().empty()) {
