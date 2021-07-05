@@ -767,6 +767,12 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
