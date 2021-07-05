@@ -20,9 +20,11 @@
 #include <assert.h>
 
 #ifdef __linux__
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE  /* Turns on fallocate() definition */
+#endif /* _GNU_SOURCE */
 #include <fcntl.h>
-#endif
+#endif /* __linux__ */
 
 #include <stddef.h>
 #include <stdio.h>
@@ -168,7 +170,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
       }
     }
   }
-#endif
+#endif /* __linux__ */
 
   *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, *fd, 0);
   if (*pointer == MAP_FAILED) {
