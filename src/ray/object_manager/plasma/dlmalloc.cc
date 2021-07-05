@@ -151,10 +151,15 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     RAY_LOG(DEBUG) << "Preallocating fallback allocation using fallocate";
     int ret = fallocate(*fd, /*mode*/ 0, /*offset*/ 0, size);
     if (!ret) {
-      if (ret == EOPNOTSUPP) {
+      if (ret == EOPNOTSUPP || ret == ENOSYS) {
+        // in case that fallocate is not supported by current filesystem or kernel,
+        // we continue to mmap
         RAY_LOG(DEBUG) << "fallocate is not supported: " << std::strerror(errno);
       } else {
-        RAY_LOG(ERROR) << "fallocate failed with error: " << std::strerror(errno);
+        // otherwise we short circuit the allocation with OOM error.
+        RAY_LOG(ERROR) << "Out of memory with fallocate error: " << std::strerror(errno);
+        *pointer = MAP_FAILED;
+        return;
       }
     }
   }
