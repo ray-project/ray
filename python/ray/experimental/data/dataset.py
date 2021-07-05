@@ -791,7 +791,8 @@ class Dataset(Generic[T]):
     def iter_batches(self,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "pandas") -> Iterator[BatchType]:
+                     batch_format: str = "pandas",
+                     drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -806,35 +807,75 @@ class Dataset(Generic[T]):
             batch_size: Record batch size, or None to let the system pick.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
             A list of iterators over record batches.
         """
-        blocks = list(iter(self._blocks))
-        for curr_block_idx in range(len(blocks)):
+        def chunk(iterable, n):
+            it = iter(iterable)
+            while True:
+                chunk_it = itertools.islice(it, n)
+                try:
+                    first = next(chunk_it)
+                except StopIteration:
+                    return
+                yield itertools.chain((first,), chunk_it)
+
+        def format_batch(batch, format):
+            if batch_format == "pandas":
+                return batch.to_pandas()
+            elif batch_format == "pyarrow":
+                return batch._table
+            else:
+                raise ValueError(
+                    f"The given batch format: {batch_format} "
+                    f"is invalid. Supported batch type: {BatchType}")
+
+        batch_buffer = None
+        for block_chunk in chunk(self._blocks, prefetch_blocks + 1):
+            block_chunk = list(block_chunk)
             # Prefetch blocks.
             ray.wait(
-                blocks[curr_block_idx:curr_block_idx + prefetch_blocks],
+                block_chunk,
                 num_returns=1,
                 fetch_local=True)
-            # Get the current block.
-            block = ray.get(blocks[curr_block_idx])
-            total_rows = block.num_rows()
-            max_batch_size = batch_size
-            if max_batch_size is None:
-                max_batch_size = total_rows
-            for start in range(0, total_rows, max_batch_size):
-                end = min(total_rows, start + max_batch_size)
-                view = block.slice(start, end, copy=False)
-                if batch_format == "pandas":
-                    view = view.to_pandas()
-                elif batch_format == "pyarrow":
-                    view = view._table
+            # Yield batches from each block in the prefetch set.
+            for block_ref in block_chunk:
+                block = ray.get(block_ref)
+                total_rows = block.num_rows()
+                block_batch_size = batch_size
+                if block_batch_size is None:
+                    block_batch_size = total_rows
+                if batch_buffer is not None:
+                    # Get first-batch offset into current block.
+                    offset = block_batch_size - batch_buffer.num_rows()
+                    if offset > total_rows:
+                        offset = total_rows
+                    block_slice = block.slice(0, offset, copy=False)
+                    batch_buffer.add_block(block_slice)
+                    if batch_buffer.num_rows() == block_batch_size:
+                        yield format_batch(batch_buffer.build(), batch_format)
+                        batch_buffer = None
                 else:
-                    raise ValueError(
-                        f"The given batch format: {batch_format} "
-                        f"is invalid. Supported batch type: {BatchType}")
-                yield view
+                    offset = 0
+                # Process remaining batches.
+                for start in range(offset, total_rows, block_batch_size):
+                    end = start + block_batch_size
+                    if end > total_rows:
+                        # Add any remainder to the batch buffer.
+                        if batch_buffer is None:
+                            batch_buffer = DelegatingArrowBlockBuilder()
+                        batch_buffer.add_block(
+                            block.slice(start, total_rows, copy=False))
+                        break
+                    yield format_batch(
+                        block.slice(start, end, copy=False),
+                        batch_format)
+        # After processing all blocks, yield the leftover batch if we're not
+        # supposed to drop a leftover partial batch.
+        if batch_buffer is not None and not drop_last:
+            yield format_batch(batch_buffer.build(), batch_format)
 
     def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
         """Return a Torch data iterator over this dataset.

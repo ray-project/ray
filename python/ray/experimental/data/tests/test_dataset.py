@@ -313,9 +313,10 @@ def test_iter_batches(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
-    dfs = [df1, df2, df3]
+    df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
+    dfs = [df1, df2, df3, df4]
     ds = ray.experimental.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
+        [ray.put(df1), ray.put(df2), ray.put(df3), ray.put(df4)])
 
     # Default.
     for batch, df in zip(ds.iter_batches(), dfs):
@@ -328,9 +329,50 @@ def test_iter_batches(ray_start_regular_shared):
         assert batch.equals(pa.Table.from_pandas(df))
 
     # Batch size.
-    batches = [batch for batch in ds.iter_batches(batch_size=2)]
-    assert len(batches) == (math.ceil(len(df1) / 2) + math.ceil(len(df2) / 2) +
-                            math.ceil(len(df3) / 2))
+    batch_size = 2
+    batches = [batch for batch in ds.iter_batches(batch_size=batch_size)]
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (
+        len(batches) ==
+        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Batch size larger than block.
+    batch_size = 4
+    batches = [batch for batch in ds.iter_batches(batch_size=batch_size)]
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (
+        len(batches) ==
+        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Batch size drop partial.
+    batch_size = 5
+    batches = [
+        batch
+        for batch in ds.iter_batches(batch_size=batch_size, drop_last=True)]
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (
+        len(batches) ==
+        (len(df1) + len(df2) + len(df3) + len(df4)) // batch_size)
+    assert pd.concat(
+        batches, ignore_index=True).equals(
+            pd.concat(dfs, ignore_index=True)[:10])
+
+    # Batch size don't drop partial.
+    batch_size = 5
+    batches = [
+        batch
+        for batch in ds.iter_batches(batch_size=batch_size, drop_last=False)]
+    assert all(len(batch) == batch_size for batch in batches[:-1])
+    assert (
+        len(batches[-1]) == (
+            len(df1) + len(df2) + len(df3) + len(df4)) % batch_size)
+    assert (
+        len(batches) ==
+        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
@@ -353,7 +395,6 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
-    print(ds_list)
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
