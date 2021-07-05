@@ -107,7 +107,7 @@ def tune_xgboost():
     }
     # This will enable aggressive early stopping of bad trials.
     base_scheduler = ASHAScheduler(
-        max_t=16,  # 10 training iterations
+        max_t=16,  # 16 training iterations
         grace_period=1,
         reduction_factor=2)
 

@@ -441,6 +441,11 @@ The output of our run could look like this:
 As you can see, most trials have been stopped only after a few iterations. Only the
 two most promising trials were run for the full 10 iterations.
 
+You can also ensure that all available resources are being used as the scheduler
+terminates trials, freeing them up. This can be done through the
+``ResourceChangingScheduler``. An example of this can be found here:
+:doc:`/tune/examples/xgboost_dynamic_resources_example`.
+
 Using fractional GPUs
 ---------------------
 You can often accelerate your training by using GPUs in addition to CPUs. However,

@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional, Union, Callable
 
 import pickle
+import warnings
 
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
@@ -13,12 +14,71 @@ logger = logging.getLogger(__name__)
 
 
 class ResourceChangingScheduler(TrialScheduler):
+    """A utility scheduler to dynamically change resources of live trials.
+
+    Experimental. API may change in future releases.
+
+    The ResourceChangingScheduler works by wrapping around any other
+    scheduler and adjusting the resource requirements of live trials
+    in response to the decisions of the wrapped scheduler
+    through a user-specified `resources_allocation_function`. An example
+    of such a function can be found in
+    `tune/examples/xgboost_dynamic_resources_example.py`.
+
+    Only supports the Trainable (class) API. If resources of a trial are
+    updated with new values, the `update_resources` method in the Trainable
+    will be called. This method needs to be overwritten by the user in
+    order to let the trained model take advantage of newly allocated resources.
+
+    Args:
+        base_scheduler (TrialScheduler): The scheduler to provide decisions
+            about trials. If None, a default FIFOScheduler will be used.
+        resources_allocation_function (Callable): The function used to change
+            live trial resource requiements during tuning. This function
+            will be called on each trial as it finishes one step of training.
+            The function must take four arguments: `TrialRunner`, current
+            `Trial`, current result `dict` and the base trial resource
+            `PlacementGroupFactory` or `Resource` (depending on whether
+            placement groups are used). The function must return a
+            `PlacementGroupFactory`, `Resources`,`dict` or None (signifying
+            no need for an update). If `resources_allocation_function` is
+            None, no resource requirements will be changed at any time.
+
+    Warning:
+        If the `resources_allocation_function` sets trial resource requirements
+        to values bigger than possible, the trial will not run. Ensure
+        that your function accounts for that possibility by setting upper
+        limits. Consult the example file to see how that may be done.
+
+    Example:
+        >>> base_scheduler = ASHAScheduler(max_t=16)
+        >>> def resource_allocation_function(
+        >>>     trial_runner: "trial_runner.TrialRunner",
+        >>>     trial: Trial,
+        >>>     result: dict,
+        >>>     base_trial_resource: Union[PlacementGroupFactory|Resource]
+        >>> ) -> Union[None, PlacementGroupFactory, Resource]:
+        >>>     # logic here
+        >>>     # usage of PlacementGroupFactory is strongly preferred
+        >>>     return PlacementGroupFactory(...)
+        >>> scheduler = ResourceChangingScheduler(base_scheduler,
+        >>>                                     resource_allocation_function)
+
+        See `tune/examples/xgboost_dynamic_resources_example.py` for a
+        more detailed example.
+    """
+
     def __init__(
             self,
             base_scheduler: Optional[TrialScheduler] = None,
             resources_allocation_function: Optional[Callable] = None,
     ) -> None:
         super().__init__()
+        if resources_allocation_function is None:
+            warnings.warn(
+                "resources_allocation_function is None. No resource "
+                "requirements will be changed at any time. Pass a "
+                "correctly defined function to enable functionality.")
         self._resources_allocation_function = resources_allocation_function
         self._base_scheduler = base_scheduler or FIFOScheduler()
         self._base_trial_resources: Optional[Union[
