@@ -52,8 +52,8 @@ def mock_task_runner():
         def clear_calls(self):
             self.queries = []
 
-        def ready(self):
-            pass
+        async def reconfigure(self, user_config):
+            return
 
     return TaskRunnerMock.remote()
 
