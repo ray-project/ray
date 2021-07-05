@@ -32,7 +32,7 @@ from ray.experimental.data.impl.arrow_block import (
 
 T = TypeVar("T")
 U = TypeVar("U")
-BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
 
 logger = logging.getLogger(__name__)
 
@@ -805,8 +805,10 @@ class Dataset(Generic[T]):
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
-            batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
-                the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: The format in which to return each batch.
+                Specify "pandas" to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or "blocks" to return the raw block.
+                Default is "pandas".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -827,6 +829,8 @@ class Dataset(Generic[T]):
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
                 return batch._table
+            elif batch_format == "blocks":
+                return batch
             else:
                 raise ValueError(
                     f"The given batch format: {batch_format} "

@@ -13,6 +13,7 @@ import ray
 from ray.util.dask import ray_dask_get
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
+from ray.experimental.data.impl.block import Block
 import ray.experimental.data.tests.util as util
 
 
@@ -327,6 +328,11 @@ def test_iter_batches(ray_start_regular_shared):
     for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
+
+    # blocks format.
+    for batch, df in zip(ds.iter_batches(batch_format="blocks"), dfs):
+        assert isinstance(batch, Block)
+        assert batch.to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
