@@ -163,6 +163,9 @@ cdef class GlobalStateAccessor:
             return c_string(result.get().data(), result.get().size())
         return None
 
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()
+
     def get_node_to_connect_for_driver(self, node_ip_address):
         cdef CRayStatus status
         cdef c_string cnode_ip_address = node_ip_address

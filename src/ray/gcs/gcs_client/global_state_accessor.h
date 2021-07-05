@@ -168,6 +168,11 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
+  /// Get the serialized system config from GCS.
+  ///
+  /// \return The serialized system config.
+  std::string GetSystemConfig();
+
   /// Get the node to connect for a Ray driver.
   ///
   /// \param[in] node_ip_address The IP address of the desired node to connect.

@@ -767,6 +767,12 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
     def get_node_to_connect_for_driver(self, node_ip_address):
         """Get the node to connect for a Ray driver."""
         self._check_connected()

@@ -340,7 +340,7 @@ std::string Publisher::DebugString() const {
   for (const auto &it : cum_pub_message_cnt_) {
     auto channel_type = it.first;
     const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-    std::string channel_name = descriptor->FindValueByNumber(channel_type)->name();
+    const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
     result << "\n" << channel_name;
     result << "\n- cumulative published messages: " << it.second;
   }
