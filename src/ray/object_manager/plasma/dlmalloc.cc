@@ -20,7 +20,7 @@
 #include <assert.h>
 
 #ifdef __linux__
-#define _GNU_SOURCE
+#define _GNU_SOURCE  /* Turns on fallocate() definition */
 #include <fcntl.h>
 #endif
 
