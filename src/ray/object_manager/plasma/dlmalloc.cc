@@ -18,7 +18,12 @@
 #include "ray/object_manager/plasma/malloc.h"
 
 #include <assert.h>
+
+#ifdef __linux__
+#define _GNU_SOURCE
 #include <fcntl.h>
+#endif
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,7 +149,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     flags |= MAP_POPULATE;
   }
 
-#ifdef _GNU_SOURCE
+#ifdef __linux__
   // For fallback allocation, use fallocate to ensure follow up access to this
   // mmaped file doesn't cause SIGBUS. Only supported on Linux.
   if (allocated_once && RayConfig::instance().plasma_unlimited()) {
@@ -157,7 +162,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
         RAY_LOG(DEBUG) << "fallocate is not supported: " << std::strerror(errno);
       } else {
         // otherwise we short circuit the allocation with OOM error.
-        RAY_LOG(ERROR) << "Out of memory with fallocate error: " << std::strerror(errno);
+        RAY_LOG(ERROR) << "Out of disk space with fallocate error: " << std::strerror(errno);
         *pointer = MAP_FAILED;
         return;
       }
