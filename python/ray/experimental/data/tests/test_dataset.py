@@ -317,7 +317,8 @@ def test_iter_batches(ray_start_regular_shared):
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
     ds = ray.experimental.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3), ray.put(df4)])
+        [ray.put(df1), ray.put(df2),
+         ray.put(df3), ray.put(df4)])
 
     # Default.
     for batch, df in zip(ds.iter_batches(), dfs):
@@ -338,9 +339,8 @@ def test_iter_batches(ray_start_regular_shared):
     batch_size = 2
     batches = [batch for batch in ds.iter_batches(batch_size=batch_size)]
     assert all(len(batch) == batch_size for batch in batches)
-    assert (
-        len(batches) ==
-        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
@@ -348,9 +348,8 @@ def test_iter_batches(ray_start_regular_shared):
     batch_size = 4
     batches = [batch for batch in ds.iter_batches(batch_size=batch_size)]
     assert all(len(batch) == batch_size for batch in batches)
-    assert (
-        len(batches) ==
-        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
@@ -358,11 +357,11 @@ def test_iter_batches(ray_start_regular_shared):
     batch_size = 5
     batches = [
         batch
-        for batch in ds.iter_batches(batch_size=batch_size, drop_last=True)]
+        for batch in ds.iter_batches(batch_size=batch_size, drop_last=True)
+    ]
     assert all(len(batch) == batch_size for batch in batches)
-    assert (
-        len(batches) ==
-        (len(df1) + len(df2) + len(df3) + len(df4)) // batch_size)
+    assert (len(batches) == (len(df1) + len(df2) + len(df3) + len(df4)) //
+            batch_size)
     assert pd.concat(
         batches, ignore_index=True).equals(
             pd.concat(dfs, ignore_index=True)[:10])
@@ -371,14 +370,13 @@ def test_iter_batches(ray_start_regular_shared):
     batch_size = 5
     batches = [
         batch
-        for batch in ds.iter_batches(batch_size=batch_size, drop_last=False)]
+        for batch in ds.iter_batches(batch_size=batch_size, drop_last=False)
+    ]
     assert all(len(batch) == batch_size for batch in batches[:-1])
-    assert (
-        len(batches[-1]) == (
-            len(df1) + len(df2) + len(df3) + len(df4)) % batch_size)
-    assert (
-        len(batches) ==
-        math.ceil((len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert (len(batches[-1]) == (len(df1) + len(df2) + len(df3) + len(df4)) %
+            batch_size)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 

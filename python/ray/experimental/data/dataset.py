@@ -813,6 +813,7 @@ class Dataset(Generic[T]):
         Returns:
             A list of iterators over record batches.
         """
+
         def chunk(iterable, n):
             it = iter(iterable)
             while True:
@@ -821,7 +822,7 @@ class Dataset(Generic[T]):
                     first = next(chunk_it)
                 except StopIteration:
                     return
-                yield itertools.chain((first,), chunk_it)
+                yield itertools.chain((first, ), chunk_it)
 
         def format_batch(batch, format):
             if batch_format == "pandas":
@@ -839,10 +840,7 @@ class Dataset(Generic[T]):
         for block_chunk in chunk(self._blocks, prefetch_blocks + 1):
             block_chunk = list(block_chunk)
             # Prefetch blocks.
-            ray.wait(
-                block_chunk,
-                num_returns=1,
-                fetch_local=True)
+            ray.wait(block_chunk, num_returns=1, fetch_local=True)
             # Yield batches from each block in the prefetch set.
             for block_ref in block_chunk:
                 block = ray.get(block_ref)
@@ -850,8 +848,8 @@ class Dataset(Generic[T]):
                 # Short-circuit on empty block.
                 if total_rows == 0:
                     continue
-                block_batch_size = (
-                    batch_size if batch_size is not None else total_rows)
+                block_batch_size = (batch_size
+                                    if batch_size is not None else total_rows)
                 if batch_buffer is not None:
                     # Get offset into current block in order to make the
                     # batch buffer remainder a full batch.
@@ -876,8 +874,7 @@ class Dataset(Generic[T]):
                             block.slice(start, total_rows, copy=False))
                         break
                     yield format_batch(
-                        block.slice(start, end, copy=False),
-                        batch_format)
+                        block.slice(start, end, copy=False), batch_format)
         # After processing all blocks, yield the leftover batch if we're not
         # supposed to drop a leftover partial batch.
         if batch_buffer is not None and not drop_last:
