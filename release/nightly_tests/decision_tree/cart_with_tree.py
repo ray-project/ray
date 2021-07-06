@@ -271,7 +271,7 @@ def best_split_for_idx(tree, idx, X, y, num_parent, best_gini):
     m = y.size
     num_left = [0] * tree.n_classes_
     num_right = num_parent.copy()
-    best_thr = float('NaN')
+    best_thr = float("NaN")
     for i in range(1, m):  # possible split positions
         c = classes[i - 1]
         # print("c is ", c, "num left is", len(num_left))
