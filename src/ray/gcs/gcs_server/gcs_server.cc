@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
+#include "ray/gcs/gcs_server/task_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -111,6 +112,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs worker manager.
   InitGcsWorkerManager();
 
+  // Init task info handler.
+  InitTaskInfoHandler();
+
   // Init stats handler.
   InitStatsHandler();
 
@@ -158,7 +162,9 @@ void GcsServer::Stop() {
       gcs_resource_report_poller_->Stop();
     }
 
-    grpc_based_resource_broadcaster_->Stop();
+    if (config_.grpc_based_resource_broadcast) {
+      grpc_based_resource_broadcaster_->Stop();
+    }
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
@@ -195,7 +201,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  gcs_resource_manager_ = std::make_shared<GcsResourceManager>(gcs_table_storage_);
+  gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
+      main_service_, gcs_pub_sub_, gcs_table_storage_,
+      !config_.grpc_based_resource_broadcast);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -318,6 +326,16 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
 
+void GcsServer::InitTaskInfoHandler() {
+  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
+  task_info_handler_.reset(
+      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+  // Register service.
+  task_info_service_.reset(
+      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
+  rpc_server_.RegisterService(*task_info_service_);
+}
+
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
@@ -331,16 +349,18 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
-      raylet_client_pool_,
-      [this](rpc::ResourceUsageBroadcastData &buffer) {
-        gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
-      }
+  if (config_.grpc_based_resource_broadcast) {
+    grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
+        raylet_client_pool_,
+        [this](rpc::ResourceUsageBroadcastData &buffer) {
+          gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
+        }
 
-      ));
+        ));
 
-  grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
-  grpc_based_resource_broadcaster_->Start();
+    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
+    grpc_based_resource_broadcaster_->Start();
+  }
 }
 
 void GcsServer::InitStatsHandler() {
@@ -405,7 +425,9 @@ void GcsServer::InstallEventListeners() {
     if (config_.pull_based_resource_reporting) {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
     }
-    grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+    if (config_.grpc_based_resource_broadcast) {
+      grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -419,7 +441,9 @@ void GcsServer::InstallEventListeners() {
         if (config_.pull_based_resource_reporting) {
           gcs_resource_report_poller_->HandleNodeRemoved(*node);
         }
-        grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
+        if (config_.grpc_based_resource_broadcast) {
+          grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
+        }
       });
 
   // Install worker event listener.
@@ -460,7 +484,11 @@ void GcsServer::PrintDebugInfo() {
          << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
          << gcs_pub_sub_->DebugString() << "\n"
-         << grpc_based_resource_broadcaster_->DebugString();
+         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+
+  if (config_.grpc_based_resource_broadcast) {
+    stream << "\n" << grpc_based_resource_broadcaster_->DebugString();
+  }
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
