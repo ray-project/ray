@@ -1,16 +1,17 @@
-import ray
-
 from typing import List, Tuple, Union, Any, Dict, Callable, Optional
+
+import ray
+from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (
-    RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
+    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
 from ray.experimental.workflow import workflow_storage
 
-StepInputTupleToResolve = Tuple[RRef, List[RRef], List[RRef]]
+StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
 
-def _resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
+def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
     """
     Resolves the ObjectRef into the object instance.
 
@@ -20,7 +21,7 @@ def _resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
     assert ray.is_initialized()
     last_ref = ref
     while True:
-        if isinstance(ref, RRef):
+        if isinstance(ref, ObjectRef):
             last_ref = ref
         else:
             break
@@ -40,9 +41,9 @@ def _deref_arguments(args: List, kwargs: Dict) -> Tuple[List, Dict]:
     Returns:
         Post processed arguments.
     """
-    _args = [ray.get(a) if isinstance(a, RRef) else a for a in args]
+    _args = [ray.get(a) if isinstance(a, ObjectRef) else a for a in args]
     _kwargs = {
-        k: ray.get(v) if isinstance(v, RRef) else v
+        k: ray.get(v) if isinstance(v, ObjectRef) else v
         for k, v in kwargs.items()
     }
     return _args, _kwargs
@@ -71,8 +72,8 @@ def _resolve_step_inputs(
 
     objects_mapping = []
     input_placeholder, input_workflows, input_object_refs = step_inputs
-    for rref in input_workflows:
-        obj, ref = _resolve_object_ref(rref)
+    for obj_ref in input_workflows:
+        obj, ref = _resolve_object_ref(obj_ref)
         objects_mapping.append(obj)
     with serialization_context.workflow_args_resolving_context(
             objects_mapping, input_object_refs):

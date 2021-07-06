@@ -62,12 +62,12 @@ def workflow_args_serialization_context(
         serializer=workflow_serializer,
         deserializer=_resolve_workflow_outputs)
 
-    def objectref_serializer(rref):
-        if rref in objectref_deduplicator:
-            return objectref_deduplicator[rref]
+    def objectref_serializer(obj_ref):
+        if obj_ref in objectref_deduplicator:
+            return objectref_deduplicator[obj_ref]
         i = len(object_refs)
-        object_refs.append(rref)
-        objectref_deduplicator[rref] = i
+        object_refs.append(obj_ref)
+        objectref_deduplicator[obj_ref] = i
         return i
 
     # override the default ObjectRef serializer
