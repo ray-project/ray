@@ -54,12 +54,16 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
         The resolved physical object.
     """
     try:
+        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError as e:
+        raise ValueError(
+            "Failed to connect to the workflow management actor.") from e
+    try:
         while isinstance(output, ray.ObjectRef):
             output = ray.get(output)
     except Exception as e:
         # re-raise the exception so we know it is a workflow failure.
         try:
-            actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
             ray.get(actor.report_failure.remote(workflow_id))
         except Exception:
             # the actor does not exist
@@ -67,7 +71,6 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
                            "about the error of the workflow.")
         raise WorkflowExecutionError(workflow_id) from e
     try:
-        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
         ray.get(actor.report_success.remote(workflow_id))
     except Exception:
         # the actor does not exist
@@ -122,6 +125,7 @@ class WorkflowManagementActor:
                              "does not exist. The workflow is either failed "
                              "or finished. Use 'run_or_resume' to access "
                              "the workflow result.")
+        print("#######!!!", self._workflow_outputs[workflow_id])
         return self._workflow_outputs[workflow_id]
 
     def report_failure(self, workflow_id: str) -> None:

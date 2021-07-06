@@ -14,9 +14,6 @@ from ray.experimental.workflow.workflow_access import (
 
 logger = logging.getLogger(__name__)
 
-# TODO(suquark): Raise an error when calling run() on an existing workflow.
-# Maybe we can also add a run_or_resume() call.
-
 
 def run(entry_workflow: Workflow,
         storage: Optional[Union[str, Storage]] = None,
@@ -86,3 +83,17 @@ def resume(workflow_id: str,
     direct_output = flatten_workflow_output(workflow_id, output)
     logger.info(f"Workflow job {workflow_id} resumed.")
     return direct_output
+
+
+def get_output(workflow_id: str) -> ray.ObjectRef:
+    """Get the output of a running workflow.
+    See "api.get_output()" for details.
+    """
+    try:
+        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError as e:
+        raise ValueError(
+            "Failed to connect to the workflow management "
+            "actor. The workflow could have already failed.") from e
+    output = ray.get(actor.get_output.remote(workflow_id))
+    return flatten_workflow_output(workflow_id, output)
