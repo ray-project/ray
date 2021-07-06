@@ -459,13 +459,16 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                logger.warn(
+                # We should not get here, but if for some reason we do, log an
+                # error and skip the errant node_type.
+                logger.error(
                     f"Missing entry for node_type {node_type} in "
                     f"cluster config: {self.node_types} under entry "
-                    f"available_node_types. This node's resources will be "
-                    f"ignored. If you are using an unmanaged node, manually "
-                    f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
-                    f"in your cloud provider's management console.")
+                    "available_node_types. This node's resources will be "
+                    "ignored. If you are using an unmanaged node, manually "
+                    f"set the {TAG_RAY_NODE_KIND} tag to "
+                    f"\"{NODE_KIND_UNMANAGED}\" in your cloud provider's "
+                    "management console.")
                 return None
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
