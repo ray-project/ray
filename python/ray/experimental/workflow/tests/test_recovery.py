@@ -8,7 +8,6 @@ import ray
 from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
-from ray.experimental.workflow.recovery import WorkflowNotResumableError
 from ray.experimental.workflow import workflow_storage
 
 
@@ -99,8 +98,8 @@ def test_recovery_complex():
 
 def test_recovery_non_exists_workflow():
     ray.init()
-    with pytest.raises(WorkflowNotResumableError):
-        workflow.resume("this_workflow_id_does_not_exist")
+    with pytest.raises(RaySystemError):
+        ray.get(workflow.resume("this_workflow_id_does_not_exist"))
     ray.shutdown()
 
 
