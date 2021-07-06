@@ -22,7 +22,12 @@ specify any callable as the scheduler that you would like Dask to use to execute
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
 .. note::
-  As of Ray 1.4.1, Dask versions 2021.6.1 or lower are supported.
+  We always ensure the latest Dask versions are compatible to the Ray nightly.
+  The table below shows the latest Dask versions that are tested with Ray versions.
+
+  | Ray Version | Dask Version |
+  | 1.4.1       | 2021.6.1     |
+
 
 Scheduler
 ---------
