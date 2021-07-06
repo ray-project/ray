@@ -45,7 +45,9 @@ class Ray {
 
   /// Get a single object from the object store.
   /// This method will be blocked until the object is ready.
-  ///
+  /// We may get some exceptions when call Get, such as WORKER_DIED, ACTOR_DIED,
+  /// OBJECT_UNRECONSTRUCTABLE and TASK_EXECUTION_EXCEPTION.
+
   /// \param[in] object The object reference which should be returned.
   /// \return shared pointer of the result.
   template <typename T>
@@ -85,11 +87,12 @@ class Ray {
   template <typename F>
   static ActorCreator<F> Actor(F create_func);
 
-  inline static std::string GetActorId(const std::string &actor_name);
-
   template <typename T>
   inline static ActorHandle<T> GetActor(const std::string &actor_name);
 
+  /// Intentionally exit the current actor.
+  /// It is used to disconnect an actor and exit the worker.
+  /// An exception is raised if this is a driver or this worker is not an Actor.
   static void ExitActor() { ray::internal::RayRuntime()->ExitActor(); }
 
  private:
@@ -196,17 +199,13 @@ ActorCreator<F> Ray::Actor(F create_func) {
   return CreateActorInternal<F>(create_func);
 }
 
-std::string Ray::GetActorId(const std::string &actor_name) {
-  return ray::internal::RayRuntime()->GetActorId(actor_name);
-}
-
 template <typename T>
 ActorHandle<T> Ray::GetActor(const std::string &actor_name) {
   if (actor_name.empty()) {
     throw RayException("The actor name is invalid");
   }
 
-  return ActorHandle<T>(GetActorId(actor_name));
+  return ActorHandle<T>(ray::internal::RayRuntime()->GetActorId(actor_name));
 }
 
 }  // namespace api

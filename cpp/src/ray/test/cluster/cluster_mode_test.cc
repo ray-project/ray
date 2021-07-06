@@ -81,9 +81,9 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(6, task_result);
 
   ActorHandle<Counter> actor =
-      Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("named_actor").Remote();
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetGlobalName("named_actor").Remote();
   auto named_actor_obj = actor.Task(&Counter::Plus1)
-                             .SetName("named_actor_task")
+                             .SetGlobalName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
                              .Remote();
   EXPECT_EQ(1, *named_actor_obj.Get());

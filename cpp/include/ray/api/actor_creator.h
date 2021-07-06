@@ -21,7 +21,7 @@ class ActorCreator {
   template <typename... Args>
   ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
-  ActorCreator &SetName(std::string name) {
+  ActorCreator &SetGlobalName(std::string name) {
     create_options_.name = std::move(name);
     return *this;
   }
@@ -31,7 +31,7 @@ class ActorCreator {
     return *this;
   }
 
-  ActorCreator &SetResources(std::string name, double value) {
+  ActorCreator &SetResource(std::string name, double value) {
     create_options_.resources.emplace(std::move(name), value);
     return *this;
   }

@@ -206,6 +206,11 @@ void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_rest
 }
 
 void AbstractRayRuntime::ExitActor() {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  if (ConfigInternal::Instance().worker_type != ray::WorkerType::WORKER ||
+      core_worker.GetActorId().IsNil()) {
+    throw std::logic_error("This shouldn't be called on a non-actor worker.");
+  }
   throw RayIntentionalSystemExitException("SystemExit");
 }
 
