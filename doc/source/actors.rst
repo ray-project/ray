@@ -377,6 +377,34 @@ access an actor launched by another driver.
 Note that the actor will still be garbage-collected if no handles to it
 exist. See :ref:`actor-lifetimes` for more details.
 
+.. note::
+
+     Named actors are accessible only at the same namespace. 
+
+    .. code-block:: python
+
+        import ray
+
+        @ray.remote
+        class Actor:
+          pass
+
+        # driver_1.py
+        # Job 1 creates an actor, "orange" in the "colors" namespace.
+        ray.init(address="auto", namespace="colors")
+        Actor.options(name="orange", lifetime="detached")
+
+        # driver_2.py
+        # Job 2 is now connecting to a different namespace.
+        ray.init(address="auto", namespace="fruit")
+        # This fails because "orange" was defined in the "colors" namespace.
+        ray.get_actor("orange")
+
+        # driver_3.py
+        # Job 3 connects to the original "colors" namespace
+        ray.init(address="auto", namespace="colors")
+        # This returns the "orange" actor we created in the first job.
+
 
 .. tabs::
 
