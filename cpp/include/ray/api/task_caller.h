@@ -26,7 +26,7 @@ class TaskCaller {
     return *this;
   }
 
-  TaskCaller &SetResources(std::string name, double value) {
+  TaskCaller &SetResource(std::string name, double value) {
     task_options_.resources.emplace(std::move(name), value);
     return *this;
   }

@@ -32,7 +32,7 @@ class ActorTaskCaller {
     return *this;
   }
 
-  ActorTaskCaller &SetResources(std::string name, double value) {
+  ActorTaskCaller &SetResource(std::string name, double value) {
     task_options_.resources.emplace(std::move(name), value);
     return *this;
   }

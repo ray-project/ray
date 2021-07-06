@@ -88,17 +88,19 @@ TEST(RayClusterModeTest, FullTest) {
                              .Remote();
   EXPECT_EQ(1, *named_actor_obj.Get());
 
-  auto named_actor_handle = Ray::GetGlobalActor<Counter>("named_actor");
+  auto named_actor_handle_optional = Ray::GetGlobalActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
   auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(2, *named_actor_obj1.Get());
-  EXPECT_THROW(Ray::GetGlobalActor<Counter>("not_exist_actor"), RayException);
+  EXPECT_FALSE(Ray::GetGlobalActor<Counter>("not_exist_actor"));
 
   named_actor_handle.Kill(false);
   auto named_actor_obj2 = named_actor_handle.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(3, *named_actor_obj2.Get());
 
   named_actor_handle.Kill();
-  EXPECT_THROW(Ray::GetGlobalActor<Counter>("named_actor"), RayException);
+  EXPECT_FALSE(Ray::GetGlobalActor<Counter>("named_actor"));
 
   /// actor task without args
   ActorHandle<Counter> actor1 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();

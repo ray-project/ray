@@ -45,11 +45,9 @@ class Ray {
 
   /// Get a single object from the object store.
   /// This method will be blocked until the object is ready.
-  /// We may get some exceptions when call Get, such as WORKER_DIED, ACTOR_DIED,
-  /// OBJECT_UNRECONSTRUCTABLE and TASK_EXECUTION_EXCEPTION.
-
   /// \param[in] object The object reference which should be returned.
   /// \return shared pointer of the result.
+  /// \Throws RayException if task or worker failed, or object is unreconstructable.
   template <typename T>
   static std::shared_ptr<T> Get(const ObjectRef<T> &object);
 
@@ -87,12 +85,21 @@ class Ray {
   template <typename F>
   static ActorCreator<F> Actor(F create_func);
 
+  /// Get a handle to a global named actor.
+  /// Gets a handle to a global named actor with the given name. The actor must have been
+  /// created with global name specified.
+  ///
+  /// \param[in] name The global name of the named actor.
+  /// \return An ActorHandle to the actor if the actor of specified name exists or an
+  /// empty optional object.
   template <typename T>
-  inline static ActorHandle<T> GetGlobalActor(const std::string &actor_name);
+  inline static boost::optional<ActorHandle<T>> GetGlobalActor(
+      const std::string &actor_name);
 
   /// Intentionally exit the current actor.
   /// It is used to disconnect an actor and exit the worker.
-  /// An exception is raised if this is a driver or this worker is not an Actor.
+  /// \Throws RayException if the current process is a driver or the current worker is not
+  /// an actor.
   static void ExitActor() { ray::internal::RayRuntime()->ExitActor(); }
 
  private:
@@ -200,9 +207,9 @@ ActorCreator<F> Ray::Actor(F create_func) {
 }
 
 template <typename T>
-ActorHandle<T> Ray::GetGlobalActor(const std::string &actor_name) {
+boost::optional<ActorHandle<T>> Ray::GetGlobalActor(const std::string &actor_name) {
   if (actor_name.empty()) {
-    throw RayException("The actor name is invalid");
+    return {};
   }
 
   return ActorHandle<T>(ray::internal::RayRuntime()->GetActorId(actor_name));
