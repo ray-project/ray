@@ -447,7 +447,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::shared_ptr<GcsJobSchedulingContext> job_scheduling_context,
       const TaskSpecification &task_spec, const ResourceSet &required_resources) const;
 
-  /// A rejected rely means resources were accidentally preempted by normal tasks. Then
+  /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the the cluster resource view and reschedule immediately.
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
