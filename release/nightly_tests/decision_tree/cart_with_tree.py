@@ -352,7 +352,7 @@ def run_in_cluster():
 
 
 if __name__ == "__main__":
-    ray.init("auto")
+    ray.init(address=os.environ["RAY_ADDRESS"])
     cluster_future = run_in_cluster.remote()
     treetime, accuracy = ray.get(cluster_future)
     print("Tree building took", treetime, " seconds")
