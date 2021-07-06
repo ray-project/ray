@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import functools
 import builtins
 import inspect
@@ -38,6 +39,37 @@ def autoinit_ray(f: Callable) -> Callable:
 
     setattr(wrapped, "__signature__", inspect.signature(f))
     return wrapped
+
+
+def _parse_paths(paths: Union[str, List[str]]
+                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
+    from pyarrow import fs
+
+    def parse_single_path(path: str):
+        if Path(path).exists():
+            return fs.LocalFileSystem(), path
+        else:
+            return fs.FileSystem.from_uri(path)
+
+    if isinstance(paths, str):
+        return parse_single_path(paths)
+
+    if not isinstance(paths, list) or any(not isinstance(p, str)
+                                          for p in paths):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+    else:
+        if len(paths) == 0:
+            raise ValueError("No data provided")
+
+        parsed_results = [parse_single_path(path) for path in paths]
+        fses, paths = zip(*parsed_results)
+        unique_fses = set(map(type, fses))
+        if len(unique_fses) > 1:
+            raise ValueError(
+                f"When specifying multiple paths, each path must have the "
+                f"same filesystem, but found: {unique_fses}")
+        return fses[0], list(paths)
 
 
 def _expand_directory(path: str,
@@ -261,24 +293,23 @@ def read_parquet(paths: Union[str, List[str]],
     """
     import pyarrow.parquet as pq
 
-    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
+    if filesystem is None:
+        filesystem, paths = _parse_paths(paths)
+    pq_ds = pq.ParquetDataset(
+        paths, **arrow_parquet_args, filesystem=filesystem)
+    pieces = pq_ds.pieces
 
     read_tasks = [[] for _ in builtins.range(parallelism)]
     # TODO(ekl) support reading row groups (maybe as an option)
     for i, piece in enumerate(pq_ds.pieces):
         read_tasks[i % len(read_tasks)].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
-    partitions = pq_ds.partitions
 
     @ray.remote
-    def gen_read(pieces: List[pq.ParquetDatasetPiece]):
+    def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
         import pyarrow
-        logger.debug("Reading {} parquet pieces".format(len(pieces)))
-        tables = [
-            piece.read(
-                columns=columns, use_threads=False, partitions=partitions)
-            for piece in pieces
-        ]
+        print("Reading {} parquet pieces".format(len(pieces)))
+        tables = [piece.to_table() for piece in pieces]
         if len(tables) > 1:
             table = pyarrow.concat_tables(tables)
         else:
@@ -289,7 +320,7 @@ def read_parquet(paths: Union[str, List[str]],
     metadata: List[BlockMetadata] = []
     for pieces in nonempty_tasks:
         calls.append(lambda pieces=pieces: gen_read.remote(pieces))
-        piece_metadata = [p.get_metadata() for p in pieces]
+        piece_metadata = [p.metadata for p in pieces]
         metadata.append(
             BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
