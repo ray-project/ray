@@ -30,8 +30,8 @@ def test_proxy_manager_lifecycle(shutdown_only):
     ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
-    pm = proxier.ProxyManager(ray_instance["redis_address"],
-                              ray_instance["session_dir"])
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
     # NOTE: We use different ports between runs because sometimes the port is
     # not released, introducing flakiness.
     port_one, port_two = random.choices(range(45000, 45100), k=2)
@@ -70,8 +70,8 @@ def test_proxy_manager_bad_startup(shutdown_only):
     ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     proxier.CHECK_CHANNEL_TIMEOUT_S = 1
-    pm = proxier.ProxyManager(ray_instance["redis_address"],
-                              ray_instance["session_dir"])
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
     pm._free_ports = [46000, 46001]
     client = "client1"
 
@@ -159,9 +159,10 @@ def test_delay_in_rewriting_environment(shutdown_only):
         time.sleep(6)
         return input
 
-    server = proxier.serve_proxier("localhost:25010",
-                                   ray_instance["redis_address"],
-                                   session_dir=ray_instance["session_dir"])
+    server = proxier.serve_proxier(
+        "localhost:25010",
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep", delay_in_rewrite):
         run_string_as_driver(check_connection)
@@ -195,9 +196,10 @@ def test_startup_error_yields_clean_result(shutdown_only):
     def raise_not_rewrite(input: JobConfig):
         raise RuntimeError("WEIRD_ERROR")
 
-    server = proxier.serve_proxier("localhost:25030",
-                                   ray_instance["redis_address"],
-                                   session_dir=ray_instance["session_dir"])
+    server = proxier.serve_proxier(
+        "localhost:25030",
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep",
                       raise_not_rewrite):

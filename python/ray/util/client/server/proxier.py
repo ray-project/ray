@@ -106,6 +106,7 @@ def _match_running_client_server(command: List[str]) -> bool:
 class ProxyManager():
     def __init__(self,
                  redis_address: Optional[str],
+                 *,
                  session_dir: Optional[str] = None,
                  redis_password: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
@@ -512,7 +513,8 @@ def serve_proxier(connection_str: str,
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
-    proxy_manager = ProxyManager(redis_address, redis_password, session_dir)
+    proxy_manager = ProxyManager(
+        redis_address, session_dir=session_dir, redis_password=redis_password)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)
