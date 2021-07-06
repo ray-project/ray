@@ -21,7 +21,6 @@ np.random.seed(1234)
 # We will run inference with this test batch
 test_data = {
     "obs": np.random.uniform(0, 1., size=(10, 4)).astype(np.float32),
-    "state_ins": np.array([0.], dtype=np.float32)
 }
 
 # Start Ray and initialize a PPO trainer
@@ -35,7 +34,6 @@ trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 policy = trainer.get_policy()
 result_pytorch, _ = policy.model.from_batch({
     "obs": torch.tensor(test_data["obs"]),
-    "state_ins": torch.tensor(test_data["state_ins"]),
 })
 
 # Evaluate tensor to fetch numpy array
@@ -46,6 +44,10 @@ res = trainer.export_policy_model(outdir, onnx=11)
 
 # Import ONNX model
 exported_model_file = os.path.join(outdir, "model.onnx")
+
+import onnx
+model = onnx.load(exported_model_file)
+print("MODEL OUTPUTS", model.graph.output)
 
 # Start an inference session for the ONNX model
 session = onnxruntime.InferenceSession(exported_model_file, None)
