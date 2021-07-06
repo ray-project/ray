@@ -120,8 +120,9 @@ assert info._num_clients == {num_clients}
     sys.platform == "win32",
     reason="PSUtil does not work the same on windows.")
 @pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25005 --port 0"],
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 25005 --port 0 --redis-password=password"
+    ],
     indirect=True)
 def test_correct_num_clients(call_ray_start):
     """
