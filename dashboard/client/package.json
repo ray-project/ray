@@ -5,11 +5,7 @@
   "dependencies": {
     "@material-ui/core": "4.11.0",
     "@material-ui/icons": "^4.9.1",
-<<<<<<< HEAD
-    "@material-ui/lab": "^4.0.0-alpha.56",
-=======
     "@material-ui/lab": "4.0.0-alpha.56",
->>>>>>> 39d60f62d ([hotfix] fix material-ui version once more (#16901))
     "@material-ui/pickers": "^3.2.10",
     "@reduxjs/toolkit": "^1.3.1",
     "@types/classnames": "^2.2.10",
