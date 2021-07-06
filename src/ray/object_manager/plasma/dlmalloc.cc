@@ -166,7 +166,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
         // otherwise we short circuit the allocation with OOM error.
         RAY_LOG(ERROR) << "Out of disk space with fallocate error: "
                        << std::strerror(errno);
-        *pointer = MAP_FAILED;
+        *pointer = MFAIL;
         return;
       }
     }
@@ -207,6 +207,9 @@ void *fake_mmap(size_t size) {
   void *pointer;
   MEMFD_TYPE_NON_UNIQUE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
+  if (pointer == MFAIL) {
+    return MFAIL;
+  }
   allocated_once = true;
 
   // Increase dlmalloc's allocation granularity directly.
