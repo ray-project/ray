@@ -20,8 +20,6 @@ VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
-# quiet azure log messages
-logging.getLogger("azure_active_directory").setLevel(logging.ERROR)
 
 
 def synchronized(f):
