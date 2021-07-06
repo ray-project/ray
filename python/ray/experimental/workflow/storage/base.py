@@ -204,12 +204,13 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
+    def save_object_ref(self, workflow_id: str,
+                        obj_ref: ray.ObjectRef) -> None:
         """Save the input object ref.
 
         Args:
             workflow_id: ID of the workflow job.
-            rref: The ObjectRef to be saved.
+            obj_ref: The ObjectRef to be saved.
 
         Raises:
             DataSaveError: if we fail to save the object ref.
