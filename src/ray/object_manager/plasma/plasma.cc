@@ -21,8 +21,20 @@
 
 namespace plasma {
 
-LocalObject::LocalObject() : pointer(nullptr), ref_count(0) {}
+LocalObject::LocalObject() : ref_count(0) {}
 
-LocalObject::~LocalObject() { pointer = nullptr; }
+Allocation::Allocation()
+    : address(nullptr),
+      size(0),
+      fd{INVALID_FD, INVALID_UNIQUE_FD_ID},
+      offset(0),
+      device_num(0),
+      mmap_size(0) {}
+
+PlasmaStoreConfig::PlasmaStoreConfig(bool hugepages_enabled, const std::string &directory,
+                                     const std::string &fallback_directory)
+    : hugepages_enabled(hugepages_enabled),
+      directory(directory),
+      fallback_directory(fallback_directory) {}
 
 }  // namespace plasma

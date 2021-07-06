@@ -23,14 +23,14 @@ namespace plasma {
 
 ObjectStore::ObjectStore() : object_table_() {}
 
-LocalObject *ObjectStore::CreateObject(uint8_t *pointer,
+LocalObject *ObjectStore::CreateObject(Allocation allocation_info,
                                        const ray::ObjectInfo &object_info,
                                        plasma::flatbuf::ObjectSource source) {
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   auto ptr = std::make_unique<LocalObject>();
   auto entry =
       object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();
-  entry->pointer = pointer;
+  entry->allocation = std::move(allocation_info);
   entry->object_info = object_info;
   entry->state = ObjectState::PLASMA_CREATED;
   entry->create_time = std::time(nullptr);
@@ -38,8 +38,8 @@ LocalObject *ObjectStore::CreateObject(uint8_t *pointer,
   entry->source = source;
 
   num_objects_unsealed_++;
-  num_bytes_unsealed_ += object_info.data_size + object_info.metadata_size;
-  num_bytes_created_total_ += object_info.data_size + object_info.metadata_size;
+  num_bytes_unsealed_ += entry->GetObjectSize();
+  num_bytes_created_total_ += entry->GetObjectSize();
   return entry;
 }
 
@@ -76,17 +76,15 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   entry->construct_duration = std::time(nullptr) - entry->create_time;
 
   num_objects_unsealed_--;
-  num_bytes_unsealed_ -= entry->object_info.data_size + entry->object_info.metadata_size;
+  num_bytes_unsealed_ -= entry->GetObjectSize();
   return entry;
 }
 
 void ObjectStore::DeleteObject(const ObjectID &object_id) {
-  auto entry = GetObjectInternal(object_id);
-  auto buff_size = entry->object_info.data_size + entry->object_info.metadata_size;
-  PlasmaAllocator::Free(entry->pointer, buff_size);
+  auto entry = GetObject(object_id);
+  PlasmaAllocator::Free(entry->allocation);
   if (entry->state == ObjectState::PLASMA_CREATED) {
-    num_bytes_unsealed_ -=
-        entry->object_info.data_size + entry->object_info.metadata_size;
+    num_bytes_unsealed_ -= entry->GetObjectSize();
     num_objects_unsealed_--;
   }
   object_table_.erase(object_id);

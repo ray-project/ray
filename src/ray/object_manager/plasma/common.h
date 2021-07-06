@@ -46,18 +46,34 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
+struct Allocation {
+  Allocation();
+  /// Pointer to the allocated memory.
+  void *address;
+  /// Num bytes of the allocated memory.
+  int64_t size;
+  /// The file descriptor of the memory mapped file where the memory allocated.
+  MEMFD_TYPE fd;
+  /// The offset in bytes in the memory mapped file of the allocated memory.
+  ptrdiff_t offset;
+  /// Device number of the allocated memory.
+  int device_num;
+  /// the total size of this mapped memory.
+  int64_t mmap_size;
+};
+
 /// LocalObject stores the memory allocation information of a Plasma Object.
 struct LocalObject {
   LocalObject();
 
-  ~LocalObject();
+  ~LocalObject() = default;
 
   int64_t GetObjectSize() const {
     return object_info.data_size + object_info.metadata_size;
   }
 
-  /// Pointer to the object data. Needed to free the object.
-  uint8_t *pointer;
+  /// Mmap Allocation Info;
+  Allocation allocation;
   /// Ray object info;
   ray::ObjectInfo object_info;
   /// Number of clients currently using this object.

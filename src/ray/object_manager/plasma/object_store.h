@@ -26,7 +26,8 @@ class ObjectStore {
  public:
   ObjectStore();
 
-  LocalObject *CreateObject(uint8_t *pointer, const ray::ObjectInfo &object_info,
+  LocalObject *CreateObject(Allocation allocation_info,
+                            const ray::ObjectInfo &object_info,
                             plasma::flatbuf::ObjectSource source);
 
   const LocalObject *GetObject(const ObjectID &object_id) const;

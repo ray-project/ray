@@ -70,14 +70,13 @@ void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_s
   if (check_sealed) {
     RAY_DCHECK(entry.state == ObjectState::PLASMA_SEALED);
   }
-  auto &allocation_info = PlasmaAllocator::GetAllocationInfo(entry.pointer);
-  object->store_fd = allocation_info.fd;
-  object->data_offset = allocation_info.offset;
-  object->metadata_offset = allocation_info.offset + entry.object_info.data_size;
+  object->store_fd = entry.allocation.fd;
+  object->data_offset = entry.allocation.offset;
+  object->metadata_offset = entry.allocation.offset + entry.object_info.data_size;
   object->data_size = entry.object_info.data_size;
   object->metadata_size = entry.object_info.metadata_size;
-  object->device_num = allocation_info.device_num;
-  object->mmap_size = allocation_info.mmap_size;
+  object->device_num = entry.allocation.device_num;
+  object->mmap_size = entry.allocation.mmap_size;
 }
 
 }  // namespace
@@ -157,9 +156,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
-      plasma_config_{.hugepages_enabled = hugepages_enabled,
-                     .directory = directory,
-                     .fallback_directory = fallback_directory},
+      plasma_config_(hugepages_enabled, directory, fallback_directory),
       object_store_(),
       eviction_policy_(object_store_, PlasmaAllocator::GetFootprintLimit()),
       spill_objects_callback_(spill_objects_callback),
@@ -222,11 +219,11 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
 }
 
 // Allocate memory
-uint8_t *PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
-                                     bool is_create, bool fallback_allocator,
-                                     PlasmaError *error) {
+Allocation PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
+                                       bool is_create, bool fallback_allocator,
+                                       PlasmaError *error) {
   // Try to evict objects until there is enough space.
-  uint8_t *pointer = nullptr;
+  Allocation allocation;
   int num_tries = 0;
   while (true) {
     // Allocate space for the new object. We use memalign instead of malloc
@@ -236,8 +233,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> 
     // plasma_client.cc). Note that even though this pointer is 64-byte aligned,
     // it is not guaranteed that the corresponding pointer in the client will be
     // 64-byte aligned, but in practice it often will be.
-    pointer = reinterpret_cast<uint8_t *>(PlasmaAllocator::Memalign(kBlockSize, size));
-    if (pointer) {
+    allocation = PlasmaAllocator::Memalign(kBlockSize, size);
+    if (allocation.address != nullptr) {
       // If we manage to allocate the memory, return the pointer.
       *error = PlasmaError::OK;
       break;
@@ -264,24 +261,22 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> 
   }
 
   // Fallback to allocating from the filesystem.
-  if (pointer == nullptr && RayConfig::instance().plasma_unlimited() &&
+  if (allocation.address == nullptr && RayConfig::instance().plasma_unlimited() &&
       fallback_allocator) {
     RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
         << size;
-    pointer = reinterpret_cast<uint8_t *>(
-        PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size));
-    if (pointer == nullptr) {
+    allocation = PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size);
+    if (allocation.address == nullptr) {
       RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
   } else if (!fallback_allocator) {
     RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
   }
 
-  if (pointer != nullptr) {
-    auto &allocation_info = PlasmaAllocator::GetAllocationInfo(pointer);
-    RAY_CHECK(allocation_info.fd.first != INVALID_FD);
-    RAY_CHECK(allocation_info.fd.second != INVALID_UNIQUE_FD_ID);
+  if (allocation.address != nullptr) {
+    RAY_CHECK(allocation.fd.first != INVALID_FD);
+    RAY_CHECK(allocation.fd.second != INVALID_UNIQUE_FD_ID);
     *error = PlasmaError::OK;
   }
 
@@ -291,7 +286,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> 
                   << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
     last_usage_log_ns_ = now;
   }
-  return pointer;
+  return allocation;
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -344,29 +339,26 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
     return PlasmaError::ObjectExists;
   }
 
-  uint8_t *pointer = nullptr;
   auto total_size = object_info.data_size + object_info.metadata_size;
 
-  if (device_num == 0) {
-    PlasmaError error = PlasmaError::OK;
-    pointer = AllocateMemory(total_size, client,
-                             /*is_create=*/true, fallback_allocator, &error);
-    if (!pointer) {
-      return error;
-    }
-  } else {
+  if (device_num != 0) {
     RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
     return PlasmaError::OutOfMemory;
   }
-
-  entry = object_store_.CreateObject(pointer, object_info, source);
+  auto error = PlasmaError::OK;
+  auto allocation = AllocateMemory(total_size, client,
+                                   /*is_create=*/true, fallback_allocator, &error);
+  if (!allocation.address) {
+    return error;
+  }
+  entry = object_store_.CreateObject(std::move(allocation), object_info, source);
 
   ToPlasmaObject(*entry, result, /* check sealed */ false);
 
   // Notify the eviction policy that this object was created. This must be done
   // immediately before the call to AddToClientObjectIds so that the
   // eviction policy does not have an opportunity to evict the object.
-  eviction_policy_.ObjectCreated(object_id, true);
+  eviction_policy_.ObjectCreated(object_info.object_id, true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_info.object_id, entry, client);
 

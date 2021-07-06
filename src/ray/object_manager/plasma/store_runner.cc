@@ -88,10 +88,8 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     absl::MutexLock lock(&store_runner_mutex_);
     store_.reset(new PlasmaStore(
         main_service_, plasma_directory_, fallback_directory_, hugepages_enabled_,
-        socket_name_, 
-        RayConfig::instance().object_store_full_delay_ms(),
-        RayConfig::instance().object_spilling_threshold(), 
-        spill_objects_callback,
+        socket_name_, RayConfig::instance().object_store_full_delay_ms(),
+        RayConfig::instance().object_spilling_threshold(), spill_objects_callback,
         object_store_full_callback, add_object_callback, delete_object_callback));
     plasma_config = store_->GetPlasmaStoreConfig();
 
@@ -99,13 +97,12 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     // large amount of space up front. According to the documentation,
     // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
     // bookkeeping.
-    void *pointer = PlasmaAllocator::Memalign(
+    auto allocation = PlasmaAllocator::Memalign(
         kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-    RAY_CHECK(pointer != nullptr);
+    RAY_CHECK(allocation.address != nullptr);
     // This will unmap the file, but the next one created will be as large
     // as this one (this is an implementation detail of dlmalloc).
-    PlasmaAllocator::Free(pointer,
-                          PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+    PlasmaAllocator::Free(allocation);
 
     store_->Start();
   }

@@ -67,6 +67,8 @@ enum class ObjectStatus : int {
 
 /// The plasma store config.
 struct PlasmaStoreConfig {
+  PlasmaStoreConfig(bool hugepages_enabled, const std::string &directory,
+                    const std::string &fallback_directory);
   /// Boolean flag indicating whether to start the object store with hugepages
   /// support enabled. Huge pages are substantially larger than normal memory
   /// pages (e.g. 2MB or 1GB instead of 4KB) and using them can reduce

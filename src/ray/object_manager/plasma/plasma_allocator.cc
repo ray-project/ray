@@ -38,72 +38,72 @@ const int M_MMAP_THRESHOLD = -3;
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
 int64_t PlasmaAllocator::fallback_allocated_ = 0;
-absl::flat_hash_map<void *, PlasmaAllocator::AllocationInfo>
-    PlasmaAllocator::cached_allocation_info_{};
 
 namespace {
 /// The invalid allocation info.
-const PlasmaAllocator::AllocationInfo invalid_info{
-    .fd = std::make_pair(INVALID_FD, INVALID_UNIQUE_FD_ID),
-    .offset = 0,
-    .device_num = 0,
-    .mmap_size = 0};
+const Allocation kInvalidAllocation;
 
-PlasmaAllocator::AllocationInfo BuildAllocationInfo(void *addr) {
-  PlasmaAllocator::AllocationInfo info{};
-  if (detail::GetMallocMapinfo(addr, &info.fd, &info.mmap_size, &info.offset)) {
-    return info;
+Allocation BuildAllocation(void *addr, size_t size) {
+  if (addr == nullptr) {
+    return kInvalidAllocation;
   }
-  return invalid_info;
+  Allocation allocation{};
+  if (detail::GetMallocMapinfo(addr, &allocation.fd, &allocation.mmap_size,
+                               &allocation.offset)) {
+    allocation.address = addr;
+    allocation.size = static_cast<int64_t>(size);
+    return allocation;
+  }
+  return kInvalidAllocation;
 }
 }  // namespace
 
-void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
+Allocation PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (!RayConfig::instance().plasma_unlimited()) {
     // We only check against the footprint limit in limited allocation mode.
     // In limited mode: the check is done here; dlmemalign never returns nullptr.
     // In unlimited mode: dlmemalign returns nullptr once the initial /dev/shm block
     // fills.
     if (allocated_ + static_cast<int64_t>(bytes) > footprint_limit_) {
-      return nullptr;
+      return kInvalidAllocation;
     }
   }
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(alignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
   if (!mem) {
-    return nullptr;
+    return kInvalidAllocation;
   }
   allocated_ += bytes;
-  cached_allocation_info_.emplace(mem, BuildAllocationInfo(mem));
-  return mem;
+  return BuildAllocation(mem, bytes);
 }
 
-void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
+Allocation PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   void *mem = dlmemalign(alignment, bytes);
   // Reset to the default value.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, MAX_SIZE_T));
   if (!mem) {
-    return nullptr;
+    return kInvalidAllocation;
   }
   allocated_ += bytes;
   // The allocation was servicable using the initial region, no need to fallback.
   if (IsOutsideInitialAllocation(mem)) {
     fallback_allocated_ += bytes;
   }
-  return mem;
+  return BuildAllocation(mem, bytes);
 }
 
-void PlasmaAllocator::Free(void *mem, size_t bytes) {
-  RAY_LOG(DEBUG) << "deallocating " << bytes << " at " << mem;
-  dlfree(mem);
-  allocated_ -= bytes;
-  if (RayConfig::instance().plasma_unlimited() && IsOutsideInitialAllocation(mem)) {
-    fallback_allocated_ -= bytes;
+void PlasmaAllocator::Free(const Allocation &allocation) {
+  RAY_CHECK(allocation.address != nullptr);
+  RAY_LOG(DEBUG) << "deallocating " << allocation.size << " at " << allocation.address;
+  dlfree(allocation.address);
+  allocated_ -= allocation.size;
+  if (RayConfig::instance().plasma_unlimited() &&
+      IsOutsideInitialAllocation(allocation.address)) {
+    fallback_allocated_ -= allocation.size;
   }
-  cached_allocation_info_.erase(mem);
 }
 
 void PlasmaAllocator::SetFootprintLimit(size_t bytes) {
@@ -115,13 +115,5 @@ int64_t PlasmaAllocator::GetFootprintLimit() { return footprint_limit_; }
 int64_t PlasmaAllocator::Allocated() { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() { return fallback_allocated_; }
-
-const PlasmaAllocator::AllocationInfo &PlasmaAllocator::GetAllocationInfo(void *address) {
-  auto it = cached_allocation_info_.find(address);
-  if (it != cached_allocation_info_.end()) {
-    return it->second;
-  }
-  return invalid_info;
-}
 
 }  // namespace plasma

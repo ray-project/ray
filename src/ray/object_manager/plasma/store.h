@@ -234,8 +234,8 @@ class PlasmaStore {
   int RemoveFromClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
                                 const std::shared_ptr<Client> &client);
 
-  uint8_t *AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
-                          bool is_create, bool fallback_allocator, PlasmaError *error);
+  Allocation AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
+                            bool is_create, bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();

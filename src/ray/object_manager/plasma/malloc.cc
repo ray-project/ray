@@ -43,7 +43,6 @@ bool GetMallocMapinfo(void *addr, MEMFD_TYPE *fd, int64_t *map_size, ptrdiff_t *
       *map_size = entry.second.size;
       *offset = pointer_distance(entry.first, addr);
       return true;
-      ;
     }
   }
 
