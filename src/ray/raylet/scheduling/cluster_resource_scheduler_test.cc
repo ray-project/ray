@@ -181,7 +181,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
-    RayConfig::instance().initialize("scheduler_hybrid_scheduling,false;");
+    RayConfig::instance().initialize(R"({"scheduler_hybrid_scheduling": false})");
   }
 
   void Shutdown() {}

@@ -7,6 +7,7 @@ import os
 if TYPE_CHECKING:
     import pyarrow
     import pandas
+    import mars
     import modin
     import dask
     import pyspark
@@ -14,9 +15,12 @@ if TYPE_CHECKING:
 
 import collections
 import itertools
-import ray
 import numpy as np
+
+import ray
+from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.compute import get_compute
+from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
     BlockMetadata
@@ -42,7 +46,8 @@ class Dataset(Generic[T]):
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
     conversion to/from several more featureful dataframe libraries
-    (e.g., Spark, Dask), and are also compatible with TensorFlow / PyTorch.
+    (e.g., Spark, Dask, Modin, MARS), and are also compatible with distributed
+    TensorFlow / PyTorch.
 
     Dataset supports parallel transformations such as .map(), .map_batches(),
     and simple repartition, but currently not aggregations and joins.
@@ -100,7 +105,17 @@ class Dataset(Generic[T]):
             # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
 
-            # Transform batches in parallel on GPUs.
+            # Define a batch transform function that persists state across
+            # function invocations for efficiency with compute="actors".
+            >>> def batch_infer_fn(batch):
+            ...    global model
+            ...    if model is None:
+            ...        model = init_model()
+            ...    return model(batch)
+
+            # Apply the transform in parallel on GPUs. Since compute="actors",
+            # the transform will be applied on an autoscaling pool of Ray
+            # actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
             ...    batch_infer_fn,
             ...    batch_size=256, compute="actors", num_gpus=1)
@@ -112,7 +127,11 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
             compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+                or "actors" to use an autoscaling Ray actor pool. When using
+                actors, state can be preserved across function invocations
+                in Python global variables. This can be useful for one-time
+                setups, e.g., initializing a model once and re-using it across
+                many function applications.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
@@ -710,6 +729,38 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
+    def write_datasource(self, datasource: Datasource[T],
+                         **write_args) -> None:
+        """Write the dataset to a custom datasource.
+
+        Examples:
+            >>> ds.write_datasource(CustomDatasourceImpl(...))
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasource: The datasource to write to.
+            write_args: Additional write args to pass to the datasource.
+        """
+
+        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        progress = ProgressBar("Write Progress", len(write_tasks))
+
+        @ray.remote
+        def remote_write(task: WriteTask) -> Any:
+            return task()
+
+        write_task_outputs = [remote_write.remote(w) for w in write_tasks]
+        try:
+            progress.block_until_complete(write_task_outputs)
+            datasource.on_write_complete(write_tasks,
+                                         ray.get(write_task_outputs))
+        except Exception as e:
+            datasource.on_write_failed(write_tasks, e)
+            raise
+        finally:
+            progress.close()
+
     def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
         """Return a local row iterator over the dataset.
 
@@ -810,6 +861,16 @@ class Dataset(Generic[T]):
         # once that's implemented.
         ddf = dd.from_delayed([block_to_df(block) for block in self._blocks])
         return ddf
+
+    def to_mars(self) -> "mars.DataFrame":
+        """Convert this dataset into a MARS dataframe.
+
+        Time complexity: O(1)
+
+        Returns:
+            A MARS dataframe created from this dataset.
+        """
+        raise NotImplementedError  # P1
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
