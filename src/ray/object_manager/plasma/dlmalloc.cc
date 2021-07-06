@@ -157,7 +157,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   if (allocated_once && RayConfig::instance().plasma_unlimited()) {
     RAY_LOG(DEBUG) << "Preallocating fallback allocation using fallocate";
     int ret = fallocate(*fd, /*mode*/ 0, /*offset*/ 0, size);
-    if (!ret) {
+    if (ret != 0) {
       if (ret == EOPNOTSUPP || ret == ENOSYS) {
         // in case that fallocate is not supported by current filesystem or kernel,
         // we continue to mmap
