@@ -8,19 +8,18 @@ This demonstrates running the following policies in competition:
 """
 
 import argparse
+from gym.spaces import Discrete
 import os
 import random
 
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.registry import register_env
-from ray.rllib.env import PettingZooEnv
-from pettingzoo.classic import rps_v1
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -53,23 +52,10 @@ parser.add_argument(
     help="Reward at which we stop training.")
 
 
-def env_creator(args):
-    env = rps_v1.env()
-    return env
-
-
-register_env("RockPaperScissors",
-             lambda config: PettingZooEnv(env_creator(config)))
-
-env_for_spaces = PettingZooEnv(env_creator({}))
-obs_space = env_for_spaces.observation_space
-act_space = env_for_spaces.action_space
-
-
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
-        "env": "RockPaperScissors",
+        "env": RockPaperScissors,
         "framework": args.framework,
     }
 
@@ -90,13 +76,13 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     """
 
     def select_policy(agent_id, episode, **kwargs):
-        if agent_id == "player_0":
+        if agent_id == "player1":
             return "learned"
         else:
             return random.choice(["always_same", "beat_last"])
 
     config = {
-        "env": "RockPaperScissors",
+        "env": RockPaperScissors,
         "gamma": 0.9,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -104,13 +90,13 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,
         "train_batch_size": 200,
-        "metrics_smoothing_episodes": 200,
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
-                "always_same": (AlwaysSameHeuristic, obs_space, act_space, {}),
-                "beat_last": (BeatLastHeuristic, obs_space, act_space, {}),
-                "learned": (None, obs_space, act_space, {
+                "always_same": (AlwaysSameHeuristic, Discrete(3), Discrete(3),
+                                {}),
+                "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3), {}),
+                "learned": (None, Discrete(3), Discrete(3), {
                     "model": {
                         "use_lstm": use_lstm
                     },
@@ -123,24 +109,22 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     }
     cls = get_trainer_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)
+    env = trainer_obj.workers.local_worker().env
     for _ in range(args.stop_iters):
         results = trainer_obj.train()
+        print(results)
         # Timesteps reached.
-        if "policy_always_same_reward" not in results["hist_stats"]:
-            reward_diff = 0
-            continue
-        reward_diff = sum(results["hist_stats"]["policy_learned_reward"])
         if results["timesteps_total"] > args.stop_timesteps:
             break
         # Reward (difference) reached -> all good, return.
-        elif reward_diff > args.stop_reward:
+        elif env.player1_score - env.player2_score > args.stop_reward:
             return
 
     # Reward (difference) not reached: Error if `as_test`.
     if args.as_test:
         raise ValueError(
             "Desired reward difference ({}) not reached! Only got to {}.".
-            format(args.stop_reward, reward_diff))
+            format(args.stop_reward, env.player1_score - env.player2_score))
 
 
 def run_with_custom_entropy_loss(args, stop):
@@ -173,7 +157,7 @@ def run_with_custom_entropy_loss(args, stop):
     run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
 
-if __name__ == "__main__":
+def main():
     args = parser.parse_args()
 
     stop = {
@@ -193,3 +177,7 @@ if __name__ == "__main__":
 
     run_with_custom_entropy_loss(args, stop=stop)
     print("run_with_custom_entropy_loss: ok.")
+
+
+if __name__ == "__main__":
+    main()
