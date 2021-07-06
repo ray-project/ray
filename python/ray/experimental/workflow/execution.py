@@ -10,7 +10,8 @@ from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import (
     Storage, create_storage, get_global_storage, set_global_storage)
 from ray.experimental.workflow.workflow_access import (
-    WorkflowManagementActor, MANAGEMENT_ACTOR_NAME, flatten_workflow_output)
+    MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
+    get_or_create_management_actor)
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,7 @@ def run(entry_workflow: Workflow,
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
         commit_step(entry_workflow)
-        try:
-            actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        except ValueError:
-            # the actor does not exist
-            actor = WorkflowManagementActor.options(
-                name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
+        actor = get_or_create_management_actor()
         # NOTE: It is important to 'ray.get' the returned output. This
         # ensures caller of 'run()' holds the reference to the workflow
         # result. Otherwise if the actor removes the reference of the
@@ -68,12 +64,7 @@ def resume(workflow_id: str,
         raise TypeError("'storage' should be None, str, or Storage type.")
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
-    try:
-        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-    except ValueError:
-        # the actor does not exist
-        actor = WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
+    actor = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
