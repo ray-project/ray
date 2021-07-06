@@ -56,8 +56,6 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     try:
         while isinstance(output, ray.ObjectRef):
             output = ray.get(output)
-        # TODO(suquark): if success, return the direct ref of the output to
-        # the workflow management actor.
     except Exception as e:
         # re-raise the exception so we know it is a workflow failure.
         try:
@@ -83,6 +81,8 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
 # concurrent workflow access blocks the actor.
 @ray.remote
 class WorkflowManagementActor:
+    """Keep the ownership and manage the workflow output."""
+
     def __init__(self):
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
 

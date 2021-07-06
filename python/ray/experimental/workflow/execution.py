@@ -43,7 +43,11 @@ def run(entry_workflow: Workflow,
             # the actor does not exist
             actor = WorkflowManagementActor.options(
                 name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
-        output = actor.run_or_resume.remote(workflow_id, storage_url)
+        # NOTE: It is important to 'ray.get' the returned output. This
+        # ensures caller of 'run()' holds the reference to the workflow
+        # result. Otherwise if the actor removes the reference of the
+        # workflow output, the caller may fail to resolve the result.
+        output = ray.get(actor.run_or_resume.remote(workflow_id, storage_url))
         direct_output = flatten_workflow_output(workflow_id, output)
     finally:
         workflow_context.set_workflow_step_context(None)
@@ -73,7 +77,12 @@ def resume(workflow_id: str,
         # the actor does not exist
         actor = WorkflowManagementActor.options(
             name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
-    output = actor.run_or_resume.remote(workflow_id, store.storage_url)
+    # NOTE: It is important to 'ray.get' the returned output. This
+    # ensures caller of 'run()' holds the reference to the workflow
+    # result. Otherwise if the actor removes the reference of the
+    # workflow output, the caller may fail to resolve the result.
+    output = ray.get(
+        actor.run_or_resume.remote(workflow_id, store.storage_url))
     direct_output = flatten_workflow_output(workflow_id, output)
     logger.info(f"Workflow job {workflow_id} resumed.")
     return direct_output
