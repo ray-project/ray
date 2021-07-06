@@ -15,7 +15,7 @@ def _init_ray():
     return ray.init(
         num_cpus=2,
         object_store_memory=700e6,
-        _system_config={"plasma_unlimited": 1})
+        _system_config={"plasma_unlimited": True})
 
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
