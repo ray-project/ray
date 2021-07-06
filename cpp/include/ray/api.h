@@ -88,7 +88,7 @@ class Ray {
   static ActorCreator<F> Actor(F create_func);
 
   template <typename T>
-  inline static ActorHandle<T> GetActor(const std::string &actor_name);
+  inline static ActorHandle<T> GetGlobalActor(const std::string &actor_name);
 
   /// Intentionally exit the current actor.
   /// It is used to disconnect an actor and exit the worker.
@@ -200,7 +200,7 @@ ActorCreator<F> Ray::Actor(F create_func) {
 }
 
 template <typename T>
-ActorHandle<T> Ray::GetActor(const std::string &actor_name) {
+ActorHandle<T> Ray::GetGlobalActor(const std::string &actor_name) {
   if (actor_name.empty()) {
     throw RayException("The actor name is invalid");
   }
