@@ -161,7 +161,7 @@ def test_delay_in_rewriting_environment(shutdown_only):
 
     server = proxier.serve_proxier("localhost:25010",
                                    ray_instance["redis_address"],
-                                   ray_instance["session_dir"])
+                                   session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep", delay_in_rewrite):
         run_string_as_driver(check_connection)
@@ -197,7 +197,7 @@ def test_startup_error_yields_clean_result(shutdown_only):
 
     server = proxier.serve_proxier("localhost:25030",
                                    ray_instance["redis_address"],
-                                   ray_instance["session_dir"])
+                                   session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep",
                       raise_not_rewrite):
