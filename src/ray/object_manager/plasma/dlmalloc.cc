@@ -21,8 +21,8 @@
 
 #ifdef __linux__
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE  /* Turns on fallocate() definition */
-#endif /* _GNU_SOURCE */
+#define _GNU_SOURCE /* Turns on fallocate() definition */
+#endif              /* _GNU_SOURCE */
 #include <fcntl.h>
 #endif /* __linux__ */
 
@@ -164,7 +164,8 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
         RAY_LOG(DEBUG) << "fallocate is not supported: " << std::strerror(errno);
       } else {
         // otherwise we short circuit the allocation with OOM error.
-        RAY_LOG(ERROR) << "Out of disk space with fallocate error: " << std::strerror(errno);
+        RAY_LOG(ERROR) << "Out of disk space with fallocate error: "
+                       << std::strerror(errno);
         *pointer = MAP_FAILED;
         return;
       }
