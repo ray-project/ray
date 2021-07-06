@@ -578,7 +578,6 @@ def init(
         _redis_max_memory=None,
         _plasma_directory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
-        _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir=None,
@@ -665,8 +664,6 @@ def init(
         _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address (str): The IP address of the node that we are on.
-        _driver_object_store_memory (int): Limit the amount of memory the
-            driver can use in the object store for creating objects.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
@@ -858,7 +855,6 @@ def init(
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
-        driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
         namespace=namespace,
         job_config=job_config)
@@ -1147,7 +1143,6 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
-            driver_object_store_memory=None,
             job_id=None,
             namespace=None,
             job_config=None,
@@ -1162,8 +1157,6 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
-        driver_object_store_memory: Limit the amount of memory the driver can
-            use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
@@ -1289,10 +1282,6 @@ def connect(node,
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
-
-    if driver_object_store_memory is not None:
-        worker.core_worker.set_object_store_client_options(
-            f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):

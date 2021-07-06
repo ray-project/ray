@@ -154,40 +154,6 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
   return Status::OK();
 }
 
-// Set options messages.
-
-Status SendSetOptionsRequest(const std::shared_ptr<StoreConn> &store_conn,
-                             const std::string &client_name,
-                             int64_t output_memory_limit) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaSetOptionsRequest(fbb, fbb.CreateString(client_name),
-                                                   output_memory_limit);
-  return PlasmaSend(store_conn, MessageType::PlasmaSetOptionsRequest, &fbb, message);
-}
-
-Status ReadSetOptionsRequest(uint8_t *data, size_t size, std::string *client_name,
-                             int64_t *output_memory_quota) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaSetOptionsRequest>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  *client_name = std::string(message->client_name()->str());
-  *output_memory_quota = message->output_memory_quota();
-  return Status::OK();
-}
-
-Status SendSetOptionsReply(const std::shared_ptr<Client> &client, PlasmaError error) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaSetOptionsReply(fbb, error);
-  return PlasmaSend(client, MessageType::PlasmaSetOptionsReply, &fbb, message);
-}
-
-Status ReadSetOptionsReply(uint8_t *data, size_t size) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaSetOptionsReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  return PlasmaErrorStatus(message->error());
-}
-
 // Get debug string messages.
 
 Status SendGetDebugStringRequest(const std::shared_ptr<StoreConn> &store_conn) {
