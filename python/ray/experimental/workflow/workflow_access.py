@@ -141,5 +141,5 @@ class WorkflowManagementActor:
         Args:
             workflow_id: The ID of the workflow.
         """
-        logger.error(f"Workflow job [id={workflow_id}] succeeded.")
+        logger.info(f"Workflow job [id={workflow_id}] succeeded.")
         self._workflow_outputs.pop(workflow_id, None)

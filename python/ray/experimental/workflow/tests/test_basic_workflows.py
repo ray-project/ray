@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 import ray
 from ray.experimental import workflow
 from ray.experimental.workflow.workflow_access import flatten_workflow_output
@@ -122,3 +124,16 @@ def test_workflow_output_resolving():
     ref = flatten_workflow_output("fake_workflow_id", nested_ref)
     assert ray.get(ref) == 42
     ray.shutdown()
+
+
+def test_run_or_resume_during_running():
+    ray.init()
+    output = workflow.run(
+        simple_sequential.step(), workflow_id="running_workflow")
+
+    with pytest.raises(ValueError):
+        workflow.run(simple_sequential.step(), workflow_id="running_workflow")
+    with pytest.raises(ValueError):
+        workflow.resume(workflow_id="running_workflow")
+
+    assert ray.get(output) == "[source1][append1][append2]"
