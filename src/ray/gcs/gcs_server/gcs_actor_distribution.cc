@@ -621,7 +621,6 @@ void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
     std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply) {
   // The request was rejected because of insufficient resources.
   auto node_id = actor->GetNodeID();
-  RAY_LOG(INFO) << "Lease Rejected";
   gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, reply.resources_data());
   CancelOnActorWorkerAssignment(actor->GetActorID(), actor->GetActorWorkerAssignmentID());
   actor->UpdateAddress(rpc::Address());

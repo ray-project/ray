@@ -427,7 +427,6 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
     scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
     latest_resources_normal_task_timestamp_[node_id] =
         heartbeat.resources_normal_task_timestamp();
-    RAY_LOG(INFO) << "Normal task resources updated at " << heartbeat.resources_normal_task_timestamp();
     for (const auto &listener : resources_changed_listeners_) {
       listener();
     }
