@@ -1,10 +1,14 @@
 """
 Example script on how to train, save, load, and test an RLlib agent.
-Equivalent script with stable baselines: sb2rllib_sb_example.py
+Equivalent script with stable baselines: sb2rllib_sb_example.py.
+Demonstrates transition from stable_baselines to Ray RLlib.
+
+Run example: python sb2rllib_rllib_example.py
 """
 import gym
 import ray
 import ray.rllib.agents.ppo as ppo
+
 
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
