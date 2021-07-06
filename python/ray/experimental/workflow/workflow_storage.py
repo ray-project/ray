@@ -63,6 +63,34 @@ class WorkflowStorage:
         """
         return self._storage.load_step_output(self._workflow_id, step_id)
 
+    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
+                         outer_most_step_id: Optional[StepID]) -> None:
+        """When a workflow step returns,
+        1. If the returned object is a workflow, this means we are a nested
+           workflow. We save the output metadata that points to the workflow.
+        2. Otherwise, checkpoint the output.
+
+        Args:
+            step_id: The ID of the workflow step. If it is an empty string,
+                it means we are in the workflow job driver process.
+            ret: The returned object from a workflow step.
+            outer_most_step_id: See
+                "step_executor.execute_workflow" for explanation.
+        """
+        if isinstance(ret, Workflow):
+            # This workflow step returns a nested workflow.
+            assert step_id != ret.id
+            self._storage.save_step_output_metadata(self._workflow_id, step_id,
+                                                    {"output_step_id": ret.id})
+            dynamic_output_id = ret.id
+        else:
+            # This workflow step returns a object.
+            ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
+            self._storage.save_step_output(self._workflow_id, step_id, ret)
+            dynamic_output_id = step_id
+        if outer_most_step_id is not None:
+            self._update_dynamic_output(outer_most_step_id, dynamic_output_id)
+
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
 
@@ -125,7 +153,7 @@ class WorkflowStorage:
 
         Args:
             outer_most_step_id: ID of outer_most_step. See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+                "step_executor.execute_workflow" for explanation.
             dynamic_output_step_id: ID of dynamic_step.
         """
         metadata = self._storage.load_step_output_metadata(
@@ -209,34 +237,13 @@ class WorkflowStorage:
         self._storage.save_step_func_body(self._workflow_id, step_id, f)
         self._storage.save_step_args(self._workflow_id, step_id, args_obj)
 
-    def commit_step(self, step_id: StepID, ret: Union[Workflow, Any],
-                    outer_most_step_id: Optional[StepID]) -> None:
-        """When a workflow step returns,
-        1. If the returned object is a workflow, this means we are a nested
-           workflow. We save the DAG of the nested workflow.
-        2. Otherwise, checkpoint the output.
+    def save_subworkflow(self, workflow: Workflow) -> None:
+        """Save the DAG and inputs of the sub-workflow.
 
         Args:
-            step_id: The ID of the workflow step. If it is an empty string,
-                it means we are in the workflow job driver process.
-            ret: The returned object from a workflow step.
-            outer_most_step_id: See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+            workflow: A sub-workflow. Could be a nested workflow inside
+                a workflow step.
         """
-        if isinstance(ret, Workflow):
-            # This workflow step returns a nested workflow.
-            assert not ret.executed
-            if not ret.skip_saving_workflow_dag:
-                for w in ret.iter_workflows_in_dag():
-                    self._write_step_inputs(w.id, w.get_inputs())
-                assert step_id != ret.id
-                self._storage.save_step_output_metadata(
-                    self._workflow_id, step_id, {"output_step_id": ret.id})
-            dynamic_output_id = ret.id
-        else:
-            # This workflow step returns a object.
-            ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-            self._storage.save_step_output(self._workflow_id, step_id, ret)
-            dynamic_output_id = step_id
-        if outer_most_step_id is not None:
-            self._update_dynamic_output(outer_most_step_id, dynamic_output_id)
+        assert not workflow.executed
+        for w in workflow.iter_workflows_in_dag():
+            self._write_step_inputs(w.id, w.get_inputs())
