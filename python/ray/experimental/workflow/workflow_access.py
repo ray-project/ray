@@ -2,8 +2,8 @@ import logging
 from typing import Any, Dict
 
 import ray
+from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
-
 logger = logging.getLogger(__name__)
 
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
@@ -101,8 +101,6 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "already exists.")
-        # Avoid cyclic import
-        from ray.experimental.workflow import recovery
         store = storage.create_storage(storage_url)
         output = recovery.resume_workflow_job(workflow_id, store)
         self._workflow_outputs[workflow_id] = output

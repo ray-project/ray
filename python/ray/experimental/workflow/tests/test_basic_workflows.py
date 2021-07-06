@@ -137,3 +137,4 @@ def test_run_or_resume_during_running():
         workflow.resume(workflow_id="running_workflow")
 
     assert ray.get(output) == "[source1][append1][append2]"
+    ray.shutdown()
