@@ -26,6 +26,7 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
   The table below shows the latest Dask versions that are tested with Ray versions.
 
   | Ray Version | Dask Version |
+  | ----------- | ------------ |
   | 1.4.1       | 2021.6.1     |
 
 
