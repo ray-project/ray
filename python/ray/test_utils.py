@@ -375,6 +375,7 @@ def generate_system_config_map(**kwargs):
 class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
+        self.num_waiters = 0
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -383,7 +384,12 @@ class SignalActor:
 
     async def wait(self, should_wait=True):
         if should_wait:
+            self.num_waiters += 1
             await self.ready_event.wait()
+            self.num_waiters -= 1
+
+    async def cur_num_waiters(self):
+        return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
