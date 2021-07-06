@@ -119,8 +119,7 @@ class ClusterTaskManagerInterface {
   /// Report high frequency scheduling metrics.
   virtual void RecordMetrics() = 0;
 
-  /// Check if there are enough available resources for the given input. If tru, we will
-  /// reserve the given amount of resources from this node.
+  /// Check if there are enough available resources for the given input.
   virtual bool IsLocallySchedulable(const Task &task) = 0;
 
   /// Calculate normal task resources.

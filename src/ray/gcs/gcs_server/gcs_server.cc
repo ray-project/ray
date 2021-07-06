@@ -233,48 +233,32 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
   std::shared_ptr<GcsActorSchedulerInterface> scheduler;
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+    // When there are no available nodes to schedule the actor the
+    // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+    // this case, the actor manager should schedule the actor once an
+    // eligible node is registered.
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+  };
+  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor) {
+    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+  };
+  auto client_factory = [this](const rpc::Address &address) {
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+  };
+
   if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_ && gcs_job_distribution_);
     scheduler = std::make_shared<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         gcs_resource_manager_, gcs_resource_scheduler_, gcs_job_distribution_,
-        /*schedule_failure_handler=*/
-        [this](std::shared_ptr<GcsActor> actor) {
-          // When there are no available nodes to schedule the actor the
-          // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-          // this case, the actor manager should schedule the actor once an
-          // eligible node is registered.
-          gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
-        },
-        /*schedule_success_handler=*/
-        [this](std::shared_ptr<GcsActor> actor) {
-          gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
-        },
-        raylet_client_pool_,
-        /*client_factory=*/
-        [this](const rpc::Address &address) {
-          return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-        });
+        schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
+        client_factory);
   } else {
     scheduler = std::make_shared<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
-        /*schedule_failure_handler=*/
-        [this](std::shared_ptr<GcsActor> actor) {
-          // When there are no available nodes to schedule the actor the
-          // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-          // this case, the actor manager should schedule the actor once an
-          // eligible node is registered.
-          gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
-        },
-        /*schedule_success_handler=*/
-        [this](std::shared_ptr<GcsActor> actor) {
-          gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
-        },
-        raylet_client_pool_,
-        /*client_factory=*/
-        [this](const rpc::Address &address) {
-          return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-        });
+        schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
+        client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,

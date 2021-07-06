@@ -938,6 +938,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
+  reply->set_rejected(true);
+
   auto send_reply_callback = std::get<2>(work);
   send_reply_callback();
 }
