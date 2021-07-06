@@ -22,8 +22,6 @@ Syntax
         :ref:`auth <cluster-configuration-auth-type>`
     :ref:`available_node_types <cluster-configuration-available-node-types>`:
         :ref:`node_types <cluster-configuration-node-types-type>`
-    :ref:`worker_nodes <cluster-configuration-worker-nodes>`:
-        :ref:`node_config <cluster-configuration-node-config-type>`
     :ref:`head_node_type <cluster-configuration-head-node-type>`: str
     :ref:`file_mounts <cluster-configuration-file-mounts>`:
         :ref:`file_mounts <cluster-configuration-file-mounts-type>`
@@ -137,7 +135,12 @@ Provider
 Node types
 ~~~~~~~~~~
 
-The nodes types object's keys represent the names of the different node types.
+The ``available_nodes_types`` object's keys represent the names of the different node types.
+
+Deleting a node type from ``available_node_types`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
+In particular, changing the key of a node type object will
+result in removal of nodes corresponding to the old key; nodes with the new key name will then be
+created according to cluster configuration and Ray resource demands.
 
 .. parsed-literal::
     <node_type_1_name>:
@@ -159,6 +162,11 @@ The nodes types object's keys represent the names of the different node types.
 
 Node config
 ~~~~~~~~~~~
+
+Cloud-specific configuration for nodes of a given node type.
+
+Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
+nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
 
 .. tabs::
     .. group-tab:: AWS
@@ -320,7 +328,7 @@ Authentication credentials that Ray will use to launch nodes.
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tells the autoscaler the allowed node types and the resources they provide.
-The key is the name of the node type, which is just for debugging purposes.
+Each node type is identified by a user-specified key.
 
 * **Required:** No
 * **Importance:** High
@@ -358,23 +366,16 @@ The key is the name of the node type, which is just for debugging purposes.
 
 The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
 
+If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up<ray-up-doc>`, the currently running head node will
+be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new
+head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of the :ref:`node_type<cluster-configuration-node-types-type>` with key ``head_node_type`` will also result in cluster restart after a user prompt.
+
+
 
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
-
-.. _cluster-configuration-worker-nodes:
-
-``worker_nodes``
-~~~~~~~~~~~~~~~~
-
-The configuration to be used to launch worker nodes on the cloud service provider. Generally, node configs are set in the :ref:`node config of each node type <cluster-configuration-node-config>`. Setting this property allows propagation of a default value to all the node types when they launch as workers (e.g., using spot instances across all workers can be configured here so that it doesn't have to be set across all instance types).
-
-* **Required:** No
-* **Importance:** Low
-* **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
-* **Default:** ``{}``
 
 .. _cluster-configuration-file-mounts:
 
