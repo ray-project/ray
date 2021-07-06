@@ -274,3 +274,12 @@ def ray_deps_setup():
         urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
         sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )
+
+    http_archive(
+        name = "nlohmann_json",
+        strip_prefix = "json-3.9.1",
+        urls = ["https://github.com/nlohmann/json/archive/v3.9.1.tar.gz"],
+        sha256 = "4cf0df69731494668bdd6460ed8cb269b68de9c19ad8c27abc24cd72605b2d5b",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.nlohmann_json",
+    )
+

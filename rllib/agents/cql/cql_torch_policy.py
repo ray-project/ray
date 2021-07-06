@@ -17,14 +17,12 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
-from ray.rllib.utils.torch_ops import apply_grad_clipping, atanh, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     convert_to_torch_tensor
 
 torch, nn = try_import_torch()
@@ -131,30 +129,9 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
 
-        def bc_log(model, obs, actions):
-            # Stabilize input to atanh.
-            normed_actions = \
-                (actions - action_dist_t.low) / \
-                (action_dist_t.high - action_dist_t.low) * 2.0 - 1.0
-            save_normed_actions = torch.clamp(
-                normed_actions, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
-            z = atanh(save_normed_actions)
-
-            logits = model.get_policy_output(obs)
-            mean, log_std = torch.chunk(logits, 2, dim=-1)
-            # Mean Clamping for Stability
-            mean = torch.clamp(mean, MEAN_MIN, MEAN_MAX)
-            log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT,
-                                  MAX_LOG_NN_OUTPUT)
-            std = torch.exp(log_std)
-            normal_dist = torch.distributions.Normal(mean, std)
-            return torch.sum(
-                normal_dist.log_prob(z) -
-                torch.log(1 - actions * actions + SMALL_NUMBER),
-                dim=-1)
-
-        bc_logp = bc_log(model, model_out_t, actions)
+        bc_logp = action_dist_t.logp(actions)
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
+        # actor_loss = -bc_logp.mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
         policy.actor_optim.zero_grad()

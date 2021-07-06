@@ -76,9 +76,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Schedule infeasible tasks.
-  void ScheduleInfeasibleTasks() override;
-
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///
@@ -119,7 +116,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &data) override;
+  void FillResourceUsage(rpc::ResourcesData &data,
+                         const std::shared_ptr<SchedulingResources>
+                             &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///

@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 import logging
+import os
 
 import ray
 
@@ -47,6 +48,10 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+                ray.client().connect()
+                # Retry connect!
+                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -276,6 +281,16 @@ class GlobalState:
             results.append(job_info)
 
         return results
+
+    def next_job_id(self):
+        """Get next job id from GCS.
+
+        Returns:
+            Next job id in the cluster.
+        """
+        self._check_connected()
+
+        return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
     def profile_table(self):
         self._check_connected()
@@ -752,6 +767,12 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -769,6 +790,15 @@ def jobs():
         - "StopTime" (UNIX timestamp of the stop time of this job, if any)
     """
     return state.job_table()
+
+
+def next_job_id():
+    """Get next job id from GCS.
+
+    Returns:
+        Next job id in integer representation in the cluster.
+    """
+    return state.next_job_id()
 
 
 @client_mode_hook

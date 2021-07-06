@@ -43,6 +43,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllJobInfo()
         return result
 
+    def get_next_job_id(self):
+        cdef CJobID cjob_id
+        with nogil:
+            cjob_id = self.inner.get().GetNextJobID()
+        return cjob_id.ToInt()
+
     def get_node_table(self):
         cdef c_vector[c_string] result
         with nogil:
@@ -156,3 +162,6 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
+
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()

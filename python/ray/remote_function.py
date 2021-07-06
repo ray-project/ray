@@ -53,6 +53,7 @@ class RemoteFunction:
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before exiting.
+        _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
@@ -71,7 +72,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 accelerator_type, num_returns, max_calls, max_retries):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 runtime_env):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -98,6 +100,7 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
+        self._runtime_env = runtime_env
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -271,6 +274,8 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
+        if runtime_env is None:
+            runtime_env = self._runtime_env
         if runtime_env:
             runtime_env_dict = runtime_support.RuntimeEnvDict(
                 runtime_env).get_parsed_dict()
@@ -279,7 +284,7 @@ class RemoteFunction:
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.5.  Please use "
+                           "will be removed in Ray 1.6.  Please use "
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 
