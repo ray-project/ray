@@ -11,6 +11,7 @@ import os
 import time
 
 import ray
+from ray.test_utils import wait_for_num_nodes
 from xgboost_ray import RayParams
 
 from ray.util.xgboost.release_test_util import train_ray
@@ -22,6 +23,9 @@ if __name__ == "__main__":
         ray.client(address=addr).job_name(job_name).connect()
     else:
         ray.init(address="auto")
+
+    wait_for_num_nodes(
+        int(os.environ.get("RAY_RELEASE_MIN_WORKERS", 0)) + 1, 600)
 
     output = os.environ["TEST_OUTPUT_JSON"]
     state = os.environ["TEST_STATE_JSON"]

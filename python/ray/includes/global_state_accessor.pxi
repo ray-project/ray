@@ -162,3 +162,6 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
+
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()
