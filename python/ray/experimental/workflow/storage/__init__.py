@@ -22,7 +22,7 @@ def create_storage(storage_url: str) -> Storage:
 
 
 # the default storage is a local filesystem storage with a hidden directory
-_global_storage = create_storage(os.path.join(os.path.curdir, ".rayflow"))
+_global_storage = create_storage(os.path.join(os.path.curdir, "workflow_data"))
 
 
 def get_global_storage() -> Storage:
