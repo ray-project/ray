@@ -125,7 +125,6 @@ class WorkflowManagementActor:
                              "does not exist. The workflow is either failed "
                              "or finished. Use 'run_or_resume' to access "
                              "the workflow result.")
-        print("#######!!!", self._workflow_outputs[workflow_id])
         return self._workflow_outputs[workflow_id]
 
     def report_failure(self, workflow_id: str) -> None:

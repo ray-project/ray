@@ -19,7 +19,6 @@ def test_workflow_lifetime():
     # connect to the cluster
     ray.init(address="auto", namespace="workflow")
     output = workflow.get_output("cluster_failure")
-    print("#####", output)
     assert ray.get(output) == 20
     ray.shutdown()
     subprocess.run(["ray stop"], shell=True)
