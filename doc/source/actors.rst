@@ -417,7 +417,7 @@ exist. See :ref:`actor-lifetimes` for more details.
 
 .. note::
 
-     Named actors are accessible only at the same namespace. 
+     Named actors are only accessible in the same namespace. 
 
     .. code-block:: python
 
