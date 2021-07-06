@@ -805,9 +805,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or "_blocks" to return the raw block.
-                Default is "pandas".
+                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
+                select ``pyarrow.Table``. Default is "pandas".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
