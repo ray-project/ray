@@ -121,6 +121,10 @@ class ActorReplicaWrapper:
 
     def check_ready(self) -> bool:
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
+        # In case of deployment constructor failure, ray.get will help to 
+        # surface exception to each update() cycle. 
+        ray.get(ready)
+
         return len(ready) == 1
 
     @property
@@ -155,12 +159,7 @@ class ActorReplicaWrapper:
 
         ready, _ = ray.wait([self._health_check_ref], timeout=0)
 
-        rst = len(ready) == 0
-        print(f"check_health -> {rst}")
-        print(f"ready: {ready}")
-        print(f"==== ray.get: {ray.get(ready)}")
-
-        return rst
+        return len(ready) == 0
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
