@@ -71,7 +71,7 @@ class ClientBuilder:
             # Set address to part before the parameters, i.e. before any
             # "?arg=val" in the url
             self.address = parsed_address.path
-            params_dict = parse_qs(parsed_address.query)()
+            params_dict = parse_qs(parsed_address.query)
             for key, val in params_dict.items():
                 if key == "runtime_env":
                     self.env(json.loads(val))

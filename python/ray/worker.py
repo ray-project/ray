@@ -700,8 +700,8 @@ def init(
             arguments is passed in.
     """
 
-    # Use environment variables if available for arguments that weren't
-    # weren't specified in code
+    # If available, use environment variables for arguments that weren't
+    # specified in the ray.init call
     address_env_var = os.environ.get(
         ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if address_env_var:
@@ -736,7 +736,7 @@ def init(
             f"variable {ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE}")
 
     if address is not None and "://" in address:
-        # Address specified a protocol
+        # Address specified a protocol, use ray client
         protocol, _ = address.split("://")
         builder = ray.client(address)
         builder = builder._init_args(
