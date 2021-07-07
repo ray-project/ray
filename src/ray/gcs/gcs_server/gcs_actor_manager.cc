@@ -253,18 +253,22 @@ void GcsActorManager::HandleGetNamedActorInfo(
   ++counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST];
 }
 
-void GcsActorManager::HandleGetActorNames(const rpc::GetActorNamesRequest &request,
-                                          rpc::GetActorNamesReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+void GcsActorManager::HandleListActors(const rpc::ListActorsRequest &request,
+                                       rpc::ListActorsReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
   const std::string &ray_namespace = request.ray_namespace();
   RAY_LOG(DEBUG) << "Getting named actor names, namespace = " << ray_namespace;
 
-  std::vector<std::string> actor_names = GetActorNames(ray_namespace);
-  for (const std::string &name : actor_names) {
-    reply->add_actor_name_list(name);
+  std::vector<std::pair<std::string, std::string>> actors =
+      ListActors(request.all_namespaces(), ray_namespace);
+  for (const auto &actor : actors) {
+    rpc::NamedActorInfo named_actor_info;
+    named_actor_info.set_ray_namespace(actor.first);
+    named_actor_info.set_name(actor.second);
+    reply->add_named_actors_list()->CopyFrom(named_actor_info);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ALL_ACTOR_NAMES_REQUEST];
+  ++counts_[CountType::LIST_ACTORS_REQUEST];
 }
 
 void GcsActorManager::HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
@@ -476,17 +480,24 @@ ActorID GcsActorManager::GetActorIDByName(const std::string &name,
   return actor_id;
 }
 
-std::vector<std::string> GcsActorManager::GetActorNames(
-    const std::string &ray_namespace) const {
-  std::vector<std::string> actor_names;
-  auto namespace_it = named_actors_.find(ray_namespace);
-  if (namespace_it != named_actors_.end()) {
-    for (auto actor_it = namespace_it->second.begin();
-         actor_it != namespace_it->second.end(); actor_it++) {
-      actor_names.push_back(actor_it->first);
+std::vector<std::pair<std::string, std::string>> GcsActorManager::ListActors(
+    bool all_namespaces, const std::string &ray_namespace) const {
+  std::vector<std::pair<std::string, std::string>> actors;
+  if (all_namespaces) {
+    for (auto namespace_it : named_actors_) {
+      for (auto actor_it : namespace_it.second) {
+        actors.push_back(std::make_pair(namespace_it.first, actor_it.first));
+      }
+    }
+  } else {
+    auto namespace_it = named_actors_.find(ray_namespace);
+    if (namespace_it != named_actors_.end()) {
+      for (auto actor_it : namespace_it->second) {
+        actors.push_back(std::make_pair(namespace_it->first, actor_it.first));
+      }
     }
   }
-  return actor_names;
+  return actors;
 }
 
 void GcsActorManager::PollOwnerForActorOutOfScope(

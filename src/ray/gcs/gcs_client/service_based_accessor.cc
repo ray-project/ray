@@ -200,15 +200,16 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncGetActorNames(
-    const std::string &ray_namespace,
-    const ItemCallback<std::vector<std::string>> &callback) {
+Status ServiceBasedActorInfoAccessor::AsyncListActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
   RAY_LOG(DEBUG) << "Getting all actor names";
-  rpc::GetActorNamesRequest request;
+  rpc::ListActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
-  client_impl_->GetGcsRpcClient().GetActorNames(
-      request, [callback](const Status &status, const rpc::GetActorNamesReply &reply) {
-        callback(VectorFromProtobuf(reply.actor_name_list()));
+  client_impl_->GetGcsRpcClient().ListActors(
+      request, [callback](const Status &status, const rpc::ListActorsReply &reply) {
+        callback(VectorFromProtobuf(reply.named_actors_list()));
         RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       });
   return Status::OK();

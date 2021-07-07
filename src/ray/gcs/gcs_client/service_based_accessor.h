@@ -81,9 +81,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
-  Status AsyncGetActorNames(
-      const std::string &ray_namespace,
-      const ItemCallback<std::vector<std::string>> &callback) override;
+  Status AsyncListActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) override;
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             const StatusCallback &callback) override;

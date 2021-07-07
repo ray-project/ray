@@ -2016,22 +2016,25 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
 }
 
-std::pair<std::vector<std::string>, Status> CoreWorker::GetActorNames() {
+std::pair<std::vector<std::pair<std::string, std::string>>, Status>
+CoreWorker::ListActors(bool all_namespaces) {
   if (options_.is_local_mode) {
-    return GetActorNamesLocalMode();
+    return ListActorsLocalMode();
   }
 
-  std::vector<std::string> actor_names;
+  std::vector<std::pair<std::string, std::string>> actors;
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetActorNames(
-      ray_namespace,
-      [&actor_names, ready_promise](const std::vector<std::string> &result) {
-        actor_names = std::move(result);
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncListActors(
+      all_namespaces, ray_namespace,
+      [&actors, ready_promise](const std::vector<rpc::NamedActorInfo> &result) {
+        for (const auto &actor_info : result) {
+          actors.push_back(std::make_pair(actor_info.ray_namespace(), actor_info.name()));
+        }
         ready_promise->set_value();
       }));
 
@@ -2044,12 +2047,12 @@ std::pair<std::vector<std::string>, Status> CoreWorker::GetActorNames() {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
               "probably because the GCS server is dead or under high load .";
-    return std::make_pair(actor_names, Status::TimedOut(stream.str()));
+    return std::make_pair(actors, Status::TimedOut(stream.str()));
   } else {
     status = Status::OK();
   }
 
-  return std::make_pair(actor_names, status);
+  return std::make_pair(actors, status);
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status>
@@ -2064,13 +2067,14 @@ CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
   return std::make_pair(GetActorHandle(it->second), Status::OK());
 }
 
-std::pair<std::vector<std::string>, Status> CoreWorker::GetActorNamesLocalMode() {
-  std::vector<std::string> actor_names;
+std::pair<std::vector<std::pair<std::string, std::string>>, Status>
+CoreWorker::ListActorsLocalMode() {
+  std::vector<std::pair<std::string, std::string>> actors;
   for (auto it = local_mode_named_actor_registry_.begin();
        it != local_mode_named_actor_registry_.end(); it++) {
-    actor_names.push_back(it->first);
+    actors.push_back(std::make_pair(/*namespace=*/"", it->first));
   }
-  return std::make_pair(actor_names, Status::OK());
+  return std::make_pair(actors, Status::OK());
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {

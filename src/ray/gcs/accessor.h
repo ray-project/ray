@@ -57,14 +57,15 @@ class ActorInfoAccessor {
       const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Get all named actor names from the GCS asynchronously.
+  /// List all named actors from the GCS asynchronously.
   ///
-  /// \param ray_namespace The namespace to filter to.
+  /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
+  /// \param ray_namespace The namespace to filter to if all_namespaces is false.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetActorNames(
-      const std::string &ray_namespace,
-      const ItemCallback<std::vector<std::string>> &callback) = 0;
+  virtual Status AsyncListActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) = 0;
 
   /// Register actor to GCS asynchronously.
   ///

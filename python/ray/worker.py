@@ -1670,15 +1670,22 @@ def get_actor(name):
 
 
 @client_mode_hook
-def get_actor_names() -> List[str]:
-    """Get all named actor names in the system.
+def list_actors(all_namespaces: bool = False) -> List[Dict[str, str]]:
+    """Get all named actors in the system.
+
+    By default, only actors in the current namespace will be returned. If
+    `all_namespaces` is set to True, all actors in the cluster will be
+    returned.
 
     Actors must have been created with Actor.options(name="name").remote().
     This works for both detached & non-detached actors.
+
+    Returns a list of one dictionary per actor:
+        {"namespace": <namespace>, "name": <name>}
     """
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_actor_names()
+    return worker.core_worker.list_actors(all_namespaces)
 
 
 @client_mode_hook

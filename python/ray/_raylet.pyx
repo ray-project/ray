@@ -1578,14 +1578,20 @@ cdef class CoreWorker:
 
         return self.make_actor_handle(named_actor_handle_pair.first)
 
-    def get_actor_names(self):
+    def list_actors(self, c_bool all_namespaces):
         cdef:
-            pair[c_vector[c_string], CRayStatus] result_pair
+            pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
 
-        result_pair = CCoreWorkerProcess.GetCoreWorker().GetActorNames()
+        result_pair = CCoreWorkerProcess.GetCoreWorker().ListActors(
+            all_namespaces)
         check_status(result_pair.second)
 
-        return [name.decode("utf-8") for name in result_pair.first]
+        return [
+            {
+                "namespace": namespace.decode("utf-8"),
+                "name": name.decode("utf-8")
+            } for namespace, name in result_pair.first
+        ]
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:

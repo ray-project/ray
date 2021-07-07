@@ -212,9 +212,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetActorNames(const rpc::GetActorNamesRequest &request,
-                           rpc::GetActorNamesReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
+  void HandleListActors(const rpc::ListActorsRequest &request,
+                        rpc::ListActorsReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -253,10 +253,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
 
-  /// Get all names of named actors in the namespace.
-  /// \param[in] namespace The namespace to filter to.
-  /// \param[out] actor_names The vector to write actor names to.
-  std::vector<std::string> GetActorNames(const std::string &ray_namespace) const;
+  /// Get info names of named actors in the namespace.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -495,9 +498,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     CREATE_ACTOR_REQUEST = 1,
     GET_ACTOR_INFO_REQUEST = 2,
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
-    GET_ALL_ACTOR_NAMES_REQUEST = 4,
-    GET_ALL_ACTOR_INFO_REQUEST = 5,
-    KILL_ACTOR_REQUEST = 6,
+    GET_ALL_ACTOR_INFO_REQUEST = 4,
+    KILL_ACTOR_REQUEST = 5,
+    LIST_ACTORS_REQUEST = 6,
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
