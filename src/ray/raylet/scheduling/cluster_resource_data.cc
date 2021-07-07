@@ -15,7 +15,7 @@ const std::string ResourceEnumToString(PredefinedResources resource) {
 }
 
 const PredefinedResources ResourceStringToEnum(const std::string &resource) {
-  for (int i = 0; i < resource_labels->size(); i++) {
+  for (std::size_t i = 0; i < resource_labels->size(); i++) {
     if (resource_labels[i] == resource) {
         return static_cast<PredefinedResources>(i);
       }
