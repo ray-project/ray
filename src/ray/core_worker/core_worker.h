@@ -506,13 +506,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to storing and retrieving objects.
   ///
 
-  /// Set options for this client's interactions with the object store.
-  ///
-  /// \param[in] name Unique name for this object store client.
-  /// \param[in] limit The maximum amount of memory in bytes that this client
-  /// can use in the object store.
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.

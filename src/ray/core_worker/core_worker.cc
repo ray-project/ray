@@ -1048,11 +1048,6 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   }
 }
 
-Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
-  // Currently only the Plasma store supports client options.
-  return plasma_store_provider_->SetClientOptions(name, limit_bytes);
-}
-
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
