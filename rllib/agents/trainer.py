@@ -389,6 +389,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
     #  - A callable that returns a ray.rllib.offline.InputReader.
+    #  - A string key that indexes a callable with tune.registry.register_input
     "input": "sampler",
     # True, if the actions in a given offline "input" are already normalized
     # (between -1.0 and 1.0). This is usually the case when the offline

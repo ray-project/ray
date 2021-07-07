@@ -147,7 +147,7 @@ You can also define supervised model losses over offline data. This requires def
         supervised_loss = some_function_of(input_ops)
         return policy_loss + supervised_loss
 
-See `custom_loss.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py>`__ for a runnable example of using these TF input ops in a custom loss.
+See `custom_model_loss_and_metrics.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ for a runnable example of using these TF input ops in a custom loss.
 
 
 Input API
