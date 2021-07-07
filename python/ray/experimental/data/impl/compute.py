@@ -1,4 +1,4 @@
-from typing import TypeVar, Iterable, Any
+from typing import TypeVar, Iterable, Any, Union
 
 import ray
 from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
@@ -113,10 +113,12 @@ class ActorPool(ComputeStrategy):
         return BlockList(blocks_out, new_metadata)
 
 
-def get_compute(compute_spec: str) -> ComputeStrategy:
+def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
         return TaskPool()
     elif compute_spec == "actors":
         return ActorPool()
+    elif isinstance(compute_spec, ComputeStrategy):
+        return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`]")
