@@ -37,7 +37,7 @@ class ObjectStore {
   /// \param object_id Object ID that will be checked.
   /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
   /// not
-  ObjectStatus ContainsObject(const ObjectID &object_id);
+  ObjectStatus ContainsSealedObject(const ObjectID &object_id);
 
   const LocalObject *SealObject(const ObjectID &object_id);
 

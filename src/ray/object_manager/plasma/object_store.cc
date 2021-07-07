@@ -59,7 +59,7 @@ const LocalObject *ObjectStore::GetObject(const ObjectID &object_id) const {
   return it->second.get();
 }
 
-ObjectStatus ObjectStore::ContainsObject(const ObjectID &object_id) {
+ObjectStatus ObjectStore::ContainsSealedObject(const ObjectID &object_id) {
   auto entry = GetObjectInternal(object_id);
   return entry && entry->state == ObjectState::PLASMA_SEALED
              ? ObjectStatus::OBJECT_FOUND
