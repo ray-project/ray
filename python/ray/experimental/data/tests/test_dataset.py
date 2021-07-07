@@ -1,10 +1,12 @@
-import itertools
 import os
+import random
 import shutil
+import time
 
 from unittest.mock import patch
 import dask.dataframe as dd
 import math
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -311,7 +313,7 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item
 
 
-def test_iter_batches(ray_start_regular_shared):
+def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
@@ -386,11 +388,21 @@ def test_iter_batches_grid(ray_start_regular_shared):
     # a grid of dataset, batching, and dropping configurations.
     # Grid: num_blocks x num_rows_block_1 x ... x num_rows_block_N x
     #       batch_size x drop_last
-    max_num_blocks = 4
-    max_num_rows_per_block = 4
-    for num_blocks in range(1, max_num_blocks + 1):
-        for block_sizes in itertools.product(
-                range(1, max_num_rows_per_block + 1), repeat=num_blocks):
+    seed = time.time_ns()
+    print(f"Seeding RNG for test_iter_batches_grid with: {seed}")
+    random.seed(seed)
+    max_num_blocks = 20
+    max_num_rows_per_block = 20
+    num_blocks_samples = 5
+    block_sizes_samples = 10
+    batch_size_samples = 10
+
+    for num_blocks in np.random.randint(
+            1, max_num_blocks + 1, size=num_blocks_samples):
+        block_sizes_list = [
+            np.random.randint(1, max_num_rows_per_block + 1, size=num_blocks)
+            for _ in range(block_sizes_samples)]
+        for block_sizes in block_sizes_list:
             # Create the dataset with the given block sizes.
             dfs = []
             running_size = 0
@@ -403,7 +415,8 @@ def test_iter_batches_grid(ray_start_regular_shared):
             num_rows = running_size
             ds = ray.experimental.data.from_pandas([
                 ray.put(df) for df in dfs])
-            for batch_size in range(1, num_rows + 1):
+            for batch_size in np.random.randint(
+                    1, num_rows + 1, size=batch_size_samples):
                 for drop_last in (False, True):
                     batches = list(
                         ds.iter_batches(
