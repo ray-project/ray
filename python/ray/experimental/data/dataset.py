@@ -814,7 +814,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
-        """Return a Torch iterator over this dataset.
+        """Return a Torch data iterator over this dataset.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -822,7 +822,7 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            A TorchMLDataset.
+            A torch IterableDataset.
         """
         raise NotImplementedError  # P1
 
@@ -835,7 +835,7 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            A TFMLDataset.
+            A tf.data.Dataset.
         """
         raise NotImplementedError  # P1
 
