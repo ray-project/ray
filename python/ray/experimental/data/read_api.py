@@ -256,8 +256,11 @@ def read_json(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     return read_datasource(
-        JSONDatasource(), parallelism=parallelism, paths=paths,
-        filesystem=filesystem, **arrow_json_args)
+        JSONDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_json_args)
 
 
 def read_csv(paths: Union[str, List[str]],
@@ -287,8 +290,11 @@ def read_csv(paths: Union[str, List[str]],
         Dataset holding Arrow records read from the specified paths.
     """
     return read_datasource(
-        CSVDatasource(), parallelism=parallelism, paths=paths,
-        filesystem=filesystem, **arrow_csv_args)
+        CSVDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_csv_args)
 
 
 def read_binary_files(

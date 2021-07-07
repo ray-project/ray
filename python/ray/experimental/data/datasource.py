@@ -274,10 +274,11 @@ class JSONDatasource(Datasource[Union[ArrowRow, int]]):
         ... {"a": 1, "b": "foo"}
     """
 
-    def prepare_read(
-            self, parallelism: int, paths: Union[str, List[str]],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            **arrow_json_args) -> List[ReadTask]:
+    def prepare_read(self,
+                     parallelism: int,
+                     paths: Union[str, List[str]],
+                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                     **arrow_json_args) -> List[ReadTask]:
         import pyarrow as pa
         from pyarrow import json
         import numpy as np
@@ -306,11 +307,11 @@ class JSONDatasource(Datasource[Union[ArrowRow, int]]):
                     num_rows=None,
                     size_bytes=sum(file_sizes),
                     schema=None,
-                    input_files=read_paths))
-            for read_paths, file_sizes in zip(
-                    np.array_split(paths, parallelism),
-                    np.array_split(file_sizes, parallelism))
-            if len(read_paths) > 0]
+                    input_files=read_paths)) for read_paths, file_sizes in zip(
+                        np.array_split(paths, parallelism),
+                        np.array_split(file_sizes, parallelism))
+            if len(read_paths) > 0
+        ]
 
         return read_tasks
 
@@ -324,10 +325,11 @@ class CSVDatasource(Datasource[Union[ArrowRow, int]]):
         ... {"a": 1, "b": "foo"}
     """
 
-    def prepare_read(
-            self, parallelism: int, paths: Union[str, List[str]],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            **arrow_csv_args) -> List[ReadTask]:
+    def prepare_read(self,
+                     parallelism: int,
+                     paths: Union[str, List[str]],
+                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                     **arrow_csv_args) -> List[ReadTask]:
         import pyarrow as pa
         from pyarrow import csv
         import numpy as np
@@ -356,11 +358,11 @@ class CSVDatasource(Datasource[Union[ArrowRow, int]]):
                     num_rows=None,
                     size_bytes=sum(file_sizes),
                     schema=None,
-                    input_files=read_paths))
-            for read_paths, file_sizes in zip(
-                    np.array_split(paths, parallelism),
-                    np.array_split(file_sizes, parallelism))
-            if len(read_paths) > 0]
+                    input_files=read_paths)) for read_paths, file_sizes in zip(
+                        np.array_split(paths, parallelism),
+                        np.array_split(file_sizes, parallelism))
+            if len(read_paths) > 0
+        ]
 
         return read_tasks
 
