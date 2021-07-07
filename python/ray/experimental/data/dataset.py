@@ -814,7 +814,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
-        """Return a dataset that can be used for Torch distributed training.
+        """Return a Torch iterator over this dataset.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -827,7 +827,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_tf(self, **todo) -> "tf.data.Dataset":
-        """Return a dataset that can be used for TF distributed training.
+        """Return a TF data iterator over this dataset.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
