@@ -59,7 +59,9 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def map(self, fn: Callable[[T], U], compute: str = None,
+    def map(self,
+            fn: Callable[[T], U],
+            compute: Optional[str] = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
@@ -96,7 +98,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Callable[[BatchType], BatchType],
                     batch_size: int = None,
-                    compute: str = None,
+                    compute: Optional[str] = None,
                     batch_format: str = "pandas",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
@@ -187,7 +189,7 @@ class Dataset(Generic[T]):
 
     def flat_map(self,
                  fn: Callable[[T], Iterable[U]],
-                 compute: str = None,
+                 compute: Optional[str] = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
@@ -220,7 +222,7 @@ class Dataset(Generic[T]):
 
     def filter(self,
                fn: Callable[[T], bool],
-               compute: str = None,
+               compute: Optional[str] = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
