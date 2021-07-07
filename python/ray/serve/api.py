@@ -1057,6 +1057,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
         class FastAPIWrapper(cls):
             async def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
                 self.app = frozen_app
 
                 # Use uvicorn's lifespan handling code to properly deal with
@@ -1069,10 +1071,6 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 with LoggingContext(
                         self.lifespan.logger, level=logging.WARNING):
                     await self.lifespan.startup()
-
-                # TODO(edoakes): should the startup_hook run before or after
-                # the constructor?
-                super().__init__(*args, **kwargs)
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()

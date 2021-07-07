@@ -490,6 +490,34 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
     assert resp.json() == {"a": "a", "b": ["b"]}
 
 
+def test_fastapi_init_method_startup(serve_instance):
+    """
+    Tests that the class constructor is called first before any other
+    initialization steps in `FastAPIWrapper`.
+    """
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        def __init__(self):
+            try:
+                # `self.app` is defined in `FastAPIWrapper` so if it is already
+                # initialized, the class constructor is not called first.
+                self.app
+                self.test_passed = False
+            except AttributeError:
+                self.test_passed = True
+
+        @app.get("/")
+        def root(self):
+            return self.test_passed
+
+    TestDeployment.deploy()
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
