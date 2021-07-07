@@ -103,6 +103,12 @@ def test_submit_api(shutdown_only):
     assert len(ready_ids) == 0
     assert len(remaining_ids) == 1
 
+    # Check mismatch with num_returns.
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=2).remote(3))
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=3).remote(2))
+
     @ray.remote
     class Actor:
         def __init__(self, x, y=0):
