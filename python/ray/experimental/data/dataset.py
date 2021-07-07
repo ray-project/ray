@@ -833,7 +833,7 @@ class Dataset(Generic[T]):
                     next(it, None)
             return zip(*iters)
 
-        def format_batch(batch: Block, format: str):
+        def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "pandas":
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
@@ -845,49 +845,90 @@ class Dataset(Generic[T]):
                     f"The given batch format: {batch_format} "
                     f"is invalid. Supported batch type: {BatchType}")
 
-        batch_buffer = None
+        class Batcher:
+            """Chunks blocks into batches.
+
+            Implementation Note: When there are multiple batches per block,
+            this batcher will slice off and return each batch and add the
+            remaining block back to the buffer instead of optimally slicing and
+            returning all batches from the block at once. This will result in
+            extra (and nested) block slicing. However, since slices are
+            zero-copy views, we sacrifice what should be a small performance
+            hit for better readability.
+            """
+            def __init__(self, batch_size: Optional[int]):
+                self._batch_size = batch_size
+                self._buffer = []
+
+            def add(self, block: Block):
+                """Add a block to the block buffer.
+
+                Args:
+                    block: Block to add to the block buffer.
+                """
+                self._buffer.append(block)
+
+            def has_batch(self) -> bool:
+                """Whether this Batcher has any full batches.
+                """
+                return self._buffer and (
+                    self._batch_size is None or sum(
+                        b.num_rows()
+                        for b in self._buffer) >= self._batch_size)
+
+            def has_any(self) -> bool:
+                """Whether this Batcher has any data.
+                """
+                return any(b.num_rows() > 0 for b in self._buffer)
+
+            def next_batch(self) -> Block:
+                """Get the next batch from the block buffer.
+
+                Returns:
+                    A batch represented as a Block.
+                """
+                # If no batch size, short-circuit.
+                if self._batch_size is None:
+                    assert len(self._buffer) == 1
+                    block = self._buffer[0]
+                    self._buffer = []
+                    return block
+                output = DelegatingArrowBlockBuilder()
+                leftover = []
+                needed = self._batch_size
+                for block in self._buffer:
+                    if needed <= 0:
+                        # We already have a full batch, so add this block to
+                        # the leftovers.
+                        leftover.append(block)
+                    elif block.num_rows() <= needed:
+                        # We need this entire block to fill out a batch.
+                        output.add_block(block)
+                        needed -= block.num_rows()
+                    else:
+                        # We only need part of the block to fill out a batch.
+                        output.add_block(block.slice(0, needed, copy=False))
+                        # Add the rest of the block to the leftovers.
+                        leftover.append(
+                            block.slice(needed, block.num_rows(), copy=False))
+                        needed = 0
+
+                # Move the leftovers into the block buffer so they're the first
+                # blocks consumed on the next batch extraction.
+                self._buffer = leftover
+                return output.build()
+
+        batcher = Batcher(batch_size=batch_size)
         for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
             block_window = list(block_window)
-            # Prefetch blocks.
-            ray.wait(block_window, num_returns=1, fetch_local=True)
-            # Yield batches from the first block in the window.
-            block_ref = block_window[0]
-            block = ray.get(block_ref)
-            total_rows = block.num_rows()
-            # Short-circuit on empty block.
-            if total_rows == 0:
-                continue
-            block_batch_size = (batch_size
-                                if batch_size is not None else total_rows)
-            if batch_buffer is not None:
-                # Get offset into current block in order to make the
-                # batch buffer remainder a full batch.
-                offset = block_batch_size - batch_buffer.num_rows()
-                if offset > total_rows:
-                    offset = total_rows
-                block_slice = block.slice(0, offset, copy=False)
-                batch_buffer.add_block(block_slice)
-                if batch_buffer.num_rows() == block_batch_size:
-                    yield format_batch(batch_buffer.build(), batch_format)
-                    batch_buffer = None
-            else:
-                offset = 0
-            # Process remaining batches.
-            for start in range(offset, total_rows, block_batch_size):
-                end = start + block_batch_size
-                if end > total_rows:
-                    # Add any remainder to the batch buffer.
-                    if batch_buffer is None:
-                        batch_buffer = DelegatingArrowBlockBuilder()
-                    batch_buffer.add_block(
-                        block.slice(start, total_rows, copy=False))
-                    break
-                yield format_batch(
-                    block.slice(start, end, copy=False), batch_format)
-        # After processing all blocks, yield the leftover batch if we're not
-        # supposed to drop a leftover partial batch.
-        if batch_buffer is not None and not drop_last:
-            yield format_batch(batch_buffer.build(), batch_format)
+            ray.wait(block_window, num_returns=1, fetch_local=False)
+            block = ray.get(block_window[0])
+            batcher.add(block)
+            while batcher.has_batch():
+                yield format_batch(batcher.next_batch(), batch_format)
+
+        if batcher.has_any() and not drop_last:
+            yield format_batch(batcher.next_batch(), batch_format)
 
     def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
         """Return a Torch data iterator over this dataset.
