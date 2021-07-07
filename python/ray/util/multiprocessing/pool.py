@@ -100,7 +100,7 @@ if BatchedCalls is not None:
             If an arg or kwarg is already in a registry, it will not be
             put again, and instead, the cached object ref will be used."""
             new_items = []
-            for f, args, kwargs in self.items:
+            for func, args, kwargs in self.items:
                 args = [
                     ray_put_if_needed(arg, registry, registry_hashable)
                     for arg in args
@@ -109,7 +109,7 @@ if BatchedCalls is not None:
                     k: ray_put_if_needed(v, registry, registry_hashable)
                     for k, v in kwargs.items()
                 }
-                new_items.append((f, args, kwargs))
+                new_items.append((func, args, kwargs))
             self.items = new_items
 
         def __call__(self):
