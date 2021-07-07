@@ -125,8 +125,8 @@ def resume_workflow_job(workflow_id: str,
         try:
             workflow_context.init_workflow_step_context(
                 workflow_id, store.storage_url)
-            rref = execute_workflow(r)
-            return flatten_workflow_output(workflow_id, rref)
+            obj_ref = execute_workflow(r)
+            return flatten_workflow_output(workflow_id, obj_ref)
         finally:
             workflow_context.set_workflow_step_context(None)
 

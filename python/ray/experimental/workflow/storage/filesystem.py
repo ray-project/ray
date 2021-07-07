@@ -230,11 +230,12 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
+    def save_object_ref(self, workflow_id: str,
+                        obj_ref: ray.ObjectRef) -> None:
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
         try:
-            obj = ray.get(rref)
-            with _open_atomic(objects_dir / rref.hex(), "wb") as f:
+            obj = ray.get(obj_ref)
+            with _open_atomic(objects_dir / obj_ref.hex(), "wb") as f:
                 ray.cloudpickle.dump(obj, f)
         except Exception as e:
             raise DataSaveError from e

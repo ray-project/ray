@@ -197,3 +197,6 @@ project-id
 # release test related
 .anyscale.yaml
 test_state.json
+
+# workflow storage
+workflow_data/

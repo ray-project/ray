@@ -537,6 +537,130 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
         return config
 
+    def testNodeTypeNameChange(self):
+        """
+        Tests that cluster launcher and autoscaler have correct behavior under
+        changes and deletions of node type keys.
+
+        Specifically if we change the key from "old-type" to "new-type", nodes
+        of type "old-type" are deleted and (if required by the config) replaced
+        by nodes of type "new-type".
+
+        Strategy:
+            1. launch a test cluster with a head and one `min_worker`
+            2. change node type keys for both head and worker in cluster yaml
+            3. update cluster with new yaml
+            4. verify graceful replacement of the two nodes with old node types
+                with two nodes with new node types.
+        """
+
+        # Default config with renamed node types, min_worker 1, docker off.
+        config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        config["docker"] = {}
+        node_types = config["available_node_types"]
+        node_types["ray.head.old"] = node_types.pop("ray.head.default")
+        node_types["ray.worker.old"] = node_types.pop("ray.worker.default")
+        config["head_node_type"] = "ray.head.old"
+        node_types["ray.worker.old"]["min_workers"] = 1
+
+        # Create head and launch autoscaler
+        runner = MockProcessRunner()
+        self.provider = MockProvider()
+
+        config_path = self.write_config(config)
+        commands.get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+
+        self.waitForNodes(2)
+        head_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })
+        worker_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })
+        # One head (as always)
+        # One worker (min_workers 1 with no resource demands)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
+
+        # Confirm node type tags
+        assert self.provider.node_tags(head).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.head.old"
+        assert self.provider.node_tags(worker).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.worker.old"
+
+        # Rename head and worker types
+        new_config = copy.deepcopy(config)
+        node_types = new_config["available_node_types"]
+        node_types["ray.head.new"] = node_types.pop("ray.head.old")
+        node_types["ray.worker.new"] = node_types.pop("ray.worker.old")
+        new_config["head_node_type"] = "ray.head.new"
+        config_path = self.write_config(new_config)
+
+        # Expect this to delete "ray.head.old" head and create "ray.head.new"
+        # head.
+        commands.get_or_create_head_node(
+            new_config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+
+        self.waitForNodes(2)
+        head_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })
+        worker_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })
+        # One head (as always)
+        # One worker (maintained from previous autoscaler update)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
+        # Confirm new head
+        assert self.provider.node_tags(head).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.head.new"
+        # Still old worker, as we haven't made an autoscaler update yet.
+        assert self.provider.node_tags(worker).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.worker.old"
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        head_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+        })
+        worker_list = self.provider.non_terminated_nodes({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })
+        # One head (as always)
+        # One worker (min_workers 1 with no resource demands)
+        assert len(head_list) == 1 and len(worker_list) == 1
+        worker, head = worker_list.pop(), head_list.pop()
+
+        # After the autoscaler update, new head and new worker.
+        assert self.provider.node_tags(head).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.head.new"
+        assert self.provider.node_tags(worker).get(
+            TAG_RAY_USER_NODE_TYPE) == "ray.worker.new"
+
     def testGetOrCreateHeadNodePodman(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["docker"]["use_podman"] = True
