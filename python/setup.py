@@ -66,8 +66,9 @@ if INSTALL_CPP:
     ray_files.append("ray/core/src/ray/cpp/default_worker")
     # C++ API library and project template files.
     ray_files += [
-        os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
-        os.walk("ray/cpp") for filename in filenames
+        os.path.join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk("ray/cpp")
+        for filename in filenames
     ]
 
 # These are the directories where automatically generated Python protobuf

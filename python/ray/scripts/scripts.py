@@ -1857,11 +1857,13 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
                 "The provided directory "
                 f"{generate_bazel_project_template_to} doesn't exist.")
         copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
-        out_include_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/include")
+        out_include_dir = os.path.join(generate_bazel_project_template_to,
+                                       "thirdparty/include")
         if not os.path.exists(out_include_dir):
             os.makedirs(out_include_dir)
         copy_tree(include_dir, out_include_dir)
-        out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
+        out_lib_dir = os.path.join(generate_bazel_project_template_to,
+                                   "thirdparty/lib")
         if not os.path.exists(out_lib_dir):
             os.makedirs(out_lib_dir)
         copy_tree(lib_dir, out_lib_dir)
