@@ -1059,22 +1059,24 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
-                self.app = frozen_app
+                self._serve_app = frozen_app
 
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
-                self.lifespan = LifespanOn(Config(self.app, lifespan="on"))
+                self._serve_asgi_lifespan = LifespanOn(
+                    Config(self._serve_app, lifespan="on"))
                 # Replace uvicorn logger with our own.
-                self.lifespan.logger = logger
+                self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                        self.lifespan.logger, level=logging.WARNING):
-                    await self.lifespan.startup()
+                        self._serve_asgi_lifespan.logger,
+                        level=logging.WARNING):
+                    await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
-                await self.app(
+                await self._serve_app(
                     request.scope,
                     request._receive,
                     sender,
@@ -1085,9 +1087,10 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                        self.lifespan.logger, level=logging.WARNING):
+                        self._serve_asgi_lifespan.logger,
+                        level=logging.WARNING):
                     asyncio.get_event_loop().run_until_complete(
-                        self.lifespan.shutdown())
+                        self._serve_asgi_lifespan.shutdown())
 
         FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper

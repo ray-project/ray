@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field
 
 import ray
 from ray import serve
+from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
+from ray.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):
@@ -493,21 +495,27 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
 def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     """
     Tests that the class constructor is called before the startup hooks
-    are run in `FastAPIWrapper`.
+    are run in FastAPIWrapper. SignalActor event is set from a startup hook
+    and is awaited in the class constructor. If the class constructor is run
+    before the startup hooks, the SignalActor event will time out while waiting
+    and the test will pass.
     """
     app = FastAPI()
+    signal = SignalActor.remote()
+
+    @app.on_event("startup")
+    def startup_event():
+        ray.get(signal.send.remote())
 
     @serve.deployment(route_prefix="/")
     @serve.ingress(app)
     class TestDeployment:
         def __init__(self):
+            self.test_passed = False
             try:
-                # `self.lifespan` is defined in `FastAPIWrapper` before the
-                # startup hooks are called. If it is already initialized, the
-                # class constructor is not called before the startup hooks
-                self.lifespan
+                ray.get(signal.wait.remote(), timeout=.1)
                 self.test_passed = False
-            except AttributeError:
+            except GetTimeoutError:
                 self.test_passed = True
 
         @app.get("/")
