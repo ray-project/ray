@@ -93,7 +93,7 @@ def register_input(name, input_creator):
 
     Args:
         name (str): Name to register.
-        input_creator (dict -> InputReader): Callable that creates an input
+        input_creator (IOContext -> InputReader): Callable that creates an input
             reader
     """
     if not callable(input_creator):
