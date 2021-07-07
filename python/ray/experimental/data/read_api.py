@@ -30,17 +30,6 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-def autoinit_ray(f: Callable) -> Callable:
-    @functools.wraps(f)
-    def wrapped(*a, **kw):
-        if not ray.is_initialized():
-            ray.client().connect()
-        return f(*a, **kw)
-
-    setattr(wrapped, "__signature__", inspect.signature(f))
-    return wrapped
-
-
 def _parse_paths(paths: Union[str, List[str]]
                  ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
     from pyarrow import fs
@@ -160,7 +149,6 @@ def _resolve_paths_and_filesystem(
     return expanded_paths, filesystem
 
 
-@autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -196,7 +184,6 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     return Dataset(BlockList(blocks, metadata))
 
 
-@autoinit_ray
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -214,7 +201,6 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
-@autoinit_ray
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -235,7 +221,6 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
 
-@autoinit_ray
 def read_datasource(datasource: Datasource[T],
                     parallelism: int = 200,
                     **read_args) -> Dataset[T]:
@@ -266,7 +251,6 @@ def read_datasource(datasource: Datasource[T],
     return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
@@ -335,7 +319,6 @@ def read_parquet(paths: Union[str, List[str]],
     return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
@@ -392,7 +375,6 @@ def read_json(paths: Union[str, List[str]],
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@autoinit_ray
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
@@ -449,7 +431,6 @@ def read_csv(paths: Union[str, List[str]],
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@autoinit_ray
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
@@ -483,7 +464,6 @@ def read_binary_files(
             filesystem=filesystem))
 
 
-@autoinit_ray
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
@@ -503,7 +483,6 @@ def from_dask(df: "dask.DataFrame",
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
-@autoinit_ray
 def from_mars(df: "mars.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
@@ -517,7 +496,6 @@ def from_mars(df: "mars.DataFrame",
     raise NotImplementedError  # P1
 
 
-@autoinit_ray
 def from_modin(df: "modin.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
@@ -532,7 +510,6 @@ def from_modin(df: "modin.DataFrame",
     raise NotImplementedError  # P1
 
 
-@autoinit_ray
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
@@ -556,7 +533,6 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@autoinit_ray
 def from_spark(df: "pyspark.sql.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
@@ -571,7 +547,6 @@ def from_spark(df: "pyspark.sql.DataFrame",
     raise NotImplementedError  # P2
 
 
-@autoinit_ray
 def from_source(source: Any) -> Dataset[Any]:
     """Create a dataset from a generic data source."""
     raise NotImplementedError  # P0
