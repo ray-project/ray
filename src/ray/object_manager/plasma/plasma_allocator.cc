@@ -36,12 +36,9 @@ size_t MAX_SIZE_T = (size_t)-1;
 const int M_MMAP_THRESHOLD = -3;
 
 namespace {
-/// The invalid allocation info.
-const Allocation kInvalidAllocation;
-
-Allocation BuildAllocation(void *addr, size_t size) {
+absl::optional<Allocation> BuildAllocation(void *addr, size_t size) {
   if (addr == nullptr) {
-    return kInvalidAllocation;
+    return absl::nullopt;
   }
   Allocation allocation{};
   if (detail::GetMallocMapinfo(addr, &allocation.fd, &allocation.mmap_size,
@@ -50,7 +47,7 @@ Allocation BuildAllocation(void *addr, size_t size) {
     allocation.size = static_cast<int64_t>(size);
     return allocation;
   }
-  return kInvalidAllocation;
+  return absl::nullopt;
 }
 }  // namespace
 
@@ -62,34 +59,35 @@ Allocation BuildAllocation(void *addr, size_t size) {
 PlasmaAllocator::PlasmaAllocator()
     : allocated_(0), fallback_allocated_(0), footprint_limit_(0) {}
 
-Allocation PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
+absl::optional<Allocation> PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (!RayConfig::instance().plasma_unlimited()) {
     // We only check against the footprint limit in limited allocation mode.
     // In limited mode: the check is done here; dlmemalign never returns nullptr.
     // In unlimited mode: dlmemalign returns nullptr once the initial /dev/shm block
     // fills.
     if (allocated_ + static_cast<int64_t>(bytes) > footprint_limit_) {
-      return kInvalidAllocation;
+      return absl::nullopt;
     }
   }
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(alignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
   if (!mem) {
-    return kInvalidAllocation;
+    return absl::nullopt;
   }
   allocated_ += bytes;
   return BuildAllocation(mem, bytes);
 }
 
-Allocation PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
+absl::optional<Allocation> PlasmaAllocator::DiskMemalignUnlimited(size_t alignment,
+                                                                  size_t bytes) {
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   void *mem = dlmemalign(alignment, bytes);
   // Reset to the default value.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, MAX_SIZE_T));
   if (!mem) {
-    return kInvalidAllocation;
+    return absl::nullopt;
   }
   allocated_ += bytes;
   // The allocation was servicable using the initial region, no need to fallback.

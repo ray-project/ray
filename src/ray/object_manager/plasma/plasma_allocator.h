@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/types/optional.h"
 #include "ray/object_manager/plasma/common.h"
 
 namespace plasma {
@@ -33,12 +34,13 @@ class IAllocator {
   /// \param alignment Memory alignment.
   /// \param bytes Number of bytes.
   /// \return Pointer to allocated memory.
-  virtual Allocation Memalign(size_t alignment, size_t bytes) = 0;
+  virtual absl::optional<Allocation> Memalign(size_t alignment, size_t bytes) = 0;
 
   // Same as MemAlign, but allocates pages from the filesystem. The footprint limit
   // is not enforced for these allocations, but allocations here are still tracked
   // and count towards the limit.
-  virtual Allocation DiskMemalignUnlimited(size_t alignment, size_t bytes) = 0;
+  virtual absl::optional<Allocation> DiskMemalignUnlimited(size_t alignment,
+                                                           size_t bytes) = 0;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Memalign()
@@ -76,12 +78,13 @@ class PlasmaAllocator : public IAllocator {
   /// \param alignment Memory alignment.
   /// \param bytes Number of bytes.
   /// \return Pointer to allocated memory.
-  Allocation Memalign(size_t alignment, size_t bytes) override;
+  absl::optional<Allocation> Memalign(size_t alignment, size_t bytes) override;
 
   // Same as MemAlign, but allocates pages from the filesystem. The footprint limit
   // is not enforced for these allocations, but allocations here are still tracked
   // and count towards the limit.
-  Allocation DiskMemalignUnlimited(size_t alignment, size_t bytes) override;
+  absl::optional<Allocation> DiskMemalignUnlimited(size_t alignment,
+                                                   size_t bytes) override;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Memalign()

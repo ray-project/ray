@@ -70,8 +70,9 @@ class ObjectLifecycleManager {
   void GetDebugDump(std::stringstream &buffer) const;
 
  private:
-  Allocation AllocateMemory(size_t size, bool is_create, bool fallback_allocator,
-                            flatbuf::PlasmaError *error);
+  absl::optional<Allocation> AllocateMemory(size_t size, bool is_create,
+                                            bool fallback_allocator,
+                                            flatbuf::PlasmaError *error);
 
   /// Evict objects returned by the eviction policy.
   ///

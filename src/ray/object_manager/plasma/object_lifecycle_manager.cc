@@ -58,10 +58,10 @@ const LocalObject *ObjectLifecycleManager::CreateObject(
   *error = PlasmaError::OK;
   auto allocation = AllocateMemory(total_size,
                                    /*is_create=*/true, fallback_allocator, error);
-  if (!allocation.address) {
+  if (!allocation.has_value()) {
     return nullptr;
   }
-  entry = object_store_.CreateObject(std::move(allocation), object_info, source);
+  entry = object_store_.CreateObject(std::move(allocation.value()), object_info, source);
   eviction_policy_.ObjectCreated(object_info.object_id, true);
   return entry;
 }
@@ -174,11 +174,12 @@ std::string ObjectLifecycleManager::EvictionPolicyDebugString() const {
   return eviction_policy_.DebugString();
 }
 
-Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
-                                                  bool fallback_allocator,
-                                                  PlasmaError *error) {
+absl::optional<Allocation> ObjectLifecycleManager::AllocateMemory(size_t size,
+                                                                  bool is_create,
+                                                                  bool fallback_allocator,
+                                                                  PlasmaError *error) {
   // Try to evict objects until there is enough space.
-  Allocation allocation;
+  absl::optional<Allocation> allocation;
   int num_tries = 0;
   while (true) {
     // Allocate space for the new object. We use memalign instead of malloc
@@ -189,11 +190,11 @@ Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
     // it is not guaranteed that the corresponding pointer in the client will be
     // 64-byte aligned, but in practice it often will be.
     allocation = allocator_.Memalign(kBlockSize, size);
-    if (allocation.address != nullptr) {
+    if (allocation.has_value()) {
       // If we manage to allocate the memory, return the pointer. If we cannot
       // allocate the space, but we are also not allowed to evict anything to
       // make more space, return an error to the client.
-      *error = PlasmaError::OutOfMemory;
+      *error = PlasmaError::OK;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.
@@ -218,22 +219,22 @@ Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
   }
 
   // Fallback to allocating from the filesystem.
-  if (allocation.address == nullptr && RayConfig::instance().plasma_unlimited() &&
+  if (!allocation.has_value() && RayConfig::instance().plasma_unlimited() &&
       fallback_allocator) {
     RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
         << size;
     allocation = allocator_.DiskMemalignUnlimited(kBlockSize, size);
-    if (allocation.address == nullptr) {
+    if (!allocation.has_value()) {
       RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
   } else if (!fallback_allocator) {
     RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
   }
 
-  if (allocation.address != nullptr) {
-    RAY_CHECK(allocation.fd.first != INVALID_FD);
-    RAY_CHECK(allocation.fd.second != INVALID_UNIQUE_FD_ID);
+  if (allocation.has_value()) {
+    RAY_CHECK(allocation->fd.first != INVALID_FD);
+    RAY_CHECK(allocation->fd.second != INVALID_UNIQUE_FD_ID);
     *error = PlasmaError::OK;
   }
 

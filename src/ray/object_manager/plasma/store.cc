@@ -203,77 +203,6 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   client->object_ids.insert(object_id);
 }
 
-// Allocate memory
-Allocation PlasmaStore::AllocateMemory(size_t size, const std::shared_ptr<Client> &client,
-                                       bool is_create, bool fallback_allocator,
-                                       PlasmaError *error) {
-  // Try to evict objects until there is enough space.
-  Allocation allocation;
-  int num_tries = 0;
-  while (true) {
-    // Allocate space for the new object. We use memalign instead of malloc
-    // in order to align the allocated region to a 64-byte boundary. This is not
-    // strictly necessary, but it is an optimization that could speed up the
-    // computation of a hash of the data (see compute_object_hash_parallel in
-    // plasma_client.cc). Note that even though this pointer is 64-byte aligned,
-    // it is not guaranteed that the corresponding pointer in the client will be
-    // 64-byte aligned, but in practice it often will be.
-    allocation = PlasmaAllocator::Memalign(kBlockSize, size);
-    if (allocation.address != nullptr) {
-      // If we manage to allocate the memory, return the pointer.
-      *error = PlasmaError::OK;
-      break;
-    }
-    // Tell the eviction policy how much space we need to create this object.
-    std::vector<ObjectID> objects_to_evict;
-    int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
-    EvictObjects(objects_to_evict);
-    // More space is still needed.
-    if (space_needed > 0) {
-      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need "
-                     << space_needed;
-      *error = PlasmaError::OutOfMemory;
-      break;
-    }
-
-    // NOTE(ekl) if we can't achieve this after a number of retries, it's
-    // because memory fragmentation in dlmalloc prevents us from allocating
-    // even if our footprint tracker here still says we have free space.
-    if (num_tries++ > 10) {
-      *error = PlasmaError::OutOfMemory;
-      break;
-    }
-  }
-
-  // Fallback to allocating from the filesystem.
-  if (allocation.address == nullptr && RayConfig::instance().plasma_unlimited() &&
-      fallback_allocator) {
-    RAY_LOG(INFO)
-        << "Shared memory store full, falling back to allocating from filesystem: "
-        << size;
-    allocation = PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size);
-    if (allocation.address == nullptr) {
-      RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
-    }
-  } else if (!fallback_allocator) {
-    RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
-  }
-
-  if (allocation.address != nullptr) {
-    RAY_CHECK(allocation.fd.first != INVALID_FD);
-    RAY_CHECK(allocation.fd.second != INVALID_UNIQUE_FD_ID);
-    *error = PlasmaError::OK;
-  }
-
-  auto now = absl::GetCurrentTimeNanos();
-  if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
-    RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
-                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
-    last_usage_log_ns_ = now;
-  }
-  return allocation;
-}
-
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
@@ -519,7 +448,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 }
 
 //// TODO:Move to ObjectTable
-//void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
+// void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
 //  auto entry = GetObjectTableEntry(&store_info_, object_id);
 //  if (entry == nullptr) {
 //    RAY_LOG(WARNING) << object_id << " has already been deleted.";
@@ -539,8 +468,9 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 //  }
 //  if (entry->ref_count > 0) {
 //    // A client was using this object.
-//    num_bytes_in_use_ -= entry->object_info.data_size + entry->object_info.metadata_size;
-//    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+//    num_bytes_in_use_ -= entry->object_info.data_size +
+//    entry->object_info.metadata_size; RAY_LOG(DEBUG) << "Erasing object " << object_id
+//    << " with nonzero ref count"
 //                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
 //  }
 //  object_table_.erase(object_id);

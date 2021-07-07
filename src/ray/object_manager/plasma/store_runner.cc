@@ -100,10 +100,10 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     auto allocation = PlasmaAllocator::GetInstance().Memalign(
         kBlockSize,
         PlasmaAllocator::GetInstance().GetFootprintLimit() - 256 * sizeof(size_t));
-    RAY_CHECK(allocation.address != nullptr);
+    RAY_CHECK(allocation.has_value());
     // This will unmap the file, but the next one created will be as large
     // as this one (this is an implementation detail of dlmalloc).
-    PlasmaAllocator::GetInstance().Free(allocation);
+    PlasmaAllocator::GetInstance().Free(allocation.value());
 
     store_->Start();
   }
