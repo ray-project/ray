@@ -1056,8 +1056,8 @@ ClusterResourceScheduler::GetResourceTotals() const {
 
 bool ClusterResourceScheduler::IsLocallySchedulable(
     const std::unordered_map<std::string, double> &shape) {
-  auto task_request = ResourceMapToResourceRequest(string_to_int_map_, shape);
-  return IsSchedulable(task_request, local_node_id_, GetLocalNodeResources()) == 0;
+  auto resource_request = ResourceMapToResourceRequest(string_to_int_map_, shape);
+  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;
 }
 
 }  // namespace ray
