@@ -62,13 +62,6 @@ def small_value():
     return b"ok"
 
 
-@ray.remote
-def small_value_batch(n):
-    submitted = [small_value.remote() for _ in range(n)]
-    ray.get(submitted)
-    return 0
-
-
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = ("WARNING: Unoptimized build! "
@@ -129,6 +122,13 @@ def main(results=None):
         ray.put(arr)
 
     results += timeit("single client put gigabytes", put_large, 8 * 0.1)
+
+    def small_value_batch():
+        submitted = [small_value.remote() for _ in range(1000)]
+        ray.get(submitted)
+        return 0
+
+    results += timeit("single client tasks and get batch", small_value_batch)
 
     @ray.remote
     def do_put():
