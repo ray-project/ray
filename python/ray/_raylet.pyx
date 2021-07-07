@@ -559,6 +559,11 @@ cdef execute_task(
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
+            if (c_return_ids.size() > 0 and
+                    len(outputs) != int(c_return_ids.size())):
+                raise ValueError(
+                    "Task returned {} objects, but num_returns={}.".format(
+                        len(outputs), c_return_ids.size()))
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -1223,23 +1228,6 @@ cdef class CoreWorker:
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
-
-    def set_object_store_client_options(self, client_name,
-                                        int64_t limit_bytes):
-        try:
-            logger.debug("Setting plasma memory limit to {} for {}".format(
-                limit_bytes, client_name))
-            check_status(CCoreWorkerProcess.GetCoreWorker().SetClientOptions(
-                client_name.encode("ascii"), limit_bytes))
-        except RayError as e:
-            self.dump_object_store_memory_usage()
-            raise memory_monitor.RayOutOfMemoryError(
-                "Failed to set object_store_memory={} for {}. The "
-                "plasma store may have insufficient memory remaining "
-                "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    limit_bytes, client_name, e))
 
     def dump_object_store_memory_usage(self):
         message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
