@@ -527,6 +527,8 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
+    with pytest.raises(ValueError):
+        ds.schema()
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -635,6 +637,8 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
+    with pytest.raises(ValueError):
+        ds.schema()
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
