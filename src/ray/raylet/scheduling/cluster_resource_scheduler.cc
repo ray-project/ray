@@ -34,6 +34,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
+  InitUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
@@ -48,6 +49,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
+  InitUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
   get_used_object_store_memory_ = get_used_object_store_memory;
