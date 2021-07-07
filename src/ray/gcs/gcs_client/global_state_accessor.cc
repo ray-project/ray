@@ -260,5 +260,22 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
+std::string GlobalStateAccessor::GetSystemConfig() {
+  std::promise<std::string> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
+      [&promise](const Status &status,
+                 const boost::optional<std::string> &stored_raylet_config) {
+        RAY_CHECK_OK(status);
+        promise.set_value(*stored_raylet_config);
+      }));
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
+  }
+  return future.get();
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -361,6 +361,7 @@ class RayTrialExecutor(TrialExecutor):
         }
         if issubclass(trial.get_trainable_cls(), DurableTrainable):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
+            kwargs["sync_function_tpl"] = trial.sync_to_cloud
 
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)

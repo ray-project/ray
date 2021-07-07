@@ -368,19 +368,24 @@ class TrialRunner:
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
         if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError("Called resume when no checkpoint exists "
-                                 "in local directory.")
+                raise ValueError(
+                    f"Called resume ({resume_type}) when no checkpoint exists "
+                    f"in local directory ({self._local_checkpoint_dir}).")
             elif resume_type == "PROMPT":
-                if click.confirm("Resume from local directory?"):
+                if click.confirm(f"Resume from local directory? "
+                                 f"({self._local_checkpoint_dir})"):
                     return True
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
-                    "Try downloading from remote directory?"):
+                    f"Try downloading from remote directory? "
+                    f"({self._remote_checkpoint_dir})"):
                 return False
             if not self._remote_checkpoint_dir:
                 raise ValueError(
-                    "Called resume from remote without remote directory.")
+                    "Called resume from remote without remote directory. "
+                    "Fix this by passing a `SyncConfig` object with "
+                    "`upload_dir` set to `tune.run(sync_config=...)`.")
 
             # Try syncing down the upload directory.
             logger.info("Downloading from %s", self._remote_checkpoint_dir)
