@@ -401,7 +401,8 @@ def test_iter_batches_grid(ray_start_regular_shared):
             1, max_num_blocks + 1, size=num_blocks_samples):
         block_sizes_list = [
             np.random.randint(1, max_num_rows_per_block + 1, size=num_blocks)
-            for _ in range(block_sizes_samples)]
+            for _ in range(block_sizes_samples)
+        ]
         for block_sizes in block_sizes_list:
             # Create the dataset with the given block sizes.
             dfs = []
@@ -409,12 +410,12 @@ def test_iter_batches_grid(ray_start_regular_shared):
             for block_size in block_sizes:
                 dfs.append(
                     pd.DataFrame({
-                        "value": list(range(
-                            running_size, running_size + block_size))}))
+                        "value": list(
+                            range(running_size, running_size + block_size))
+                    }))
                 running_size += block_size
             num_rows = running_size
-            ds = ray.experimental.data.from_pandas([
-                ray.put(df) for df in dfs])
+            ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
             for batch_size in np.random.randint(
                     1, num_rows + 1, size=batch_size_samples):
                 for drop_last in (False, True):
@@ -427,9 +428,11 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         assert len(batches) == math.ceil(num_rows / batch_size)
                         # Concatenated batches should equal the DataFrame
                         # representation of the entire dataset.
-                        assert pd.concat(batches, ignore_index=True).equals(
-                            pd.concat(
-                                ray.get(ds.to_pandas()), ignore_index=True))
+                        assert pd.concat(
+                            batches, ignore_index=True).equals(
+                                pd.concat(
+                                    ray.get(ds.to_pandas()),
+                                    ignore_index=True))
                     else:
                         # Number of batches should be equal to
                         # num_rows / batch_size, rounded down.
@@ -437,11 +440,11 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         # Concatenated batches should equal the DataFrame
                         # representation of the dataset with the partial batch
                         # remainder sliced off.
-                        assert pd.concat(batches, ignore_index=True).equals(
-                            pd.concat(
-                                ray.get(ds.to_pandas()),
-                                ignore_index=True)[:batch_size * (
-                                   num_rows // batch_size)])
+                        assert pd.concat(
+                            batches, ignore_index=True).equals(
+                                pd.concat(
+                                    ray.get(ds.to_pandas()), ignore_index=True)
+                                [:batch_size * (num_rows // batch_size)])
                     if num_rows % batch_size == 0 or drop_last:
                         assert all(
                             len(batch) == batch_size for batch in batches)

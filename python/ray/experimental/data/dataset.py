@@ -856,6 +856,7 @@ class Dataset(Generic[T]):
             zero-copy views, we sacrifice what should be a small performance
             hit for better readability.
             """
+
             def __init__(self, batch_size: Optional[int]):
                 self._batch_size = batch_size
                 self._buffer = []
@@ -871,10 +872,8 @@ class Dataset(Generic[T]):
             def has_batch(self) -> bool:
                 """Whether this Batcher has any full batches.
                 """
-                return self._buffer and (
-                    self._batch_size is None or sum(
-                        b.num_rows()
-                        for b in self._buffer) >= self._batch_size)
+                return self._buffer and (self._batch_size is None or sum(
+                    b.num_rows() for b in self._buffer) >= self._batch_size)
 
             def has_any(self) -> bool:
                 """Whether this Batcher has any data.
