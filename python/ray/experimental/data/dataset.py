@@ -59,7 +59,7 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def map(self, fn: Callable[[T], U], compute="tasks",
+    def map(self, fn: Callable[[T], U], compute: str = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
@@ -77,8 +77,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -96,7 +96,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Callable[[BatchType], BatchType],
                     batch_size: int = None,
-                    compute: str = "tasks",
+                    compute: str = None,
                     batch_format: str = "pandas",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
@@ -128,12 +128,12 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch.
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool. When using
-                actors, state can be preserved across function invocations
-                in Python global variables. This can be useful for one-time
-                setups, e.g., initializing a model once and re-using it across
-                many function applications.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool. When
+                using actors, state can be preserved across function
+                invocations in Python global variables. This can be useful for
+                one-time setups, e.g., initializing a model once and re-using
+                it across many function applications.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
@@ -187,7 +187,7 @@ class Dataset(Generic[T]):
 
     def flat_map(self,
                  fn: Callable[[T], Iterable[U]],
-                 compute="tasks",
+                 compute: str = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
@@ -201,8 +201,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -220,7 +220,7 @@ class Dataset(Generic[T]):
 
     def filter(self,
                fn: Callable[[T], bool],
-               compute="tasks",
+               compute: str = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
@@ -234,8 +234,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The predicate function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
