@@ -105,7 +105,7 @@ extras["rllib"] = extras["tune"] + [
     "dm_tree",
     "gym[atari]",
     "lz4",
-    "opencv-python-headless<=4.3.0.36",
+    "scikit-image",
     "pyyaml",
     "scipy",
 ]
