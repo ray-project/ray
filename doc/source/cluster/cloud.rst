@@ -297,7 +297,7 @@ The command will print out the address of the Redis server that was started
 
 .. note::
 
-    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and left are shards. Ray will use them if the primary one if it is reachalbe, otherwise fallback to create on local.
+    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
