@@ -501,6 +501,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Numpy.
             np.random.seed(seed)
             # Gym.env.
+            # This will silently fail for most OpenAI gyms
+            # (they do nothing and return None per default)
             if not hasattr(self.env, "seed"):
                 logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))

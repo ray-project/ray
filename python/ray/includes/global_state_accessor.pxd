@@ -38,3 +38,4 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
             const c_string &ray_namespace,
         )
         c_vector[c_string] GetAllPlacementGroupInfo()
+        c_string GetSystemConfig()

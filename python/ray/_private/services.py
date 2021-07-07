@@ -34,9 +34,9 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 RUN_RAYLET_PROFILER = False
 
 # The number of seconds to wait for the Raylet to start. This is normally
-# fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
+# fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 # (a few GB/s) to populate all the pages on Raylet startup.
-if os.environ.get("RAY_PREALLOCATE_PLASMA_MEMORY") == "1":
+if os.environ.get("RAY_preallocate_plasma_memory") == "1":
     RAYLET_START_WAIT_TIME_S = 120
 else:
     RAYLET_START_WAIT_TIME_S = 10
@@ -79,18 +79,7 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 
 
 def serialize_config(config):
-    config_pairs = []
-    for key, value in config.items():
-        if isinstance(value, str):
-            value = value.encode("utf-8")
-        if isinstance(value, bytes):
-            value = base64.b64encode(value).decode("utf-8")
-        config_pairs.append((key, value))
-    config_str = ";".join(["{},{}".format(*kv) for kv in config_pairs])
-    assert " " not in config_str, (
-        "Config parameters currently do not support "
-        "spaces:", config_str)
-    return config_str
+    return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
 
 
 class ConsolePopen(subprocess.Popen):
