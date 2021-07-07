@@ -2,7 +2,8 @@ from collections import deque
 import gym
 from gym import spaces
 import numpy as np
-from skimage import color, transform
+
+from ray.rllib.utils.images import rgb2gray, resize
 
 
 def is_atari(env):
@@ -219,8 +220,8 @@ class WarpFrame(gym.ObservationWrapper):
             dtype=np.uint8)
 
     def observation(self, frame):
-        frame = color.rgb2gray(frame)
-        frame = transform.resize(frame, (self.height, self.width))
+        frame = rgb2gray(frame)
+        frame = resize(frame, self.height, self.width)
         return frame[:, :, None]
 
 
