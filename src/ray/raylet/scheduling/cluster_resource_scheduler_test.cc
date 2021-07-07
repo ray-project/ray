@@ -865,6 +865,13 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
+  // TODO (chenk008): reset RayConfig in the next test. Maybe we need a better way.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU"
+}
+  )");
   std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", {});
   for (int i = 0; i < 100; i++) {
@@ -1173,18 +1180,18 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   std::shared_ptr<TaskResourceInstances> task_allocation = std::make_shared<TaskResourceInstances>();
   bool success =
       resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
-  ASSERT_TRUE(success) << resource_scheduler.DebugString();;
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();
 
   success =
       resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
-  ASSERT_TRUE(success) << resource_scheduler.DebugString();;
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();
 
   ResourceRequest fail_resource_request;
   vector<FixedPoint> fail_cust_demands{0.5};
   initResourceRequest(fail_resource_request, pred_demands, cust_ids, fail_cust_demands);
   success =
       resource_scheduler.AllocateTaskResourceInstances(fail_resource_request, task_allocation);
-  ASSERT_FALSE(success) << resource_scheduler.DebugString();;
+  ASSERT_FALSE(success) << resource_scheduler.DebugString();
 }
 
 }  // namespace ray
