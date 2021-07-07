@@ -73,10 +73,7 @@ void ClusterResourceScheduler::InitUnitInstanceInfo(){
   if (!custom_unit_instance_resources.empty()){
     std::vector<std::string> results = absl::StrSplit(custom_unit_instance_resources, ',');
     for (std::string &result: results){
-      int64_t resource_id = string_to_int_map_.Get(result);
-      if (resource_id == -1){
-        RAY_LOG(FATAL) << "Failed to parse custom resource:" << result;
-      }
+      int64_t resource_id = string_to_int_map_.Insert(result);
       custom_unit_instance_resources_.emplace(resource_id);
     }
   }

@@ -827,8 +827,39 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 
   ASSERT_EQ(success, true);
 
-  vector<FixedPoint> cpu_instances = task_allocation->GetGPUInstances();
-  vector<FixedPoint> expect_cpu_instance{1., 0.5, 0., 0.};
+  vector<FixedPoint> gpu_instances = task_allocation->GetGPUInstances();
+  vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
+
+  ASSERT_TRUE(EqualVectors(gpu_instances, expect_gpu_instance));
+}
+
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "GPU",
+}
+  )");
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
+  initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                    EmptyFixedPointVector);
+  ClusterResourceScheduler resource_scheduler(0, node_resources);
+
+  ResourceRequest resource_request;
+  vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
+  initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                      EmptyFixedPointVector);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+
+  ASSERT_EQ(success, true);
+
+  vector<FixedPoint> cpu_instances = task_allocation->GetCPUInstances();
+  vector<FixedPoint> expect_cpu_instance{2};
 
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
@@ -1119,6 +1150,41 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "51");
+}
+
+TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "FPGA",
+}
+  )");
+  ClusterResourceScheduler resource_scheduler("local", {{"CPU", 4}, {"FPGA", 2}});
+
+  StringIdMap mock_string_to_int_map;
+  int64_t fpga_resource_id = mock_string_to_int_map.Insert("FPGA");
+
+  ResourceRequest resource_request;
+  vector<FixedPoint> pred_demands = {1. /* CPU */};
+  vector<FixedPoint> cust_demands{0.7};
+  vector<int64_t> cust_ids{fpga_resource_id};
+  initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation = std::make_shared<TaskResourceInstances>();
+  bool success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();;
+
+  success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();;
+
+  ResourceRequest fail_resource_request;
+  vector<FixedPoint> fail_cust_demands{0.5};
+  initResourceRequest(fail_resource_request, pred_demands, cust_ids, fail_cust_demands);
+  success =
+      resource_scheduler.AllocateTaskResourceInstances(fail_resource_request, task_allocation);
+  ASSERT_FALSE(success) << resource_scheduler.DebugString();;
 }
 
 }  // namespace ray
