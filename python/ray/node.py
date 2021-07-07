@@ -693,6 +693,7 @@ class Node:
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
+             external_addresses=self._ray_params.external_addresses,
              port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
@@ -789,6 +790,7 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.worker_setup_hook,
+            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,
@@ -887,6 +889,23 @@ class Node:
         """Start all of the processes on the node."""
         logger.debug(f"Process STDOUT and STDERR is being "
                      f"redirected to {self._logs_dir}.")
+
+        # Clean up external storage in case a previous Raylet instance crashed
+        # on this node and spilled objects remain on disk.
+        if not self.head:
+            # Get the system config from GCS first if this is a non-head node.
+            global_state = ray.state.GlobalState()
+            global_state._initialize_global_state(
+                self.redis_address, redis_password=self.redis_password)
+            new_config = global_state.get_system_config()
+            assert self._config.items() <= new_config.items(), (
+                "The system config from GCS is not a superset of the local"
+                " system config. There might be a configuration inconsistency"
+                " issue between the head node and non-head nodes."
+                f" Local system config: {self._config},"
+                f" GCS system config: {new_config}")
+            self._config = new_config
+        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.

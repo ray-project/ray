@@ -601,6 +601,25 @@ class AutoscalingConfigTest(unittest.TestCase):
             "ray_head_default"]["node_config"][
                 "networkInterfaces"] == default_interfaces
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testFaultyResourceValidation(self):
+        """Checks that schema validation catches invalid node type resource
+        field.
+
+        Demonstrates a fix in https://github.com/ray-project/ray/pull/16691."""
+        path = os.path.join(RAY_PATH, "autoscaler", "aws", "example-full.yaml")
+        config = yaml.safe_load(open(path).read())
+        node_type = config["available_node_types"]["ray.head.default"]
+        # Invalid `resources` field, say user entered `resources: `.
+        node_type["resources"] = None
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
+        # Invalid value in resource dict.
+        node_type["resources"] = {"CPU": "a string is not valid here"}
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
+
 
 if __name__ == "__main__":
     import pytest

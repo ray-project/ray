@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 import logging
+import os
 
 import ray
 
@@ -47,6 +48,10 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+                ray.client().connect()
+                # Retry connect!
+                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -761,6 +766,12 @@ class GlobalState:
                 total_available_resources[resource_id] += num_available
 
         return dict(total_available_resources)
+
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
 
 
 state = GlobalState()

@@ -179,8 +179,9 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
-    RayConfig::instance().initialize("object_spilling_config,YQ==;max_io_workers," +
-                                     std::to_string(MAX_IO_WORKER_SIZE));
+    RayConfig::instance().initialize(
+        R"({"object_spilling_config": "dummy", "max_io_workers": )" +
+        std::to_string(MAX_IO_WORKER_SIZE) + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -1138,6 +1139,60 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   // Pop worker for normal task without runtime env again.
   popped_worker = worker_pool_->PopWorker(normal_task_spec_without_runtime_env);
   // Got a worker.
+  ASSERT_NE(popped_worker, nullptr);
+}
+
+TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
+  ///
+  /// Check that a worker can be popped only if there is a
+  /// worker available whose runtime env matches the runtime env
+  /// in the task spec.
+  ///
+  StartMockAgent();
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+  auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
+  const auto actor_creation_task_spec_1 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
+                      /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_1");
+  const auto task_spec_1 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
+                      /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_1");
+  const auto task_spec_2 =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
+                      /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_2");
+
+  const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
+                               "mock_runtime_env_1"};
+  const int runtime_env_hash_1 = env1.IntHash();
+
+  // Try to pop worker for task with runtime env 1.
+  auto popped_worker = worker_pool_->PopWorker(task_spec_1);
+  // Check that no worker is available for task with runtime env 1.
+  ASSERT_EQ(popped_worker, nullptr);
+
+  // Push worker with runtime env 1.
+  worker_pool_->PushWorker(CreateWorker(Process::CreateNewDummy(), Language::PYTHON,
+                                        JOB_ID, rpc::WorkerType::WORKER,
+                                        runtime_env_hash_1));
+
+  // Try to pop worker for task with runtime env 2.
+  popped_worker = worker_pool_->PopWorker(task_spec_2);
+  // Check that no worker is available for task with runtime env 2.
+  ASSERT_EQ(popped_worker, nullptr);
+
+  // Try to pop the worker for task with runtime env 1.
+  popped_worker = worker_pool_->PopWorker(task_spec_1);
+  // Check that we got a worker.
+  ASSERT_NE(popped_worker, nullptr);
+
+  // Push another worker with runtime env 1.
+  worker_pool_->PushWorker(CreateWorker(Process::CreateNewDummy(), Language::PYTHON,
+                                        JOB_ID, rpc::WorkerType::WORKER,
+                                        runtime_env_hash_1));
+
+  // Try to pop the worker for an actor with runtime env 1.
+  popped_worker = worker_pool_->PopWorker(actor_creation_task_spec_1);
+  // Check that we got a worker.
   ASSERT_NE(popped_worker, nullptr);
 }
 

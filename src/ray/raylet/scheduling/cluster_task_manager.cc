@@ -302,11 +302,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::ScheduleInfeasibleTasks() {
-  // Do nothing.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
-}
-
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   if (ready_ids.empty()) {
     return;
@@ -562,13 +557,12 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  // TODO (WangTao): Find a way to check if load changed and combine it with light
-  // heartbeat. Now we just report it every time.
-  data.set_resource_load_changed(true);
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -728,6 +722,19 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
+  }
+
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
+    // Check whether resources have been changed.
+    std::unordered_map<std::string, double> local_resource_map(
+        data.resource_load().begin(), data.resource_load().end());
+    ResourceSet local_resource(local_resource_map);
+    if (last_reported_resources == nullptr ||
+        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+      data.set_resource_load_changed(true);
+    }
+  } else {
+    data.set_resource_load_changed(true);
   }
 }
 
@@ -1040,7 +1047,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue";
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1116,14 +1122,14 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto task_request = allocated_instances->ToTaskRequest();
-      for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
-        if (task_request.predefined_resources[i] > 0) {
+      auto resource_request = allocated_instances->ToResourceRequest();
+      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
+        if (resource_request.predefined_resources[i] > 0) {
           total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              task_request.predefined_resources[i];
+              resource_request.predefined_resources[i];
         }
       }
-      for (auto &entry : task_request.custom_resources) {
+      for (auto &entry : resource_request.custom_resources) {
         if (entry.second > 0) {
           total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
         }

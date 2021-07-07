@@ -146,8 +146,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
                                         "ray_current_cluster")
             with open(cluster_file, "r") as f:
-                address = f.read()
-                print(address)
+                address = f.read().strip()
         except FileNotFoundError:
             # `address` won't be set and we'll create a new cluster.
             pass
