@@ -129,6 +129,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 request.key)
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
+    def ListActors(self, request,
+                   context=None) -> ray_client_pb2.ClientListActorsResponse:
+        with disable_client_hook():
+            actors = ray.list_actors(all_namespaces=request.all_namespaces)
+
+        return ray_client_pb2.ClientListActorsResponse(
+            actors_json=json.dumps(actors))
+
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()

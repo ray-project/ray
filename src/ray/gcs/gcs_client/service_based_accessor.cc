@@ -203,7 +203,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
 Status ServiceBasedActorInfoAccessor::AsyncListActors(
     bool all_namespaces, const std::string &ray_namespace,
     const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
-  RAY_LOG(DEBUG) << "Getting all actor names";
+  RAY_LOG(DEBUG) << "Listing actors";
   rpc::ListActorsRequest request;
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);

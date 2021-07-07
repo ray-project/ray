@@ -478,6 +478,12 @@ class Worker:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self.server.KVList(req, metadata=self.metadata).keys
 
+    def list_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
+        req = ray_client_pb2.ClientListActorsRequest(
+            all_namespaces=all_namespaces)
+        return json.loads(
+            self.server.ListActors(req, metadata=self.metadata).actors_json)
+
     def is_initialized(self) -> bool:
         if self.server is not None:
             return self.get_cluster_info(

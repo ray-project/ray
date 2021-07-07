@@ -318,6 +318,10 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
                  context=None) -> ray_client_pb2.KVExistsResponse:
         return self._call_inner_function(request, context, "KVExists")
 
+    def ListActors(self, request,
+                   context=None) -> ray_client_pb2.ClientListActorsResponse:
+        return self._call_inner_function(request, context, "ListActors")
+
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
 

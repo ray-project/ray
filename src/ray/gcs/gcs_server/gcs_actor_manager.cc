@@ -484,15 +484,15 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListActors(
     bool all_namespaces, const std::string &ray_namespace) const {
   std::vector<std::pair<std::string, std::string>> actors;
   if (all_namespaces) {
-    for (auto namespace_it : named_actors_) {
-      for (auto actor_it : namespace_it.second) {
+    for (const auto &namespace_it : named_actors_) {
+      for (const auto &actor_it : namespace_it.second) {
         actors.push_back(std::make_pair(namespace_it.first, actor_it.first));
       }
     }
   } else {
     auto namespace_it = named_actors_.find(ray_namespace);
     if (namespace_it != named_actors_.end()) {
-      for (auto actor_it : namespace_it->second) {
+      for (const auto &actor_it : namespace_it->second) {
         actors.push_back(std::make_pair(namespace_it->first, actor_it.first));
       }
     }

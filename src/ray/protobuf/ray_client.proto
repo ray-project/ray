@@ -265,6 +265,14 @@ message PrepRuntimeEnvRequest {
 message PrepRuntimeEnvResponse {
 }
 
+message ClientListActorsRequest {
+  bool all_namespaces = 1;
+}
+
+message ClientListActorsResponse {
+  string actors_json = 1;
+}
+
 service RayletDriver {
   rpc Init(InitRequest) returns (InitResponse) {
   }
@@ -291,6 +299,8 @@ service RayletDriver {
   rpc KVList(KVListRequest) returns (KVListResponse) {
   }
   rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {
+  }
+  rpc ListActors(ClientListActorsRequest) returns (ClientListActorsResponse) {
   }
 }
 
