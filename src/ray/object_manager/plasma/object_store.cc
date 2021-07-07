@@ -17,15 +17,13 @@
 
 #include "ray/object_manager/plasma/object_store.h"
 
-#include "ray/object_manager/plasma/plasma_allocator.h"
-
 namespace plasma {
 
 ObjectStore::ObjectStore() : object_table_() {}
 
-LocalObject *ObjectStore::CreateObject(Allocation allocation_info,
-                                       const ray::ObjectInfo &object_info,
-                                       plasma::flatbuf::ObjectSource source) {
+const LocalObject *ObjectStore::CreateObject(Allocation allocation_info,
+                                             const ray::ObjectInfo &object_info,
+                                             plasma::flatbuf::ObjectSource source) {
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   auto ptr = std::make_unique<LocalObject>();
   auto entry =
@@ -59,11 +57,9 @@ const LocalObject *ObjectStore::GetObject(const ObjectID &object_id) const {
   return it->second.get();
 }
 
-ObjectStatus ObjectStore::ContainsSealedObject(const ObjectID &object_id) {
+bool ObjectStore::ContainsSealedObject(const ObjectID &object_id) {
   auto entry = GetObjectInternal(object_id);
-  return entry && entry->state == ObjectState::PLASMA_SEALED
-             ? ObjectStatus::OBJECT_FOUND
-             : ObjectStatus::OBJECT_NOT_FOUND;
+  return entry && entry->state == ObjectState::PLASMA_SEALED;
 }
 
 const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
@@ -80,14 +76,15 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   return entry;
 }
 
-void ObjectStore::DeleteObject(const ObjectID &object_id) {
+Allocation ObjectStore::DeleteObject(const ObjectID &object_id) {
   auto entry = GetObject(object_id);
-  PlasmaAllocator::Free(entry->allocation);
+  Allocation allocation = std::move(entry->allocation);
   if (entry->state == ObjectState::PLASMA_CREATED) {
     num_bytes_unsealed_ -= entry->GetObjectSize();
     num_objects_unsealed_--;
   }
   object_table_.erase(object_id);
+  return allocation;
 }
 
 size_t ObjectStore::GetNumBytesCreatedTotal() const { return num_bytes_created_total_; }
@@ -95,12 +92,6 @@ size_t ObjectStore::GetNumBytesCreatedTotal() const { return num_bytes_created_t
 size_t ObjectStore::GetNumBytesUnsealed() const { return num_bytes_unsealed_; };
 
 size_t ObjectStore::GetNumObjectsUnsealed() const { return num_objects_unsealed_; };
-
-int64_t ObjectStore::GetNumBytesAllocated() const { return PlasmaAllocator::Allocated(); }
-
-int64_t ObjectStore::GetNumBytesCapacity() const {
-  return PlasmaAllocator::GetFootprintLimit();
-}
 
 void ObjectStore::GetDebugDump(std::stringstream &buffer) const {
   size_t num_objects_spillable = 0;

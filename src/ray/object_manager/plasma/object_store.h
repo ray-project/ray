@@ -26,9 +26,9 @@ class ObjectStore {
  public:
   ObjectStore();
 
-  LocalObject *CreateObject(Allocation allocation_info,
-                            const ray::ObjectInfo &object_info,
-                            plasma::flatbuf::ObjectSource source);
+  const LocalObject *CreateObject(Allocation allocation,
+                                  const ray::ObjectInfo &object_info,
+                                  plasma::flatbuf::ObjectSource source);
 
   const LocalObject *GetObject(const ObjectID &object_id) const;
 
@@ -37,21 +37,17 @@ class ObjectStore {
   /// \param object_id Object ID that will be checked.
   /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
   /// not
-  ObjectStatus ContainsSealedObject(const ObjectID &object_id);
+  bool ContainsSealedObject(const ObjectID &object_id);
 
   const LocalObject *SealObject(const ObjectID &object_id);
 
-  void DeleteObject(const ObjectID &object_id);
+  Allocation DeleteObject(const ObjectID &object_id);
 
   size_t GetNumBytesCreatedTotal() const;
 
   size_t GetNumBytesUnsealed() const;
 
   size_t GetNumObjectsUnsealed() const;
-
-  int64_t GetNumBytesAllocated() const;
-
-  int64_t GetNumBytesCapacity() const;
 
   void GetDebugDump(std::stringstream &buffer) const;
 

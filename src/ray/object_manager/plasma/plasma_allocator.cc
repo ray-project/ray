@@ -35,10 +35,6 @@ int dlmallopt(int param_number, int value);
 size_t MAX_SIZE_T = (size_t)-1;
 const int M_MMAP_THRESHOLD = -3;
 
-int64_t PlasmaAllocator::footprint_limit_ = 0;
-int64_t PlasmaAllocator::allocated_ = 0;
-int64_t PlasmaAllocator::fallback_allocated_ = 0;
-
 namespace {
 /// The invalid allocation info.
 const Allocation kInvalidAllocation;
@@ -57,6 +53,14 @@ Allocation BuildAllocation(void *addr, size_t size) {
   return kInvalidAllocation;
 }
 }  // namespace
+
+/* static */ PlasmaAllocator &PlasmaAllocator::GetInstance() {
+  static PlasmaAllocator instance;
+  return instance;
+}
+
+PlasmaAllocator::PlasmaAllocator()
+    : allocated_(0), fallback_allocated_(0), footprint_limit_(0) {}
 
 Allocation PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (!RayConfig::instance().plasma_unlimited()) {

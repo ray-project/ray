@@ -188,11 +188,11 @@ class PlasmaStore {
         static_cast<int64_t>(object_lifecycle_mgr_.GetNumBytesInUse() -
                              object_lifecycle_mgr_.GetNumBytesUnsealed());
     if (!RayConfig::instance().plasma_unlimited()) {
-      RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+      RAY_CHECK(PlasmaAllocator::GetInstance().GetFootprintLimit() >= num_bytes_in_use);
     }
     size_t available = 0;
-    if (num_bytes_in_use < PlasmaAllocator::GetFootprintLimit()) {
-      available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    if (num_bytes_in_use < PlasmaAllocator::GetInstance().GetFootprintLimit()) {
+      available = PlasmaAllocator::GetInstance().GetFootprintLimit() - num_bytes_in_use;
     }
     callback(available);
   }

@@ -27,6 +27,7 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
@@ -97,7 +98,8 @@ class EvictionPolicy {
   ///
   /// \param object_table Reference to the object_table
   /// \param max_size Max size in bytes total of objects to store.
-  EvictionPolicy(const ObjectStore &object_store, int64_t max_size);
+  EvictionPolicy(const ObjectStore &object_store, IAllocator &allocator,
+                 int64_t max_size);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -175,6 +177,8 @@ class EvictionPolicy {
   LRUCache cache_;
 
   const ObjectStore &object_store_;
+
+  IAllocator &allocator_;
 };
 
 }  // namespace plasma

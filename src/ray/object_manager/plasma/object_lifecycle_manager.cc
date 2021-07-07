@@ -23,9 +23,10 @@ namespace plasma {
 using namespace flatbuf;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
-    ray::DeleteObjectCallback delete_object_callback)
-    : object_store_(),
-      eviction_policy_(object_store_, PlasmaAllocator::GetFootprintLimit()),
+    IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
+    : allocator_(allocator),
+      object_store_(),
+      eviction_policy_(object_store_, allocator_, allocator_.GetFootprintLimit()),
       delete_object_callback_(delete_object_callback),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
@@ -86,7 +87,7 @@ void ObjectLifecycleManager::AbortObject(const ObjectID &object_id) {
   }
 
   eviction_policy_.RemoveObject(object_id);
-  object_store_.DeleteObject(object_id);
+  DeleteObjectImpl(object_id);
 }
 
 PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
@@ -114,7 +115,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
   }
 
   eviction_policy_.RemoveObject(object_id);
-  object_store_.DeleteObject(object_id);
+  DeleteObjectImpl(object_id);
   // Inform all subscribers that the object has been deleted.
   delete_object_callback_(object_id);
   return PlasmaError::OK;
@@ -163,7 +164,7 @@ void ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
       eviction_policy_.RemoveObject(object_id);
       // TODO: this looks like a bug:
       //  EvictObjects({object_id});
-      object_store_.DeleteObject(object_id);
+      DeleteObjectImpl(object_id);
       delete_object_callback_(object_id);
     }
   }
@@ -187,7 +188,7 @@ Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
     // plasma_client.cc). Note that even though this pointer is 64-byte aligned,
     // it is not guaranteed that the corresponding pointer in the client will be
     // 64-byte aligned, but in practice it often will be.
-    allocation = PlasmaAllocator::Memalign(kBlockSize, size);
+    allocation = allocator_.Memalign(kBlockSize, size);
     if (allocation.address != nullptr) {
       // If we manage to allocate the memory, return the pointer. If we cannot
       // allocate the space, but we are also not allowed to evict anything to
@@ -222,7 +223,7 @@ Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
     RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
         << size;
-    allocation = PlasmaAllocator::DiskMemalignUnlimited(kBlockSize, size);
+    allocation = allocator_.DiskMemalignUnlimited(kBlockSize, size);
     if (allocation.address == nullptr) {
       RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
@@ -238,8 +239,8 @@ Allocation ObjectLifecycleManager::AllocateMemory(size_t size, bool is_create,
 
   auto now = absl::GetCurrentTimeNanos();
   if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
-    RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
-                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
+    RAY_LOG(INFO) << "Object store current usage " << (allocator_.Allocated() / 1e9)
+                  << " / " << (allocator_.GetFootprintLimit() / 1e9) << " GB.";
     last_usage_log_ns_ = now;
   }
   return allocation;
@@ -258,15 +259,19 @@ void ObjectLifecycleManager::EvictObjects(const std::vector<ObjectID> &object_id
     RAY_CHECK(entry->ref_count == 0)
         << "To evict an object, there must be no clients currently using it.";
     // Erase the object entry and send a deletion notification.
-    object_store_.DeleteObject(object_id);
+    DeleteObjectImpl(object_id);
     // Inform all subscribers that the object has been deleted.
     delete_object_callback_(object_id);
   }
 }
 
+void ObjectLifecycleManager::DeleteObjectImpl(const ObjectID &object_id) {
+  allocator_.Free(object_store_.DeleteObject(object_id));
+}
+
 size_t ObjectLifecycleManager::GetNumBytesInUse() const { return num_bytes_in_use_; }
 
-ObjectStatus ObjectLifecycleManager::ContainsSealedObject(const ObjectID &object_id) {
+bool ObjectLifecycleManager::ContainsSealedObject(const ObjectID &object_id) {
   return object_store_.ContainsSealedObject(object_id);
 }
 

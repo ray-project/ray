@@ -160,7 +160,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       spill_objects_callback_(spill_objects_callback),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
-      object_lifecycle_mgr_(delete_object_callback_),
+      object_lifecycle_mgr_(PlasmaAllocator::GetInstance(), delete_object_callback_),
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
@@ -295,10 +295,11 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
 
   // Trigger object spilling if current usage is above the specified threshold.
   if (spilling_required != nullptr) {
-    const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
+    const int64_t footprint_limit = PlasmaAllocator::GetInstance().GetFootprintLimit();
     if (footprint_limit != 0) {
       const float allocated_percentage =
-          static_cast<float>(PlasmaAllocator::Allocated()) / footprint_limit;
+          static_cast<float>(PlasmaAllocator::GetInstance().Allocated()) /
+          footprint_limit;
       if (allocated_percentage > object_spilling_threshold_) {
         RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
                        << allocated_percentage << "% is above threshold "
@@ -705,8 +706,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
-    if (object_lifecycle_mgr_.ContainsSealedObject(object_id) ==
-        ObjectStatus::OBJECT_FOUND) {
+    if (object_lifecycle_mgr_.ContainsSealedObject(object_id)) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
     } else {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 0));
@@ -725,7 +725,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(SendEvictReply(client, num_bytes_evicted));
   } break;
   case fb::MessageType::PlasmaConnectRequest: {
-    RAY_RETURN_NOT_OK(SendConnectReply(client, PlasmaAllocator::GetFootprintLimit()));
+    RAY_RETURN_NOT_OK(
+        SendConnectReply(client, PlasmaAllocator::GetInstance().GetFootprintLimit()));
   } break;
   case fb::MessageType::PlasmaDisconnectClient:
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
@@ -821,8 +822,9 @@ std::string PlasmaStore::GetDebugDump() const {
   // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
   buffer << "========== Plasma store: =================\n";
-  buffer << "Current usage: " << (PlasmaAllocator::Allocated() / 1e9) << " / "
-         << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB\n";
+  buffer << "Current usage: " << (PlasmaAllocator::GetInstance().Allocated() / 1e9)
+         << " / " << (PlasmaAllocator::GetInstance().GetFootprintLimit() / 1e9)
+         << " GB\n";
   buffer << "- num bytes created total: "
          << object_lifecycle_mgr_.GetNumBytesCreatedTotal() << "\n";
   auto num_pending_requests = create_request_queue_.NumPendingRequests();

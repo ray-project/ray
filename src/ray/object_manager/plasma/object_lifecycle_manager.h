@@ -26,7 +26,8 @@ namespace plasma {
 
 class ObjectLifecycleManager {
  public:
-  explicit ObjectLifecycleManager(ray::DeleteObjectCallback delete_object_callback);
+  ObjectLifecycleManager(IAllocator &allocator,
+                         ray::DeleteObjectCallback delete_object_callback);
 
   const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
                                   plasma::flatbuf::ObjectSource source, int device_num,
@@ -56,7 +57,7 @@ class ObjectLifecycleManager {
 
   std::string EvictionPolicyDebugString() const;
 
-  ObjectStatus ContainsSealedObject(const ObjectID &object_id);
+  bool ContainsSealedObject(const ObjectID &object_id);
 
   size_t GetNumBytesInUse() const;
 
@@ -77,6 +78,9 @@ class ObjectLifecycleManager {
   /// \param object_ids Object IDs of the objects to be evicted.
   void EvictObjects(const std::vector<ObjectID> &object_ids);
 
+  void DeleteObjectImpl(const ObjectID &object_id);
+
+  IAllocator &allocator_;
   ObjectStore object_store_;
   EvictionPolicy eviction_policy_;
   const ray::DeleteObjectCallback delete_object_callback_;
