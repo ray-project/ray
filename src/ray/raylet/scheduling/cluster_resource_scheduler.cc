@@ -72,7 +72,7 @@ void ClusterResourceScheduler::InitUnitInstanceInfo(){
   std::string custom_unit_instance_resources = RayConfig::instance().custom_unit_instance_resources();
   if (!custom_unit_instance_resources.empty()){
     std::vector<std::string> results;
-    boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
+    boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result: results){
       int64_t resource_id = string_to_int_map_.Insert(result);
       custom_unit_instance_resources_.emplace(resource_id);
