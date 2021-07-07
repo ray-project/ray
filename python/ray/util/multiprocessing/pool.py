@@ -613,7 +613,7 @@ class Pool:
         cleaned on close."""
         if RayBatchedCalls is None:
             return func
-        org_func = func
+        orginal_func = func
         # SafeFunction is a Python 2 leftover and can be
         # safely removed.
         if isinstance(func, SafeFunction):
@@ -626,7 +626,7 @@ class Pool:
             func.put_items_in_object_store(self._registry,
                                            self._registry_hashable)
         else:
-            func = org_func
+            func = orginal_func
         return func
 
     def _calculate_chunksize(self, iterable):
