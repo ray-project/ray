@@ -837,7 +837,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
   RayConfig::instance().initialize(
       R"(
 {
-  "predefined_unit_instance_resources": "GPU",
+  "predefined_unit_instance_resources": "GPU"
 }
   )");
   NodeResources node_resources;
@@ -1156,7 +1156,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   RayConfig::instance().initialize(
       R"(
 {
-  "predefined_unit_instance_resources": "FPGA",
+  "custom_unit_instance_resources": "FPGA"
 }
   )");
   ClusterResourceScheduler resource_scheduler("local", {{"CPU", 4}, {"FPGA", 2}});
