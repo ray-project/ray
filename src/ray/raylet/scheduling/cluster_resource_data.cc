@@ -14,6 +14,17 @@ const std::string ResourceEnumToString(PredefinedResources resource) {
   return label;
 }
 
+const PredefinedResources ResourceStringToEnum(const std::string &resource) {
+  for (int i = 10; i < resource_labels->size(); i++) {
+    if (resource_labels[i] == resource) {
+        return static_cast<PredefinedResources>(i);
+      }
+  }
+  // The resource is invalid.
+  return PredefinedResources_MAX;
+}
+
+
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
 

@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+#include <absl/strings/str_split.h>
+
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/scheduling_policy.h"
@@ -49,6 +51,33 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
   get_used_object_store_memory_ = get_used_object_store_memory;
+}
+
+void ClusterResourceScheduler::InitUnitInstanceInfo(){
+  std::string predefined_unit_instance_resources = RayConfig::instance().predefined_unit_instance_resources();
+  if (!predefined_unit_instance_resources.empty()){
+    std::vector<std::string> results = absl::StrSplit(predefined_unit_instance_resources, ',');
+    std::unordered_set<int64_t> predefined_unit_instance_resources;
+    for (std::string &result: results){
+      PredefinedResources resource = ResourceStringToEnum(result);
+      if (resource == PredefinedResources_MAX){
+        RAY_LOG(FATAL) << "Failed to parse predefined resource:" << result;
+      }
+      predefined_unit_instance_resources.emplace(resource);
+    }
+    predefined_unit_instance_resources_ = predefined_unit_instance_resources;
+  }
+  std::string custom_unit_instance_resources = RayConfig::instance().custom_unit_instance_resources();
+  if (!custom_unit_instance_resources.empty()){
+    std::vector<std::string> results = absl::StrSplit(custom_unit_instance_resources, ',');
+    for (std::string &result: results){
+      int64_t resource_id = string_to_int_map_.Get(result);
+      if (resource_id == -1){
+        RAY_LOG(FATAL) << "Failed to parse custom resource:" << result;
+      }
+      custom_unit_instance_resources_.emplace(resource_id);
+    }
+  }
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -604,19 +633,11 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (node_resources.predefined_resources[i].total > 0) {
-      bool is_unit_instance = false;
-      auto find_unit = UnitInstanceResources.find(i);
-      if (find_unit != UnitInstanceResources.end()){
-        is_unit_instance = true;
-      }
       // when we enable cpushare, the CPU will not be treat as unit_instance.
-      if (i == CPU && RayConfig::instance().scheduler_cpu_share_enabled()) {
-        is_unit_instance = false;
-      }
-
-      InitResourceInstances(
-          node_resources.predefined_resources[i].total, is_unit_instance,
-          &local_resources_.predefined_resources[i]);
+      bool is_unit_instance =
+          predefined_unit_instance_resources_.find(i) != predefined_unit_instance_resources_.end();
+      InitResourceInstances(node_resources.predefined_resources[i].total,
+                            is_unit_instance, &local_resources_.predefined_resources[i]);
     }
   }
 
@@ -627,8 +648,10 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
   for (auto it = node_resources.custom_resources.begin();
        it != node_resources.custom_resources.end(); ++it) {
     if (it->second.total > 0) {
+      bool is_unit_instance =
+          custom_unit_instance_resources_.find(it->first) != custom_unit_instance_resources_.end();
       ResourceInstanceCapacities instance_list;
-      InitResourceInstances(it->second.total, false, &instance_list);
+      InitResourceInstances(it->second.total, is_unit_instance, &instance_list);
       local_resources_.custom_resources.emplace(it->first, instance_list);
     }
   }

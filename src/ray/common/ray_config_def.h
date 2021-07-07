@@ -433,8 +433,12 @@ RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 /// If enabled, raylet will report resources only when resources are changed.
 RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 
-/// If enabled, the scheduler will not treat CPU as unit_instance.
-/// For example, node A has cpu resource 1.5 instead of {0:"0.7",1:"0.8"}
-/// after assigned some tasks. Then a task is submited which requires CPU 1.5,
-/// the node A will be feasible.
-RAY_CONFIG(bool, scheduler_cpu_share_enabled, false)
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is {CPU,GPU}.
+/// When set it to {GPU}, we will not treat CPU as unit_instance.
+RAY_CONFIG(string_type, predefined_unit_instance_resources, "")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to {FPGA}, we will treat FPGA as unit_instance.
+RAY_CONFIG(string_type, custom_unit_instance_resources, "")
