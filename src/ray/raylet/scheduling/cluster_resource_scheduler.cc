@@ -604,9 +604,18 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (node_resources.predefined_resources[i].total > 0) {
+      bool is_unit_instance = false;
+      auto find_unit = UnitInstanceResources.find(i);
+      if (find_unit != UnitInstanceResources.end()){
+        is_unit_instance = true;
+      }
+      // when we enable cpushare, the CPU will not be treat as unit_instance.
+      if (i == CPU && RayConfig::instance().scheduler_cpu_share_enabled()) {
+        is_unit_instance = false;
+      }
+
       InitResourceInstances(
-          node_resources.predefined_resources[i].total,
-          (UnitInstanceResources.find(i) != UnitInstanceResources.end()),
+          node_resources.predefined_resources[i].total, is_unit_instance,
           &local_resources_.predefined_resources[i]);
     }
   }
