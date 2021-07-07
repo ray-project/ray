@@ -212,7 +212,12 @@ boost::optional<ActorHandle<T>> Ray::GetGlobalActor(const std::string &actor_nam
     return {};
   }
 
-  return ActorHandle<T>(ray::internal::RayRuntime()->GetActorId(actor_name));
+  auto actor_id = ray::internal::RayRuntime()->GetActorId(actor_name);
+  if (actor_id.empty()) {
+    return {};
+  }
+
+  return ActorHandle<T>(actor_id);
 }
 
 }  // namespace api

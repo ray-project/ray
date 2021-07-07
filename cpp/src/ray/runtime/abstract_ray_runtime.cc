@@ -184,7 +184,8 @@ std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto pair = core_worker.GetNamedActorHandle(actor_name);
   if (!pair.second.ok()) {
-    throw RayException(pair.second.message());
+    RAY_LOG(WARNING) << pair.second.message();
+    return "";
   }
 
   std::string actor_id;
