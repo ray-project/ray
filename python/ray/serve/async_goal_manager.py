@@ -11,9 +11,10 @@ class AsyncGoalManager:
     """
     Class to help ServeController to manage desirable states of replica.
 
-    Essentially a dictionary of <goal_id, asyncio.Future> within 
+    Essentially a dictionary of <goal_id, asyncio.Future> within
     ServeController's event loop with APIs to facilitate common calls.
     """
+
     def __init__(self):
         self._pending_goals: Dict[GoalId, asyncio.Future] = dict()
 
@@ -23,8 +24,9 @@ class AsyncGoalManager:
     def create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
         if goal_id is None:
             goal_id = uuid4()
-        
-        self._pending_goals[goal_id] = asyncio.get_running_loop().create_future()
+
+        self._pending_goals[
+            goal_id] = asyncio.get_running_loop().create_future()
         return goal_id
 
     def complete_goal(self, goal_id: GoalId) -> None:
@@ -45,7 +47,7 @@ class AsyncGoalManager:
         try:
             await self._pending_goals[goal_id]
         except Exception as e:
-            # Exception thrown won't stop controller main loop, only 
+            # Exception thrown won't stop controller main loop, only
             # handled by goal_id's final status
             self._pending_goals[goal_id].set_exception(e)
 
