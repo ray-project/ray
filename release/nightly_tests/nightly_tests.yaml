@@ -4,7 +4,7 @@
 
 # Test basic single node 10GB shuffle with a small number of partitions.
 # This doesn't require object spilling.
-- name: shuffle_10gb_50_partitions
+- name: shuffle_10gb
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -14,7 +14,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
 # Test single node 50GB shuffle with a large number of partitions.
-- name: shuffle_50gb_50_partitions
+- name: shuffle_50gb
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -24,7 +24,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
 
 # Test single node 50GB shuffle with a large number of partitions.
-- name: shuffle_50gb_500_partition
+- name: shuffle_50gb_large_partition
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -34,7 +34,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
 
 # Test non streaming shuffle in a single node with a small number of partition.
-- name: non_streaming_shuffle_50gb_50_partitions
+- name: non_streaming_shuffle_50gb
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -44,7 +44,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9 --no-streaming
 
 # Test non streaming shuffle in a single node with a large number of partition.
-- name: non_streaming_shuffle_50gb_500_partition
+- name: non_streaming_shuffle_50gb_large_partition
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -54,7 +54,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6 --no-streaming
 
 # Test non streaming shuffle in a single node with a large number of partition.
-- name: dask_on_ray_10gb_sort_50_partitions
+- name: dask_on_ray_10gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
@@ -64,7 +64,7 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
 # Test non streaming shuffle in a single node with a large number of partition.
-- name: dask_on_ray_100gb_sort_200_partitions
+- name: dask_on_ray_100gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
@@ -78,7 +78,7 @@
 #
 
 # Test multi nodes 100GB shuffle with a small number of partitions.
-- name: shuffle_100gb_200_partitions
+- name: shuffle_100gb
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_multi.yaml
@@ -89,7 +89,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
 
 # Test non streaming multi nodes 100GB shuffle with a small number of partitions.
-- name: non_streaming_shuffle_100gb_200_partitions
+- name: non_streaming_shuffle_100gb
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_multi.yaml
