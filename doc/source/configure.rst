@@ -142,7 +142,7 @@ Head Node
 ~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
-- ``--port``: Port of GCS. Default: 6379.
+- ``--port``: Port of Redis. If `--address` is not specified, the head node will start a redis instance listening on this port. Default: 6379.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
 
