@@ -18,7 +18,7 @@ prelude_commands: &prelude_commands |-
   ./ci/travis/install-dependencies.sh
 
 steps:
-- label: ":mac: :apple: Wheels!"
+- label: ":mac: :apple: Wheels and Jars"
   <<: *common
   commands:
     # Cleanup environments

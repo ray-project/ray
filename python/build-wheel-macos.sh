@@ -63,7 +63,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
   curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
-  sudo installer -pkg "$INST_PATH" -target /
+  # sudo installer -pkg "$INST_PATH" -target /
+  installer -pkg "$INST_PATH" -target /
 
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
