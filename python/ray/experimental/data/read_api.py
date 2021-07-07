@@ -308,7 +308,7 @@ def read_parquet(paths: Union[str, List[str]],
     @ray.remote
     def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
         import pyarrow
-        print("Reading {} parquet pieces".format(len(pieces)))
+        logger.debug("Reading {} parquet pieces".format(len(pieces)))
         tables = [piece.to_table() for piece in pieces]
         if len(tables) > 1:
             table = pyarrow.concat_tables(tables)

@@ -47,6 +47,7 @@ struct GcsServerConfig {
   bool enable_sharding_conn = true;
   std::string node_ip_address;
   bool pull_based_resource_reporting;
+  bool grpc_based_resource_broadcast;
   bool grpc_pubsub_enabled;
 };
 
@@ -112,6 +113,9 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
+
+  /// Initialize task info handler.
+  void InitTaskInfoHandler();
 
   /// Initialize stats handler.
   void InitStatsHandler();
@@ -189,6 +193,9 @@ class GcsServer {
   /// Object info handler and service.
   std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
+  /// Task info handler and service.
+  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
+  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;

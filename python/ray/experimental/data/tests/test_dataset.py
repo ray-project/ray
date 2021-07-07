@@ -229,6 +229,15 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     assert df.equals(dfds)
 
 
+def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
+    ds = ray.experimental.data.range(100)
+    assert ds.to_dask().sum().compute()[0] == 4950
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.write_parquet(path)
+    assert ray.experimental.data.read_parquet(path).count() == 100
+
+
 def test_pyarrow(ray_start_regular_shared):
     ds = ray.experimental.data.range_arrow(5)
     assert ds.map(lambda x: {"b": x["value"] + 2}).take() == \
