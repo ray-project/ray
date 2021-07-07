@@ -157,7 +157,7 @@ class Dataset(Generic[T]):
                 if batch_format == "pandas":
                     view = view.to_pandas()
                 elif batch_format == "pyarrow":
-                    view = view.to_arrow()
+                    view = view.to_arrow_table()
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -654,7 +654,7 @@ class Dataset(Generic[T]):
         def parquet_write(write_path, block):
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow()
+            table = block.to_arrow_table()
             with pq.ParquetWriter(write_path, table.schema) as writer:
                 writer.write_table(table)
 
