@@ -611,6 +611,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
         // Above code does not really delete an object. Instead, it just put an
         // object to LRU cache which will be cleaned when the memory is not enough.
         deletion_cache_.erase(object_id);
+        eviction_policy_.RemoveObject(object_id);
         EvictObjects({object_id});
       }
     }
