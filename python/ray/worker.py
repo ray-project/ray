@@ -28,7 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
-import ray._private.runtime_env as runtime_env
+import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 import ray
@@ -573,6 +573,13 @@ def init(
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
         namespace=None,
+        runtime_env=None,
+        # Anyscale cluster parameters
+        job_name=None,
+        autosuspend=None,
+        cluster_env=None,
+        cloud=None,
+        cluster_compute=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -693,6 +700,90 @@ def init(
             arguments is passed in.
     """
 
+    # Use environment variables if available for arguments that weren't
+    # weren't specified in code
+    address_env_var = os.environ.get(
+        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var:
+        if address is None or address == "auto":
+            address = address_env_var
+            logger.info(
+                f"Using address {address_env_var} set in the environment "
+                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
+
+    job_name_env_var = os.environ.get(
+        ray_constants.RAY_JOB_NAME_ENVIRONMENT_VARIABLE)
+    if job_name_env_var and job_name is None:
+        job_name = job_name_env_var
+        logger.info(
+            f"Using job name {job_name_env_var} set in the environment "
+            f"variable {ray_constants.RAY_JOB_NAME_ENVIRONMENT_VARIABLE}")
+
+    namespace_env_var = os.environ.get(
+        ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
+    if namespace_env_var and namespace is None:
+        namespace = namespace_env_var
+        logger.info(
+            f"Using namespace {namespace_env_var} set in the environment "
+            f"variable {ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE}")
+
+    runtime_env_var = os.environ.get(
+        ray_constants.RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+    if runtime_env_var and runtime_env is None:
+        runtime_env = json.loads(runtime_env_var)
+        logger.info(
+            f"Using runtime env {runtime_env_var} set in the environment "
+            f"variable {ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE}")
+
+    if address is not None and "://" in address:
+        # Address specified a protocol
+        protocol, _ = address.split("://")
+        builder = ray.client(address)
+        builder = builder._init_args(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
+            object_store_memory=object_store_memory,
+            local_mode=local_mode,
+            ignore_reinit_error=ignore_reinit_error,
+            include_dashboard=include_dashboard,
+            dashboard_host=dashboard_host,
+            dashboard_port=dashboard_port,
+            job_config=job_config,
+            configure_logging=configure_logging,
+            logging_level=logging_level,
+            logging_format=logging_format,
+            log_to_driver=log_to_driver,
+            # Unstable parameters
+            _enable_object_reconstruction=_enable_object_reconstruction,
+            _redis_max_memory=_redis_max_memory,
+            _plasma_directory=_plasma_directory,
+            _node_ip_address=_node_ip_address,
+            _driver_object_store_memory=_driver_object_store_memory,
+            _memory=_memory,
+            _redis_password=_redis_password,
+            _temp_dir=_temp_dir,
+            _lru_evict=_lru_evict,
+            _metrics_export_port=_metrics_export_port,
+            _system_config=_system_config,
+            _tracing_startup_hook=_tracing_startup_hook)
+        if namespace is not None:
+            builder.namespace(namespace)
+        if runtime_env is not None:
+            builder.env(runtime_env)
+        if protocol == "anyscale":
+            if job_name is not None:
+                builder = builder.job_name(job_name)
+            if autosuspend is not None:
+                builder = builder.autosuspend(autosuspend)
+            if cloud is not None:
+                builder = builder.cloud(cloud)
+            if cluster_compute is not None:
+                builder = builder.cluster_compute(cluster_compute)
+            if cluster_env is not None:
+                builder = builder.cluster_env(cluster_env)
+        return builder.connect()
+
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
     try:
@@ -718,11 +809,6 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    address_env_var = os.environ.get(
-        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -851,7 +937,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env.rewrite_runtime_env_uris(job_config)
+        runtime_env_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1276,14 +1362,14 @@ def connect(node,
     # environment here. If it's ray client, the environmen will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        runtime_env.upload_runtime_env_package_if_needed(job_config)
+        runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
         uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
-        working_dir = runtime_env.ensure_runtime_env_setup(uris)
+        working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
 

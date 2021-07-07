@@ -1,7 +1,9 @@
 import os
 import importlib
+import json
 import logging
 from dataclasses import dataclass
+from urllib.parse import parse_qs, urlparse
 import sys
 
 from typing import Any, Dict, Optional, Tuple
@@ -63,6 +65,18 @@ class ClientBuilder:
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self._job_config = JobConfig()
+        self._init_args_dict = {}
+        if address:
+            parsed_address = urlparse(address)
+            # Set address to part before the parameters, i.e. before any
+            # "?arg=val" in the url
+            self.address = parsed_address.path
+            params_dict = parse_qs(parsed_address.query)()
+            for key, val in params_dict.items():
+                if key == "runtime_env":
+                    self.env(json.loads(val))
+                elif key == "namespace":
+                    self.env(val)
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -105,14 +119,26 @@ class ClientBuilder:
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
 
+    def _init_args(self, **kwargs) -> "ClientBuilder":
+        """
+        Some client builders may need configuration to start a new cluster,
+        for example the _LocalClientBuilder will create a cluster locally.
+        You can specify the arguments for the eventual ray.init call here.
+        """
+        self._init_args_dict.update(kwargs)
+        return self
+
 
 class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...).
         """
+        self._init_args_dict.pop("job_config", self._job_config)
         connection_dict = ray.init(
-            address=self.address, job_config=self._job_config)
+            address=self.address,
+            job_config=self._job_config,
+            **self._init_args_dict)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(
@@ -152,6 +178,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
+    if module_string == "local":
+        return _LocalClientBuilder(inner_address or None)
     try:
         module = importlib.import_module(module_string)
     except Exception:
