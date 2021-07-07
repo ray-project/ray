@@ -278,6 +278,7 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_asyncio.py",
+    "test_multiprocessing.py",
     "test_list_actors.py",
   ],
   size = "medium",

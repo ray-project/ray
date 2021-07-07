@@ -890,6 +890,23 @@ class Node:
         logger.debug(f"Process STDOUT and STDERR is being "
                      f"redirected to {self._logs_dir}.")
 
+        # Clean up external storage in case a previous Raylet instance crashed
+        # on this node and spilled objects remain on disk.
+        if not self.head:
+            # Get the system config from GCS first if this is a non-head node.
+            global_state = ray.state.GlobalState()
+            global_state._initialize_global_state(
+                self.redis_address, redis_password=self.redis_password)
+            new_config = global_state.get_system_config()
+            assert self._config.items() <= new_config.items(), (
+                "The system config from GCS is not a superset of the local"
+                " system config. There might be a configuration inconsistency"
+                " issue between the head node and non-head nodes."
+                f" Local system config: {self._config},"
+                f" GCS system config: {new_config}")
+            self._config = new_config
+        self.destroy_external_storage()
+
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
         resource_spec = self.get_resource_spec()

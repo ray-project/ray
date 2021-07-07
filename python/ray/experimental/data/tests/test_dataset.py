@@ -10,16 +10,89 @@ import pytest
 import ray
 
 from ray.util.dask import ray_dask_get
-
 from ray.tests.conftest import *  # noqa
+from ray.experimental.data.datasource import DummyOutputDatasource
 import ray.experimental.data.tests.util as util
+
+
+def test_basic_actors(shutdown_only):
+    ray.init(num_cpus=2)
+    ds = ray.experimental.data.range(5)
+    assert sorted(ds.map(lambda x: x + 1,
+                         compute="actors").take()) == [1, 2, 3, 4, 5]
 
 
 def test_basic(ray_start_regular_shared):
     ds = ray.experimental.data.range(5)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
-    assert sorted(ds.to_local_iterator()) == [0, 1, 2, 3, 4]
+    assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+def test_write_datasource(ray_start_regular_shared):
+    output = DummyOutputDatasource()
+    ds = ray.experimental.data.range(10, parallelism=2)
+    ds.write_datasource(output)
+    assert output.num_ok == 1
+    assert output.num_failed == 0
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
+
+    ray.get(output.data_sink.set_enabled.remote(False))
+    with pytest.raises(ValueError):
+        ds.write_datasource(output)
+    assert output.num_ok == 1
+    assert output.num_failed == 1
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
+
+
+def test_empty_dataset(ray_start_regular_shared):
+    ds = ray.experimental.data.range(0)
+    assert ds.count() == 0
+    with pytest.raises(ValueError):
+        ds.size_bytes()
+    with pytest.raises(ValueError):
+        ds.schema()
+
+    ds = ray.experimental.data.range(1)
+    ds = ds.filter(lambda x: x > 1)
+    assert str(ds) == \
+        "Dataset(num_rows=0, num_blocks=1, schema=Unknown schema)"
+
+
+def test_schema(ray_start_regular_shared):
+    ds = ray.experimental.data.range(10)
+    ds2 = ray.experimental.data.range_arrow(10)
+    ds3 = ds2.repartition(5)
+    ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
+    assert str(ds) == \
+        "Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)"
+    assert str(ds2) == \
+        "Dataset(num_rows=10, num_blocks=10, schema={value: int64})"
+    assert str(ds3) == \
+        "Dataset(num_rows=10, num_blocks=5, schema={value: int64})"
+    assert str(ds4) == \
+        "Dataset(num_rows=5, num_blocks=1, schema={a: string, b: double})"
+
+
+def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
+    ds = ray.experimental.data.range(100, parallelism=20)
+    assert len(ds._blocks._blocks) == 1
+    assert ds.take(10) == list(range(10))
+    assert len(ds._blocks._blocks) == 2
+    assert ds.take(20) == list(range(20))
+    assert len(ds._blocks._blocks) == 4
+    assert ds.take(30) == list(range(30))
+    assert len(ds._blocks._blocks) == 8
+    assert ds.take(50) == list(range(50))
+    assert len(ds._blocks._blocks) == 16
+    assert ds.take(100) == list(range(100))
+    assert len(ds._blocks._blocks) == 20
+
+
+def test_limit(ray_start_regular_shared):
+    ds = ray.experimental.data.range(100, parallelism=20)
+    for i in range(100):
+        assert ds.limit(i).take(200) == list(range(i))
 
 
 def test_convert_types(ray_start_regular_shared):
@@ -111,15 +184,34 @@ def test_pandas_roundtrip(ray_start_regular_shared):
 def test_parquet_read(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
+    pq.write_table(table, os.path.join(str(tmp_path), "test1.parquet"))
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
+    pq.write_table(table, os.path.join(str(tmp_path), "test2.parquet"))
 
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert str(ds) == \
+        "Dataset(num_rows=6, num_blocks=2, " \
+        "schema={one: int64, two: string})", ds
+    assert repr(ds) == \
+        "Dataset(num_rows=6, num_blocks=2, " \
+        "schema={one: int64, two: string})", ds
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-
-    assert sorted(values) == [[4, "e"], [4, "e"], [5, "f"], [5, "f"], [6, "g"],
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
 
@@ -137,6 +229,15 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     assert df.equals(dfds)
 
 
+def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
+    ds = ray.experimental.data.range(100)
+    assert ds.to_dask().sum().compute()[0] == 4950
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.write_parquet(path)
+    assert ray.experimental.data.read_parquet(path).count() == 100
+
+
 def test_pyarrow(ray_start_regular_shared):
     ds = ray.experimental.data.range_arrow(5)
     assert ds.map(lambda x: {"b": x["value"] + 2}).take() == \
@@ -149,19 +250,48 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
+def test_uri_parser():
+    from ray.experimental.data.read_api import _parse_paths
+    fs, path = _parse_paths("/local/path")
+    assert path == "/local/path"
+    assert fs.type_name == "local"
+
+    fs, path = _parse_paths("./")
+    assert path == "./"
+    assert fs.type_name == "local"
+
+    fs, path = _parse_paths("s3://bucket/dir")
+    assert path == "bucket/dir"
+    assert fs.type_name == "s3"
+
+    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
+    assert path == ["bucket/dir_1", "bucket/dir_2"]
+    assert fs.type_name == "s3"
+
+    with pytest.raises(ValueError):
+        _parse_paths(["s3://bucket/dir_1", "/path/local"])
+
+    with pytest.raises(ValueError):
+        _parse_paths([])
+
+
 def test_read_binary_files(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
-        for i, item in enumerate(ds.to_local_iterator()):
+        for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
+        # Test metadata ops.
+        assert ds.count() == 10
+        assert "bytes" in str(ds.schema()), ds
+        assert "bytes" in str(ds), ds
 
 
 def test_read_binary_files_with_paths(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(
             paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.to_local_iterator()):
+        for i, (path, item) in enumerate(ds.iter_rows()):
             assert path == paths[i]
             expected = open(paths[i], "rb").read()
             assert expected == item
@@ -173,7 +303,7 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         fs, _ = pa.fs.FileSystem.from_uri("/")
         ds = ray.experimental.data.read_binary_files(
             paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.to_local_iterator()):
+        for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
 
@@ -189,7 +319,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
     print(ds_list)
     values = [s["one"] for s in ds_list]
@@ -198,7 +328,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     assert values == [3, 4, 5]
 
     # Test Pyarrow
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(
         lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
     values = [s["one"] for s in ds_list]
@@ -219,20 +349,20 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(
         lambda df: [1], batch_size=1, batch_format="pyarrow").take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # Test the wrong return value raises an exception.
-    ds = ray.experimental.data.read_parquet(tmp_path)
+    ds = ray.experimental.data.read_parquet(str(tmp_path))
     with pytest.raises(ValueError):
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
@@ -394,6 +524,10 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.experimental.data.read_json(path1)
     assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert "two" in str(ds.schema())
+    assert "two" in str(ds)
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -496,6 +630,10 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_csv(path1)
     dsdf = ray.get(ds.to_pandas())[0]
     assert df1.equals(dsdf)
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert "two" in str(ds.schema())
+    assert "two" in str(ds)
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})

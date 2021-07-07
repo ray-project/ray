@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import json
 import logging
 import numpy as np
@@ -13,13 +14,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ray.init(address="auto")
-
-# These numbers need to correspond with the autoscaler config file.
-# The number of remote nodes in the autoscaler should upper bound
-# these because sometimes nodes fail to update.
-NUM_REMOTE_NODES = 100
-HEAD_NODE_CPUS = 2
-NUM_REMOTE_CPU = NUM_REMOTE_NODES * HEAD_NODE_CPUS
 
 
 @ray.remote
@@ -59,23 +53,37 @@ class Parent(object):
         ray.get([child.__ray_terminate__.remote() for child in self.children])
 
 
+def parse_script_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num-nodes", type=int, default=100)
+    parser.add_argument("--num-parents", type=int, default=10)
+    parser.add_argument("--num-children", type=int, default=10)
+    parser.add_argument("--death-probability", type=int, default=0.95)
+    return parser.parse_known_args()
+
+
 if __name__ == "__main__":
+    args, unknown = parse_script_args()
     result = {"success": 0}
+    # These numbers need to correspond with the autoscaler config file.
+    # The number of remote nodes in the autoscaler should upper bound
+    # these because sometimes nodes fail to update.
+    num_remote_nodes = args.num_nodes
+    num_parents = args.num_parents
+    num_children = args.num_children
+    death_probability = args.death_probability
+
     try:
         # Wait until the expected number of nodes have joined the cluster.
         while True:
             num_nodes = len(ray.nodes())
             logger.info("Waiting for nodes {}/{}".format(
-                num_nodes, NUM_REMOTE_NODES + 1))
-            if num_nodes >= NUM_REMOTE_NODES + 1:
+                num_nodes, num_remote_nodes + 1))
+            if num_nodes >= num_remote_nodes + 1:
                 break
             time.sleep(5)
         logger.info("Nodes have all joined. There are %s resources.",
                     ray.cluster_resources())
-
-        num_parents = 10
-        num_children = 10
-        death_probability = 0.95
 
         parents = [
             Parent.remote(num_children, death_probability)

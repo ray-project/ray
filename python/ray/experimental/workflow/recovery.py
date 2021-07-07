@@ -5,7 +5,9 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-from ray.experimental.workflow.workflow_manager import WorkflowStepFunction
+from ray.experimental.workflow.step_function import WorkflowStepFunction
+from ray.experimental.workflow.workflow_access import flatten_workflow_output
+from ray.experimental.workflow.step_executor import execute_workflow
 
 
 class WorkflowStepNotRecoverableError(Exception):
@@ -97,8 +99,8 @@ def _construct_resume_workflow_from_step(
     return recovery_workflow
 
 
-def resume_workflow_job(workflow_id: str, store: storage.Storage
-                        ) -> Union[ray.ObjectRef, Workflow]:
+def resume_workflow_job(workflow_id: str,
+                        store: storage.Storage) -> ray.ObjectRef:
     """Resume a workflow job.
 
     Args:
@@ -118,6 +120,14 @@ def resume_workflow_job(workflow_id: str, store: storage.Storage
         r = _construct_resume_workflow_from_step(reader, entrypoint_step_id)
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
+
     if isinstance(r, Workflow):
-        return r
+        try:
+            workflow_context.init_workflow_step_context(
+                workflow_id, store.storage_url)
+            obj_ref = execute_workflow(r)
+            return flatten_workflow_output(workflow_id, obj_ref)
+        finally:
+            workflow_context.set_workflow_step_context(None)
+
     return ray.put(reader.load_step_output(r))

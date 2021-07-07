@@ -21,13 +21,13 @@ def test_raw_storage():
     args = ([1, "2"], {"k": b"543"})
     output = ["the_answer"]
     object_resolved = 42
-    rref = ray.put(object_resolved)
+    obj_ref = ray.put(object_resolved)
 
     # test creating normal objects
     raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
     raw_storage.save_step_func_body(workflow_id, step_id, some_func)
     raw_storage.save_step_args(workflow_id, step_id, args)
-    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_object_ref(workflow_id, obj_ref)
     raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
     raw_storage.save_step_output(workflow_id, step_id, output)
@@ -43,8 +43,8 @@ def test_raw_storage():
                                                 step_id) == input_metadata
     assert raw_storage.load_step_func_body(workflow_id, step_id)(33) == 34
     assert raw_storage.load_step_args(workflow_id, step_id) == args
-    assert ray.get(raw_storage.load_object_ref(workflow_id,
-                                               rref.hex())) == object_resolved
+    assert ray.get(raw_storage.load_object_ref(
+        workflow_id, obj_ref.hex())) == object_resolved
     assert raw_storage.load_step_output_metadata(workflow_id,
                                                  step_id) == output_metadata
     assert raw_storage.load_step_output(workflow_id, step_id) == output
@@ -55,12 +55,12 @@ def test_raw_storage():
     args = (args, "overwrite")
     output = (output, "overwrite")
     object_resolved = (object_resolved, "overwrite")
-    rref = ray.put(object_resolved)
+    obj_ref = ray.put(object_resolved)
 
     raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
     raw_storage.save_step_func_body(workflow_id, step_id, some_func2)
     raw_storage.save_step_args(workflow_id, step_id, args)
-    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_object_ref(workflow_id, obj_ref)
     raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
     raw_storage.save_step_output(workflow_id, step_id, output)
@@ -68,8 +68,8 @@ def test_raw_storage():
                                                 step_id) == input_metadata
     assert raw_storage.load_step_func_body(workflow_id, step_id)(33) == 32
     assert raw_storage.load_step_args(workflow_id, step_id) == args
-    assert ray.get(raw_storage.load_object_ref(workflow_id,
-                                               rref.hex())) == object_resolved
+    assert ray.get(raw_storage.load_object_ref(
+        workflow_id, obj_ref.hex())) == object_resolved
     assert raw_storage.load_step_output_metadata(workflow_id,
                                                  step_id) == output_metadata
     assert raw_storage.load_step_output(workflow_id, step_id) == output
@@ -94,13 +94,13 @@ def test_workflow_storage():
     args = ([1, "2"], {"k": b"543"})
     output = ["the_answer"]
     object_resolved = 42
-    rref = ray.put(object_resolved)
+    obj_ref = ray.put(object_resolved)
 
     # test basics
     raw_storage.save_step_input_metadata(workflow_id, step_id, input_metadata)
     raw_storage.save_step_func_body(workflow_id, step_id, some_func)
     raw_storage.save_step_args(workflow_id, step_id, args)
-    raw_storage.save_object_ref(workflow_id, rref)
+    raw_storage.save_object_ref(workflow_id, obj_ref)
     raw_storage.save_step_output_metadata(workflow_id, step_id,
                                           output_metadata)
     raw_storage.save_step_output(workflow_id, step_id, output)
@@ -109,7 +109,8 @@ def test_workflow_storage():
     assert wf_storage.load_step_output(step_id) == output
     assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
-    assert ray.get(wf_storage.load_object_ref(rref.hex())) == object_resolved
+    assert ray.get(wf_storage.load_object_ref(
+        obj_ref.hex())) == object_resolved
 
     # test "inspect_step"
     inspect_result = wf_storage.inspect_step(step_id)

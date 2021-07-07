@@ -559,6 +559,11 @@ cdef execute_task(
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
+            if (c_return_ids.size() > 0 and
+                    len(outputs) != int(c_return_ids.size())):
+                raise ValueError(
+                    "Task returned {} objects, but num_returns={}.".format(
+                        len(outputs), c_return_ids.size()))
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(

@@ -346,6 +346,9 @@ install_dependencies() {
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
   fi
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+  fi
 
   # Remove this entire section once Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then

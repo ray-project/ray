@@ -2,6 +2,7 @@
 
 #include <sstream>
 
+#include <boost/functional/hash.hpp>
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -117,6 +118,11 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
 
 bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+}
+
+int TaskSpecification::GetRuntimeEnvHash() const {
+  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv()};
+  return env.IntHash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -358,5 +364,49 @@ std::string TaskSpecification::CallSiteString() const {
   stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
 }
+
+WorkerCacheKey::WorkerCacheKey(
+    const std::unordered_map<std::string, std::string> override_environment_variables,
+    const std::string serialized_runtime_env)
+    : override_environment_variables(override_environment_variables),
+      serialized_runtime_env(serialized_runtime_env) {}
+
+bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  return Hash() == k.Hash();
+}
+
+bool WorkerCacheKey::EnvIsEmpty() const {
+  return override_environment_variables.size() == 0 &&
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+}
+
+std::size_t WorkerCacheKey::Hash() const {
+  // Cache the hash value.
+  if (!hash_) {
+    if (EnvIsEmpty()) {
+      // It's useful to have the same predetermined value for both unspecified and empty
+      // runtime envs.
+      hash_ = 0;
+    } else {
+      std::vector<std::pair<std::string, std::string>> env_vars(
+          override_environment_variables.begin(), override_environment_variables.end());
+      // The environment doesn't depend the order of the variables, so the hash should not
+      // either.  Sort the variables so different permutations yield the same hash.
+      std::sort(env_vars.begin(), env_vars.end());
+      for (auto &pair : env_vars) {
+        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
+        // separate runs of a program, which may cause problems if these hashes are
+        // communicated between different Raylets and compared.
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+
+      boost::hash_combine(hash_, serialized_runtime_env);
+    }
+  }
+  return hash_;
+}
+
+int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 }  // namespace ray
