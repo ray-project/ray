@@ -1845,10 +1845,9 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
             " and '--generate-bazel-project-template-to'.")
     cli_logger.configure(log_style, log_color, verbose)
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    cpp_templete_dir = os.path.join(raydir, "core/src/ray/cpp/example")
-    cpp_library_dir = os.path.join(cpp_templete_dir, "thirdparty")
-    include_dir = os.path.join(cpp_library_dir, "include")
-    lib_dir = os.path.join(cpp_library_dir, "lib")
+    cpp_templete_dir = os.path.join(raydir, "cpp/example")
+    include_dir = os.path.join(raydir, "cpp/include")
+    lib_dir = os.path.join(raydir, "cpp/lib")
     if show_library_path:
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
@@ -1857,8 +1856,16 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
             cli_logger.abort(
                 "The provided directory "
                 f"{generate_bazel_project_template_to} doesn't exist.")
-        input = os.path.join(raydir, "core/src/ray/cpp/example")
-        copy_tree(input, generate_bazel_project_template_to)
+        copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
+        out_include_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/include")
+        if not os.path.exists(out_include_dir):
+            os.makedirs(out_include_dir)
+        copy_tree(include_dir, out_include_dir)
+        out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
+        if not os.path.exists(out_lib_dir):
+            os.makedirs(out_lib_dir)
+        copy_tree(lib_dir, out_lib_dir)
+
         cli_logger.print(
             "Project template generated to {}",
             cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"))
