@@ -30,6 +30,9 @@ class ResourceChangingScheduler(TrialScheduler):
     will be called. This method needs to be overwritten by the user in
     order to let the trained model take advantage of newly allocated resources.
 
+    Cannot be used if `reuse_actors` is True in `tune.run`. A ValueError
+    will be raised in that case.
+
     Args:
         base_scheduler (TrialScheduler): The scheduler to provide decisions
             about trials. If None, a default FIFOScheduler will be used.
@@ -132,6 +135,11 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def choose_trial_to_run(self, trial_runner: "trial_runner.TrialRunner",
                             **kwargs) -> Optional[Trial]:
+        if getattr(trial_runner.trial_executor, "_reuse_actors", False):
+            raise ValueError("ResourceChangingScheduler cannot be used with "
+                             "`reuse_actors=True`. FIX THIS by setting "
+                             "`reuse_actors=False` in `tune.run`.")
+
         any_resources_changed = False
 
         for trial, new_resources in self._trials_to_reallocate.items():
