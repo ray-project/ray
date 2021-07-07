@@ -13,12 +13,11 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-
-#include <absl/strings/str_split.h>
-
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/scheduling_policy.h"
+
+#include <boost/algorithm/string.hpp>
 
 namespace ray {
 
@@ -58,7 +57,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 void ClusterResourceScheduler::InitUnitInstanceInfo(){
   std::string predefined_unit_instance_resources = RayConfig::instance().predefined_unit_instance_resources();
   if (!predefined_unit_instance_resources.empty()){
-    std::vector<std::string> results = absl::StrSplit(predefined_unit_instance_resources, ',');
+    std::vector<std::string> results;
+    boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
     std::unordered_set<int64_t> predefined_unit_instance_resources;
     for (std::string &result: results){
       PredefinedResources resource = ResourceStringToEnum(result);
@@ -71,7 +71,8 @@ void ClusterResourceScheduler::InitUnitInstanceInfo(){
   }
   std::string custom_unit_instance_resources = RayConfig::instance().custom_unit_instance_resources();
   if (!custom_unit_instance_resources.empty()){
-    std::vector<std::string> results = absl::StrSplit(custom_unit_instance_resources, ',');
+    std::vector<std::string> results;
+    boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result: results){
       int64_t resource_id = string_to_int_map_.Insert(result);
       custom_unit_instance_resources_.emplace(resource_id);
