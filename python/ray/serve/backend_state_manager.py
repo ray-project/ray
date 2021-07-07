@@ -122,8 +122,9 @@ class ActorReplicaWrapper:
     def check_ready(self) -> bool:
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to 
-        # surface exception to each update() cycle. 
-        ray.get(ready)
+        # surface exception to each update() cycle.
+        if len(ready) > 0:
+            ray.get(ready)
 
         return len(ready) == 1
 
@@ -311,20 +312,27 @@ class BackendReplica(VersionedReplica):
         Should handle the case where the replica has already stopped.
 
         Returns:
-            (ready, past_slow_startup_threshold)
+            (ready, past_slow_startup_threshold, exception_in_constructor)
         """
         if self._state == ReplicaState.RUNNING:
-            return True, False
+            return True, False, False
         assert self._state == ReplicaState.STARTING_OR_UPDATING, (
             f"State must be {ReplicaState.STARTING_OR_UPDATING}, "
             f"*not* {self._state}.")
 
-        if self._actor.check_ready():
-            self._state = ReplicaState.RUNNING
-            return True, False
+        try:
+            if self._actor.check_ready():
+                self._state = ReplicaState.RUNNING
+                return True, False, False
+        except:
+            logger.error(
+                "Encountered exception in deployment constructor, "
+                "shutting down deployment."
+            )
+            return False, False, True
 
         time_since_start = time.time() - self._start_time
-        return False, time_since_start > SLOW_STARTUP_WARNING_S
+        return False, time_since_start > SLOW_STARTUP_WARNING_S, False
 
     def set_should_stop(self, graceful_shutdown_timeout_s: Duration) -> None:
         """Mark the replica to be stopped in the future.
@@ -869,9 +877,9 @@ class BackendStateManager:
             ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
             ReplicaState.RUNNING
         ])
-        print(f"current replicas: {current_replicas}")
-        print(f"target_replicas replicas: {target_replicas}")
-        print(f"current replica states: {self._replicas[backend_tag]}")
+        # print(f"current replicas: {current_replicas}")
+        # print(f"target_replicas replicas: {target_replicas}")
+        # print(f"current replica states: {self._replicas[backend_tag]}")
 
         delta_replicas = target_replicas - current_replicas
         if delta_replicas == 0:
@@ -1006,12 +1014,16 @@ class BackendStateManager:
             slow_start_replicas = []
             for replica in replicas.pop(
                     states=[ReplicaState.STARTING_OR_UPDATING]):
-                ready, slow_start = replica.check_started()
+                ready, slow_start, exception_in_constructor = replica.check_started()
                 if ready:
                     # This replica should be now be added to handle's replica
                     # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
+                elif exception_in_constructor:
+                    # TODO(jiaodong): Probably better to handle it at replica level,
+                    # suggestions are very much welcomed :) 
+                    self.delete_backend(backend_tag)
                 else:
                     replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
                     if slow_start:

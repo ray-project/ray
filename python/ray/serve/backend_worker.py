@@ -25,7 +25,7 @@ from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    REPLICA_CONSTRUCTOR_TRY_COUNT,
+    REPLICA_CONSTRUCTOR_RETRY_COUNT,
 )
 from ray.exceptions import RayTaskError
 
@@ -73,7 +73,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 # Retry with exponential backoff if ran into transient
                 # failures; Will throw and notify backend_state if
                 # constructor failed with no retries left
-                for current_try in range(REPLICA_CONSTRUCTOR_TRY_COUNT):
+                for current_try in range(REPLICA_CONSTRUCTOR_RETRY_COUNT + 1):
                     # This allows backends to define an async __init__ method
                     # (required for FastAPI backend definition).
                     _callable = backend.__new__(backend)
@@ -83,7 +83,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                         logger.error(
                             f"Exception while running deployment class "
                             f"__init__: {e}")
-                        if current_try < REPLICA_CONSTRUCTOR_TRY_COUNT - 1:
+                        if current_try < REPLICA_CONSTRUCTOR_RETRY_COUNT:
                             delay_secs = round(
                                 (2**current_try + random.uniform(0, 1)), 2)
                             logger.info(
