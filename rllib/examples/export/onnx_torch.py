@@ -1,7 +1,8 @@
+from distutils.version import LooseVersion
+
 import numpy as np
 import ray
 import ray.rllib.agents.ppo as ppo
-import onnx
 import onnxruntime
 import os
 import shutil
@@ -47,14 +48,14 @@ res = trainer.export_policy_model(outdir, onnx=11)
 # Import ONNX model
 exported_model_file = os.path.join(outdir, "model.onnx")
 
-model = onnx.load(exported_model_file)
-print("MODEL INPUTS", model.graph.input)
-print("MODEL OUTPUTS", model.graph.output)
-
 # Start an inference session for the ONNX model
 session = onnxruntime.InferenceSession(exported_model_file, None)
 
 # Pass the same test batch to the ONNX model
+if LooseVersion(torch.__version__) <= LooseVersion("1.8.1"):
+    # In torch <= 1.8.1 the second input/output name gets mixed up
+    test_data["state_outs"] = test_data.pop("state_ins")
+
 result_onnx = session.run(["output"], test_data)
 
 # These results should be equal!

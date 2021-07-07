@@ -735,8 +735,6 @@ class TorchPolicy(Policy):
         seq_lens = self._dummy_batch["seq_lens"]
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
-            print("DEBUG INPUT NAMES",
-                  list(dummy_inputs.keys()) + ["state_ins", "seq_lens"])
             torch.onnx.export(
                 self.model, (dummy_inputs, state_ins, seq_lens),
                 file_name,
