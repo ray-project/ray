@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# On the Linux master build, retry core integration tests 3x to detect flakes with higher fidelity.
+
+if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then
+    echo "--runs_per_test=//python/ray/tests.*@3 --runs_per_test_detects_flakes --experimental_cancel_concurrent_tests --flaky_test_attempts=1"
+fi

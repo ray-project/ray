@@ -397,6 +397,7 @@ def run(
                 local_dir=local_dir,
                 upload_dir=sync_config.upload_dir,
                 sync_to_driver=sync_config.sync_to_driver,
+                sync_to_cloud=sync_config.sync_to_cloud,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
