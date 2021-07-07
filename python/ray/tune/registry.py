@@ -93,7 +93,8 @@ def register_input(name, input_creator):
 
     Args:
         name (str): Name to register.
-        input_creator (dict -> InputReader): Callable that creates an input reader
+        input_creator (dict -> InputReader): Callable that creates an input
+            reader
     """
     if not callable(input_creator):
         raise TypeError("Second argument must be callable.", input_creator)

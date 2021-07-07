@@ -314,7 +314,8 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
-        elif isinstance(config["input"], str) and _global_registry.contains(RLLIB_INPUT, config["input"]):
+        elif isinstance(config["input"], str) and \
+                _global_registry.contains(RLLIB_INPUT, config["input"]):
             input_creator = _global_registry.get(RLLIB_INPUT, config["input"])
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]

@@ -40,7 +40,8 @@ class MixedInput(InputReader):
                 self.choices.append(ioctx.default_sampler_input())
             elif isinstance(k, FunctionType):
                 self.choices.append(k(ioctx))
-            elif isinstance(k, str) and _global_registry.contains(RLLIB_INPUT, k):
+            elif isinstance(k, str) and \
+                    _global_registry.contains(RLLIB_INPUT, k):
                 input_creator = _global_registry.get(RLLIB_INPUT, k)
                 self.choices.append(input_creator(ioctx))
             else:
