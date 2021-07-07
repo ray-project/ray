@@ -352,10 +352,6 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       }
     }
 
-    if (!status.IsNotFound()) {
-      return status;
-    }
-
     if (current_time_ms() - start_ms >=
         RayConfig::instance().raylet_start_wait_time_s() * 1000) {
       return status;
