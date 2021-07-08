@@ -51,9 +51,12 @@ exported_model_file = os.path.join(outdir, "model.onnx")
 # Start an inference session for the ONNX model
 session = onnxruntime.InferenceSession(exported_model_file, None)
 
+print("DEBUG TORCH VERSION", torch.__version__)
+
 # Pass the same test batch to the ONNX model
 if LooseVersion(torch.__version__) <= LooseVersion("1.8.1"):
     # In torch <= 1.8.1 the second input/output name gets mixed up
+    print("DEBUG SWITCHED OUTPUTS")
     test_data["state_outs"] = test_data.pop("state_ins")
 
 result_onnx = session.run(["output"], test_data)
