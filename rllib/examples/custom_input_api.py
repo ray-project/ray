@@ -1,5 +1,11 @@
 """Example of creating a custom input api
 
+Custom input apis are useful when your data source is in a custom format or
+when it is necessary to use an external data loading mechanism.
+In this example, we train an rl agent on user specified input data.
+Instead of using the built in JsonReader, we will create our own custom input
+api, and show how to pass config arguments to it.
+
 To train CQL on the pendulum environment:
 $ python custom_input_api.py --input-files=../tests/data/pendulum/enormous.zip
 """
@@ -33,14 +39,34 @@ parser.add_argument(
         "../tests/data/pendulum/small.json"))
 
 
-# example class that subclasses InputReader (from JsonReader)
-# this gets wrapped in ShuffledInput to comply with offline rl algorithms
 class CustomJsonReader(JsonReader):
-    def __init__(self, ioctx: IOContext = None):
+    """
+    Example custom InputReader implementation (extended from JsonReader).
+
+    This gets wrapped in ShuffledInput to comply with offline rl algorithms.
+    """
+
+    def __init__(self, ioctx: IOContext):
         """
         The constructor must take an IOContext to be used in the input config.
+        Args:
+            ioctx (IOContext): use this to access the `input_config` arguments.
         """
         super().__init__(ioctx.input_config["input_files"], ioctx)
+
+
+def input_creator(ioctx: IOContext) -> InputReader:
+    """
+    The input creator method can be used in the input registry or set as the
+    config["input"] parameter.
+
+    Args:
+        ioctx (IOContext): use this to access the `input_config` arguments.
+
+    Returns:
+        instance of ShuffledInput to work with some offline rl algorithms
+    """
+    return ShuffledInput(CustomJsonReader(ioctx))
 
 
 if __name__ == "__main__":
@@ -58,24 +84,18 @@ if __name__ == "__main__":
     # make absolute path because relative path looks in result directory
     args.input_files = os.path.abspath(args.input_files)
 
-
-    def input_creator(ioctx: IOContext) -> InputReader:
-        # must return an instance of ShuffledInput to work with some offline rl
-        # algorithms
-        return ShuffledInput(
-            JsonReader(ioctx.input_config["input_files"], ioctx))
-
-
     # we register our custom input creator with this convenient function
     register_input("custom_input", input_creator)
 
     # config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     config = {
         "env": "Pendulum-v0",
-        # we can either set this as `custom_input` or
-        # `ray.rllib.examples.custom_input_api.CustomJsonReader`
-        # "input": "custom_input",
-        "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        # we can either use the tune registry, class path, or direct function
+        # to connect our input api.
+        "input": "custom_input",
+        # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        # "input": input_creator,
+
         # this gets passed to the IOContext
         "input_config": {
             "input_files": args.input_files,
