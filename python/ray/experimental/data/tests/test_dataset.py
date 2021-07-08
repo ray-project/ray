@@ -48,10 +48,8 @@ def test_write_datasource(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.experimental.data.range(0)
     assert ds.count() == 0
-    with pytest.raises(ValueError):
-        ds.size_bytes()
-    with pytest.raises(ValueError):
-        ds.schema()
+    assert ds.size_bytes() is None
+    assert ds.schema() is None
 
     ds = ray.experimental.data.range(1)
     ds = ds.filter(lambda x: x > 1)
@@ -527,8 +525,7 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    with pytest.raises(ValueError):
-        ds.schema()
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -637,8 +634,7 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    with pytest.raises(ValueError):
-        ds.schema()
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
