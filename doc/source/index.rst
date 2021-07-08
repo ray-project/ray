@@ -314,7 +314,6 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_dataset.rst
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
@@ -324,9 +323,10 @@ Papers
    :maxdepth: -1
    :caption: Data Processing
 
-   modin/index.rst
+   dataset.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   modin/index.rst
    raydp.rst
 
 .. toctree::
@@ -336,7 +336,6 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   iter.rst
    xgboost-ray.rst
    ray-collective.rst
 
