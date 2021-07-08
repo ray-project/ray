@@ -105,7 +105,7 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     } else {
       // Convert all the paths to absolute path to support configuring relative paths in
       // driver.
-      std::list<std::string> absolute_path;
+      std::vector<std::string> absolute_path;
       for (auto path : code_search_path) {
         absolute_path.emplace_back(boost::filesystem::absolute(path).string());
       }

@@ -25,9 +25,30 @@ class FunctionHelper {
   }
 
   void LoadDll(const boost::filesystem::path &lib_path);
-  void LoadFunctionsFromPaths(const std::list<std::string> paths);
-  std::pair<EntryFuntion, const void *> GetExecutableFunctions(
-      const std::string &function_name, bool is_member_function);
+  void LoadFunctionsFromPaths(const std::vector<std::string> paths);
+  template <typename F>
+  std::pair<EntryFuntion, const F *> LookupExecutableFunctions(
+      const std::string &function_name, std::string lib_path,
+      const std::unordered_map<std::string, F> &funcs_map) {
+    EntryFuntion entry_function;
+    // Lookup function pointer.
+    auto it = funcs_map.find(function_name);
+    if (it == funcs_map.end()) {
+      return std::make_pair(entry_function, nullptr);
+    }
+    // Lookup entry function.
+    auto entry_it = entry_funcs_.find(lib_path);
+    if (entry_it == entry_funcs_.end()) {
+      return std::make_pair(entry_function, nullptr);
+    }
+    entry_function = entry_it->second;
+    return std::make_pair(entry_function, &it->second);
+  }
+
+  std::pair<EntryFuntion, const RemoteFunction *> GetExecutableFunctions(
+      const std::string &function_name);
+  std::pair<EntryFuntion, const RemoteMemberFunction *> GetExecutableMemberFunctions(
+      const std::string &function_name);
 
  private:
   FunctionHelper() = default;

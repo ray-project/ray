@@ -16,22 +16,20 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
     return;
   }
 
-  if (!boost::filesystem::exists(lib_path)) {
-    RAY_LOG(WARNING) << lib_path << " dynamic library not found.";
-    return;
-  }
+  RAY_CHECK(boost::filesystem::exists(lib_path))
+      << lib_path << " dynamic library not found.";
 
   std::shared_ptr<boost::dll::shared_library> lib = nullptr;
   try {
     lib = std::make_shared<boost::dll::shared_library>(
         lib_path.string(), boost::dll::load_mode::type::rtld_lazy);
   } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Load library failed, lib_path: " << lib_path
-                     << ", failed reason: " << e.what();
+    RAY_LOG(FATAL) << "Load library failed, lib_path: " << lib_path
+                   << ", failed reason: " << e.what();
     return;
   } catch (...) {
-    RAY_LOG(WARNING) << "Load library failed, lib_path: " << lib_path
-                     << ", unknown failed reason.";
+    RAY_LOG(FATAL) << "Load library failed, lib_path: " << lib_path
+                   << ", unknown failed reason.";
     return;
   }
 
@@ -107,7 +105,7 @@ void FindDynamicLibrary(boost::filesystem::path path,
   }
 }
 
-void FunctionHelper::LoadFunctionsFromPaths(const std::list<std::string> paths) {
+void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> paths) {
   std::list<boost::filesystem::path> dynamic_libraries;
   // Lookup dynamic libraries from paths.
   for (auto path : paths) {
@@ -119,7 +117,7 @@ void FunctionHelper::LoadFunctionsFromPaths(const std::list<std::string> paths) 
     } else if (boost::filesystem::exists(path)) {
       FindDynamicLibrary(path, dynamic_libraries);
     } else {
-      RAY_LOG(WARNING) << path << " dynamic library not found.";
+      RAY_LOG(FATAL) << path << " dynamic library not found.";
     }
   }
 
@@ -129,44 +127,37 @@ void FunctionHelper::LoadFunctionsFromPaths(const std::list<std::string> paths) 
   }
 }
 
-// Return a pair which contains a executable entry function and a remote function pointer.
-std::pair<EntryFuntion, const void *> FunctionHelper::GetExecutableFunctions(
-    const std::string &function_name, bool is_member_function) {
+std::pair<EntryFuntion, const RemoteFunction *> FunctionHelper::GetExecutableFunctions(
+    const std::string &function_name) {
   for (auto &entry : remote_funcs_) {
-    if (!is_member_function) {
-      // Actor remote function.
-      // Lookup function pointer.
-      auto it = entry.second.first.find(function_name);
-      if (it == entry.second.first.end()) {
-        continue;
-      }
-      const void *func_ptr = static_cast<const void *>(&it->second);
-      // Lookup entry function.
-      auto entry_it = entry_funcs_.find(entry.first);
-      if (entry_it == entry_funcs_.end()) {
-        continue;
-      }
-      auto entry_function = entry_it->second;
-      return std::make_pair(entry_function, func_ptr);
+    auto pair = LookupExecutableFunctions<RemoteFunction>(function_name, entry.first,
+                                                          entry.second.first);
+    if (!pair.first) {
+      continue;
     } else {
-      // Normal remote function or actor creation function.
-      // Lookup function pointer.
-      auto it = entry.second.second.find(function_name);
-      if (it == entry.second.second.end()) {
-        continue;
-      }
-      const void *func_ptr = static_cast<const void *>(&it->second);
-      // Lookup entry function.
-      auto entry_it = entry_funcs_.find(entry.first);
-      if (entry_it == entry_funcs_.end()) {
-        continue;
-      }
-      auto entry_function = entry_it->second;
-      return std::make_pair(entry_function, func_ptr);
+      return pair;
     }
   }
 
   throw RayException("Executable functions not found, the function name " +
+                     function_name);
+}
+
+// Return a pair which contains a executable entry function and a remote member function
+// pointer.
+std::pair<EntryFuntion, const RemoteMemberFunction *>
+FunctionHelper::GetExecutableMemberFunctions(const std::string &function_name) {
+  for (auto &entry : remote_funcs_) {
+    auto pair = LookupExecutableFunctions<RemoteMemberFunction>(
+        function_name, entry.first, entry.second.second);
+    if (!pair.first) {
+      continue;
+    } else {
+      return pair;
+    }
+  }
+
+  throw RayException("Executable member functions not found, the function name " +
                      function_name);
 }
 

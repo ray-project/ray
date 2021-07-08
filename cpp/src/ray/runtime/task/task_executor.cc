@@ -87,8 +87,14 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
-    auto funcs = FunctionHelper::GetInstance().GetExecutableFunctions(
-        func_name, actor_ptr != nullptr);
+    std::pair<EntryFuntion, const void *> funcs;
+    if (actor_ptr == nullptr) {
+      funcs = static_cast<std::pair<EntryFuntion, const void *>>(
+          FunctionHelper::GetInstance().GetExecutableFunctions(func_name));
+    } else {
+      funcs = static_cast<std::pair<EntryFuntion, const void *>>(
+          FunctionHelper::GetInstance().GetExecutableMemberFunctions(func_name));
+    }
     RAY_LOG(DEBUG) << "Get executable function" << func_name << " ok.";
     auto result = funcs.first(funcs.second, func_name, args_buffer, actor_ptr);
     RAY_LOG(DEBUG) << "Execute function" << func_name << " ok.";
