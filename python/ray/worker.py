@@ -733,6 +733,8 @@ def init(
             logging_level=logging_level,
             logging_format=logging_format,
             log_to_driver=log_to_driver,
+            namespace=namespace,
+            runtime_env=runtime_env,
             # Unstable parameters
             _enable_object_reconstruction=_enable_object_reconstruction,
             _redis_max_memory=_redis_max_memory,

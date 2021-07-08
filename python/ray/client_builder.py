@@ -162,9 +162,10 @@ class _LocalClientBuilder(ClientBuilder):
         """
         Begin a connection to the address passed in via ray.client(...).
         """
-        # These two arguments should already be set by ClientBuilder.namespace
+        # These two arguments should already be set by
+        # ClientBuilder.namespace and ClientBuilder.env
         self._init_args_dict.pop("job_config", None)
-        self._init_args_dict.pop("namespace", None)
+        # self._init_args_dict.pop("namespace", None)
         connection_dict = ray.init(
             address=self.address,
             job_config=self._job_config,
