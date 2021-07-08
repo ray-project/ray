@@ -10,7 +10,7 @@ if cv2 is None:
     try:
         from skimage import color, io, transform
     except ImportError:
-        raise ModuleNotFoundError('Either scikit-image or opencv is required')
+        raise ModuleNotFoundError("Either scikit-image or opencv is required")
 
 
 def resize(img, height, width):
