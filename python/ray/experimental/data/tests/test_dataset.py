@@ -393,9 +393,9 @@ def test_iter_batches_grid(ray_start_regular_shared):
     random.seed(seed)
     max_num_blocks = 20
     max_num_rows_per_block = 20
-    num_blocks_samples = 5
-    block_sizes_samples = 10
-    batch_size_samples = 10
+    num_blocks_samples = 3
+    block_sizes_samples = 3
+    batch_size_samples = 3
 
     for num_blocks in np.random.randint(
             1, max_num_blocks + 1, size=num_blocks_samples):
