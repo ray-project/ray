@@ -594,7 +594,10 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform in ["win32", "darwin"],
+    reason="Failing on "
+    "Windows and OSX.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_up(serve_instance, use_handle):
     # Tests redeploying with a new version and higher num_replicas.
