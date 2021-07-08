@@ -219,7 +219,7 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
                 ray.client().connect()
                 return
             raise RaySystemError("Ray has not been started yet. You can "
@@ -665,8 +665,7 @@ def init(
         _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address (str): The IP address of the node that we are on.
-        _driver_object_store_memory (int): Limit the amount of memory the
-            driver can use in the object store for creating objects.
+        _driver_object_store_memory (int): Deprecated.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
@@ -1162,8 +1161,7 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
-        driver_object_store_memory: Limit the amount of memory the driver can
-            use in the object store when creating objects.
+        driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
@@ -1291,8 +1289,8 @@ def connect(node,
     worker.core_worker.notify_raylet()
 
     if driver_object_store_memory is not None:
-        worker.core_worker.set_object_store_client_options(
-            f"ray_driver_{os.getpid()}", driver_object_store_memory)
+        logger.warning("`driver_object_store_memory` is deprecated"
+                       " and will be removed in the future.")
 
     # Start the import thread
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):

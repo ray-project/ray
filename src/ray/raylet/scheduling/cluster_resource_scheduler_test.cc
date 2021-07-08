@@ -181,7 +181,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
-    RayConfig::instance().initialize("scheduler_hybrid_scheduling,false;");
+    RayConfig::instance().initialize(R"({"scheduler_hybrid_scheduling": false})");
   }
 
   void Shutdown() {}
@@ -235,18 +235,12 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   StringIdMap ids;
   hash<string> hasher;
-  size_t num = 10;  // should be greater than 10.
+  const size_t num = 10;  // should be greater than 10.
 
   for (size_t i = 0; i < num; i++) {
     ids.Insert(to_string(i));
   }
   ASSERT_EQ(ids.Count(), num);
-
-  ids.Remove(to_string(1));
-  ASSERT_EQ(ids.Count(), num - 1);
-
-  ids.Remove(hasher(to_string(2)));
-  ASSERT_EQ(ids.Count(), num - 2);
 
   ASSERT_EQ(ids.Get(to_string(3)), static_cast<int64_t>(hasher(to_string(3))));
 

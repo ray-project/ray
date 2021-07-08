@@ -30,6 +30,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
 
@@ -1820,6 +1821,63 @@ def install_nightly(verbose, dryrun):
         subprocess.check_call(cmd)
 
 
+@cli.command()
+@click.option(
+    "--show-library-path",
+    "-show",
+    required=False,
+    is_flag=True,
+    help="Show the cpp include path and library path, if provided.")
+@click.option(
+    "--generate-bazel-project-template-to",
+    "-gen",
+    required=False,
+    type=str,
+    help="The directory to generate the bazel project template to,"
+    " if provided.")
+@add_click_options(logging_options)
+def cpp(show_library_path, generate_bazel_project_template_to, log_style,
+        log_color, verbose):
+    """Show the cpp library path and generate the bazel project template."""
+    if not show_library_path and not generate_bazel_project_template_to:
+        raise ValueError(
+            "Please input at least one option of '--show-library-path'"
+            " and '--generate-bazel-project-template-to'.")
+    cli_logger.configure(log_style, log_color, verbose)
+    raydir = os.path.abspath(os.path.dirname(ray.__file__))
+    cpp_templete_dir = os.path.join(raydir, "cpp/example")
+    include_dir = os.path.join(raydir, "cpp/include")
+    lib_dir = os.path.join(raydir, "cpp/lib")
+    if show_library_path:
+        cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
+        cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
+    if generate_bazel_project_template_to:
+        if not os.path.isdir(generate_bazel_project_template_to):
+            cli_logger.abort(
+                "The provided directory "
+                f"{generate_bazel_project_template_to} doesn't exist.")
+        copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
+        out_include_dir = os.path.join(generate_bazel_project_template_to,
+                                       "thirdparty/include")
+        if not os.path.exists(out_include_dir):
+            os.makedirs(out_include_dir)
+        copy_tree(include_dir, out_include_dir)
+        out_lib_dir = os.path.join(generate_bazel_project_template_to,
+                                   "thirdparty/lib")
+        if not os.path.exists(out_lib_dir):
+            os.makedirs(out_lib_dir)
+        copy_tree(lib_dir, out_lib_dir)
+
+        cli_logger.print(
+            "Project template generated to {}",
+            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"))
+        cli_logger.print("To build and run this template, run")
+        cli_logger.print(
+            cf.bold(
+                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
+                " && bazel run //:example"))
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -1852,6 +1910,7 @@ cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
+cli.add_command(cpp)
 
 try:
     from ray.serve.scripts import serve_cli

@@ -277,6 +277,7 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_asyncio.py",
+    "test_multiprocessing.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
