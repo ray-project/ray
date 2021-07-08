@@ -8,7 +8,7 @@ Ray Datasets are the standard way to load and exchange data between Ray librarie
 
 For those familiar with Apache Arrow, Ray Datasets can be thought of as implementing "distributed Arrow".
 
-Under the hood, Datasets are implemented using Ray objects. Data records are organized into Arrow data *blocks*, each of which is a Ray object. A Dataset is simply a list of these block references and their metadata. Datasets implement parallel operations using Ray tasks and actors to transform their data blocks. Since Datasets are just lists of Ray object refs, they can also be passed between Ray tasks and actors just like any other object. Datasets support conversion to/from several more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and also conversion into TensorFlow and PyTorch dataset formats.
+Under the hood, Datasets are implemented using Ray objects. Data records are organized into data *blocks*, each of which is a Ray object holding an Arrow table. A Dataset is simply a list of these block references and their metadata. Datasets implement parallel operations using Ray tasks and actors to transform their data blocks. Since Datasets are just lists of Ray object refs, they can also be passed between Ray tasks and actors just like any other object. Datasets support conversion to/from several more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and also conversion into TensorFlow and PyTorch dataset formats.
 
 Creating, Transforming, and Saving Datasets
 -------------------------------------------
