@@ -39,9 +39,8 @@ def test_gcp_broken_pipe_retry():
         [b, b, b, b, None],  # Four failures followed by success
         [b, b, v, b, None],  # ValueError raised
         [b, b, b, b, b, None],  # max 5 tries allowed,raise
-        [b, b, b, b, b, b, None]
-    ]  # also raise
-
+        [b, b, b, b, b, b, None],  # also raise
+    ]
     expected_errors_raised = [None, None, v, b, b]
 
     for error_input, expected_error_raised in zip(error_inputs,
