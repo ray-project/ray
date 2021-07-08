@@ -48,7 +48,10 @@ void BundleSpecification::ComputeBundleResourceLabels() {
   }
   auto bundle_label =
       FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
-  bundle_resource_labels_[bundle_label] = 1000;
+  auto index_bundle_label =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), Index());
+  bundle_resource_labels_[index_bundle_label] = bundle_resource_labels_[bundle_label] =
+      1000;
 }
 
 const ResourceSet &BundleSpecification::GetRequiredResources() const {

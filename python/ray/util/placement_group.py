@@ -68,11 +68,12 @@ class PlacementGroup:
             "bundle length == 0, current bundle length: "
             f"{len(self.bundle_cache)}")
 
-        bundle_index = 0
-
         return bundle_reservation_check.options(
             placement_group=self,
-            placement_group_bundle_index=bundle_index).remote(self)
+            placement_group_bundle_index=0,
+            resources={
+                "bundle": 0.001
+            }).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
         """Wait for the placement group to be ready within the specified time.
