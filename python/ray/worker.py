@@ -704,7 +704,7 @@ def init(
             arguments is passed in.
     """
 
-    # If available, use RAY_ADDRESS to override if the address if it was left
+    # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(
         ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
@@ -748,10 +748,6 @@ def init(
             _metrics_export_port=_metrics_export_port,
             _system_config=_system_config,
             _tracing_startup_hook=_tracing_startup_hook)
-        if namespace is not None:
-            builder.namespace(namespace)
-        if runtime_env is not None:
-            builder.env(runtime_env)
         builder._catch_all(**kwargs)
         return builder.connect()
 

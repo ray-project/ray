@@ -153,7 +153,11 @@ class ClientBuilder:
         for example the _LocalClientBuilder will create a cluster locally.
         You can specify the arguments for the eventual ray.init call here.
         """
-        self._init_args_dict.update(kwargs)
+        if kwargs.get("namespace") is not None:
+            self.namespace(kwargs["namespace"])
+        if kwargs.get("runtime_env") is not None:
+            self.env(kwargs["runtime_env"])
+        self._init_args_dict = kwargs
         return self
 
 
@@ -162,10 +166,11 @@ class _LocalClientBuilder(ClientBuilder):
         """
         Begin a connection to the address passed in via ray.client(...).
         """
-        # These two arguments should already be set by
-        # ClientBuilder.namespace and ClientBuilder.env
+        # Remove job_config, env, and namespace from args passed to init,
+        # since already configured by ClientBuilder.env and .namespace.
         self._init_args_dict.pop("job_config", None)
-        # self._init_args_dict.pop("namespace", None)
+        self._init_args_dict.pop("namespace", None)
+        self._init_args_dict.pop("runtime_env", None)
         connection_dict = ray.init(
             address=self.address,
             job_config=self._job_config,
