@@ -157,7 +157,7 @@ setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
 # NOTE: rayproject/ray-ml:latest has azure packages bundled
-head_setup_commands:
+head_setup_commands: []
     # - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
