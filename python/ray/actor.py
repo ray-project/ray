@@ -142,7 +142,7 @@ class ActorMethod:
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
             if actor is None:
-                raise RuntimeError("Lost reference to actor")
+                raise RuntimeError("Lost reference to actor. If you are trying to reference an actor via ray.get_actor('name'). Then set it as a variable first.")
             return actor._actor_method_call(
                 self._method_name,
                 args=args,
