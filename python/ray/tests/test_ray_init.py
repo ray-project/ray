@@ -3,9 +3,10 @@ import sys
 
 import pytest
 import redis
-
+import unittest.mock
 import ray
 import ray._private.services
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.cluster_utils import Cluster
 
 
@@ -145,28 +146,60 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert address_info["node_manager_port"] == node2.node_manager_port
 
 
-def test_ray_init_local():
-    try:
-        with ray.init("local://", dashboard_port=22222) as context:
-            assert context.dashboard_url.split(":")[-1] == "22222"
-    finally:
-        ray.shutdown()
+def test_ray_init_local(shutdown_only):
+    with ray.init("local://", dashboard_port=22222) as context:
+        assert context.dashboard_url.split(":")[-1] == "22222"
 
 
-def test_ray_init_invalid_keyword():
-    with pytest.raises(RuntimeError):
+def test_ray_init_invalid_keyword(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
         ray.init("localhost", logginglevel="<- missing underscore")
+    assert "logginglevel" in str(excinfo.value)
+
+
+def test_ray_init_invalid_keyword_with_client(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        ray.init("ray://127.0.0.0?logginglevel=mispelled")
+    assert "logginglevel" in str(excinfo.value)
 
 
 def test_env_var_override():
-    try:
-        with ray.init("local://"):
-            pass
-    finally:
-        ray.shutdown()
+    with unittest.mock.patch.dict(os.environ, {"RAY_NAMESPACE": "envName"}), \
+            ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init("ray://localhost:50051"):
+            assert ray.get_runtime_context().namespace == "envName"
 
 
-# def test_ray_init_
+def test_env_var_no_override():
+    # init() argument has precedence over environment variables
+    with unittest.mock.patch.dict(os.environ, {"RAY_NAMESPACE": "envName"}), \
+            ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init("ray://localhost:50051", namespace="argumentName"):
+            assert ray.get_runtime_context().namespace == "argumentName"
+
+
+def test_url_param_override():
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init("ray://localhost:50051?namespace=urlName"):
+            assert ray.get_runtime_context().namespace == "urlName"
+
+
+def test_url_param_no_override():
+    # init() argument has precedence over url parameters
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init(
+                "ray://localhost:50051?namespace=urlName",
+                namespace="argName"):
+            assert ray.get_runtime_context().namespace == "argName"
+
 
 if __name__ == "__main__":
     import pytest

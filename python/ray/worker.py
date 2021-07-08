@@ -704,8 +704,8 @@ def init(
             arguments is passed in.
     """
 
-    # If available, use environment variables for arguments that weren't
-    # specified in the ray.init call
+    # If available, use RAY_ADDRESS to override if the address if it was left
+    # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(
         ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if address_env_var:
@@ -714,22 +714,6 @@ def init(
             logger.info(
                 f"Using address {address_env_var} set in the environment "
                 f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
-
-    namespace_env_var = os.environ.get(
-        ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
-    if namespace_env_var and namespace is None:
-        namespace = namespace_env_var
-        logger.info(
-            f"Using namespace {namespace_env_var} set in the environment "
-            f"variable {ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE}")
-
-    runtime_env_var = os.environ.get(
-        ray_constants.RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
-    if runtime_env_var and runtime_env is None:
-        runtime_env = json.loads(runtime_env_var)
-        logger.info(
-            f"Using runtime env {runtime_env_var} set in the environment "
-            f"variable {ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE}")
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client

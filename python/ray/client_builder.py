@@ -8,7 +8,9 @@ import sys
 
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                               RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
+                               RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
 
@@ -67,19 +69,31 @@ class ClientBuilder:
         self._job_config = JobConfig()
         self._init_args_dict = {}
         self._catch_all_dict = {}
+
+        # Check environment variables for default values
+        namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
+        if namespace_env_var:
+            self.namespace(namespace_env_var)
+
+        runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+        if runtime_env_var:
+            self.env(json.loads(runtime_env_var))
+
+        # Check address for values
         if address:
-            parsed_address = urlparse(address)
+            # Add a dummy protocol to parse correctly
+            parsed_address = urlparse("dummyProto://" + address)
             # Set address to part before the parameters, i.e. before any
             # "?arg=val" in the url
-            self.address = parsed_address.path
+            self.address = parsed_address.netloc
             params_dict = parse_qs(parsed_address.query)
             for key, val in params_dict.items():
                 if key == "runtime_env":
-                    self.env(json.loads(val))
+                    self.env(json.loads(val[0]))
                 elif key == "namespace":
-                    self.env(val)
+                    self.namespace(val[0])
                 else:
-                    raise RuntimeError(f"Unknown parameter: {val}")
+                    raise RuntimeError(f"Unknown parameter: {key}")
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -148,7 +162,9 @@ class _LocalClientBuilder(ClientBuilder):
         """
         Begin a connection to the address passed in via ray.client(...).
         """
-        self._init_args_dict.pop("job_config", self._job_config)
+        # These two arguments should already be set by ClientBuilder.namespace
+        self._init_args_dict.pop("job_config", None)
+        self._init_args_dict.pop("namespace", None)
         connection_dict = ray.init(
             address=self.address,
             job_config=self._job_config,
