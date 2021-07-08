@@ -55,11 +55,8 @@ def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
         with pytest.raises(expected_error_raised):
             provider.mock_method(1, 2, a=4, b=5)
     else:
-        assert provider.mock_method(
-            1, 2, a=4, b=5) == ((1, 2), {
-                "a": 4,
-                "b": 5
-            })
+        ret = provider.mock_method(1, 2, a=4, b=5)
+        assert ret == ((1, 2), {"a": 4, "b": 5})
 
 
 if __name__ == "__main__":
