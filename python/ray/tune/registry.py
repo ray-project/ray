@@ -104,6 +104,14 @@ def register_input(name: str,
     _global_registry.register(RLLIB_INPUT, name, input_creator)
 
 
+def registry_contains_input(name: str) -> bool:
+    return _global_registry.contains(RLLIB_INPUT, name)
+
+
+def registry_get_input(name: str) -> Callable[[IOContext], InputReader]:
+    return _global_registry.get(RLLIB_INPUT, name)
+
+
 def check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
