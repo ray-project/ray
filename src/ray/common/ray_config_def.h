@@ -440,5 +440,5 @@ RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
 /// Default custom_unit_instance_resources is empty.
-/// When set it to {FPGA}, we will treat FPGA as unit_instance.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
 RAY_CONFIG(string_type, custom_unit_instance_resources, "")
