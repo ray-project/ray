@@ -27,34 +27,39 @@ class MockGCPNodeProvider:
             raise error
         return (args, kwargs)
 
+# Short names for two types of errors
+B, V = BrokenPipeError, ValueError
+# BrokenPipeError is supposed to caught with up to 5 tries.
+# ValueError is an arbitrarily chosen exception which should not be caught.
 
-def test_gcp_broken_pipe_retry():
-    # Short names for two types of errors
-    b, v = BrokenPipeError, ValueError
-    # BrokenPipeError is supposed to caught with up to 5 tries.
-    # ValueError is an arbitrarily chosen exception which should not be caught.
-
-    error_inputs = [
-        [None],  # No error, success
-        [b, b, b, b, None],  # Four failures followed by success
-        [b, b, v, b, None],  # ValueError raised
-        [b, b, b, b, b, None],  # max 5 tries allowed,raise
-        [b, b, b, b, b, b, None],  # also raise
+@pytest.mark.parametrize(
+    "error_input,expected_error_raised", [
+        ([None], None),
+        ([B, B, B, B, None], None),
+        ([B, B, V, B, None], V),
+        ([B, B, B, B, B, None], B),
+        ([B, B, B, B, B, B, None], B)
     ]
-    expected_errors_raised = [None, None, v, b, b]
+)
+def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
+    """Tests retries of BrokenPipeError in GCPNodeProvider.
 
-    for error_input, expected_error_raised in zip(error_inputs,
-                                                  expected_errors_raised):
-        provider = MockGCPNodeProvider(error_input)
-        if expected_error_raised:
-            with pytest.raises(expected_error_raised):
-                provider.mock_method(1, 2, a=4, b=5)
-        else:
-            assert provider.mock_method(
-                1, 2, a=4, b=5) == ((1, 2), {
-                    "a": 4,
-                    "b": 5
-                })
+    Args:
+        error_input: List of exceptions hit during retries of test mock_method.
+            None means no exception.
+        expected_error_raised: Expected exception raised.
+            None means no exception.
+    """
+    provider = MockGCPNodeProvider(error_input)
+    if expected_error_raised:
+        with pytest.raises(expected_error_raised):
+            provider.mock_method(1, 2, a=4, b=5)
+    else:
+        assert provider.mock_method(
+            1, 2, a=4, b=5) == ((1, 2), {
+                "a": 4,
+                "b": 5
+            })
 
 
 if __name__ == "__main__":
