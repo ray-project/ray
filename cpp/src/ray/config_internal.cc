@@ -14,7 +14,7 @@ DEFINE_string(ray_code_search_path, "",
 
 DEFINE_string(ray_job_id, "", "Assigned job id.");
 
-DEFINE_int32(ray_node_manager_port, 62665, "The port to use for the node manager.");
+DEFINE_int32(ray_node_manager_port, 0, "The port to use for the node manager.");
 
 DEFINE_string(ray_raylet_socket_name, "",
               "It will specify the socket name used by the raylet if provided.");

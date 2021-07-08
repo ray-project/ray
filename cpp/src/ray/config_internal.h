@@ -22,7 +22,7 @@ class ConfigInternal {
 
   std::string redis_password = "5241590000000000";
 
-  int node_manager_port = 62665;
+  int node_manager_port = 0;
 
   std::vector<std::string> code_search_path;
 

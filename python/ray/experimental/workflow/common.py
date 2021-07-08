@@ -6,13 +6,12 @@ import uuid
 
 from dataclasses import dataclass
 
-import ray
+from ray import ObjectRef
 
 # Alias types
-RRef = ray.ObjectRef  # Alias ObjectRef because it is too long in type hints.
 StepID = str
-WorkflowOutputType = RRef
-WorkflowInputTuple = Tuple[RRef, List["Workflow"], List[RRef]]
+WorkflowOutputType = ObjectRef
+WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
@@ -23,7 +22,7 @@ class WorkflowInputs:
     # The workflow step function body.
     func_body: Callable
     # The object ref of the input arguments.
-    args: RRef
+    args: ObjectRef
     # The hex string of object refs in the arguments.
     object_refs: List[str]
     # The ID of workflows in the arguments.
@@ -50,11 +49,12 @@ def slugify(value: str, allow_unicode=False):
 class Workflow:
     def __init__(self, original_function: Callable,
                  step_execution_function: StepExecutionFunction,
-                 input_placeholder: RRef, input_workflows: List["Workflow"],
-                 input_object_refs: List[RRef]):
-        self._input_placeholder: RRef = input_placeholder
+                 input_placeholder: ObjectRef,
+                 input_workflows: List["Workflow"],
+                 input_object_refs: List[ObjectRef]):
+        self._input_placeholder: ObjectRef = input_placeholder
         self._input_workflows: List[Workflow] = input_workflows
-        self._input_object_refs: List[RRef] = input_object_refs
+        self._input_object_refs: List[ObjectRef] = input_object_refs
         # we need the original function for checkpointing
         self._original_function: Callable = original_function
         self._step_execution_function: StepExecutionFunction = (
@@ -64,9 +64,6 @@ class Workflow:
         self._output: Optional[WorkflowOutputType] = None
         self._step_id: StepID = slugify(
             original_function.__qualname__) + "." + uuid.uuid4().hex
-        # When we resuming the workflow, we do not want to override the DAG
-        # of the original workflow. This tag helps skip it.
-        self.skip_saving_workflow_dag: bool = False
 
     @property
     def executed(self) -> bool:
@@ -82,12 +79,13 @@ class Workflow:
     def id(self) -> StepID:
         return self._step_id
 
-    def execute(self, outer_most_step_id: Optional[StepID] = None) -> RRef:
+    def execute(self,
+                outer_most_step_id: Optional[StepID] = None) -> ObjectRef:
         """Trigger workflow execution recursively.
 
         Args:
             outer_most_step_id: See
-                "workflow_manager.postprocess_workflow_step" for explanation.
+                "step_executor.execute_workflow" for explanation.
         """
         if self.executed:
             return self._output
