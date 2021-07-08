@@ -11,14 +11,17 @@ def test_workflow_lifetime():
     subprocess.run(["ray start --head"], shell=True)
     time.sleep(1)
     script = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "workflows_to_fail.py")
-    proc = subprocess.Popen([sys.executable, script])
-    time.sleep(10)
-    proc.kill()
+        os.path.abspath(os.path.dirname(__file__)), "driver_terminated.py")
+    sleep_duration = 5
+    proc = subprocess.Popen([sys.executable, script, str(sleep_duration)])
+    # TODO(suquark): also test killing the driver after fixing
+    # https://github.com/ray-project/ray/issues/16951
+    # now we only let the driver exit normally
+    proc.wait()
     time.sleep(1)
     # connect to the cluster
     ray.init(address="auto", namespace="workflow")
-    output = workflow.get_output("cluster_failure")
+    output = workflow.get_output("driver_terminated")
     assert ray.get(output) == 20
     ray.shutdown()
     subprocess.run(["ray stop"], shell=True)
