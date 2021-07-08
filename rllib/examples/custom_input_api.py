@@ -13,10 +13,6 @@ from ray import tune
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
 from ray.tune.registry import register_input
 
-PENDULUM_DATA = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../tests/data/pendulum/small.json")
-
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run",
@@ -32,7 +28,9 @@ parser.add_argument("--stop-iters", type=int, default=100)
 parser.add_argument(
     "--input-files",
     type=str,
-    default=PENDULUM_DATA)
+    default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../tests/data/pendulum/small.json"))
 
 
 # example class that subclasses InputReader (from JsonReader)
@@ -42,7 +40,7 @@ class CustomJsonReader(JsonReader):
         """
         The constructor must take an IOContext to be used in the input config.
         """
-        super().__init__(PENDULUM_DATA, ioctx)
+        super().__init__(ioctx.input_config["input_files"], ioctx)
 
 
 if __name__ == "__main__":
@@ -60,10 +58,13 @@ if __name__ == "__main__":
     # make absolute path because relative path looks in result directory
     args.input_files = os.path.abspath(args.input_files)
 
+
     def input_creator(ioctx: IOContext) -> InputReader:
         # must return an instance of ShuffledInput to work with some offline rl
         # algorithms
-        return ShuffledInput(JsonReader(args.input_files, ioctx))
+        return ShuffledInput(
+            JsonReader(ioctx.input_config["input_files"], ioctx))
+
 
     # we register our custom input creator with this convenient function
     register_input("custom_input", input_creator)
@@ -73,8 +74,12 @@ if __name__ == "__main__":
         "env": "Pendulum-v0",
         # we can either set this as `custom_input` or
         # `ray.rllib.examples.custom_input_api.CustomJsonReader`
-        "input": "custom_input",
-        # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        # "input": "custom_input",
+        "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        # this gets passed to the IOContext
+        "input_config": {
+            "input_files": args.input_files,
+        },
         "framework": args.framework,
         "actions_in_input_normalized": True,
         "clip_actions": True,
