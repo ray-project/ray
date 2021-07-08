@@ -146,6 +146,18 @@ public class GcsClient {
     return JobId.fromBytes(globalStateAccessor.getNextJobID());
   }
 
+  public GcsNodeInfo getNodeToConnectForDriver(String nodeIpAddress) {
+    byte[] value = globalStateAccessor.getNodeToConnectForDriver(nodeIpAddress);
+    Preconditions.checkNotNull(value);
+    GcsNodeInfo nodeInfo = null;
+    try {
+      nodeInfo = GcsNodeInfo.parseFrom(value);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    return nodeInfo;
+  }
+
   /** Destroy global state accessor when ray native runtime will be shutdown. */
   public void destroy() {
     // Only ray shutdown should call gcs client destroy.

@@ -17,6 +17,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -401,8 +402,10 @@ class TFPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
 
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
@@ -413,6 +416,11 @@ class TFPolicy(Policy):
             explore=False, tf_sess=self.get_session())
 
         builder = TFRunBuilder(self.get_session(), "compute_log_likelihoods")
+
+        # Normalize actions if necessary.
+        if actions_normalized is False and self.config["normalize_actions"]:
+            actions = normalize_action(actions, self.action_space_struct)
+
         # Feed actions (for which we want logp values) into graph.
         builder.add_feed_dict({self._action_input: actions})
         # Feed observations.
