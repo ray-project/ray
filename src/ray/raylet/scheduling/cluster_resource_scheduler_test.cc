@@ -502,7 +502,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
 }
 
-TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
+TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU"
+}
+  )");
   // Create cluster resources containing local node.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
@@ -516,6 +522,36 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
 
   TaskResourceInstances expected_cluster_resources;
   addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
+  addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
+  addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
+
+  ASSERT_EQ(expected_cluster_resources == available_cluster_resources, false);
+
+  addTaskResourceInstances(false, {8.}, 1, &expected_cluster_resources);
+
+  ASSERT_EQ(expected_cluster_resources == available_cluster_resources, true);
+}
+
+TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "GPU"
+}
+  )");
+  // Create cluster resources containing local node.
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
+  vector<int64_t> cust_ids{1};
+  vector<FixedPoint> cust_capacities{8};
+  initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+  ClusterResourceScheduler resource_scheduler(0, node_resources);
+
+  TaskResourceInstances available_cluster_resources =
+      resource_scheduler.GetLocalResources().GetAvailableResourceInstances();
+
+  TaskResourceInstances expected_cluster_resources;
+  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
   addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
 
@@ -828,12 +864,6 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "GPU"
-}
-  )");
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
   initNodeResources(node_resources, pred_capacities, EmptyIntVector,
@@ -859,13 +889,6 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
-  // TODO (chenk008): reset RayConfig in the next test. Maybe we need a better way.
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "CPU,GPU"
-}
-  )");
   std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", {});
   for (int i = 0; i < 100; i++) {
