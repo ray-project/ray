@@ -165,6 +165,40 @@ The interface for a custom input reader is as follows:
 .. autoclass:: ray.rllib.offline.InputReader
     :members:
 
+Example Custom Input API
+~~~~~~~~~~~~~~~~
+
+You can create a custom input reader like the following:
+
+.. code-block:: python
+
+    from ray.rllib.offline import InputReader, IOContext, ShuffledInput
+    from ray.tune.registry import register_input
+
+    class CustomInputReader(InputReader):
+        def __init__(self, ioctx: IOContext): ...
+        def next(self): ...
+
+    def input_creator(ioctx: IOContext) -> InputReader:
+        return ShuffledInput(CustomInputReader(ioctx))
+
+    register_input("custom_input", input_creator)
+
+    config = {
+        "input": "custom_input",
+        "input_config": {},
+        ...
+    }
+
+You can pass arguments from the config to the custom input api through the
+``input_config`` option which can be accessed with the ``IOContext``.
+The interface for the ``IOContext`` is the following:
+
+.. autoclass:: ray.rllib.offline.IOContext
+    :members:
+
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
+
 Output API
 ----------
 
