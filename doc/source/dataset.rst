@@ -10,6 +10,36 @@ For those familiar with Apache Arrow, Ray Datasets can be thought of as implemen
 
 Under the hood, Datasets are implemented using Ray objects. Data records are organized into data *blocks*, each of which is a Ray object holding an Arrow table. A Dataset is simply a list of these block references and their metadata. Datasets implement parallel operations using Ray tasks and actors to transform their data blocks. Since Datasets are just lists of Ray object refs, they can also be passed between Ray tasks and actors just like any other object. Datasets support conversion to/from several more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and also conversion into TensorFlow and PyTorch dataset formats.
 
+Data Source Compatibility Matrices
+----------------------------------
+
+
+.. list-table:: Input compatibility matrix
+   :header-rows: 1
+
+   * - Input Type
+     - Code Example
+   * - Spark Dataframe
+     - TBD
+   * - Dask Dataframe
+     - TBD
+   * - Modin Dataframe
+     - TBD
+
+
+.. list-table:: Output compatibility matrix
+   :header-rows: 1
+
+   * - Output Type
+     - Code Example
+   * - Pytorch Iterator
+     - TBD
+   * - Tensorflow Iterator
+     - TBD
+   * - Modin Dataframe
+     - TBD
+
+
 Creating, Transforming, and Saving Datasets
 -------------------------------------------
 
