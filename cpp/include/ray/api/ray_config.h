@@ -12,6 +12,8 @@ namespace api {
 class RayConfig {
  public:
   // The address of the Ray cluster to connect to.
+  // If not provided, it will be initialized from environment variable "RAY_ADDRESS" by
+  // default.
   std::string address = "";
 
   // Whether or not to run this application in a local mode. This is used for debugging.
