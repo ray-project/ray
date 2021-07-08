@@ -27,20 +27,17 @@ class MockGCPNodeProvider:
             raise error
         return (args, kwargs)
 
+
 # Short names for two types of errors
 B, V = BrokenPipeError, ValueError
 # BrokenPipeError is supposed to caught with up to 5 tries.
 # ValueError is an arbitrarily chosen exception which should not be caught.
 
-@pytest.mark.parametrize(
-    "error_input,expected_error_raised", [
-        ([None], None),
-        ([B, B, B, B, None], None),
-        ([B, B, V, B, None], V),
-        ([B, B, B, B, B, None], B),
-        ([B, B, B, B, B, B, None], B)
-    ]
-)
+
+@pytest.mark.parametrize("error_input,expected_error_raised",
+                         [([None], None), ([B, B, B, B, None], None),
+                          ([B, B, V, B, None], V), ([B, B, B, B, B, None], B),
+                          ([B, B, B, B, B, B, None], B)])
 def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
     """Tests retries of BrokenPipeError in GCPNodeProvider.
 
