@@ -93,8 +93,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   ~CoreWorkerPlasmaStoreProvider();
 
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Create and seal an object.
   ///
   /// NOTE: The caller must subsequently call Release() to release the first reference to

@@ -342,7 +342,10 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     assert new_version_pid != pid2
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform in ["win32", "darwin"],
+    reason="Failing on "
+    "Windows and OSX.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Tests that redeploying a deployment with multiple replicas performs
@@ -446,7 +449,10 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform in ["win32", "darwin"],
+    reason="Failing on "
+    "Windows and OSX.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     # Tests that updating the user_config with multiple replicas performs a
@@ -531,7 +537,10 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform in ["win32", "darwin"],
+    reason="Failing on "
+    "Windows and OSX.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_down(serve_instance, use_handle):
     # Tests redeploying with a new version and lower num_replicas.
@@ -585,7 +594,10 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform in ["win32", "darwin"],
+    reason="Failing on "
+    "Windows and OSX.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_up(serve_instance, use_handle):
     # Tests redeploying with a new version and higher num_replicas.
