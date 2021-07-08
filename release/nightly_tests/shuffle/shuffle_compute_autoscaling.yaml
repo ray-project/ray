@@ -16,6 +16,6 @@ worker_node_types:
     - name: worker_node
       instance_type: i3.4xlarge
       min_workers: 0
-      max_workers: 9
+      max_workers: 19
       use_spot: false
       resources: {"object_store_memory": 21474836480}

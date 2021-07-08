@@ -13,16 +13,6 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
-# Autoscaling cluster that goes up and down over the shuffle.
-- name: shuffle_slow_autoscaling
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_autoscaling.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --inject-sleeps
-
 # Test single node 50GB shuffle with a large number of partitions.
 - name: shuffle_50gb
   cluster:
@@ -128,6 +118,17 @@
   run:
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=100 --partition-size=10e9 --no-streaming
+
+# Test non streaming shuffle in a single node with a large partition size.
+- name: autoscaling_shuffle_1tb_1000_partitions
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_autoscaling.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
+
 
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
 - name: shuffle_1tb_1000_partition
