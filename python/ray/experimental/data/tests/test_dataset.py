@@ -388,7 +388,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
     # a grid of dataset, batching, and dropping configurations.
     # Grid: num_blocks x num_rows_block_1 x ... x num_rows_block_N x
     #       batch_size x drop_last
-    seed = time.time_ns()
+    seed = int(time.time())
     print(f"Seeding RNG for test_iter_batches_grid with: {seed}")
     random.seed(seed)
     max_num_blocks = 20
