@@ -45,6 +45,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
+        "//:global_state_accessor_lib",
         "//:ray_common",
         "//:ray_util",
         "@boost//:callable_traits",

@@ -1419,6 +1419,7 @@ cc_library(
     ),
     copts = COPTS,
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":service_based_gcs_client_lib",
     ],

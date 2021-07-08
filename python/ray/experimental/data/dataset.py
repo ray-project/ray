@@ -580,7 +580,8 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The Python type or Arrow schema of the records.
+            The Python type or Arrow schema of the records, or None if the
+            schema is not known.
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
@@ -588,7 +589,7 @@ class Dataset(Generic[T]):
         for m in metadata:
             if m.schema:
                 return m.schema
-        raise ValueError("Could not get the schema for this dataset.")
+        return None
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -606,12 +607,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The in-memory size of the dataset in bytes, or an error if the
+            The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
         metadata = self._blocks.get_metadata()
         if not metadata or metadata[0].size_bytes is None:
-            raise ValueError("Could not estimate the size of this dataset.")
+            return None
         return sum(m.size_bytes for m in metadata)
 
     def input_files(self) -> List[str]:
@@ -620,18 +621,15 @@ class Dataset(Generic[T]):
         Time complexity: O(num input files)
 
         Returns:
-            The list of input files used to create the dataset.
+            The list of input files used to create the dataset, or an empty
+            list if the input files is not known.
         """
         metadata = self._blocks.get_metadata()
         files = set()
         for m in metadata:
             for f in m.input_files:
                 files.add(f)
-        if files:
-            return list(files)
-        else:
-            raise ValueError(
-                "Could not retrieve the input files of this dataset.")
+        return list(files)
 
     def write_parquet(self,
                       path: str,
@@ -921,11 +919,10 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P2
 
     def __repr__(self) -> str:
-        try:
-            schema = self.schema()
-        except ValueError:
-            schema = "Unknown schema"
-        if hasattr(schema, "names"):
+        schema = self.schema()
+        if schema is None:
+            schema_str = "Unknown schema"
+        elif hasattr(schema, "names"):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
