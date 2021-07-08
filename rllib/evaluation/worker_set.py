@@ -325,8 +325,8 @@ class WorkerSet:
         elif isinstance(config["input"], str) and "." in config["input"]:
             module_name, function_name = config["input"].rsplit(".", 1)
             if importlib.util.find_spec(module_name) is not None:
-                input_creator = (lambda ioctx: from_config(
-                    config["input"], ioctx=ioctx))
+                input_creator = (lambda ioctx: ShuffledInput(from_config(
+                    config["input"], ioctx=ioctx)))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
