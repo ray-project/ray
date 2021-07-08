@@ -206,8 +206,9 @@ class Analysis:
                         json_list = [json.loads(line) for line in f if line]
                     df = pd.json_normalize(json_list, sep="/")
                 elif self._file_type == "csv":
-                    df = pd.read_csv(os.path.join(path, EXPR_PROGRESS_FILE),
-                                     dtype=force_dtype)
+                    df = pd.read_csv(
+                        os.path.join(path, EXPR_PROGRESS_FILE),
+                        dtype=force_dtype)
                 self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1
