@@ -13,6 +13,16 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
+# Autoscaling cluster that goes up and down over the shuffle.
+- name: shuffle_slow_autoscaling
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_autoscaling.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --inject-sleeps
+
 # Test single node 50GB shuffle with a large number of partitions.
 - name: shuffle_50gb
   cluster:

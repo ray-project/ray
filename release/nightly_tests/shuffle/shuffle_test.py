@@ -15,6 +15,8 @@ if __name__ == "__main__":
         type=str)
     parser.add_argument(
         "--no-streaming", help="Non streaming shuffle", action="store_true")
+    parser.add_argument(
+        "--inject-sleeps", help="Add sleeps", action="store_true")
     args = parser.parse_args()
 
     start = time.time()
@@ -28,6 +30,8 @@ if __name__ == "__main__":
     ]
     if args.no_streaming:
         commands.append("--no-streaming")
+    if args.inject_sleeps:
+        commands.append("--inject-sleeps")
 
     try:
         subprocess.check_call(commands)
