@@ -7,7 +7,14 @@ import ray
 from ray.util.dask import ray_dask_get
 from xgboost_ray import RayDMatrix, RayParams, train
 
-FILE_S3_URI = "s3://ray-ci-higgs/HIGGS.csv"
+FILE_S3_URI = "s3://ray-ci-higgs/simpleHIGGS.csv"
+
+def is_anyscale_connect():
+    """Returns whether or not the Ray Address points to an Anyscale cluster."""
+    address = os.environ.get("RAY_ADDRESS")
+    is_anyscale_connect = address is not None and address.startswith(
+        "anyscale://")
+    return is_anyscale_connect
 
 
 def test():
@@ -23,10 +30,10 @@ def test():
 
     # partition on a column
     df_train = data[(data["feature-01"] < 0.4)]
-    df_train = df_train.persist()
+    # df_train = df_train.persist()
     df_validation = data[(data["feature-01"] >= 0.4)
                          & (data["feature-01"] < 0.8)]
-    df_validation = df_validation.persist()
+    # df_validation = df_validation.persist()
 
     dtrain = RayDMatrix(df_train, label="label", columns=colnames)
     dvalidation = RayDMatrix(df_validation, label="label")
@@ -52,7 +59,10 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     args = parser.parse_args()
 
-    job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
-    ray.client().job_name(job_name).connect()
+    client_builder = ray.client()
+    if is_anyscale_connect():
+        job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
+        client_builder.job_name(job_name)
+    client_builder.connect()
 
     test()
