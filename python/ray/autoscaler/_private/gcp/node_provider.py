@@ -54,9 +54,8 @@ def _retry(method, max_tries=5, backoff_s=1):
         while try_count < max_tries:
             try:
                 return method(self, *args, **kwargs)
-            except (BrokenPipeError, OSError) as e:
-                error_type = e.__class__.__name__
-                logger.warning(f"Caught a {error_type} error. Retrying.")
+            except BrokenPipeError:
+                logger.warning("Caught a BrokenPipeError error. Retrying.")
                 try_count += 1
                 if try_count < max_tries:
                     self._construct_clients()
