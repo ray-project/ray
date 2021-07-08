@@ -6,8 +6,7 @@ if TYPE_CHECKING:
 
 from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
 from ray.experimental.data.impl.block_list import BlockMetadata
-from ray.experimental.data.datasource.datasource import (
-    Datasource, ReadTask)
+from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +134,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
             tables = []
             for read_path in read_paths:
                 with filesystem.open_input_file(read_path) as f:
-                    tables.append(
-                       read_file(
-                            f,
-                            **arrow_reader_args))
+                    tables.append(read_file(f, **arrow_reader_args))
             return ArrowBlock(pa.concat_tables(tables))
 
         read_tasks = [

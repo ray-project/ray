@@ -21,5 +21,4 @@ class CSVDatasource(FileBasedDatasource):
 
         read_options = arrow_reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False))
-        return csv.read_csv(
-            f, read_options=read_options, **arrow_reader_args)
+        return csv.read_csv(f, read_options=read_options, **arrow_reader_args)
