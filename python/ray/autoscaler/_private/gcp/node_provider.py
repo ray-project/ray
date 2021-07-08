@@ -48,6 +48,7 @@ def _retry(method, max_tries=5, backoff_s=1):
     Work-around for https://github.com/ray-project/ray/issues/16072.
     Based on https://github.com/kubeflow/pipelines/pull/5250/files.
     """
+
     @wraps(method)
     def method_with_retries(self, *args, **kwargs):
         try_count = 0
