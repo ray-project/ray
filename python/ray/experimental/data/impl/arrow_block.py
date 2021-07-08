@@ -72,6 +72,9 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
             self._builder = ArrowBlockBuilder()
         return self._builder.build()
 
+    def num_rows(self) -> int:
+        return self._builder.num_rows() if self._builder is not None else 0
+
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -79,6 +82,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
         self._tables: List["pyarrow.Table"] = []
+        self._num_rows = 0
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -89,9 +93,11 @@ class ArrowBlockBuilder(BlockBuilder[T]):
                 "got {} (type {}).".format(item, type(item)))
         for key, value in item.items():
             self._columns[key].append(value)
+        self._num_rows += 1
 
     def add_block(self, block: "ArrowBlock[T]") -> None:
         self._tables.append(block._table)
+        self._num_rows += block.num_rows()
 
     def build(self) -> "ArrowBlock[T]":
         if self._columns:
@@ -105,6 +111,9 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             return ArrowBlock(tables[0])
         else:
             return ArrowBlock(pyarrow.Table.from_pydict({}))
+
+    def num_rows(self) -> int:
+        return self._num_rows
 
 
 class ArrowBlock(Block):
