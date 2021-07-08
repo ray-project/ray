@@ -48,10 +48,8 @@ def test_write_datasource(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.experimental.data.range(0)
     assert ds.count() == 0
-    with pytest.raises(ValueError):
-        ds.size_bytes()
-    with pytest.raises(ValueError):
-        ds.schema()
+    assert ds.size_bytes() is None
+    assert ds.schema() is None
 
     ds = ray.experimental.data.range(1)
     ds = ds.filter(lambda x: x > 1)
@@ -526,8 +524,8 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     assert df1.equals(ray.get(ds.to_pandas())[0])
     # Test metadata ops.
     assert ds.count() == 3
-    assert "two" in str(ds.schema())
-    assert "two" in str(ds)
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -536,6 +534,9 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        ray.get(block).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -632,8 +633,8 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert "two" in str(ds.schema())
-    assert "two" in str(ds)
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -643,6 +644,9 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     df = pd.concat([df1, df2])
     assert df.equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        ray.get(block).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
