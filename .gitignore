@@ -20,7 +20,9 @@
 /java/runtime/src/main/java/io/ray/runtime/generated/*
 
 # Files genrated by c++ worker should be ignored.
-cpp/example/thirdparty/
+/cpp/example/thirdparty/
+/cpp/example/bazel-*
+/python/ray/cpp
 
 # Redis temporary files
 *dump.rdb
