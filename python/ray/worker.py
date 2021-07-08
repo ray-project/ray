@@ -574,12 +574,6 @@ def init(
         log_to_driver=True,
         namespace=None,
         runtime_env=None,
-        # Anyscale cluster parameters
-        job_name=None,
-        autosuspend=None,
-        cluster_env=None,
-        cloud=None,
-        cluster_compute=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -592,7 +586,8 @@ def init(
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None,
-        _tracing_startup_hook=None):
+        _tracing_startup_hook=None,
+        **kwargs):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -627,6 +622,10 @@ def init(
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
+            Addresses can be prefixed with a protocol to connect using Ray
+            Client. For example, passing in the address
+            "ray://123.45.67.89:50005" will attempt to start a ray client
+            session through the specified address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -663,6 +662,8 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
+        namespace (str): Namespace to use
+        runtime_env (dict): The runtime environment to use
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -693,7 +694,10 @@ def init(
             and the API is subject to change.
 
     Returns:
-        Address information about the started processes.
+        If the provided address included a protocol (e.g. "ray://1.2.3.4")
+        then a ClientContext is returned with information such as settings,
+        server versions for ray and python, and the dashboard_url.
+        Otherwise, returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -710,14 +714,6 @@ def init(
             logger.info(
                 f"Using address {address_env_var} set in the environment "
                 f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
-
-    job_name_env_var = os.environ.get(
-        ray_constants.RAY_JOB_NAME_ENVIRONMENT_VARIABLE)
-    if job_name_env_var and job_name is None:
-        job_name = job_name_env_var
-        logger.info(
-            f"Using job name {job_name_env_var} set in the environment "
-            f"variable {ray_constants.RAY_JOB_NAME_ENVIRONMENT_VARIABLE}")
 
     namespace_env_var = os.environ.get(
         ray_constants.RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
@@ -737,9 +733,8 @@ def init(
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
-        protocol, _ = address.split("://")
         builder = ray.client(address)
-        builder = builder._init_args(
+        builder._init_args(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
@@ -771,18 +766,14 @@ def init(
             builder.namespace(namespace)
         if runtime_env is not None:
             builder.env(runtime_env)
-        if protocol == "anyscale":
-            if job_name is not None:
-                builder = builder.job_name(job_name)
-            if autosuspend is not None:
-                builder = builder.autosuspend(autosuspend)
-            if cloud is not None:
-                builder = builder.cloud(cloud)
-            if cluster_compute is not None:
-                builder = builder.cluster_compute(cluster_compute)
-            if cluster_env is not None:
-                builder = builder.cluster_env(cluster_env)
+        builder._catch_all(**kwargs)
         return builder.connect()
+
+    if kwargs:
+        # User passed in extra keyword arguments but isn't connecting through
+        # ray client. Raise an error, since most likely a typo in keyword
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
@@ -808,6 +799,11 @@ def init(
     except ImportError:
         logger.debug("Could not import resource module (on Windows)")
         pass
+
+    if runtime_env:
+        if job_config is None:
+            job_config = ray.job_config.JobConfig()
+        job_config.set_runtime_env(runtime_env)
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:

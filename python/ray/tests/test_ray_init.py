@@ -145,6 +145,29 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert address_info["node_manager_port"] == node2.node_manager_port
 
 
+def test_ray_init_local():
+    try:
+        with ray.init("local://", dashboard_port=22222) as context:
+            assert context.dashboard_url.split(":")[-1] == "22222"
+    finally:
+        ray.shutdown()
+
+
+def test_ray_init_invalid_keyword():
+    with pytest.raises(RuntimeError):
+        ray.init("localhost", logginglevel="<- missing underscore")
+
+
+def test_env_var_override():
+    try:
+        with ray.init("local://"):
+            pass
+    finally:
+        ray.shutdown()
+
+
+# def test_ray_init_
+
 if __name__ == "__main__":
     import pytest
     import sys

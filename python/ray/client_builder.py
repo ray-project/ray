@@ -66,6 +66,7 @@ class ClientBuilder:
         self.address = address
         self._job_config = JobConfig()
         self._init_args_dict = {}
+        self._catch_all_dict = {}
         if address:
             parsed_address = urlparse(address)
             # Set address to part before the parameters, i.e. before any
@@ -77,6 +78,8 @@ class ClientBuilder:
                     self.env(json.loads(val))
                 elif key == "namespace":
                     self.env(val)
+                else:
+                    raise RuntimeError(f"Unknown parameter: {val}")
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -118,6 +121,17 @@ class ClientBuilder:
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
+
+    def _catch_all(self, **kwargs) -> "ClientBuilder":
+        """
+        Some client builders will take extra arguments that aren't part of the
+        default ray.init arguments. This method will be called with any
+        extra arguments, and can be overwritten to handle those arguments.
+        """
+        if not kwargs:
+            return self
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(f"Unexpected keyword argument(s): {unknown}")
 
     def _init_args(self, **kwargs) -> "ClientBuilder":
         """
