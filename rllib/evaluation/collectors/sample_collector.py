@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
@@ -39,8 +40,7 @@ class SampleCollector(metaclass=ABCMeta):
         """Initializes a SampleCollector instance.
 
         Args:
-            policy_map (Dict[str, Policy]): Maps policy ids to policy
-                instances.
+            policy_map (PolicyMap): Maps policy ids to policy instances.
             clip_rewards (Union[bool, float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.

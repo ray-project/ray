@@ -28,6 +28,7 @@ from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
@@ -482,7 +483,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.make_env_fn = make_env
 
-        self.tf_sess = None
+        #self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
             policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
@@ -534,26 +535,10 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
-        if _has_tensorflow_graph(policy_dict) and not (
-                tf1 and tf1.executing_eagerly()):
-            if not tf1:
-                raise ImportError("Could not import tensorflow")
-            with tf1.Graph().as_default():
-                if tf_session_creator:
-                    self.tf_sess = tf_session_creator()
-                else:
-                    self.tf_sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)))
-                with self.tf_sess.as_default():
-                    # set graph-level seed
-                    if seed is not None:
-                        tf1.set_random_seed(seed)
-                    self.policy_map, self.preprocessors = \
-                        self._build_policy_map(policy_dict, policy_config)
-        else:
-            self.policy_map, self.preprocessors = self._build_policy_map(
-                policy_dict, policy_config)
+        self.policy_map, self.preprocessors = \
+            self._build_policy_map(
+                policy_dict, policy_config,
+                session_creator=tf_session_creator, seed=seed)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -671,7 +656,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -694,7 +678,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -1071,8 +1054,8 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        add_map, add_prep = self._build_policy_map(policy_dict,
-                                                   self.policy_config)
+        add_map, add_prep = self._build_policy_map(
+            policy_dict, self.policy_config, seed=self.policy_config.get("seed"))
         new_policy = add_map[policy_id]
 
         self.policy_map.update(add_map)
@@ -1288,9 +1271,18 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def _build_policy_map(
             self, policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict
+            policy_config: TrainerConfigDict,
+            session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            seed: Optional[int] = None,
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
-        policy_map = {}
+
+        ma_config = policy_config.get("multiagent", {})
+
+        policy_map = PolicyMap(
+            capacity=ma_config.get("policy_map_capacity"),
+            path=ma_config.get("policy_map_cache"),
+        )
+
         preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
@@ -1314,7 +1306,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Tf.
             framework = policy_config.get("framework", "tf")
             if framework in ["tf2", "tf", "tfe"]:
-                assert tf1
+                if not tf1:
+                    raise ImportError("Could not import tensorflow!")
                 if framework in ["tf2", "tfe"]:
                     assert tf1.executing_eagerly()
                     if hasattr(cls, "as_eager"):
@@ -1328,9 +1321,30 @@ class RolloutWorker(ParallelIteratorWorker):
                                          "execution: {}".format(cls))
                 scope = name + (("_wk" + str(self.worker_index))
                                 if self.worker_index else "")
+
                 with tf1.variable_scope(scope):
-                    policy_map[name] = cls(obs_space, act_space, merged_conf)
-            # non-tf.
+                    # For tf static graph, build every policy in its own graph
+                    # and create a new session for it.
+                    if framework == "tf":
+                        with tf1.Graph().as_default():
+                            if session_creator:
+                                sess = session_creator()
+                            else:
+                                sess = tf1.Session(
+                                    config=tf1.ConfigProto(
+                                        gpu_options=tf1.GPUOptions(allow_growth=True)))
+                            with sess.as_default():
+                                # Set graph-level seed.
+                                if seed is not None:
+                                    tf1.set_random_seed(seed)
+
+                                policy_map[name] = cls(
+                                    obs_space, act_space, merged_conf)
+                    # For tf-eager: no graph, no session.
+                    else:
+                        policy_map[name] = cls(
+                            obs_space, act_space, merged_conf)
+            # Non-tf: No graph, no session.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
 

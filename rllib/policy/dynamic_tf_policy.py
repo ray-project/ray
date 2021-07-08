@@ -467,7 +467,7 @@ class DynamicTFPolicy(TFPolicy):
         self._optimizer = self.optimizer()
 
         # Test calls depend on variable init, so initialize model first.
-        self._sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
 
         logger.info("Testing `compute_actions` w/ dummy batch.")
         actions, state_outs, extra_fetches = \
@@ -486,7 +486,7 @@ class DynamicTFPolicy(TFPolicy):
         dummy_batch = self._dummy_batch
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, dummy_batch, self._sess)
+        self.exploration.postprocess_trajectory(self, dummy_batch, self.get_session())
         _ = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
         for key in dummy_batch.added_keys:
@@ -592,7 +592,7 @@ class DynamicTFPolicy(TFPolicy):
         }
 
         # Initialize again after loss init.
-        self._sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

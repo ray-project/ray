@@ -12,7 +12,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrainer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):

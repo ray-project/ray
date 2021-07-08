@@ -429,6 +429,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # of (policy_cls, obs_space, act_space, config). This defines the
         # observation and action spaces of the policies and any extra config.
         "policies": {},
+        # Keep this many policies in the "policy_map" (before writing
+        # least-recently used ones to disk/S3).
+        "policy_map_capacity": 100,
+        # Where to store overflowing (least-recently used) policies?
+        # Could be a directory (str) or an S3 location. None for using
+        # the default output dir.
+        "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
         # Optional list of policies to train, or None for all policies.

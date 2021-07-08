@@ -148,11 +148,12 @@ class TrainTFMultiGPU:
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.optimizers = {}
-        with self.workers.local_worker().tf_sess.graph.as_default():
-            with self.workers.local_worker().tf_sess.as_default():
-                for policy_id in (self.policies
-                                  or self.local_worker.policies_to_train):
-                    policy = self.workers.local_worker().get_policy(policy_id)
+        for policy_id in (self.policies
+                          or self.local_worker.policies_to_train):
+            policy = self.workers.local_worker().get_policy(policy_id)
+            tf_session = policy.get_session()
+            with tf_session.graph.as_default():
+                with tf_session.as_default():
                     with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
@@ -167,8 +168,7 @@ class TrainTFMultiGPU:
                                 rnn_inputs, self.per_device_batch_size,
                                 policy.copy))
 
-                self.sess = self.workers.local_worker().tf_sess
-                self.sess.run(tf1.global_variables_initializer())
+                    tf_session.run(tf1.global_variables_initializer())
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
@@ -206,7 +206,7 @@ class TrainTFMultiGPU:
                     state_keys = []
                 num_loaded_tuples[policy_id] = (
                     self.optimizers[policy_id].load_data(
-                        self.sess, [tuples[k] for k in data_keys],
+                        policy.get_session(), [tuples[k] for k in data_keys],
                         [tuples[k] for k in state_keys]))
 
         # Execute minibatch SGD on loaded data.
@@ -223,7 +223,7 @@ class TrainTFMultiGPU:
                     batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
                         batch_fetches = optimizer.optimize(
-                            self.sess, permutation[batch_index] *
+                            policy.get_session(), permutation[batch_index] *
                             self.per_device_batch_size)
 
                         batch_fetches_all_towers.append(
