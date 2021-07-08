@@ -1,5 +1,6 @@
 import gym
 import logging
+import importlib.util
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
@@ -15,6 +16,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 from ray.tune.registry import RLLIB_INPUT, _global_registry
 
@@ -320,6 +322,11 @@ class WorkerSet:
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
+        elif isinstance(config["input"], str) and "." in config["input"]:
+            module_name, function_name = config["input"].rsplit(".", 1)
+            if importlib.util.find_spec(module_name) is not None:
+                input_creator = (lambda ioctx: from_config(
+                    config["input"], ioctx=ioctx))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
