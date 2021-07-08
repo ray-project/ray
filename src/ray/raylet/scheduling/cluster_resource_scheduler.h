@@ -425,7 +425,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
  private:
 
-  void InitUnitInstanceInfo();
+  /// Init the information about which resources are unit_instance.
+  void InitResourceUnitInstanceInfo();
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
@@ -460,7 +461,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::function<int64_t(void)> get_used_object_store_memory_;
 
   // Specify predefine resources that consists of unit-size instances.
-  std::unordered_set<int64_t> predefined_unit_instance_resources_{CPU, GPU};
+  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};

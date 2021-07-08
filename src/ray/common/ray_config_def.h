@@ -434,9 +434,9 @@ RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 
 /// The scheduler will treat these predefined resource types as unit_instance.
-/// Default predefined_unit_instance_resources is "CPU,GPU".
-/// When set it to "GPU", we will not treat CPU as unit_instance.
-RAY_CONFIG(string_type, predefined_unit_instance_resources, "")
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
 /// Default custom_unit_instance_resources is empty.
