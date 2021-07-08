@@ -120,7 +120,7 @@ class GenericPixelPreprocessor(Preprocessor):
         # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
         # If we resize directly we lose pixels that, when mapped to 42x42,
         # aren't close enough to the pixel boundary.
-        scaled = transform.resize(scaled, (self._dim, self._dim))
+        scaled = resize(scaled, (self._dim, self._dim))
         if self._grayscale:
             scaled = scaled.mean(2)
             scaled = scaled.astype(np.float32)
