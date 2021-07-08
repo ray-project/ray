@@ -5,7 +5,9 @@ import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
+from ray.rllib.offline import IOContext, InputReader
 from ray.tune.error import TuneError
+from typing import Callable
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -88,7 +90,8 @@ def register_env(name, env_creator):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
-def register_input(name, input_creator):
+def register_input(name: str,
+                   input_creator: Callable[[IOContext], InputReader]):
     """Register a custom input api for RLLib.
 
     Args:
