@@ -278,7 +278,7 @@ on each machine. To install Ray, follow the `installation instructions`_.
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On the head node (just choose some node to be the head node), run the following.
+On the head node (just choose one node to be the head node), run the following.
 If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
 random port.
 
@@ -294,6 +294,10 @@ random port.
 
 The command will print out the address of the Redis server that was started
 (the local node IP address plus the port number you specified).
+
+.. note::
+
+    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
