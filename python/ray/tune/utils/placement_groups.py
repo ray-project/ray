@@ -108,7 +108,8 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = bundles
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -524,8 +525,14 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self, trial: "Trial"):
+    def return_pg(self,
+                  trial: "Trial",
+                  destroy_pg_if_cannot_replace: bool = True):
         """Return pg, making it available for other trials to use.
+
+        If destroy_pg_if_cannot_replace is True, this will only return
+        a placement group if a staged placement group can be replaced
+        by it. If not, it will destroy the placement group.
 
         Args:
             trial (Trial): Return placement group of this trial.
@@ -540,6 +547,16 @@ class PlacementGroupManager:
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
+
+        if destroy_pg_if_cannot_replace:
+            staged_pg = self._unstage_unused_pg(pgf)
+
+            # Could not replace
+            if not staged_pg:
+                self.remove_pg(pg)
+                return False
+
+            self.remove_pg(staged_pg)
         self._ready[pgf].add(pg)
 
         return True
@@ -650,6 +667,15 @@ class PlacementGroupManager:
 
             pgf_expected[trial.placement_group_factory] += \
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+
+        # Ensure that unexpected placement groups are accounted for
+        for pgf in self._staging:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
+        for pgf in self._ready:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
 
         # Count cached placement groups
         for pg, pgf in self._cached_pgs.items():

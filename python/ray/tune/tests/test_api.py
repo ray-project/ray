@@ -21,6 +21,7 @@ from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
 from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
+from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -29,7 +30,7 @@ from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
 from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
-from ray.tune.suggest import grid_search
+from ray.tune.suggest import BasicVariantGenerator, grid_search
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
@@ -942,6 +943,58 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self._testDurableTrainable(durable(test_train), function=True)
 
+    def testDurableTrainableSyncFunction(self):
+        """Check custom sync functions in durable trainables"""
+
+        class TestDurable(DurableTrainable):
+            def __init__(self, *args, **kwargs):
+                # Mock distutils.spawn.find_executable
+                # so `aws` command is found
+                import distutils.spawn
+                distutils.spawn.find_executable = lambda *_, **__: True
+                super(TestDurable, self).__init__(*args, **kwargs)
+
+            def check(self):
+                return bool(self.sync_function_tpl) and isinstance(
+                    self.storage_client, CommandBasedClient
+                ) and "aws" not in self.storage_client.sync_up_template
+
+        class TestTplDurable(TestDurable):
+            _sync_function_tpl = "echo static sync {source} {target}"
+
+        upload_dir = "s3://test-bucket/path"
+
+        def _create_remote_actor(trainable_cls, sync_to_cloud):
+            """Create a remote trainable actor from an experiment"""
+            exp = Experiment(
+                name="test_durable_sync",
+                run=trainable_cls,
+                sync_to_cloud=sync_to_cloud,
+                sync_to_driver=False,
+                upload_dir=upload_dir)
+
+            searchers = BasicVariantGenerator()
+            searchers.add_configurations([exp])
+            trial = searchers.next_trial()
+            cls = trial.get_trainable_cls()
+            actor = ray.remote(cls).remote(
+                remote_checkpoint_dir=upload_dir,
+                sync_function_tpl=trial.sync_to_cloud)
+            return actor
+
+        # This actor should create a default aws syncer, so check should fail
+        actor1 = _create_remote_actor(TestDurable, None)
+        self.assertFalse(ray.get(actor1.check.remote()))
+
+        # This actor should create a custom syncer, so check should pass
+        actor2 = _create_remote_actor(TestDurable,
+                                      "echo test sync {source} {target}")
+        self.assertTrue(ray.get(actor2.check.remote()))
+
+        # This actor should create a custom syncer, so check should pass
+        actor3 = _create_remote_actor(TestTplDurable, None)
+        self.assertTrue(ray.get(actor3.check.remote()))
+
     def testCheckpointDict(self):
         class TestTrain(Trainable):
             def setup(self, config):
@@ -1251,6 +1304,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return dict(metric=len(self.data), done=True)
 
         trainable = tune.with_parameters(TestTrainable, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testWithParameters3(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+
+            def step(self):
+                return dict(metric=len(self.data), done=True)
+
+        new_data = Data()
+        ref = ray.put(new_data)
+        trainable = tune.with_parameters(TestTrainable, data=ref)
         # ray.cloudpickle will crash for some reason
         import cloudpickle as cp
         dumped = cp.dumps(trainable)

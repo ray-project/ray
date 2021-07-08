@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # ..     np.zeros([100, 32], np.float32) for _ in range(num_transformers)
     # .. ]
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(obs, state)
+    # >>     a, state_out, _ = trainer.compute_single_action(obs, state)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:
     # >>         obs = env.reset()

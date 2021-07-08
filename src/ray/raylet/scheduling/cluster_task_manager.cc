@@ -556,13 +556,12 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  // TODO (WangTao): Find a way to check if load changed and combine it with light
-  // heartbeat. Now we just report it every time.
-  data.set_resource_load_changed(true);
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -722,6 +721,19 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
+  }
+
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
+    // Check whether resources have been changed.
+    std::unordered_map<std::string, double> local_resource_map(
+        data.resource_load().begin(), data.resource_load().end());
+    ResourceSet local_resource(local_resource_map);
+    if (last_reported_resources == nullptr ||
+        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+      data.set_resource_load_changed(true);
+    }
+  } else {
+    data.set_resource_load_changed(true);
   }
 }
 

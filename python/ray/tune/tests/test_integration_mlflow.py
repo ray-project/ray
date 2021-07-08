@@ -212,7 +212,12 @@ class MLflowTest(unittest.TestCase):
         self.assertEqual(len(logger.client.runs[1]), 1)
 
         # Check metrics are logged properly.
-        result = {"metric1": 0.8, "metric2": 1, "metric3": None}
+        result = {
+            "metric1": 0.8,
+            "metric2": 1,
+            "metric3": None,
+            "training_iteration": 0
+        }
         logger.on_trial_result(0, [], trial, result)
         mock_run = logger.client.runs[1][0]
         # metric3 is not logged since it cannot be converted to float.
@@ -220,6 +225,8 @@ class MLflowTest(unittest.TestCase):
             "metric1": 0.8
         }, {
             "metric2": 1.0
+        }, {
+            "training_iteration": 0
         }])
 
         # Check that artifact is logged on termination.
