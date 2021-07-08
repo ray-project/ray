@@ -287,7 +287,7 @@ class LogMonitor:
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.
             if not anything_published:
-                time.sleep(0.05)
+                time.sleep(0.1)
 
 
 if __name__ == "__main__":
