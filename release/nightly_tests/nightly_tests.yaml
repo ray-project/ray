@@ -119,7 +119,7 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=100 --partition-size=10e9 --no-streaming
 
-# Test non streaming shuffle in a single node with a large partition size.
+# Test autoscaling 1TB streaming shuffle with a large number of partitions.
 - name: autoscaling_shuffle_1tb_1000_partitions
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
