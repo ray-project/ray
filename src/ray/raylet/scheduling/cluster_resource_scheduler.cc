@@ -117,7 +117,6 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
     return false;
   } else {
     nodes_.erase(it);
-    string_to_int_map_.Remove(node_id);
     return true;
   }
 }
@@ -553,7 +552,6 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     int64_t resource_id = string_to_int_map_.Get(resource_name);
     auto itr = local_view->custom_resources.find(resource_id);
     if (itr != local_view->custom_resources.end()) {
-      string_to_int_map_.Remove(resource_id);
       local_view->custom_resources.erase(itr);
     }
 
@@ -1019,6 +1017,10 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
   if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
+  }
+
+  if (!RayConfig::instance().enable_light_weight_resource_report()) {
+    resources_data.set_resources_available_changed(true);
   }
 }
 

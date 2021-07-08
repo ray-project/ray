@@ -692,16 +692,6 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::SetClientOptions(const std::string &client_name,
-                                            int64_t output_memory_quota) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RAY_RETURN_NOT_OK(SendSetOptionsRequest(store_conn_, client_name, output_memory_quota));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(
-      PlasmaReceive(store_conn_, MessageType::PlasmaSetOptionsReply, &buffer));
-  return ReadSetOptionsReply(buffer.data(), buffer.size());
-}
-
 Status PlasmaClient::Impl::Disconnect() {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
@@ -743,11 +733,6 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
                              int num_retries) {
   return impl_->Connect(store_socket_name, manager_socket_name, release_delay,
                         num_retries);
-}
-
-Status PlasmaClient::SetClientOptions(const std::string &client_name,
-                                      int64_t output_memory_quota) {
-  return impl_->SetClientOptions(client_name, output_memory_quota);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,

@@ -11,7 +11,7 @@ import copy
 import numpy as np
 import logging
 import collections
-from numbers import Number
+from numbers import Real
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -37,7 +37,7 @@ NodeType = str
 NodeTypeConfigDict = str
 
 # e.g., {"GPU": 1}.
-ResourceDict = Dict[str, Number]
+ResourceDict = Dict[str, Real]
 
 # e.g., "node-1".
 NodeID = str
@@ -459,13 +459,16 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                logger.warn(
+                # We should not get here, but if for some reason we do, log an
+                # error and skip the errant node_type.
+                logger.error(
                     f"Missing entry for node_type {node_type} in "
                     f"cluster config: {self.node_types} under entry "
-                    f"available_node_types. This node's resources will be "
-                    f"ignored. If you are using an unmanaged node, manually "
-                    f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
-                    f"in your cloud provider's management console.")
+                    "available_node_types. This node's resources will be "
+                    "ignored. If you are using an unmanaged node, manually "
+                    f"set the {TAG_RAY_NODE_KIND} tag to "
+                    f"\"{NODE_KIND_UNMANAGED}\" in your cloud provider's "
+                    "management console.")
                 return None
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
@@ -737,7 +740,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 def _utilization_score(node_resources: ResourceDict,
                        resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources
+    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that

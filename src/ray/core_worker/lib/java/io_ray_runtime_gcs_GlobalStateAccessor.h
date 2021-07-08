@@ -131,6 +131,17 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(JNIEn
                                                                            jobject,
                                                                            jlong);
 
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetNodeToConnectForDriver
+ * Signature: (JLjava/lang/String;)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeToConnectForDriver(JNIEnv *,
+                                                                            jobject,
+                                                                            jlong,
+                                                                            jstring);
+
 #ifdef __cplusplus
 }
 #endif

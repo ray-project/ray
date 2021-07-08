@@ -719,7 +719,7 @@ class ActorClass:
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.5.  Please use "
+                           "will be removed in Ray 1.6.  Please use "
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 
@@ -831,10 +831,11 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        worker = ray.worker.global_worker
-        if worker.connected and hasattr(worker, "core_worker"):
-            worker.core_worker.remove_actor_handle_reference(
-                self._ray_actor_id)
+        if ray.worker:
+            worker = ray.worker.global_worker
+            if worker.connected and hasattr(worker, "core_worker"):
+                worker.core_worker.remove_actor_handle_reference(
+                    self._ray_actor_id)
 
     def _actor_method_call(self,
                            method_name,

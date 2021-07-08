@@ -45,13 +45,11 @@ char ***cmd_argv = nullptr;
 DEFINE_bool(external_cluster, false, "");
 DEFINE_string(redis_password, "12345678", "");
 DEFINE_int32(redis_port, 6379, "");
-DEFINE_int32(node_manager_port, 62665, "");
 
 TEST(RayClusterModeTest, FullTest) {
   ray::api::RayConfig config;
   if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port, FLAGS_redis_password,
-                                              FLAGS_node_manager_port);
+    ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port, FLAGS_redis_password);
     config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
     config.redis_password_ = FLAGS_redis_password;
   }

@@ -5,8 +5,7 @@ import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
-    LEARNER_STATS_KEY
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
@@ -59,6 +58,8 @@ class TrainOneStep:
         metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
+            # Subsample minibatches (size=`sgd_minibatch_size`) from the
+            # train batch and loop through train batch `num_sgd_iter` times.
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
                 lw = self.workers.local_worker()
                 info = do_minibatch_sgd(
@@ -67,16 +68,11 @@ class TrainOneStep:
                         for pid in self.policies
                         or self.local_worker.policies_to_train
                     }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
-                # TODO(ekl) shouldn't be returning learner stats directly here
-                # TODO(sven): Skips `custom_metrics` key from on_learn_on_batch
-                #  callback (shouldn't).
-                metrics.info[LEARNER_INFO] = info
+            # Single update step using train batch.
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = extract_stats(
-                    info, LEARNER_STATS_KEY)
-                metrics.info["custom_metrics"] = extract_stats(
-                    info, "custom_metrics")
+
+            metrics.info[LEARNER_INFO] = info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
