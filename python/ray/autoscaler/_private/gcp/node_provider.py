@@ -42,7 +42,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
 def _retry(method, max_tries=5, backoff_s=1):
     """Retry decorator for methods of GCPNodeProvider.
 
-    Upon raising BrokenPipeError or IOError, API clients are rebuilt and
+    Upon catching BrokenPipeError, API clients are rebuilt and
     decorated methods are retried.
 
     Work-around for https://github.com/ray-project/ray/issues/16072.
