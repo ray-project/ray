@@ -232,7 +232,6 @@ def main(ray_address=None,
     parser.add_argument(
         "--no-streaming", action="store_true", default=no_streaming)
     parser.add_argument("--use-wait", action="store_true", default=use_wait)
-    parser.add_argument("--inject-sleeps", action="store_true")
     args = parser.parse_args()
 
     is_multi_node = args.num_nodes
@@ -258,14 +257,11 @@ def main(ray_address=None,
     rows_per_partition = partition_size // (8 * 2)
     tracker = _StatusTracker.remote()
     use_wait = args.use_wait
-    inject_sleeps = args.inject_sleeps
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
         for _ in range(num_partitions):
             yield np.ones(
                 (rows_per_partition // num_partitions, 2), dtype=np.int64)
-        if inject_sleeps:
-            time.sleep(i)
         tracker.inc.remote()
 
     def output_writer(i: PartitionID,
@@ -282,8 +278,6 @@ def main(ray_address=None,
                 arr = ray.get(ready)
                 total += arr.size * arr.itemsize
 
-        if inject_sleeps:
-            time.sleep(i)
         tracker.inc2.remote()
         return total
 
