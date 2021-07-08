@@ -9,7 +9,6 @@ from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
 
-
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
 
