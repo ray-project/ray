@@ -11,6 +11,64 @@ from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
 logger = logging.getLogger(__name__)
 
 
+class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
+    """File-based datasource, for reading and writing files.
+
+    This class should not be used directly, and should instead be subclassed
+    and tailored to particular file formats. Classes deriving from this class
+    must implement _read_file().
+
+    Current subclasses: JSONDatasource, CSVDatasource
+    """
+
+    def prepare_read(self,
+                     parallelism: int,
+                     paths: Union[str, List[str]],
+                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                     **reader_args) -> List[ReadTask]:
+        """Creates and returns read tasks for a file-based datasource.
+        """
+        import pyarrow as pa
+        import numpy as np
+
+        paths, file_infos, filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem)
+        file_sizes = [file_info.size for file_info in file_infos]
+
+        read_file = self._read_file
+
+        def read_files(read_paths: List[str]):
+            logger.debug(f"Reading {len(read_paths)} files.")
+            tables = []
+            for read_path in read_paths:
+                with filesystem.open_input_file(read_path) as f:
+                    tables.append(read_file(f, **reader_args))
+            return ArrowBlock(pa.concat_tables(tables))
+
+        read_tasks = [
+            ReadTask(
+                lambda read_paths=read_paths: read_files(read_paths),
+                BlockMetadata(
+                    num_rows=None,
+                    size_bytes=sum(file_sizes),
+                    schema=None,
+                    input_files=read_paths)) for read_paths, file_sizes in zip(
+                        np.array_split(paths, parallelism),
+                        np.array_split(file_sizes, parallelism))
+            if len(read_paths) > 0
+        ]
+
+        return read_tasks
+
+    def _read_file(self, f, **reader_args):
+        """Reads a single file, passing all kwargs to the reader.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _read_files().")
+
+
 def _expand_directory(path: str,
                       filesystem: "pyarrow.fs.FileSystem",
                       exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
@@ -101,62 +159,3 @@ def _resolve_paths_and_filesystem(
         else:
             raise FileNotFoundError(path)
     return expanded_paths, file_infos, filesystem
-
-
-class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
-    """File-basd datasource, for reading files.
-
-    This class should not be used directly, and should instead be subclassed
-    and tailored to particular file formats. Classes deriving from this class
-    must implement _read_file().
-
-    Current subclasses: JSONDatasource, CSVDatasource
-    """
-
-    def prepare_read(self,
-                     parallelism: int,
-                     paths: Union[str, List[str]],
-                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                     **arrow_reader_args) -> List[ReadTask]:
-        """Creates and returns read tasks for a file-based datasource.
-        """
-        import pyarrow as pa
-        import numpy as np
-
-        paths, file_infos, filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem)
-        file_sizes = [file_info.size for file_info in file_infos]
-
-        read_file = self._read_file
-
-        def read_files(read_paths: List[str]):
-            logger.debug(f"Reading {len(read_paths)} files.")
-            tables = []
-            for read_path in read_paths:
-                with filesystem.open_input_file(read_path) as f:
-                    tables.append(read_file(f, **arrow_reader_args))
-            return ArrowBlock(pa.concat_tables(tables))
-
-        read_tasks = [
-            ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths),
-                BlockMetadata(
-                    num_rows=None,
-                    size_bytes=sum(file_sizes),
-                    schema=None,
-                    input_files=read_paths)) for read_paths, file_sizes in zip(
-                        np.array_split(paths, parallelism),
-                        np.array_split(file_sizes, parallelism))
-            if len(read_paths) > 0
-        ]
-
-        return read_tasks
-
-    def _read_file(self, f, **arrow_reader_args):
-        """Reads a single file, passing all kwargs to the pyarrow reader.
-
-        This method should be implemented by subclasses.
-        """
-        raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implemented "
-            "_read_files().")

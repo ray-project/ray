@@ -1,5 +1,4 @@
 import builtins
-import logging
 from typing import Any, Generic, List, Callable, Union, TypeVar
 
 import numpy as np
@@ -11,8 +10,6 @@ from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 T = TypeVar("T")
 WriteResult = Any
-
-logger = logging.getLogger(__name__)
 
 
 class Datasource(Generic[T]):

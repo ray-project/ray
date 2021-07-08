@@ -8,7 +8,7 @@ from ray.experimental.data.datasource.file_based_datasource import (
 
 
 class CSVDatasource(FileBasedDatasource):
-    """CSV datasource, for reading CSV files.
+    """CSV datasource, for reading and writing CSV files.
 
     Examples:
         >>> source = CSVDatasource()

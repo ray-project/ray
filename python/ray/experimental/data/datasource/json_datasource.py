@@ -8,7 +8,7 @@ from ray.experimental.data.datasource.file_based_datasource import (
 
 
 class JSONDatasource(FileBasedDatasource):
-    """JSON datasource, for reading JSON files.
+    """JSON datasource, for reading and writing JSON files.
 
     Examples:
         >>> source = JSONDatasource()
