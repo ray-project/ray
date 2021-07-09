@@ -384,6 +384,37 @@ class JsonIOTest(unittest.TestCase):
         self.assertIsNone(ioctx.worker)
         self.assertEqual(ioctx.input_config, {})
 
+    def test_custom_input_procedure(self):
+        class CustomJsonReader(JsonReader):
+            def __init__(self, ioctx: IOContext):
+                super().__init__(ioctx.input_config["input_files"], ioctx)
+
+        def input_creator(ioctx: IOContext) -> InputReader:
+            return ShuffledInput(CustomJsonReader(ioctx))
+
+        register_input("custom_input", input_creator)
+        test_input_procedure = [
+            "custom_input",
+            input_creator,
+            "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        ]
+        for input_procedure in test_input_procedure:
+            for fw in framework_iterator(frameworks=("torch", "tf")):
+                self.writeOutputs(self.test_dir, fw)
+                agent = PGTrainer(
+                    env="CartPole-v0",
+                    config={
+                        "input": input_procedure,
+                        "input_config": {
+                            "input_files": self.test_dir + fw
+                        },
+                        "input_evaluation": [],
+                        "framework": fw,
+                    })
+                result = agent.train()
+                self.assertEqual(result["timesteps_total"], 250)
+                self.assertTrue(np.isnan(result["episode_reward_mean"]))
+
 
 if __name__ == "__main__":
     import pytest
