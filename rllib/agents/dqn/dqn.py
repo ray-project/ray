@@ -103,10 +103,21 @@ DEFAULT_CONFIG = with_common_config({
     "compress_observations": False,
     # Callback to run before learning on a multi-agent batch of experiences.
     "before_learn_on_batch": None,
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=800.0
+    #   train_batch_size=32 rollout_fragment_length=4
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 32 / 4 = 8.0
+    #   -> will make sure that replay+train op will be executed 100x as
+    #      often as rollout+insert op (100 * 8.0 = 800.0).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===

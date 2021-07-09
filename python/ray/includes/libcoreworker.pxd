@@ -178,7 +178,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const CAddress &owner_address,
                 const c_string &object_status)
 
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        CObjectID *object_id)
