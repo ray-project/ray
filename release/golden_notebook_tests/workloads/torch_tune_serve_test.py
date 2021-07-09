@@ -16,12 +16,7 @@ from ray.util.sgd.utils import override
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 
-
-def _is_anyscale_connect():
-    address = os.environ.get("RAY_ADDRESS")
-    is_anyscale_connect = address is not None and address.startswith(
-        "anyscale://")
-    return is_anyscale_connect
+from utils.utils import is_anyscale_connect
 
 
 def load_mnist_data(train: bool, download: bool):
@@ -93,7 +88,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
 
 
 def get_remote_model(remote_model_checkpoint_path):
-    if _is_anyscale_connect():
+    if is_anyscale_connect():
         # Download training results to local client.
         local_dir = "~/ray_results"
         # TODO(matt): remove the following line when Anyscale Connect
@@ -217,7 +212,7 @@ if __name__ == "__main__":
     start = time.time()
 
     client_builder = ray.client()
-    if (_is_anyscale_connect()):
+    if is_anyscale_connect():
         job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
         client_builder.job_name(job_name)
     client_builder.connect()
