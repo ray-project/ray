@@ -1,0 +1,17 @@
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {}
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - sudo apt-get install -y unzip
+  - cd ~ && wget https://codeload.github.com/ray-project/ray_shuffling_data_loader/zip/refs/heads/feat/benchmarks
+  - cd ~ && unzip benchmarks
+  - pip uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - pip install -U git+https://github.com/ray-project/ray_shuffling_data_loader.git@main#egg=ray_shuffling_data_loader
+  - pip install -U --user numpy pandas pyarrow fastparquet s3fs

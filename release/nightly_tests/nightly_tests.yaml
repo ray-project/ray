@@ -242,3 +242,13 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+# Stress test shuffle_data_loader.
+- name: shuffle_data_loader
+  cluster:
+    app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
+    compute_template: shuffle_data_loader/shuffle_data_loader_compute.yaml
+
+  run:
+    timeout: 7200 
+    script: bash shuffle_data_loader/shuffle_data_loader_test.sh
