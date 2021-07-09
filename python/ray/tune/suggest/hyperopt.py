@@ -247,10 +247,7 @@ class HyperOptSearch(Searcher):
         if mode:
             self._mode = mode
 
-        if self._mode == "max":
-            self.metric_op = -1.
-        elif self._mode == "min":
-            self.metric_op = 1.
+        self.metric_op = -1. if self._mode == "max" else 1.
 
         self._setup_hyperopt()
         return True
@@ -413,7 +410,7 @@ class HyperOptSearch(Searcher):
                                               quantize)
                     return hpo.hp.normal(par, sampler.mean, sampler.sd)
 
-            elif isinstance(domain, Integer) -> None:
+            elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     if quantize:
                         return hpo.base.pyll.scope.int(
