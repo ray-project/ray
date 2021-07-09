@@ -316,8 +316,9 @@ class WorkerSet:
                     if spec is not None:
                         return True
                 except (ModuleNotFoundError, ValueError):
-                    print(f"module {module_path} not found while trying to get "
-                          f"input {class_path}")
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}")
             return False
 
         if isinstance(config["input"], FunctionType):
