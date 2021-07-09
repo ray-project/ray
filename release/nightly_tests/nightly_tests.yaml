@@ -99,26 +99,6 @@
     prepare: python wait_cluster.py 4 600
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --no-streaming
 
-# Test streaming shuffle in a single node with a large partition size.
-- name: streaming_shuffle_1tb_100_partitions
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_multi.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=100 --partition-size=10e9
-
-# Test non streaming shuffle in a single node with a large partition size.
-- name: non_streaming_shuffle_1tb_100_partitions
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_multi.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=100 --partition-size=10e9 --no-streaming
-
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
 - name: shuffle_1tb_1000_partition
   cluster:
@@ -127,7 +107,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
 
 # Test multi nodes 1TB non streaming shuffle with a large number of partitions.
@@ -138,7 +118,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
 
 # Stress test for 1TB multi node streaming shuffle.
@@ -149,7 +129,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
 # Stress test for 1TB multi node non-streaming shuffle.
@@ -160,7 +140,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 # Test large scale dask on ray test without spilling.
