@@ -17,7 +17,8 @@ class RNNModel(tf.keras.models.Model if tf else object):
                  *,
                  name="",
                  hiddens_size=256,
-                 cell_size=64):
+                 cell_size=64,
+                 **kwargs):
         super().__init__(name=name)
 
         self.cell_size = cell_size
