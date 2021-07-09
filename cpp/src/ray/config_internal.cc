@@ -10,7 +10,9 @@ DEFINE_string(ray_redis_password, "",
               "if provided.");
 
 DEFINE_string(ray_code_search_path, "",
-              "The search path of application's dynamic libraries.");
+              "A list of directories or files of dynamic libraries that specify the "
+              "search path for user code. Libraries under these paths will be loaded "
+              "by 'dlopen'.");
 
 DEFINE_string(ray_job_id, "", "Assigned job id.");
 
@@ -51,18 +53,16 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
       code_search_path.clear();
       std::string separator = ":";
       unsigned int start = 0;
-      auto end = FLAGS_ray_code_search_path.find(separator);
-      if (end == std::string::npos) {
-        // A single path without separator.
-        code_search_path.emplace_back(FLAGS_ray_code_search_path);
-      } else {
-        // Multiple path with separator.
-        while (end != std::string::npos) {
+      while (start < FLAGS_ray_code_search_path.size()) {
+        auto end = FLAGS_ray_code_search_path.find(separator, start);
+        if (end == std::string::npos) {
+          end = FLAGS_ray_code_search_path.size();
+        }
+        if (start < end) {  // In case there are unnecessary separators.
           code_search_path.emplace_back(
               FLAGS_ray_code_search_path.substr(start, end - start));
-          start = end + separator.length();
-          end = FLAGS_ray_code_search_path.find(separator, start);
         }
+        start = end + separator.length();
       }
     }
     if (!FLAGS_ray_address.empty()) {
@@ -97,10 +97,10 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (code_search_path.size() == 0) {
       auto program_path = boost::dll::program_location().parent_path();
-      RAY_LOG(WARNING) << "No code search path found yet. "
-                       << "The program location path " << program_path
-                       << " will be added for searching dynamic libraries by default."
-                       << "And you can add some search paths by '--ray-code-search-path'";
+      RAY_LOG(INFO) << "No code search path found yet. "
+                    << "The program location path " << program_path
+                    << " will be added for searching dynamic libraries by default."
+                    << " And you can add some search paths by '--ray-code-search-path'";
       code_search_path.emplace_back(program_path.string());
     } else {
       // Convert all the paths to absolute path to support configuring relative paths in

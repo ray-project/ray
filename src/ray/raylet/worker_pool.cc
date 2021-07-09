@@ -214,11 +214,12 @@ Process WorkerPool::StartWorkerProcess(
       if (!code_search_path_str.empty()) {
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-          options.push_back(code_search_path_str);
         } else if (language == Language::CPP) {
           code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
-          options.push_back(code_search_path_str);
+        } else {
+          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
         }
+        options.push_back(code_search_path_str);
       }
     }
   }
