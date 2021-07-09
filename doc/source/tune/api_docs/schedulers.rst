@@ -235,11 +235,16 @@ An example of this in use can be found here: :doc:`/tune/examples/bohb_example`.
 ResourceChangingScheduler
 -------------------------
 
-This class is a utility scheduler, allowing for trial resource requirements to be changed during tuning. It wraps around another scheduler and uses its decisions. Only supports the Trainable (class) API for tuning. Your Trainable must implement ``Trainable.update_resources``, which will let your model know about the new resources assigned.
+This class is a utility scheduler, allowing for trial resource requirements to be changed during tuning. It wraps around another scheduler and uses its decisions. Currently, only supports the Trainable (class) API for tuning. Your Trainable must implement ``Trainable.update_resources``, which will let your model know about the new resources assigned.
 
 An example of this in use can be found here: :doc:`/tune/examples/xgboost_dynamic_resources_example`.
 
 .. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
+
+evenly_distribute_cpus_gpus
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus
 
 FIFOScheduler
 -------------

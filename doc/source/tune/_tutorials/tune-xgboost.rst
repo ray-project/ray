@@ -117,7 +117,7 @@ from ``1.0``. Even in this simple example, most runs result
 in a good accuracy of over ``0.90``.
 
 Maybe you have noticed the ``config`` parameter we pass to the XGBoost algorithm. This
-is a ``dict`` in which you can specify parameters for the XGBoost algorithm. In this
+is a :class:`dict` in which you can specify parameters for the XGBoost algorithm. In this
 simple example, the only parameters we passed are the ``objective`` and ``eval_metric`` parameters.
 The value ``binary:logistic`` tells XGBoost that we aim to train a logistic regression model for
 a binary classification task. You can find an overview over all valid objectives

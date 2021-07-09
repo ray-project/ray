@@ -1,8 +1,7 @@
-from typing import Union
+from typing import Union, Dict, Any
 import sklearn.datasets
 import sklearn.metrics
 import os
-import math
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
 from xgboost.core import Booster
@@ -111,73 +110,65 @@ def tune_xgboost():
         grace_period=1,
         reduction_factor=2)
 
-    def resource_allocation_function(trial_runner: "trial_runner.TrialRunner",
-                                     trial: Trial, result: dict,
-                                     base_trial_resource: PlacementGroupFactory
-                                     ) -> Union[None, PlacementGroupFactory]:
+    def example_resources_allocation_function(
+            trial_runner: "trial_runner.TrialRunner", trial: Trial,
+            result: Dict[str, Any],
+            base_trial_resource: Union[PlacementGroupFactory, Resources]
+    ) -> Union[None, PlacementGroupFactory, Resources]:
         """This is a basic example of a resource allocating function.
 
-        The function naively balances free resources (CPUs and GPUs) between
-        trials, giving them all equal priority, ensuring that all resources
-        are always being used. If for some reason a trial ends up with
-        more resources than there are free ones, it will adjust downwards.
+        The function naively balances available CPUs over live trials.
 
-        It will also ensure that trial as at least as many resources as
-        it started with (base_trial_resource).
+        This function returns a new ``PlacementGroupFactory`` with updated
+        resource requirements, or None. If the returned
+        ``PlacementGroupFactory`` is equal by value to the one the
+        trial has currently, the scheduler will skip the update process
+        internally (same with None).
 
-        This function returns a new PlacementGroupFactory with updated
-        resource requirements, or None. If the returned PlacementGroupFactory
-        is equal by value to the one the trial has currently, the scheduler
-        will skip the update process internally (same with None)."""
+        See :func:`evenly_distribute_cpus_gpus` for a more complex,
+        robust approach.
 
+        Args:
+            trial_runner (TrialRunner): Trial runner for this Tune run.
+                Can be used to obtain information about other trials.
+            trial (Trial): The trial to allocate new resources to.
+            result (Dict[str, Any]): The latest results of trial.
+            base_trial_resource (Union[PlacementGroupFactory, Resources]):
+                Base trial resources as defined in
+                ``tune.run(resources_per_trial)``
+        """
+
+        # Don't bother if this is just the first iteration
         if result["training_iteration"] < 1:
             return None
 
+        # Assume that the number of CPUs cannot go below what was
+        # specified in tune.run
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
-        min_gpu = base_trial_resource.required_resources.get("GPU", 0)
 
+        # Get the number of CPUs available in total (not just free)
         total_available_cpus = (
             trial_runner.trial_executor._avail_resources.cpu)
-        total_available_gpus = (
-            trial_runner.trial_executor._avail_resources.gpu)
 
-        if min_cpu == 0:
-            upper_cpu_limit = 0
-        else:
-            upper_cpu_limit = math.ceil(total_available_cpus / len(
-                trial_runner.get_live_trials()) / min_cpu)
+        # Divide the free CPUs among all live trials
+        cpu_to_use = max(
+            min_cpu,
+            total_available_cpus // len(trial_runner.get_live_trials()))
 
-        if min_gpu == 0:
-            upper_gpu_limit = 0
-        else:
-            upper_gpu_limit = math.ceil(total_available_gpus / len(
-                trial_runner.get_live_trials()) / min_gpu)
+        # Assign new CPUs to the trial in a PlacementGroupFactory
+        return PlacementGroupFactory([{"CPU": cpu_to_use}])
 
-        def get_used_cpus_and_gpus(t: Trial):
-            return (t.placement_group_factory.required_resources.get("CPU", 0),
-                    t.placement_group_factory.required_resources.get("GPU", 0))
+    # You can either define your own resources_allocation_function, or
+    # use the default one - evenly_distribute_cpus_gpus
 
-        trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+    # from ray.tune.schedulers.resource_changing_scheduler import \
+    #    evenly_distribute_cpus_gpus
 
-        used_cpus_and_gpus = [
-            get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
-        ]
-        used_cpus, used_gpus = zip(*used_cpus_and_gpus)
-        used_cpus = sum(used_cpus)
-        used_gpus = sum(used_gpus)
-
-        free_cpus = total_available_cpus - used_cpus
-        free_gpus = total_available_gpus - used_gpus
-
-        new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus,
-                                           min_cpu))
-        new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus,
-                                           min_gpu))
-
-        return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
-
-    scheduler = ResourceChangingScheduler(base_scheduler,
-                                          resource_allocation_function)
+    scheduler = ResourceChangingScheduler(
+        base_scheduler=base_scheduler,
+        resources_allocation_function=example_resources_allocation_function
+        # resources_allocation_function=evenly_distribute_cpus_gpus  # default
+    )
 
     search = BasicVariantGenerator()
 

@@ -1,8 +1,9 @@
 import logging
-from typing import Dict, Optional, Union, Callable
+from typing import Dict, Any, Optional, Union, Callable
 
 import pickle
 import warnings
+import math
 
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
@@ -13,24 +14,121 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
+def evenly_distribute_cpus_gpus(
+        trial_runner: "trial_runner.TrialRunner", trial: Trial,
+        result: Dict[str, Any],
+        base_trial_resource: Union[PlacementGroupFactory, Resources]
+) -> Union[None, PlacementGroupFactory, Resources]:
+    """This is a basic resource allocating function.
+
+    This function is used by default in ``ResourceChangingScheduler``.
+
+    The function naively balances free resources (CPUs and GPUs) between
+    trials, giving them all equal priority, ensuring that all resources
+    are always being used. If for some reason a trial ends up with
+    more resources than there are free ones, it will adjust downwards.
+
+    It will also ensure that trial as at least as many resources as
+    it started with (``base_trial_resource``).
+
+    This function returns a new ``PlacementGroupFactory`` with updated
+    resource requirements, or None. If the returned
+    ``PlacementGroupFactory`` is equal by value to the one the
+    trial has currently, the scheduler will skip the update process
+    internally (same with None).
+
+    Args:
+        trial_runner (TrialRunner): Trial runner for this Tune run.
+            Can be used to obtain information about other trials.
+        trial (Trial): The trial to allocate new resources to.
+        result (Dict[str, Any]): The latest results of trial.
+        base_trial_resource (Union[PlacementGroupFactory, Resources]):
+            Base trial resources as defined in
+            ``tune.run(resources_per_trial)``
+    """
+
+    if not isinstance(base_trial_resource, PlacementGroupFactory):
+        raise ValueError("evenly_distribute_cpus_gpus only supports"
+                         " PlacementGroupFactories.")
+
+    # Don't bother if this is just the first iteration
+    if result["training_iteration"] < 1:
+        return None
+
+    # Assume that the number of CPUs and GPUs can't go below
+    # what was specified in tune.run
+    min_cpu = base_trial_resource.required_resources.get("CPU", 0)
+    min_gpu = base_trial_resource.required_resources.get("GPU", 0)
+
+    # Get the number of CPUs and GPUs avaialble in total (not just free)
+    total_available_cpus = (trial_runner.trial_executor._avail_resources.cpu)
+    total_available_gpus = (trial_runner.trial_executor._avail_resources.gpu)
+
+    # Set upper limits for resources based on number of live trials
+    # to ensure that the trial cannot get more resources that it's
+    # possible to run
+    if min_cpu == 0:
+        upper_cpu_limit = 0
+    else:
+        upper_cpu_limit = math.ceil(total_available_cpus / len(
+            trial_runner.get_live_trials()) / min_cpu)
+
+    if min_gpu == 0:
+        upper_gpu_limit = 0
+    else:
+        upper_gpu_limit = math.ceil(total_available_gpus / len(
+            trial_runner.get_live_trials()) / min_gpu)
+
+    # Function to check how many CPUs and GPUs a trial is using currently
+    def get_used_cpus_and_gpus(t: Trial):
+        return (t.placement_group_factory.required_resources.get("CPU", 0),
+                t.placement_group_factory.required_resources.get("GPU", 0))
+
+    # Check how many CPUs and GPUs are currently being used by this trial
+    trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+
+    # Check how many CPUs and GPUs are currently being used by live trials
+    used_cpus_and_gpus = [
+        get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
+    ]
+    used_cpus, used_gpus = zip(*used_cpus_and_gpus)
+    used_cpus = sum(used_cpus)
+    used_gpus = sum(used_gpus)
+
+    # Calculate how many free CPUs and GPUs there are
+    free_cpus = total_available_cpus - used_cpus
+    free_gpus = total_available_gpus - used_gpus
+
+    # Add free CPUs and GPUs enforcing upper and lower limits
+    new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus, min_cpu))
+    new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus, min_gpu))
+
+    # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
+    return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
+
+
 class ResourceChangingScheduler(TrialScheduler):
     """A utility scheduler to dynamically change resources of live trials.
 
-    Experimental. API may change in future releases.
+    .. versionadded:: 1.5.0
+
+    .. note::
+        Experimental. API may change in future releases.
 
     The ResourceChangingScheduler works by wrapping around any other
     scheduler and adjusting the resource requirements of live trials
     in response to the decisions of the wrapped scheduler
-    through a user-specified `resources_allocation_function`. An example
-    of such a function can be found in
-    `tune/examples/xgboost_dynamic_resources_example.py`.
+    through a user-specified ``resources_allocation_function``.
+    An example of such a function can be found in
+    :doc:`/tune/examples/xgboost_dynamic_resources_example`.
 
-    Only supports the Trainable (class) API. If resources of a trial are
-    updated with new values, the `update_resources` method in the Trainable
-    will be called. This method needs to be overwritten by the user in
-    order to let the trained model take advantage of newly allocated resources.
+    Currently, only supports the Trainable (class) API. If resources of a
+    trial are updated with new values, the ``update_resources`` method in
+    the Trainable will be called. This method needs to be overwritten by the
+    user in order to let the trained model take advantage of newly allocated
+    resources.
 
-    Cannot be used if `reuse_actors` is True in `tune.run`. A ValueError
+    Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
     will be raised in that case.
 
     Args:
@@ -39,47 +137,60 @@ class ResourceChangingScheduler(TrialScheduler):
         resources_allocation_function (Callable): The function used to change
             live trial resource requiements during tuning. This function
             will be called on each trial as it finishes one step of training.
-            The function must take four arguments: `TrialRunner`, current
-            `Trial`, current result `dict` and the base trial resource
-            `PlacementGroupFactory` or `Resource` (depending on whether
-            placement groups are used). The function must return a
-            `PlacementGroupFactory`, `Resources`,`dict` or None (signifying
-            no need for an update). If `resources_allocation_function` is
-            None, no resource requirements will be changed at any time.
+            The function must take four arguments: ``TrialRunner``, current
+            ``Trial``, current result :class:`dict` and the base trial
+            resource ``PlacementGroupFactory`` or ``Resource`` (depending on
+            whether placement groups are used). The function must return a
+            ``PlacementGroupFactory``, ``Resources``, :class:`dict` or None
+            (signifying no need for an update). If
+            ``resources_allocation_function`` is None, no resource
+            requirements will be changed at any time.
+            By default, :func:`evenly_distribute_cpus_gpus` will be used,
+            distributing available CPUs and GPUs over all running trials
+            in a robust way, without any prioritization.
 
     Warning:
-        If the `resources_allocation_function` sets trial resource requirements
-        to values bigger than possible, the trial will not run. Ensure
-        that your function accounts for that possibility by setting upper
-        limits. Consult the example file to see how that may be done.
+        If the ``resources_allocation_function`` sets trial resource
+        requirements to values bigger than possible, the trial will
+        not run. Ensure that your function accounts for that possibility
+        by setting upper limits. Consult :func:`evenly_distribute_cpus_gpus`
+        to see how that may be done.
 
     Example:
-        >>> base_scheduler = ASHAScheduler(max_t=16)
-        >>> def resource_allocation_function(
-        >>>     trial_runner: "trial_runner.TrialRunner",
-        >>>     trial: Trial,
-        >>>     result: dict,
-        >>>     base_trial_resource: Union[PlacementGroupFactory|Resource]
-        >>> ) -> Union[None, PlacementGroupFactory, Resource]:
-        >>>     # logic here
-        >>>     # usage of PlacementGroupFactory is strongly preferred
-        >>>     return PlacementGroupFactory(...)
-        >>> scheduler = ResourceChangingScheduler(base_scheduler,
-        >>>                                     resource_allocation_function)
+        .. code-block:: python
 
-        See `tune/examples/xgboost_dynamic_resources_example.py` for a
+            base_scheduler = ASHAScheduler(max_t=16)
+            def my_resources_allocation_function(
+                trial_runner: "trial_runner.TrialRunner",
+                trial: Trial,
+                result: Dict[str, Any],
+                base_trial_resource: Union[PlacementGroupFactory, Resources]
+            ) -> Union[None, PlacementGroupFactory, Resource]:
+                # logic here
+                # usage of PlacementGroupFactory is strongly preferred
+                return PlacementGroupFactory(...)
+            scheduler = ResourceChangingScheduler(
+                            base_scheduler,
+                            my_resources_allocation_function
+                        )
+
+        See :doc:`/tune/examples/xgboost_dynamic_resources_example` for a
         more detailed example.
     """
 
     def __init__(
             self,
             base_scheduler: Optional[TrialScheduler] = None,
-            resources_allocation_function: Optional[Callable] = None,
+            resources_allocation_function: Optional[Callable[[
+                "trial_runner.TrialRunner", Trial, Dict[str, Any], Union[
+                    PlacementGroupFactory, Resources]
+            ], Union[None, PlacementGroupFactory,
+                     Resources]]] = evenly_distribute_cpus_gpus,
     ) -> None:
         super().__init__()
         if resources_allocation_function is None:
             warnings.warn(
-                "resources_allocation_function is None. No resource "
+                "`resources_allocation_function` is None. No resource "
                 "requirements will be changed at any time. Pass a "
                 "correctly defined function to enable functionality.")
         self._resources_allocation_function = resources_allocation_function
@@ -143,8 +254,9 @@ class ResourceChangingScheduler(TrialScheduler):
         any_resources_changed = False
 
         for trial, new_resources in self._trials_to_reallocate.items():
-            resources_changed = self.set_trial_resources(trial, new_resources)
-            any_resources_changed = any_resources_changed or resources_changed
+            any_resources_changed = (any_resources_changed
+                                     or self.set_trial_resources(
+                                         trial, new_resources))
         self._trials_to_reallocate.clear()
 
         if any_resources_changed:
