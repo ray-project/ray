@@ -107,7 +107,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
 
 # Test multi nodes 1TB non streaming shuffle with a large number of partitions.
@@ -118,7 +118,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
 
 # Stress test for 1TB multi node streaming shuffle.
@@ -129,7 +129,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
 # Stress test for 1TB multi node non-streaming shuffle.
@@ -140,7 +140,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 600
+    prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 # Test large scale dask on ray test without spilling.
