@@ -76,8 +76,8 @@ if __name__ == "__main__":
     # Wait until the expected number of nodes have joined the cluster.
     while True:
         num_nodes = len(ray.nodes())
-        logger.info("Waiting for nodes {}/{}".format(
-            num_nodes, num_remote_nodes + 1))
+        logger.info("Waiting for nodes {}/{}".format(num_nodes,
+                                                     num_remote_nodes + 1))
         if num_nodes >= num_remote_nodes + 1:
             break
         time.sleep(5)
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             parent_index = np.random.randint(len(parents))
             parents[parent_index].kill.remote()
             parents[parent_index] = Parent.remote(num_children,
-                                                    death_probability)
+                                                  death_probability)
 
         logger.info("Finished trial %s", i)
         loop_times.append(time.time() - loop_start)

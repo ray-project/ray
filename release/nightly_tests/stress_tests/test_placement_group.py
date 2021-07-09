@@ -92,8 +92,7 @@ if __name__ == "__main__":
     ray.init(address="auto")
     while True:
         num_nodes = len(ray.nodes())
-        logger.info("Waiting for nodes {}/{}".format(
-            num_nodes, NUM_NODES + 1))
+        logger.info("Waiting for nodes {}/{}".format(num_nodes, NUM_NODES + 1))
         if num_nodes >= NUM_NODES + 1:
             break
         time.sleep(5)
@@ -155,15 +154,13 @@ if __name__ == "__main__":
     assert ray.cluster_resources()[
         "pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
 
-    result[
-        "avg_pg_create_time_ms"] = total_creating_time / total_trial * 1000
-    result[
-        "avg_pg_remove_time_ms"] = total_removing_time / total_trial * 1000
+    result["avg_pg_create_time_ms"] = total_creating_time / total_trial * 1000
+    result["avg_pg_remove_time_ms"] = total_removing_time / total_trial * 1000
     result["success"] = 1
     print("Avg placement group creating time: "
-            f"{total_creating_time / total_trial * 1000} ms")
+          f"{total_creating_time / total_trial * 1000} ms")
     print("Avg placement group removing time: "
-            f"{total_removing_time / total_trial* 1000} ms")
+          f"{total_removing_time / total_trial* 1000} ms")
     print("PASSED.")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:
