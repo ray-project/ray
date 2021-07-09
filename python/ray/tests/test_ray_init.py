@@ -159,7 +159,7 @@ def test_ray_init_invalid_keyword(shutdown_only):
 
 def test_ray_init_invalid_keyword_with_client(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
-        ray.init("ray://127.0.0.0?logginglevel=mispelled")
+        ray.init("ray://127.0.0.0", logginglevel="mispelled")
     assert "logginglevel" in str(excinfo.value)
 
 
@@ -180,25 +180,6 @@ def test_env_var_no_override():
 
         with ray.init("ray://localhost:50051", namespace="argumentName"):
             assert ray.get_runtime_context().namespace == "argumentName"
-
-
-def test_url_param_override():
-    with ray_start_client_server() as given_connection:
-        given_connection.disconnect()
-
-        with ray.init("ray://localhost:50051?namespace=urlName"):
-            assert ray.get_runtime_context().namespace == "urlName"
-
-
-def test_url_param_no_override():
-    # init() argument has precedence over url parameters
-    with ray_start_client_server() as given_connection:
-        given_connection.disconnect()
-
-        with ray.init(
-                "ray://localhost:50051?namespace=urlName",
-                namespace="argName"):
-            assert ray.get_runtime_context().namespace == "argName"
 
 
 if __name__ == "__main__":

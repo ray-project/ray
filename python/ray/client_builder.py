@@ -3,7 +3,6 @@ import importlib
 import json
 import logging
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlparse
 import sys
 
 from typing import Any, Dict, Optional, Tuple
@@ -78,22 +77,6 @@ class ClientBuilder:
         runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
         if runtime_env_var:
             self.env(json.loads(runtime_env_var))
-
-        # Check address for values
-        if address:
-            # Add a dummy protocol to parse correctly
-            parsed_address = urlparse("dummyProto://" + address)
-            # Set address to part before the parameters, i.e. before any
-            # "?arg=val" in the url
-            self.address = parsed_address.netloc
-            params_dict = parse_qs(parsed_address.query)
-            for key, val in params_dict.items():
-                if key == "runtime_env":
-                    self.env(json.loads(val[0]))
-                elif key == "namespace":
-                    self.namespace(val[0])
-                else:
-                    raise RuntimeError(f"Unknown parameter: {key}")
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
