@@ -458,6 +458,7 @@ class ModelCatalog:
                             action_space=action_space,
                             num_outputs=num_outputs,
                             name=name,
+                            **model_config,
                             **customized_model_kwargs,
                         )
                     else:
