@@ -308,6 +308,18 @@ class WorkerSet:
             return tf1.Session(
                 config=tf1.ConfigProto(**config["tf_session_args"]))
 
+        def valid_module(class_path):
+            if isinstance(class_path, str) and "." in class_path:
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(f"module {module_path} not found while trying to get "
+                          f"input {class_path}")
+            return False
+
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
@@ -322,9 +334,7 @@ class WorkerSet:
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
-        elif isinstance(config["input"], str) and "." in config["input"] and \
-                importlib.util.find_spec(
-                    config["input"].rsplit(".", 1)[0]) is not None:
+        elif valid_module(config["input"]):
             input_creator = (lambda ioctx: ShuffledInput(from_config(
                 config["input"], ioctx=ioctx)))
         else:
