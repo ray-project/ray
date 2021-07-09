@@ -249,6 +249,10 @@ class ServeController:
 
     async def _update_http_proxy_deployment(
             self, endpoints: Dict[EndpointTag, EndpointInfo]):
+        # Handle the case where there is no HTTP proxy deployment.
+        if self.backend_state.get_backend(HTTP_PROXY_DEPLOYMENT_NAME) is None:
+            return
+
         return await self._update_backend_config(
             HTTP_PROXY_DEPLOYMENT_NAME, BackendConfig(user_config=endpoints))
 

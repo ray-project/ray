@@ -259,7 +259,7 @@ class RayServeReplica:
         return result
 
     async def reconfigure(self, user_config) -> None:
-        if user_config:
+        if user_config is not None:
             if self.is_function:
                 raise ValueError(
                     "backend_def must be a class to use user_config")

@@ -701,6 +701,9 @@ def start(
         detached=detached,
     )
 
+    # Wait for controller to start.
+    ray.get(controller.list_deployments.remote())
+
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
 

@@ -3,7 +3,9 @@ import json
 import logging
 import pickle
 import random
+import requests
 import string
+import time
 from typing import Iterable, Tuple
 import os
 from collections import UserDict
@@ -293,3 +295,29 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.serialization_addons.apply(ctx)
+
+
+@ray.remote(num_cpus=0)
+def block_until_http_ready(http_endpoint,
+                           backoff_time_s=1,
+                           check_ready=None,
+                           timeout=60):
+    http_is_ready = False
+    start_time = time.time()
+
+    while not http_is_ready:
+        try:
+            resp = requests.get(http_endpoint)
+            assert resp.status_code == 200
+            if check_ready is None:
+                http_is_ready = True
+            else:
+                http_is_ready = check_ready(resp)
+        except Exception:
+            pass
+
+        if 0 < timeout < time.time() - start_time:
+            raise TimeoutError(
+                "HTTP proxy not ready after {} seconds.".format(timeout))
+
+        time.sleep(backoff_time_s)
