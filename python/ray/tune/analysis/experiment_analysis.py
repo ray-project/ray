@@ -545,7 +545,7 @@ class ExperimentAnalysis(Analysis):
                 "Dataframes will use '/' instead of '.' to delimit "
                 "nested result keys in future versions of Ray. For forward "
                 "compatibility, set the environment variable "
-                "TUNE_RESULT_NEW_DELIM=1.")
+                "TUNE_RESULT_DELIM='.'")
         return delimiter
 
     @property
