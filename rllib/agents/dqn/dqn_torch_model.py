@@ -124,7 +124,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.dueling:
             if use_noisy:
                 value_module.add_module(
-                    "A",
+                    "V",
                     NoisyLayer(ins, self.num_atoms, sigma0, activation=None))
             elif q_hiddens:
                 value_module.add_module(
