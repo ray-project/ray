@@ -70,14 +70,13 @@ std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> ObjectBufferPool::GetC
           ray::Status::IOError("Unable to obtain object chunk, object not local."));
     }
     if (object_buffer.data->Size() == 0 && object_buffer.metadata->Size() == 1) {
-      RAY_LOG(INFO)
-          << "Failed to get a chunk of the object: " << object_id
-          << ". This is most likely because the object was evicted or spilled before the "
-             "pull request was received. The caller will retry the pull request after a "
-             "timeout.";
+      RAY_LOG(INFO) << object_id << " is marked as failed with error_type: "
+                    << std::string(static_cast<char *>(object_buffer.metadata->Data()),
+                                   object_buffer.metadata->Size());
       return std::pair<const ObjectBufferPool::ChunkInfo, ray::Status>(
           errored_chunk_,
-          ray::Status::IOError("Unable to obtain object chunk, object not local."));
+          ray::Status::IOError(
+              "Unable to obtain object chunk, object is marked as failed."));
     }
     RAY_CHECK(object_buffer.metadata->Data() ==
               object_buffer.data->Data() + object_buffer.data->Size());
