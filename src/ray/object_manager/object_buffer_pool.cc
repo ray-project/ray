@@ -71,7 +71,7 @@ std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> ObjectBufferPool::GetC
     }
     if (object_buffer.data->Size() == 0 && object_buffer.metadata->Size() == 1) {
       RAY_LOG(INFO) << object_id << " is marked as failed with error_type: "
-                    << std::string(static_cast<char *>(object_buffer.metadata->Data()),
+                    << std::string(reinterpret_cast<char *>(object_buffer.metadata->Data()),
                                    object_buffer.metadata->Size());
       return std::pair<const ObjectBufferPool::ChunkInfo, ray::Status>(
           errored_chunk_,
