@@ -217,8 +217,8 @@ class WorkflowStorage:
             return StepInspectResult(output_object_valid=True)
         # do we know where the output comes from?
         if field_list.output_metadata_exists:
-            return StepInspectResult(
-                output_step_id=self._locate_output_step_id(step_id))
+            output_step_id = await self._locate_output_step_id(step_id)
+            return StepInspectResult(output_step_id=output_step_id)
 
         # read inputs metadata
         try:
