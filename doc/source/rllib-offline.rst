@@ -166,7 +166,7 @@ The interface for a custom input reader is as follows:
     :members:
 
 Example Custom Input API
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can create a custom input reader like the following:
 
