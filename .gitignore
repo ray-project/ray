@@ -19,6 +19,11 @@
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/io/ray/runtime/generated/*
 
+# Files genrated by c++ worker should be ignored.
+/cpp/example/thirdparty/
+/cpp/example/bazel-*
+/python/ray/cpp
+
 # Redis temporary files
 *dump.rdb
 
@@ -194,3 +199,6 @@ project-id
 # release test related
 .anyscale.yaml
 test_state.json
+
+# workflow storage
+workflow_data/

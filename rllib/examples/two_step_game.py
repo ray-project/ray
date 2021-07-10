@@ -119,7 +119,7 @@ if __name__ == "__main__":
                 "final_epsilon": 0.05,
             },
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
+            "mixer": grid_search([None, "qmix"]),
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
@@ -145,6 +145,9 @@ if __name__ == "__main__":
     config = dict(config, **{
         "env": "grouped_twostep" if group else TwoStepGame,
     })
+
+    if args.as_test:
+        config["seed"] = 1234
 
     results = tune.run(args.run, stop=stop, config=config, verbose=2)
 

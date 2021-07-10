@@ -10,6 +10,9 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CPlacementGroupID,
 )
+from ray.includes.common cimport (
+    CRayStatus,
+)
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
@@ -38,3 +41,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
             const c_string &ray_namespace,
         )
         c_vector[c_string] GetAllPlacementGroupInfo()
+        c_string GetSystemConfig()
+        CRayStatus GetNodeToConnectForDriver(
+            const c_string &node_ip_address,
+            c_string *node_to_connect)

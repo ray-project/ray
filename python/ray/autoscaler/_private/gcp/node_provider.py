@@ -1,3 +1,4 @@
+from functools import wraps
 from uuid import uuid4
 from threading import RLock
 import time
@@ -38,18 +39,50 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     return result
 
 
+def _retry(method, max_tries=5, backoff_s=1):
+    """Retry decorator for methods of GCPNodeProvider.
+
+    Upon catching BrokenPipeError, API clients are rebuilt and
+    decorated methods are retried.
+
+    Work-around for https://github.com/ray-project/ray/issues/16072.
+    Based on https://github.com/kubeflow/pipelines/pull/5250/files.
+    """
+
+    @wraps(method)
+    def method_with_retries(self, *args, **kwargs):
+        try_count = 0
+        while try_count < max_tries:
+            try:
+                return method(self, *args, **kwargs)
+            except BrokenPipeError:
+                logger.warning("Caught a BrokenPipeError. Retrying.")
+                try_count += 1
+                if try_count < max_tries:
+                    self._construct_clients()
+                    time.sleep(backoff_s)
+                else:
+                    raise
+
+    return method_with_retries
+
+
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()
-        _, _, self.compute = construct_clients_from_provider_config(
-            provider_config)
+        self._construct_clients()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
+    def _construct_clients(self):
+        _, _, self.compute = construct_clients_from_provider_config(
+            self.provider_config)
+
+    @_retry
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
             if tag_filters:
@@ -108,6 +141,7 @@ class GCPNodeProvider(NodeProvider):
             labels = node.get("labels", {})
             return labels
 
+    @_retry
     def set_node_tags(self, node_id, tags):
         with self.lock:
             labels = tags
@@ -158,6 +192,7 @@ class GCPNodeProvider(NodeProvider):
 
             return ip
 
+    @_retry
     def create_node(self, base_config, tags, count) -> None:
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
@@ -199,6 +234,7 @@ class GCPNodeProvider(NodeProvider):
                 wait_for_compute_zone_operation(self.compute, project_id,
                                                 operation, availability_zone)
 
+    @_retry
     def terminate_node(self, node_id):
         with self.lock:
             project_id = self.provider_config["project_id"]
@@ -215,6 +251,7 @@ class GCPNodeProvider(NodeProvider):
 
             return result
 
+    @_retry
     def _get_node(self, node_id):
         self.non_terminated_nodes({})  # Side effect: updates cache
 
