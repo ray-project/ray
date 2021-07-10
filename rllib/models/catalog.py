@@ -241,8 +241,6 @@ class ModelCatalog:
             if action_space.dtype.name.startswith("int"):
                 low_ = np.min(action_space.low)
                 high_ = np.max(action_space.high)
-                assert np.all(action_space.low == low_)
-                assert np.all(action_space.high == high_)
                 dist_cls = TorchMultiCategorical if framework == "torch" \
                     else MultiCategorical
                 num_cats = int(np.product(action_space.shape))
