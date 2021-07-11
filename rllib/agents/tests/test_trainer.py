@@ -12,11 +12,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrainer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
+        ray.client().connect()
 
     def test_add_delete_policy(self):
         env = gym.make("CartPole-v0")

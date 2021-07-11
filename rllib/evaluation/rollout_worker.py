@@ -900,17 +900,19 @@ class RolloutWorker(ParallelIteratorWorker):
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             to_fetch = {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-            else:
-                builder = None
+            #if self.tf_sess is not None:
+            #    builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
+            #else:
+            #    builder = None
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
                 policy = self.policy_map[pid]
-                if builder and hasattr(policy, "_build_learn_on_batch"):
+                tf_session = policy.get_session()
+                if tf_session and hasattr(policy, "_build_learn_on_batch"):
+                    builder = TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(
                         builder, batch)
                 else:
@@ -1005,7 +1007,11 @@ class RolloutWorker(ParallelIteratorWorker):
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): id of policy to return.
+            policy_id (str): ID of the policy to return.
+            
+        Returns:
+            Optional[Policy]: The policy under the given ID (or None if not
+                found).
         """
 
         return self.policy_map.get(policy_id)

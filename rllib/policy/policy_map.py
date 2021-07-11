@@ -90,19 +90,58 @@ class PolicyMap(dict):
 
     @override(dict)
     def __iter__(self):
+        return self.keys()
+
+    @override(dict)
+    def items(self):
         """Iterates over all policies, even the stashed-to-disk ones."""
 
-        def iterator():
+        def gen():
             for key in self.valid_keys:
                 yield (key, self[key])
 
-        return iterator
+        return gen()
+
+    @override(dict)
+    def keys(self):
+
+        def gen():
+            for key in self.valid_keys:
+                yield key
+
+        return gen()
+
+    @override(dict)
+    def values(self):
+
+        def gen():
+            for key in self.valid_keys:
+                yield self[key]
+
+        return gen()
+
+    @override(dict)
+    def update(self, __m, **kwargs):
+        for k, v in __m.items():
+            self[k] = v
+        for k, v in kwargs.items():
+            self[k] = v
+
+    @override(dict)
+    def get(self, key):
+        if key not in self.valid_keys:
+            return None
+        return self[key]
 
     @override(dict)
     def __len__(self):
         """Returns number of all policies, including the stashed-to-disk ones.
         """
         return len(self.valid_keys)
+
+    @override(dict)
+    def __contains__(self, item):
+        return item in self.valid_keys
 
     def _stash_to_disk(self):
         """Writes the least-recently used policy to disk and rearranges cache.
@@ -149,19 +188,3 @@ class PolicyMap(dict):
         # Closes the tf session, if any.
         if sess is not None:
             sess.__exit__(None, None, None)
-
-
-cache = PolicyMap(capacity=5)
-cache["a"] = 1
-cache["b"] = 2
-print(cache["a"])
-cache["c"] = 3
-cache["d"] = 4
-cache["e"] = 5
-cache["f"] = 6
-print(cache["a"])
-print(cache["f"])
-print(cache["b"])
-cache["g"] = 7
-cache["h"] = 8
-print(cache["c"])
