@@ -340,6 +340,11 @@ class ActorClass:
         assert False, ("ActorClass.__init__ should not be called. Please use "
                        "the @ray.remote decorator instead.")
 
+
+    def __ready__(self):
+        assert False, ("ActorClass.__init__ should not be called. Please use "
+                       "the @ray.remote decorator instead.")
+
     def __call__(self, *args, **kwargs):
         """Prevents users from directly instantiating an ActorClass.
 
@@ -837,6 +842,10 @@ class ActorHandle:
                 worker.core_worker.remove_actor_handle_reference(
                     self._ray_actor_id)
 
+
+    def ready(self):
+        return self._actor_method_call("__ray_ready__", num_returns=1)
+
     def _actor_method_call(self,
                            method_name,
                            args=None,
@@ -901,7 +910,7 @@ class ActorHandle:
         if not self._ray_is_cross_language:
             raise AttributeError(f"'{type(self).__name__}' object has "
                                  f"no attribute '{item}'")
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_ready__", "__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -1025,6 +1034,10 @@ def modify_class(cls):
             worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
+
+        def __ray_ready__(self):
+            worker = ray.worker.global_worker
+            return True
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

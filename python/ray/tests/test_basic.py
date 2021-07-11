@@ -744,6 +744,16 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         # ray.get should throw an exception.
         assert False
 
+def test_actor_ready(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A(object):
+        pass
+
+    a = A.remote()
+    assert ray.get(a.ready())
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
