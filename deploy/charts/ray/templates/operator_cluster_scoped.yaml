@@ -47,6 +47,9 @@ spec:
         cluster.ray.io/component: operator
     spec:
       serviceAccountName: ray-operator-serviceaccount
+{{- if .Values.nodeSelector }}
+      nodeSelector: {{- .Values.nodeSelector | toYaml | nindent 8 }}
+{{- end }}
       containers:
       - name: ray
         imagePullPolicy: Always
