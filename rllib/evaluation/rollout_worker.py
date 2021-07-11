@@ -1071,8 +1071,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        add_map, add_prep = self._build_policy_map(policy_dict,
-                                                   self.policy_config)
+        if self.tf_sess is not None:
+            with self.tf_sess.graph.as_default():
+                with self.tf_sess.as_default():
+                    add_map, add_prep = self._build_policy_map(
+                        policy_dict, self.policy_config)
+        else:
+            add_map, add_prep = self._build_policy_map(policy_dict,
+                                                       self.policy_config)
         new_policy = add_map[policy_id]
 
         self.policy_map.update(add_map)
