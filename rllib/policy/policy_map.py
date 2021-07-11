@@ -1,4 +1,5 @@
 from collections import deque
+import os
 import pickle
 
 from ray.rllib.utils.annotations import override
@@ -21,6 +22,10 @@ class PolicyMap(dict):
             path (str):
         """
         super().__init__()
+
+        # The file extension for stashed policies (that are no longer available
+        # in-memory but can be reinstated any time from storage).
+        self.extension = ".policy.pkl"
 
         # Dictionary of keys that may be looked up (cached or not).
         self.valid_keys = set()
@@ -64,19 +69,59 @@ class PolicyMap(dict):
         else:
             # Cache at capacity -> Drop leftmost item.
             if len(self.deque) == self.deque.maxlen:
-                self._write_to_disk()
+                self._stash_to_disk()
             self.deque.append(key)
             self.cache[key] = value
         self.valid_keys.add(key)
 
-    def _write_to_disk(self):
-        """Writes least-recently used policy to disk and rearranges cache.
+    @override(dict)
+    def __delitem__(self, key):
+        # Make key invalid.
+        self.valid_keys.remove(key)
+        # Remove policy from memory if currently cached.
+        if key in self.cache:
+            policy = self.cache[key]
+            self._close_session(policy)
+            del self.cache[key]
+        # Remove file associated with the policy, if it exists.
+        filename = self.path + "/" + key + self.extension
+        if os.path.isfile(filename):
+            os.remove(filename)
+
+    @override(dict)
+    def __iter__(self):
+        """Iterates over all policies, even the stashed-to-disk ones."""
+
+        def iterator():
+            for key in self.valid_keys:
+                yield (key, self[key])
+
+        return iterator
+
+    @override(dict)
+    def __len__(self):
+        """Returns number of all policies, including the stashed-to-disk ones.
         """
+        return len(self.valid_keys)
+
+    def _stash_to_disk(self):
+        """Writes the least-recently used policy to disk and rearranges cache.
+
+        Also closes the session - if applicable - of the stashed policy.
+        """
+        # Get least recently used policy (all the way on the left in deque).
         delkey = self.deque.popleft()
         policy = self.cache[delkey]
+        # Get its state for writing to disk.
         policy_state = policy.get_state()
+        # Closes policy's tf session, if any.
+        self._close_session(policy)
+        # Remove from memory.
+        # TODO: (sven) this should clear the tf Graph as well, if the Trainer
+        #  would not hold a
         del self.cache[delkey]
-        with open(self.path + "/" + delkey + ".policy.pkl", "wb") as f:
+        # Write state to disk.
+        with open(self.path + "/" + delkey + self.extension, "wb") as f:
             pickle.dump(policy_state, file=f)
 
     def _read_from_disk(self, policy_id):
@@ -85,7 +130,7 @@ class PolicyMap(dict):
         # Make sure this policy ID is not in the cache right now.
         assert policy_id not in self.cache
         # Read policy state from disk.
-        with open(self.path + "/" + policy_id + ".policy.pkl", "r") as f:
+        with open(self.path + "/" + policy_id + self.extension, "r") as f:
             policy_state = pickle.load(f)
         # Create policy object (from its spec: cls, obs-space, act-space, config).
         policy = policy_state["policy_spec"][0](*policy_state["policy_spec"][1:])
@@ -95,9 +140,15 @@ class PolicyMap(dict):
 
         # Cache at capacity -> Drop leftmost item.
         if len(self.deque) == self.deque.maxlen:
-            self._write_to_disk()
+            self._stash_to_disk()
         # Add policy ID to deque.
         self.deque.append(policy_id)
+
+    def _close_session(self, policy):
+        sess = policy.get_session()
+        # Closes the tf session, if any.
+        if sess is not None:
+            sess.__exit__(None, None, None)
 
 
 cache = PolicyMap(capacity=5)
