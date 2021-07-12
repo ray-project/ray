@@ -1,3 +1,5 @@
+# extracted from aioboto3
+#    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
 import pytest
 import requests
 import shutil
@@ -5,20 +7,19 @@ import signal
 import subprocess as sp
 import time
 
-# extracted from aioboto3
-#    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
-
 _proxy_bypass = {
-  "http": None,
-  "https": None,
+    "http": None,
+    "https": None,
 }
+
 
 def start_service(service_name, host, port):
     moto_svr_path = shutil.which("moto_server")
     args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)
-    process = sp.Popen(args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)  # shell=True
+    process = sp.Popen(
+        args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)  # shell=True
     url = "http://{host}:{port}".format(host=host, port=port)
 
     for i in range(0, 30):
@@ -57,10 +58,30 @@ def stop_process(process):
 
 
 @pytest.fixture(scope="session")
+def dynamodb2_server():
+    host = "localhost"
+    port = 5001
+    url = "http://{host}:{port}".format(host=host, port=port)
+    process = start_service('dynamodb2', host, port)
+    yield url
+    stop_process(process)
+
+
+@pytest.fixture(scope="session")
 def s3_server():
     host = "localhost"
     port = 5002
     url = "http://{host}:{port}".format(host=host, port=port)
     process = start_service('s3', host, port)
+    yield url
+    stop_process(process)
+
+
+@pytest.fixture(scope="session")
+def kms_server():
+    host = "localhost"
+    port = 5003
+    url = "http://{host}:{port}".format(host=host, port=port)
+    process = start_service('kms', host, port)
     yield url
     stop_process(process)

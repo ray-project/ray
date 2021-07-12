@@ -4,8 +4,6 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
-from ray.experimental.workflow.storage.s3 import S3StorageImpl
 import boto3
 from moto import mock_s3
 from mock_server import *  # noqa
@@ -21,10 +19,12 @@ def some_func2(x):
 
 @pytest.fixture(scope="function")
 def filesystem_storage(tmp_path):
-    yield FilesystemStorageImpl(str(tmp_path))
+    storage.set_global_storage(
+        storage.create_storage(f"file:///{str(tmp_path)}/.workflow_data"))
+    yield storage.get_global_storage()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def aws_credentials():
     import os
     old_env = os.environ
@@ -40,13 +40,12 @@ def aws_credentials():
 def s3_storage(aws_credentials, s3_server):
     with mock_s3():
         client = boto3.client(
-            's3', region_name="us-west-2", endpoint_url=s3_server)
-        client.create_bucket(Bucket='test_bucket')
-        yield S3StorageImpl(
-            "test_bucket",
-            "workflow",
-            region_name="us-west-2",
-            endpoint_url=s3_server)
+            "s3", region_name="us-west-2", endpoint_url=s3_server)
+        client.create_bucket(Bucket="test_bucket")
+        url = ("s3://test_bucket/workflow"
+               f"?region_name=us-west-2&endpoint_url={s3_server}")
+        storage.set_global_storage(storage.create_storage(url))
+        yield storage.get_global_storage()
 
 
 @pytest.mark.asyncio
@@ -130,9 +129,12 @@ async def test_raw_storage(ray_start_regular, raw_storage):
     assert load_step_output == output
 
 
-def test_workflow_storage(ray_start_regular):
+@pytest.mark.parametrize("raw_storage", [
+    pytest.lazy_fixture("filesystem_storage"),
+    pytest.lazy_fixture("s3_storage")
+])
+def test_workflow_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
-    raw_storage = storage.get_global_storage()
     step_id = "some_step"
     input_metadata = {
         "name": "test_basic_workflows.append1",
