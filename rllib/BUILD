@@ -2428,7 +2428,7 @@ py_test(
     name = "examples/pettingzoo_env",
     main = "examples/pettingzoo_env.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/pettingzoo_env.py"],
 )
 
