@@ -56,7 +56,7 @@ def test_object_broadcast():
         assert result == OBJECT_SIZE
 
 
-ray.init(address="auto")
+ray.client().env({}).connect()
 start = perf_counter()
 test_object_broadcast()
 end = perf_counter()
