@@ -169,7 +169,7 @@ class ServeController:
             traffic_dict: Dict[str, float],
             route: Optional[str],
             methods: Set[str],
-    ) -> None:
+    ) -> Optional[GoalId]:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -185,10 +185,13 @@ class ServeController:
             endpoints = self.endpoint_state.create_endpoint(
                 endpoint, EndpointInfo(tuple(methods), route=route),
                 TrafficPolicy(traffic_dict))
-            if endpoints is not None:
-                await self._update_http_proxy_deployment(endpoints)
 
-    async def delete_endpoint(self, endpoint: str) -> None:
+            if endpoints is not None:
+                return await self._update_http_proxy_deployment(endpoints)
+            else:
+                return None
+
+    async def delete_endpoint(self, endpoint: str) -> Optional[GoalId]:
         """Delete the specified endpoint.
 
         Does not modify any corresponding backends.
@@ -197,7 +200,9 @@ class ServeController:
         async with self.write_lock:
             endpoints = self.endpoint_state.delete_endpoint(endpoint)
             if endpoints is not None:
-                await self._update_http_proxy_deployment(endpoints)
+                return await self._update_http_proxy_deployment(endpoints)
+            else:
+                return None
 
     async def create_backend(
             self, backend_tag: BackendTag, backend_config: BackendConfig,
@@ -229,8 +234,9 @@ class ServeController:
                                      "from all endpoints and try again.")
             return self.backend_state.delete_backend(backend_tag, force_kill)
 
-    async def _update_backend_config(self, backend_tag: BackendTag,
-                                     config_options: BackendConfig) -> GoalId:
+    async def _update_backend_config(
+            self, backend_tag: BackendTag,
+            config_options: BackendConfig) -> Optional[GoalId]:
         existing_info = self.backend_state.get_backend(backend_tag)
         if existing_info is None:
             raise ValueError(f"Backend {backend_tag} is not registered.")
@@ -254,10 +260,11 @@ class ServeController:
                                                      config_options)
 
     async def _update_http_proxy_deployment(
-            self, endpoints: Dict[EndpointTag, EndpointInfo]):
+            self,
+            endpoints: Dict[EndpointTag, EndpointInfo]) -> Optional[GoalId]:
         # Handle the case where there is no HTTP proxy deployment.
         if self.backend_state.get_backend(HTTP_PROXY_DEPLOYMENT_NAME) is None:
-            return
+            return None
 
         return await self._update_backend_config(
             HTTP_PROXY_DEPLOYMENT_NAME, BackendConfig(user_config=endpoints))
@@ -322,7 +329,7 @@ class ServeController:
                     await self._update_http_proxy_deployment(endpoints)
             return goal_id, updating
 
-    async def delete_deployment(self, name: str) -> Optional[GoalId]:
+    async def delete_deployment(self, name: str) -> List[Optional[GoalId]]:
         async with self.write_lock:
             endpoints = self.endpoint_state.delete_endpoint(name)
             if endpoints is not None:

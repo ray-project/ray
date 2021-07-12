@@ -223,9 +223,10 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        ray.get(
-            self._controller.create_endpoint.remote(
-                endpoint_name, {backend: 1.0}, route, upper_methods))
+        self._wait_for_goal(
+            ray.get(
+                self._controller.create_endpoint.remote(
+                    endpoint_name, {backend: 1.0}, route, upper_methods)))
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
@@ -233,7 +234,8 @@ class Client:
 
         Does not delete any associated backends.
         """
-        ray.get(self._controller.delete_endpoint.remote(endpoint))
+        self._wait_for_goal(
+            ray.get(self._controller.delete_endpoint.remote(endpoint)))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
