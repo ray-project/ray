@@ -3,10 +3,14 @@ import subprocess
 import sys
 import time
 
+import pytest
 import ray
 from ray.experimental import workflow
 
 
+@pytest.mark.skip(reason="Blocked by issue #16951, where the exiting of "
+                  "driver kills the task launched by a detached "
+                  "named actor.")
 def test_workflow_lifetime():
     subprocess.run(["ray start --head"], shell=True)
     time.sleep(1)
