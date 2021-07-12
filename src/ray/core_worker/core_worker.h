@@ -886,7 +886,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param all_namespaces Whether or not to include actors from all namespaces.
   /// \return The list of <namespace, name> pairs and a status.
-  std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListActors(
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
       bool all_namespaces);
 
   ///
@@ -1118,7 +1118,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get all named actors in local mode.
   std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-  ListActorsLocalMode();
+  ListNamedActorsLocalMode();
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from

@@ -627,7 +627,7 @@ class NotDetached:
 actor = NotDetached.options(name="actor").remote()
 assert ray.get(actor.ping.remote()) == "pong"
 handle = ray.get_actor("actor")
-assert any(actor["name"] == "actor" for actor in ray.list_actors())
+assert ray.util.list_named_actors() == ["actor"]
 assert ray.get(handle.ping.remote()) == "pong"
 """.format(redis_address)
 
@@ -636,7 +636,7 @@ assert ray.get(handle.ping.remote()) == "pong"
 
     # Must raise an exception since lifetime is not detached.
     with pytest.raises(Exception):
-        assert not ray.list_actors()
+        assert not ray.util.list_named_actors()
         detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
 
@@ -690,7 +690,7 @@ import ray
 ray.init(address="{}", namespace="")
 
 name = "{}"
-assert any(actor["name"] == name for actor in ray.list_actors())
+assert ray.util.list_named_actors() == [name]
 existing_actor = ray.get_actor(name)
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
@@ -717,8 +717,9 @@ ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
-    assert any(
-        actor["name"] == create_actor_name for actor in ray.list_actors())
+    assert len(ray.util.list_named_actors()) == 2
+    assert get_actor_name in ray.util.list_named_actors()
+    assert create_actor_name in ray.util.list_named_actors()
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
     # Verify that a detached actor is able to create tasks/actors
@@ -741,8 +742,7 @@ def test_detached_actor_cleanup(ray_start_regular):
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         del detached_actor
-        assert any(
-            actor["name"] == dup_actor_name for actor in ray.list_actors())
+        assert ray.util.list_named_actors() == [dup_actor_name]
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
@@ -813,12 +813,12 @@ def test_detached_actor_local_mode(ray_start_regular):
             return RETURN_VALUE
 
     Y.options(lifetime="detached", name="test").remote()
-    assert any(actor["name"] == "test" for actor in ray.list_actors())
+    assert ray.util.list_named_actors() == ["test"]
     y = ray.get_actor("test")
     assert ray.get(y.f.remote()) == RETURN_VALUE
 
     ray.kill(y)
-    assert all(actor["name"] != "test" for actor in ray.list_actors())
+    assert not ray.util.list_named_actors()
     with pytest.raises(ValueError):
         ray.get_actor("test")
 

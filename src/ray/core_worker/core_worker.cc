@@ -2012,9 +2012,9 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 }
 
 std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-CoreWorker::ListActors(bool all_namespaces) {
+CoreWorker::ListNamedActors(bool all_namespaces) {
   if (options_.is_local_mode) {
-    return ListActorsLocalMode();
+    return ListNamedActorsLocalMode();
   }
 
   std::vector<std::pair<std::string, std::string>> actors;
@@ -2024,7 +2024,7 @@ CoreWorker::ListActors(bool all_namespaces) {
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncListActors(
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncListNamedActors(
       all_namespaces, ray_namespace,
       [&actors, ready_promise](const std::vector<rpc::NamedActorInfo> &result) {
         for (const auto &actor_info : result) {
@@ -2063,7 +2063,7 @@ CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
 }
 
 std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-CoreWorker::ListActorsLocalMode() {
+CoreWorker::ListNamedActorsLocalMode() {
   std::vector<std::pair<std::string, std::string>> actors;
   for (auto it = local_mode_named_actor_registry_.begin();
        it != local_mode_named_actor_registry_.end(); it++) {

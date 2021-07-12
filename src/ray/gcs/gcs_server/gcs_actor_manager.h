@@ -212,9 +212,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleListActors(const rpc::ListActorsRequest &request,
-                        rpc::ListActorsReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -258,7 +258,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
   /// \param[in] namespace The namespace to filter to if all_namespaces is false.
   /// \returns List of <namespace, name> pairs.
-  std::vector<std::pair<std::string, std::string>> ListActors(
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.

@@ -6,57 +6,57 @@ import ray
 from ray.test_utils import run_string_as_driver, wait_for_condition
 
 
-def test_list_actors_basic(ray_start_regular):
+def test_list_named_actors_basic(ray_start_regular):
     @ray.remote
     class A:
         pass
 
     a = A.remote()
-    assert not ray.list_actors()
+    assert not ray.util.list_named_actors()
 
     a = A.options(name="hi").remote()
-    assert len(ray.list_actors()) == 1
-    assert ray.list_actors()[0]["name"] == "hi"
+    assert len(ray.util.list_named_actors()) == 1
+    assert "hi" in ray.util.list_named_actors()
 
     b = A.options(name="hi2").remote()
-    assert len(ray.list_actors()) == 2
-    assert any(actor["name"] == "hi" for actor in ray.list_actors())
-    assert any(actor["name"] == "hi2" for actor in ray.list_actors())
+    assert len(ray.util.list_named_actors()) == 2
+    assert "hi" in ray.util.list_named_actors()
+    assert "hi2" in ray.util.list_named_actors()
 
     def one_actor():
-        actors = ray.list_actors()
-        return len(actors) == 1 and actors[0]["name"] == "hi2"
+        actors = ray.util.list_named_actors()
+        return actors == ["hi2"]
 
     del a
     wait_for_condition(one_actor)
 
     del b
-    wait_for_condition(lambda: not ray.list_actors())
+    wait_for_condition(lambda: not ray.util.list_named_actors())
 
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
     }], indirect=True)
-def test_list_actors_basic_local_mode(ray_start_regular):
+def test_list_named_actors_basic_local_mode(ray_start_regular):
     @ray.remote
     class A:
         pass
 
     a = A.remote()
-    assert not ray.list_actors()
+    assert not ray.util.list_named_actors()
 
     a = A.options(name="hi").remote()  # noqa: F841
-    assert len(ray.list_actors()) == 1
-    assert ray.list_actors()[0]["name"] == "hi"
+    assert len(ray.util.list_named_actors()) == 1
+    assert "hi" in ray.util.list_named_actors()
 
     b = A.options(name="hi2").remote()  # noqa: F841
-    assert len(ray.list_actors()) == 2
-    assert any(actor["name"] == "hi" for actor in ray.list_actors())
-    assert any(actor["name"] == "hi2" for actor in ray.list_actors())
+    assert len(ray.util.list_named_actors()) == 2
+    assert "hi" in ray.util.list_named_actors()
+    assert "hi2" in ray.util.list_named_actors()
 
 
-def test_list_actors_restarting_actor(ray_start_regular):
+def test_list_named_actors_restarting_actor(ray_start_regular):
     @ray.remote(max_restarts=-1)
     class A:
         def __init__(self):
@@ -64,14 +64,13 @@ def test_list_actors_restarting_actor(ray_start_regular):
 
     a = A.options(name="hi").remote()
     for _ in range(10000):
-        assert len(ray.list_actors()) == 1
-        assert ray.list_actors()[0]["name"] == "hi"
+        assert ray.util.list_named_actors() == ["hi"]
 
     del a
-    wait_for_condition(lambda: not ray.list_actors())
+    wait_for_condition(lambda: not ray.util.list_named_actors())
 
 
-def test_list_actors_ray_kill(ray_start_regular):
+def test_list_named_actors_ray_kill(ray_start_regular):
     """Verify that names are returned even while actors are restarting."""
 
     @ray.remote(max_restarts=-1)
@@ -80,16 +79,14 @@ def test_list_actors_ray_kill(ray_start_regular):
             pass
 
     a = A.options(name="hi").remote()
-    assert len(ray.list_actors()) == 1
-    assert ray.list_actors()[0]["name"] == "hi"
+    assert ray.util.list_named_actors() == ["hi"]
     ray.kill(a, no_restart=False)
-    assert len(ray.list_actors()) == 1
-    assert ray.list_actors()[0]["name"] == "hi"
+    assert ray.util.list_named_actors() == ["hi"]
     ray.kill(a, no_restart=True)
-    assert not ray.list_actors()
+    assert not ray.util.list_named_actors()
 
 
-def test_list_actors_detached(ray_start_regular):
+def test_list_named_actors_detached(ray_start_regular):
     """Verify that names are returned for detached actors until killed."""
     address = ray_start_regular["redis_address"]
 
@@ -104,20 +101,17 @@ class A:
 A.options(name="hi", lifetime="detached").remote()
 a = A.options(name="sad").remote()
 
-assert len(ray.list_actors()) == 2
-assert any(actor["name"] == "hi" for actor in ray.list_actors())
-assert any(actor["name"] == "sad" for actor in ray.list_actors())
+assert len(ray.util.list_named_actors()) == 2
+assert "hi" in ray.util.list_named_actors()
+assert "sad" in ray.util.list_named_actors()
 """.format(address)
 
     run_string_as_driver(driver_script)
 
-    assert len(ray.list_actors()) == 1
-    assert ray.list_actors()[0]["name"] == "hi"
-    ray.kill(ray.get_actor("hi"), no_restart=True)
-    assert not ray.list_actors()
+    assert ray.util.list_named_actors() == ["hi"]
 
 
-def test_list_actors_namespace(ray_start_regular):
+def test_list_named_actors_namespace(ray_start_regular):
     """Verify that actor names are filtered on namespace by default."""
     address = ray_start_regular["redis_address"]
 
@@ -131,32 +125,29 @@ class A:
 
 A.options(name="hi", lifetime="detached").remote()
 
-assert len(ray.list_actors()) == 1
-assert ray.list_actors()[0]["namespace"] == "test"
-assert ray.list_actors()[0]["name"] == "hi"
+assert len(ray.util.list_named_actors()) == 1
+assert ray.util.list_named_actors() == ["hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
 """.format(address)
 
     run_string_as_driver(driver_script_1)
 
-    assert not ray.list_actors()
-    assert len(ray.list_actors(all_namespaces=True)) == 1
-    assert ray.list_actors(all_namespaces=True)[0]["namespace"] == "test"
-    assert ray.list_actors(all_namespaces=True)[0]["name"] == "hi"
+    assert not ray.util.list_named_actors()
+    assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
 
     driver_script_2 = """
 import ray
 ray.init(address="{}", namespace="test")
 
-assert len(ray.list_actors()) == 1
-assert ray.list_actors()[0]["namespace"] == "test"
-assert ray.list_actors()[0]["name"] == "hi"
+assert ray.util.list_named_actors() == ["hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
 ray.kill(ray.get_actor("hi"), no_restart=True)
-assert not ray.list_actors()
+assert not ray.util.list_named_actors()
 """.format(address)
 
     run_string_as_driver(driver_script_2)
-    assert not ray.list_actors()
-    assert not ray.list_actors(all_namespaces=True)
+    assert not ray.util.list_named_actors()
+    assert not ray.util.list_named_actors(all_namespaces=True)
 
 
 if __name__ == "__main__":

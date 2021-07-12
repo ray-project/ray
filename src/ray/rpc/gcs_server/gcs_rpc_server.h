@@ -137,9 +137,9 @@ class ActorInfoGcsServiceHandler {
                                        GetNamedActorInfoReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleListActors(const rpc::ListActorsRequest &request,
-                                rpc::ListActorsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                                     rpc::ListNamedActorsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
                                      GetAllActorInfoReply *reply,
@@ -170,7 +170,7 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(ListActors);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(ListNamedActors);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(KillActorViaGcs);
   }

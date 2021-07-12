@@ -162,7 +162,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
         pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
-        pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListActors(
+        pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListNamedActors(
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)

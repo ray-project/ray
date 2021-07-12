@@ -479,10 +479,11 @@ class Worker:
         return self.server.KVList(req, metadata=self.metadata).keys
 
     def list_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
-        req = ray_client_pb2.ClientListActorsRequest(
+        req = ray_client_pb2.ClientListNamedActorsRequest(
             all_namespaces=all_namespaces)
         return json.loads(
-            self.server.ListActors(req, metadata=self.metadata).actors_json)
+            self.server.ListNamedActors(req,
+                                        metadata=self.metadata).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:

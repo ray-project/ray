@@ -98,14 +98,14 @@ message GetNamedActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
-message ListActorsRequest {
+message ListNamedActorsRequest {
   // Whether or not to include actors from all namespaces.
   bool all_namespaces = 1;
   // Namespace to filter to if all_namespaces is false.
   string ray_namespace = 2;
 }
 
-message ListActorsReply {
+message ListNamedActorsReply {
   GcsStatus status = 1;
   repeated NamedActorInfo named_actors_list = 2;
 }
@@ -148,7 +148,7 @@ service ActorInfoGcsService {
   // Get actor data from GCS Service by name.
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
   // Get all named actor names from GCS Service.
-  rpc ListActors(ListActorsRequest) returns (ListActorsReply);
+  rpc ListNamedActors(ListNamedActorsRequest) returns (ListNamedActorsReply);
   // Get information of all actor from GCS Service.
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.

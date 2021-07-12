@@ -63,7 +63,7 @@ class ActorInfoAccessor {
   /// \param ray_namespace The namespace to filter to if all_namespaces is false.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncListActors(
+  virtual Status AsyncListNamedActors(
       bool all_namespaces, const std::string &ray_namespace,
       const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) = 0;
 
