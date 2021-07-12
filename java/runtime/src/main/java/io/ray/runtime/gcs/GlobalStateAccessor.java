@@ -176,6 +176,6 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
   private native byte[] nativeGetInternalKV(long nativePtr, String k);
-  
+
   private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }
