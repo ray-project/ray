@@ -17,7 +17,8 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install $(basename $WHEEL_PATH)[all] 
         "azure-cli-core==2.22.0" \
         "azure-mgmt-compute==14.0.0" \
         "azure-mgmt-msi==1.0.0" \
-        "azure-mgmt-network==10.2.0"; fi) \
+        "azure-mgmt-network==10.2.0" \
+        "azure-mgmt-resource==13.0.0"; fi) \
     $(if [ $($HOME/anaconda3/bin/python -c "import sys; print(sys.version_info.minor)") != 6 ] \
         && [ "$AUTOSCALER" = "autoscaler" ]; then echo "kopf"; fi) \
     && $HOME/anaconda3/bin/pip uninstall ray -y && sudo rm $(basename $WHEEL_PATH)

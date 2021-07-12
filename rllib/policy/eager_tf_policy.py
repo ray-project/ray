@@ -17,6 +17,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import TensorType
 
@@ -565,12 +566,15 @@ def build_eager_tf_policy(
 
         @with_lock
         @override(Policy)
-        def compute_log_likelihoods(self,
-                                    actions,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None):
+        def compute_log_likelihoods(
+                self,
+                actions,
+                obs_batch,
+                state_batches=None,
+                prev_action_batch=None,
+                prev_reward_batch=None,
+                actions_normalized=True,
+        ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError("Cannot compute log-prob/likelihood w/o an "
                                  "`action_distribution_fn` and a provided "
@@ -606,6 +610,11 @@ def build_eager_tf_policy(
                 dist_class = self.dist_class
 
             action_dist = dist_class(dist_inputs, self.model)
+
+            # Normalize actions if necessary.
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
             log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods

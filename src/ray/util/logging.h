@@ -43,10 +43,7 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// In order to use the get stacktrace method in other non-glog scenarios, we
-/// have added a patch to allow glog to return the current call stack information
-/// through the internal interface. This function `GetCallTrace` is a wrapper
-/// providing a new detection function for debug or something like that.
+/// This function returns the current call stack information.
 std::string GetCallTrace();
 
 enum class RayLogLevel {
@@ -145,13 +142,12 @@ class RayLog : public RayLogBase {
   static bool IsLevelEnabled(RayLogLevel log_level);
 
   /// Install the failure signal handler to output call stack when crash.
-  /// If glog is not installed, this function won't do anything.
   static void InstallFailureSignalHandler();
-  // Get the log level from environment variable.
 
-  // To check failure signal handler enabled or not.
+  /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
 
+  /// Get the log level from environment variable.
   static RayLogLevel GetLogLevelFromEnv();
 
   static std::string GetLogFormatPattern();
@@ -188,7 +184,6 @@ class RayLog : public RayLogBase {
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
-// This class is copied from glog.
 class Voidify {
  public:
   Voidify() {}
