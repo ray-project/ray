@@ -123,7 +123,7 @@ class WorkflowManagementActor:
         if workflow_id not in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "does not exist. The workflow is either failed "
-                             "or finished. Use 'run_or_resume' to access "
+                             "or finished. Use 'workflow.resume()' to access "
                              "the workflow result.")
         return self._workflow_outputs[workflow_id]
 

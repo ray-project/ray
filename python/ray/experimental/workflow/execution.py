@@ -94,6 +94,7 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     except ValueError as e:
         raise ValueError(
             "Failed to connect to the workflow management "
-            "actor. The workflow could have already failed.") from e
+            "actor. The workflow could have already failed. You can use "
+            "workflow.resume() to resume the workflow.") from e
     output = ray.get(actor.get_output.remote(workflow_id))
     return flatten_workflow_output(workflow_id, output)
