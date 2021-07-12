@@ -156,12 +156,9 @@ def clip_action(action, action_space):
 def unsquash_action(action, action_space_struct):
     """Unsquashes all components in `action` according to the given Space.
 
-    Inverse of `normalize_action()`. Useful for mapping policy action
-    outputs (normalized between -1.0 and 1.0) to an env's action space.
     Unsquashing results in cont. action component values between the
     given Space's bounds (`low` and `high`). This only applies to Box
-    components within the action space, whose dtype is float32 or float64.
-
+    components within the action space.
 
     Args:
         action (Any): The action to be unsquashed. This could be any complex
@@ -192,10 +189,8 @@ def unsquash_action(action, action_space_struct):
 def normalize_action(action, action_space_struct):
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
-    Inverse of `unsquash_action()`. Useful for mapping an env's action
-    (arbitrary bounded values) to a [-1.0, 1.0] interval.
-    This only applies to Box components within the action space, whose
-    dtype is float32 or float64.
+    This only applies to Box components, whose dtype is float32 or float64,
+    within the action space.
 
     Args:
         action (Any): The action to be normalized. This could be any complex
