@@ -18,6 +18,14 @@
 #include "ray/object_manager/plasma/malloc.h"
 
 #include <assert.h>
+
+#ifdef __linux__
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* Turns on fallocate() definition */
+#endif              /* _GNU_SOURCE */
+#include <fcntl.h>
+#endif /* __linux__ */
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,6 +150,29 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     RAY_LOG(INFO) << "Preallocating all plasma memory using MAP_POPULATE.";
     flags |= MAP_POPULATE;
   }
+
+#ifdef __linux__
+  // For fallback allocation, use fallocate to ensure follow up access to this
+  // mmaped file doesn't cause SIGBUS. Only supported on Linux.
+  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+    RAY_LOG(DEBUG) << "Preallocating fallback allocation using fallocate";
+    int ret = fallocate(*fd, /*mode*/ 0, /*offset*/ 0, size);
+    if (ret != 0) {
+      if (ret == EOPNOTSUPP || ret == ENOSYS) {
+        // in case that fallocate is not supported by current filesystem or kernel,
+        // we continue to mmap
+        RAY_LOG(DEBUG) << "fallocate is not supported: " << std::strerror(errno);
+      } else {
+        // otherwise we short circuit the allocation with OOM error.
+        RAY_LOG(ERROR) << "Out of disk space with fallocate error: "
+                       << std::strerror(errno);
+        *pointer = MFAIL;
+        return;
+      }
+    }
+  }
+#endif /* __linux__ */
+
   *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, *fd, 0);
   if (*pointer == MAP_FAILED) {
     RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
@@ -176,6 +207,9 @@ void *fake_mmap(size_t size) {
   void *pointer;
   MEMFD_TYPE_NON_UNIQUE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
+  if (pointer == MFAIL) {
+    return MFAIL;
+  }
   allocated_once = true;
 
   // Increase dlmalloc's allocation granularity directly.

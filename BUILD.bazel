@@ -335,7 +335,6 @@ cc_library(
         "src/ray/object_manager/plasma/dlmalloc.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
-        "src/ray/object_manager/plasma/quota_aware_policy.cc",
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
@@ -344,7 +343,6 @@ cc_library(
         "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
-        "src/ray/object_manager/plasma/quota_aware_policy.h",
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
@@ -414,6 +412,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -1420,6 +1419,7 @@ cc_library(
     ),
     copts = COPTS,
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":service_based_gcs_client_lib",
     ],
@@ -1888,7 +1888,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/azure/*.json",
+        "python/ray/autoscaler/_private/_azure/*.json",
         "python/ray/autoscaler/aws/defaults.yaml",
         "python/ray/autoscaler/azure/defaults.yaml",
         "python/ray/autoscaler/gcp/defaults.yaml",
@@ -1956,6 +1956,7 @@ filegroup(
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
+        "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",

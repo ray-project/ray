@@ -3,11 +3,10 @@ from typing import List, Dict
 import pytest
 
 import numpy as np
-import ray
-from ray.experimental import workflow
 
-# alias because the original type is too long
-RRef = ray.ObjectRef
+import ray
+from ray import ObjectRef
+from ray.experimental import workflow
 
 
 @ray.remote
@@ -24,8 +23,9 @@ def nested_workflow(n: int):
 
 
 @workflow.step
-def deref_check(u: int, v: "RRef[int]", w: "List[RRef[RRef[int]]]", x: str,
-                y: List[str], z: List[Dict[str, str]]):
+def deref_check(u: int, v: "ObjectRef[int]",
+                w: "List[ObjectRef[ObjectRef[int]]]", x: str, y: List[str],
+                z: List[Dict[str, str]]):
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
                 and x == "nested" and y[0] == "nested"
