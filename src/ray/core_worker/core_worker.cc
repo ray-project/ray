@@ -826,7 +826,9 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Node failure from " << node_id << ". All objects pinned on that node will be lost if object reconstruction is not enabled.";
+  RAY_LOG(INFO) << "Node failure from " << node_id
+                << ". All objects pinned on that node will be lost if object "
+                   "reconstruction is not enabled.";
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
@@ -2693,7 +2695,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
-    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_ << " that's not running. Tasks will be removed from a queue.";
+    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_
+                  << " that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
@@ -2713,7 +2716,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
-    RAY_LOG(INFO) << "A task " << main_thread_task_id_ << " has received a force kill request after the cancellation. Killing a worker...";
+    RAY_LOG(INFO) << "A task " << main_thread_task_id_
+                  << " has received a force kill request after the cancellation. Killing "
+                     "a worker...";
     Disconnect();
     if (options_.enable_logging) {
       RayLog::ShutDownRayLog();

@@ -197,7 +197,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                         object_id));
       } else {
         RAY_LOG(DEBUG) << "Task " << task_id << " returned object " << object_id
-                      << " in plasma on a dead node, attempting to recover.";
+                       << " in plasma on a dead node, attempting to recover.";
         reconstruct_object_callback_(object_id);
       }
     } else {

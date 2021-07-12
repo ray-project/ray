@@ -32,7 +32,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 
   if (!owned_by_us) {
     RAY_LOG(DEBUG) << "Reconstruction for borrowed objects (" << object_id
-                  << ") is not supported";
+                   << ") is not supported";
     reconstruction_failure_callback_(object_id, /*pin_object=*/false);
     return true;
   }
@@ -70,7 +70,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 void ObjectRecoveryManager::PinOrReconstructObject(
     const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
   RAY_LOG(DEBUG) << "Lost object " << object_id << " has " << locations.size()
-                << " locations";
+                 << " locations";
   if (!locations.empty()) {
     auto locations_copy = locations;
     const auto location = locations_copy.back();

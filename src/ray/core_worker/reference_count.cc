@@ -953,7 +953,8 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to add an object location for an object " << object_id
-                  << " that doesn't exist in the reference table. It can happen if the object is already evicted.";
+                   << " that doesn't exist in the reference table. It can happen if the "
+                      "object is already evicted.";
     return false;
   }
   AddObjectLocationInternal(it, node_id);
@@ -976,7 +977,8 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to remove an object location for an object " << object_id
-                  << " that doesn't exist in the reference table. It can happen if the object is already evicted.";
+                   << " that doesn't exist in the reference table. It can happen if the "
+                      "object is already evicted.";
     return false;
   }
   it->second.locations.erase(node_id);
@@ -1077,8 +1079,8 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to report locality data for an object " << object_id
-                  << " that doesn't exist in the reference table."
-                  << " The object has probably already been freed.";
+                   << " that doesn't exist in the reference table."
+                   << " The object has probably already been freed.";
     return false;
   }
   RAY_CHECK(!it->second.owned_by_us)
@@ -1143,9 +1145,9 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(DEBUG) << "Tried to register a location subscriber for an object " << object_id
-                  << " that doesn't exist in the reference table."
-                  << " The object has probably already been freed.";
+    RAY_LOG(DEBUG) << "Tried to register a location subscriber for an object "
+                   << object_id << " that doesn't exist in the reference table."
+                   << " The object has probably already been freed.";
     // Consider the object is already freed, and not subscribeable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
