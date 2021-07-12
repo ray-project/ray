@@ -14,9 +14,10 @@
 
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <string>
-#include <atomic>
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -67,7 +68,6 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
-
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
 #define RAY_CHECK(condition)                                                          \
@@ -89,20 +89,38 @@ enum class RayLogLevel {
 
 #endif  // NDEBUG
 
-/// Macros for LOG_EVERY_N
-// Use macro expansion to create, for each use of LOG_EVERY_N(), static
-// variables with the __LINE__ expansion as part of the variable name.
+/// Macros for RAY_LOG_EVERY_N
 #define RAY_LOG_EVERY_N_VARNAME(base, line) RAY_LOG_EVERY_N_VARNAME_CONCAT(base, line)
-#define RAY_LOG_EVERY_N_VARNAME_CONCAT(base, line) base ## line
+#define RAY_LOG_EVERY_N_VARNAME_CONCAT(base, line) base##line
 
-// #define RAY_LOG_OCCURRENCES RAY_LOG_EVERY_N_VARNAME(occurrences_, __LINE__)
-#define RAY_LOG_OCCURRENCES_MOD_N RAY_LOG_EVERY_N_VARNAME(occurrences_mod_n_, __LINE__)
+#define RAY_LOG_OCCURRENCES RAY_LOG_EVERY_N_VARNAME(occurrences_, __LINE__)
 
-#define RAY_LOG_EVERY_N(level, n) \
-  static std::atomic<int> RAY_LOG_OCCURRENCES_MOD_N(0); \
-  if (++RAY_LOG_OCCURRENCES_MOD_N > n) RAY_LOG_OCCURRENCES_MOD_N -= n; \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && RAY_LOG_OCCURRENCES_MOD_N == 1) \
-    RAY_LOG_INTERNAL(ray::RayLogLevel::level)
+#define RAY_LOG_EVERY_N(level, n)                             \
+  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);        \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && \
+      RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES - 1 << "] "
+
+/// Macros for RAY_LOG_EVERY_MS
+#define RAY_LOG_TIME_PERIOD RAY_LOG_EVERY_N_VARNAME(timePeriod_, __LINE__)
+#define RAY_LOG_PREVIOUS_TIME_RAW RAY_LOG_EVERY_N_VARNAME(previousTimeRaw_, __LINE__)
+#define RAY_LOG_TIME_DELTA RAY_LOG_EVERY_N_VARNAME(deltaTime_, __LINE__)
+#define RAY_LOG_CURRENT_TIME RAY_LOG_EVERY_N_VARNAME(currentTime_, __LINE__)
+#define RAY_LOG_PREVIOUS_TIME RAY_LOG_EVERY_N_VARNAME(previousTime_, __LINE__)
+
+#define RAY_LOG_EVERY_MS(level, ms)                                                      \
+  constexpr std::chrono::milliseconds RAY_LOG_TIME_PERIOD(ms);                           \
+  static std::atomic<int64_t> RAY_LOG_PREVIOUS_TIME_RAW;                                 \
+  const auto RAY_LOG_CURRENT_TIME = std::chrono::steady_clock::now().time_since_epoch(); \
+  const decltype(RAY_LOG_CURRENT_TIME) RAY_LOG_PREVIOUS_TIME(                            \
+      RAY_LOG_PREVIOUS_TIME_RAW.load(std::memory_order_relaxed));                        \
+  const auto RAY_LOG_TIME_DELTA = RAY_LOG_CURRENT_TIME - RAY_LOG_PREVIOUS_TIME;          \
+  if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
+    RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
+                                    std::memory_order_relaxed);                          \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&                            \
+      RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration
