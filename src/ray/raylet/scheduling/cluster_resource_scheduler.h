@@ -424,7 +424,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string DebugString() const;
 
  private:
-
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
 
@@ -465,7 +464,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
-
 };
 
 }  // end namespace ray

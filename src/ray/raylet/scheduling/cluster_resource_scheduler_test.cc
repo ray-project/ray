@@ -1194,7 +1194,8 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   vector<int64_t> cust_ids{fpga_resource_id};
   initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
 
-  std::shared_ptr<TaskResourceInstances> task_allocation = std::make_shared<TaskResourceInstances>();
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
   bool success =
       resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
   ASSERT_TRUE(success) << resource_scheduler.DebugString();
@@ -1206,8 +1207,8 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   ResourceRequest fail_resource_request;
   vector<FixedPoint> fail_cust_demands{0.5};
   initResourceRequest(fail_resource_request, pred_demands, cust_ids, fail_cust_demands);
-  success =
-      resource_scheduler.AllocateTaskResourceInstances(fail_resource_request, task_allocation);
+  success = resource_scheduler.AllocateTaskResourceInstances(fail_resource_request,
+                                                             task_allocation);
   ASSERT_FALSE(success) << resource_scheduler.DebugString();
 }
 
