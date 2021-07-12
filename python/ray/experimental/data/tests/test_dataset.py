@@ -11,6 +11,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import tensorflow as tf
 import ray
 
 from ray.util.dask import ray_dask_get
@@ -666,6 +667,34 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_to_tf(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    tfd = ds.to_tf(
+        "label",
+        output_signature=(tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        print(batch)
+        iterations.append(
+            np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
 
 
 def test_json_read(ray_start_regular_shared, tmp_path):
