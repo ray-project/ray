@@ -4,6 +4,11 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
+from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
+from ray.experimental.workflow.storage.s3 import S3StorageImpl
+import boto3
+from moto import mock_s3
+from mock_server import *  # noqa
 
 
 def some_func(x):
@@ -14,10 +19,43 @@ def some_func2(x):
     return x - 1
 
 
+@pytest.fixture(scope="function")
+def filesystem_storage(tmp_path):
+    yield FilesystemStorageImpl(str(tmp_path))
+
+
+@pytest.fixture(scope='function')
+def aws_credentials():
+    import os
+    old_env = os.environ
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SECURITY_TOKEN"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+    yield
+    os.environ = old_env
+
+
+@pytest.fixture(scope="function")
+def s3_storage(aws_credentials, s3_server):
+    with mock_s3():
+        client = boto3.client(
+            's3', region_name="us-west-2", endpoint_url=s3_server)
+        client.create_bucket(Bucket='test_bucket')
+        yield S3StorageImpl(
+            "test_bucket",
+            "workflow",
+            region_name="us-west-2",
+            endpoint_url=s3_server)
+
+
 @pytest.mark.asyncio
-async def test_raw_storage(ray_start_regular):
+@pytest.mark.parametrize("raw_storage", [
+    pytest.lazy_fixture("filesystem_storage"),
+    pytest.lazy_fixture("s3_storage")
+])
+async def test_raw_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
-    raw_storage = storage.get_global_storage()
     step_id = "some_step"
     input_metadata = {"2": "c"}
     output_metadata = {"a": 1}
