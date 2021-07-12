@@ -498,7 +498,6 @@ class _MultiAgentEnvState:
                     del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
-        self.last_infos = {}
         return observations, rewards, dones, infos
 
     def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,

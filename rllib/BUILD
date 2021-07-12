@@ -1319,6 +1319,12 @@ py_test(
 #    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 #)
 
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
