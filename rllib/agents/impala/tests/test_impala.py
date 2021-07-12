@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 import ray
@@ -13,7 +14,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -74,6 +75,37 @@ class TestIMPALA(unittest.TestCase):
                 assert get_lr(r2) < get_lr(r1), (r1, r2)
             finally:
                 trainer.stop()
+
+    def test_impala_fake_multi_gpu_learning(self):
+        """Test whether IMPALATrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(impala.DEFAULT_CONFIG)
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        # Mimic tuned_example for PPO CartPole.
+        config["num_workers"] = 2
+        config["observation_filter"] = "MeanStdFilter"
+        config["model"]["fcnet_hiddens"] = [32]
+        config["model"]["fcnet_activation"] = "linear"
+        config["model"]["vf_share_layers"] = True
+
+        # Test w/ LSTMs.
+        config["model"]["use_lstm"] = True
+
+        # TODO: (sven) torch.
+        for _ in framework_iterator(config, frameworks="tf"):
+            trainer = impala.ImpalaTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "IMPALA multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
 
 if __name__ == "__main__":

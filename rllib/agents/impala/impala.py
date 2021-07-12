@@ -5,7 +5,7 @@ from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
+from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
     _get_global_vars, _get_shared_metrics
@@ -151,7 +151,7 @@ def make_learner_thread(local_worker, config):
                 "parallel data loader buffers as minibatch buffers: "
                 "{} vs {}".format(config["num_data_loader_buffers"],
                                   config["minibatch_buffer_size"]))
-        learner_thread = TFMultiGPULearner(
+        learner_thread = MultiGPULearnerThread(
             local_worker,
             num_gpus=config["num_gpus"],
             lr=config["lr"],

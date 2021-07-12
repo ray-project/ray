@@ -1,6 +1,7 @@
-from collections import OrderedDict
+from collections import namedtuple, OrderedDict
 import gym
 import logging
+import math
 import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
@@ -23,6 +24,9 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, \
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+# Variable scope in which created variables will be placed under.
+TOWER_SCOPE_NAME = "tower"
 
 
 @DeveloperAPI
@@ -177,6 +181,7 @@ class DynamicTFPolicy(TFPolicy):
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_view_requirements_from_init_state()
 
+        # Input placeholders already given -> Use these.
         if existing_inputs:
             self._state_inputs = [
                 v for k, v in existing_inputs.items()
@@ -185,6 +190,7 @@ class DynamicTFPolicy(TFPolicy):
             # Placeholder for RNN time-chunk valid lengths.
             if self._state_inputs:
                 self._seq_lens = existing_inputs["seq_lens"]
+        # Create new input placeholders.
         else:
             self._state_inputs = [
                 get_placeholder(
@@ -237,79 +243,81 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict["is_training"] = self._get_is_training_placeholder()
 
-        # Create the Exploration object to use for this Policy.
-        self.exploration = self._create_exploration()
+        #TEST:
+        if not existing_inputs:
+            # Create the Exploration object to use for this Policy.
+            self.exploration = self._create_exploration()
 
-        # Fully customized action generation (e.g., custom policy).
-        if action_sampler_fn:
-            sampled_action, sampled_action_logp = action_sampler_fn(
-                self,
-                self.model,
-                obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                state_batches=self._state_inputs,
-                seq_lens=self._seq_lens,
-                prev_action_batch=self._input_dict.get(
-                    SampleBatch.PREV_ACTIONS),
-                prev_reward_batch=self._input_dict.get(
-                    SampleBatch.PREV_REWARDS),
-                explore=explore,
-                is_training=self._input_dict["is_training"])
-        # Distribution generation is customized, e.g., DQN, DDPG.
-        else:
-            if action_distribution_fn:
+            # Fully customized action generation (e.g., custom policy).
+            if action_sampler_fn:
+                sampled_action, sampled_action_logp = action_sampler_fn(
+                    self,
+                    self.model,
+                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                    state_batches=self._state_inputs,
+                    seq_lens=self._seq_lens,
+                    prev_action_batch=self._input_dict.get(
+                        SampleBatch.PREV_ACTIONS),
+                    prev_reward_batch=self._input_dict.get(
+                        SampleBatch.PREV_REWARDS),
+                    explore=explore,
+                    is_training=self._input_dict["is_training"])
+            # Distribution generation is customized, e.g., DQN, DDPG.
+            else:
+                if action_distribution_fn:
 
-                # Try new action_distribution_fn signature, supporting
-                # state_batches and seq_lens.
-                in_dict = self._input_dict
-                try:
-                    dist_inputs, dist_class, self._state_out = \
-                        action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict=in_dict,
-                            state_batches=self._state_inputs,
-                            seq_lens=self._seq_lens,
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=in_dict["is_training"])
-                # Trying the old way (to stay backward compatible).
-                # TODO: Remove in future.
-                except TypeError as e:
-                    if "positional argument" in e.args[0] or \
-                            "unexpected keyword argument" in e.args[0]:
+                    # Try new action_distribution_fn signature, supporting
+                    # state_batches and seq_lens.
+                    in_dict = self._input_dict
+                    try:
                         dist_inputs, dist_class, self._state_out = \
                             action_distribution_fn(
-                                self, self.model,
-                                obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                self,
+                                self.model,
+                                input_dict=in_dict,
                                 state_batches=self._state_inputs,
                                 seq_lens=self._seq_lens,
-                                prev_action_batch=in_dict.get(
-                                    SampleBatch.PREV_ACTIONS),
-                                prev_reward_batch=in_dict.get(
-                                    SampleBatch.PREV_REWARDS),
                                 explore=explore,
+                                timestep=timestep,
                                 is_training=in_dict["is_training"])
-                    else:
-                        raise e
+                    # Trying the old way (to stay backward compatible).
+                    # TODO: Remove in future.
+                    except TypeError as e:
+                        if "positional argument" in e.args[0] or \
+                                "unexpected keyword argument" in e.args[0]:
+                            dist_inputs, dist_class, self._state_out = \
+                                action_distribution_fn(
+                                    self, self.model,
+                                    obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                    state_batches=self._state_inputs,
+                                    seq_lens=self._seq_lens,
+                                    prev_action_batch=in_dict.get(
+                                        SampleBatch.PREV_ACTIONS),
+                                    prev_reward_batch=in_dict.get(
+                                        SampleBatch.PREV_REWARDS),
+                                    explore=explore,
+                                    is_training=in_dict["is_training"])
+                        else:
+                            raise e
 
-            # Default distribution generation behavior:
-            # Pass through model. E.g., PG, PPO.
-            else:
-                if isinstance(self.model, tf.keras.Model):
-                    dist_inputs, self._state_out, self._extra_action_fetches =\
-                        self.model(self._input_dict)
+                # Default distribution generation behavior:
+                # Pass through model. E.g., PG, PPO.
                 else:
-                    dist_inputs, self._state_out = self.model(
-                        self._input_dict, self._state_inputs, self._seq_lens)
+                    if isinstance(self.model, tf.keras.Model):
+                        dist_inputs, self._state_out, self._extra_action_fetches =\
+                            self.model(self._input_dict)
+                    else:
+                        dist_inputs, self._state_out = self.model(
+                            self._input_dict, self._state_inputs, self._seq_lens)
 
-            action_dist = dist_class(dist_inputs, self.model)
+                action_dist = dist_class(dist_inputs, self.model)
 
-            # Using exploration to get final action (e.g. via sampling).
-            sampled_action, sampled_action_logp = \
-                self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore)
+                # Using exploration to get final action (e.g. via sampling).
+                sampled_action, sampled_action_logp = \
+                    self.exploration.get_exploration_action(
+                        action_distribution=action_dist,
+                        timestep=timestep,
+                        explore=explore)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
@@ -342,14 +350,92 @@ class DynamicTFPolicy(TFPolicy):
             explore=explore,
             timestep=timestep)
 
-        # Phase 2 init.
-        if before_loss_init is not None:
-            before_loss_init(self, obs_space, action_space, config)
-
         # Loss initialization and model/postprocessing test calls.
         if not existing_inputs:
+            # Phase 2 init.
+            if before_loss_init is not None:
+                before_loss_init(self, obs_space, action_space, config)
+
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True)
+
+            # Create n x m multi-GPU towers, if applicable.
+            # n=num_data_loader_buffers
+            # m=num_gpus
+            self.multi_gpu_towers = []
+
+            num_gpus = config.get("num_gpus", 0)
+            if not num_gpus:
+                self.devices = ["/cpu:0"]
+            elif config.get("_fake_gpus"):
+                self.devices = [
+                    "/cpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+                ]
+            else:
+                self.devices = [
+                    "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+                ]
+
+            # self.optimizer = optimizer
+            #self.devices = devices
+            max_per_device_batch_size = 99999  # max_per_device_batch_size
+            # self.loss_inputs = input_placeholders + rnn_inputs
+            # self.build_graph = self.copy
+
+            # First initialize the shared loss network.
+            # TODO: try not to use this superfluous copy (why not use the original DynamicTFPolicy's loss graph?).
+            # with tf1.name_scope(TOWER_SCOPE_NAME):
+            #    self._shared_loss = self.copy(self.loss_inputs)
+
+            #shared_ops = tf1.get_collection(
+            #    tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+
+            # Then setup the per-device loss graphs that use the shared weights
+            self._batch_index = tf1.placeholder(tf.int32, name="batch_index")
+
+            # Dynamic batch size, which may be shrunk if there isn't enough data
+            self._per_device_batch_size = tf1.placeholder(
+                tf.int32, name="per_device_batch_size")
+            self._loaded_per_device_batch_size = max_per_device_batch_size
+
+            # When loading RNN input, we dynamically determine the max seq len
+            self._max_seq_len = tf1.placeholder(tf.int32, name="max_seq_len")
+            self._loaded_max_seq_len = 1
+
+            # Split on the CPU in case the data doesn't fit in GPU memory.
+            loss_inputs = [self._loss_input_dict_no_rnn.values()] + self._state_inputs
+            with tf.device("/cpu:0"):
+                data_splits = zip(#TODO: why zip here?
+                    *[tf.split(ph, len(self.devices)) for ph in loss_inputs])
+
+            for device, device_placeholders in zip(self.devices, data_splits):
+                self.multi_gpu_towers.append(
+                    self._create_tower(device, device_placeholders,
+                                       len(self._loss_input_dict_no_rnn)))
+            # Override _grads and _apply_op.
+            avg = average_gradients([t.grads for t in self.multi_gpu_towers])
+            # Clip gradients, if applicable.
+            # TODO: (sven) Move grad_clip config into Trainer.
+            if self.config.get("grad_clip"):
+                clipped = [grad for grad, var in avg]
+                #for grad, _ in avg:
+                #    clipped.append(grad)
+                clipped, _ = tf.clip_by_global_norm(clipped, self.config.get("grad_clip"))
+                for i, (grad, var) in enumerate(avg):
+                    avg[i] = (clipped[i], var)
+            self._grads = avg
+            with tf1.control_dependencies(self._update_ops):
+                self._apply_op = self.optimizer.apply_gradients(self._grads)
+            # gather update ops for any batch norm layers. TODO(ekl) here we will
+            # use all the ops found which won't work for DQN / DDPG, but those
+            # aren't supported with multi-gpu right now anyways.
+            #self._update_ops = tf1.get_collection(
+            #    tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            #for op in shared_ops:
+            #    self._update_ops.remove(op)  # only care about tower update ops
+            #if self._update_ops:
+            #    logger.debug("Update ops to run on apply gradient: {}".format(
+            #        self._update_ops))
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -366,7 +452,7 @@ class DynamicTFPolicy(TFPolicy):
                 raise ValueError("Tensor shape mismatch", i, k, v.shape,
                                  existing_inputs[i].shape)
         # By convention, the loss inputs are followed by state inputs and then
-        # the seq len tensor
+        # the seq len tensor.
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
             rnn_inputs.append(
@@ -411,6 +497,125 @@ class DynamicTFPolicy(TFPolicy):
             return self.model.get_initial_state()
         else:
             return []
+
+    @override(Policy)
+    @DeveloperAPI
+    def load_batch_into_buffer(self,
+                               batch: SampleBatch,
+                               data_loader_buffer: int = 0) -> int:
+
+        if log_once("load_data"):
+            logger.info(
+                f"Loading SampleBatch {batch} into "
+                f"buffer #{data_loader_buffer}")
+
+        feed_dict = self._get_loss_inputs_dict(batch, shuffle=False)
+        state_inputs = []
+        s = "state_in_0"
+        i = 0
+        while s in feed_dict:
+            state_inputs.append(feed_dict[s])
+            i += 1
+            s = f"state_in_{i}"
+        inputs = list(feed_dict.values())
+
+        #assert len(self.loss_inputs) == len(inputs + state_inputs), \
+        #    (self.loss_inputs, inputs, state_inputs)
+
+        # Let's suppose we have the following input data, and 2 devices:
+        # 1 2 3 4 5 6 7                              <- state inputs shape
+        # A A A B B B C C C D D D E E E F F F G G G  <- inputs shape
+        # The data is truncated and split across devices as follows:
+        # |---| seq len = 3
+        # |---------------------------------| seq batch size = 6 seqs
+        # |----------------| per device batch size = 9 tuples
+
+        if len(state_inputs) > 0:
+            smallest_array = state_inputs[0]
+            seq_len = len(inputs[0]) // len(state_inputs[0])
+            self._loaded_max_seq_len = seq_len
+        else:
+            smallest_array = inputs[0]
+            self._loaded_max_seq_len = 1
+
+        sequences_per_minibatch = (
+            self.max_per_device_batch_size // self._loaded_max_seq_len * len(
+                self.devices))
+        if sequences_per_minibatch < 1:
+            logger.warning(
+                ("Target minibatch size is {}, however the rollout sequence "
+                 "length is {}, hence the minibatch size will be raised to "
+                 "{}.").format(self.max_per_device_batch_size,
+                               self._loaded_max_seq_len,
+                               self._loaded_max_seq_len * len(self.devices)))
+            sequences_per_minibatch = 1
+
+        if len(smallest_array) < sequences_per_minibatch:
+            # Dynamically shrink the batch size if insufficient data
+            sequences_per_minibatch = make_divisible_by(
+                len(smallest_array), len(self.devices))
+
+        if log_once("data_slicing"):
+            logger.info(
+                ("Divided {} rollout sequences, each of length {}, among "
+                 "{} devices.").format(
+                     len(smallest_array), self._loaded_max_seq_len,
+                     len(self.devices)))
+
+        if sequences_per_minibatch < len(self.devices):
+            raise ValueError(
+                "Must load at least 1 tuple sequence per device. Try "
+                "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
+                "to ensure that at least one sequence fits per device.")
+        self._loaded_per_device_batch_size = (sequences_per_minibatch // len(
+            self.devices) * self._loaded_max_seq_len)
+
+        if len(state_inputs) > 0:
+            # First truncate the RNN state arrays to the sequences_per_minib.
+            state_inputs = [
+                make_divisible_by(arr, sequences_per_minibatch)
+                for arr in state_inputs
+            ]
+            # Then truncate the data inputs to match
+            inputs = [arr[:len(state_inputs[0]) * seq_len] for arr in inputs]
+            assert len(state_inputs[0]) * seq_len == len(inputs[0]), \
+                (len(state_inputs[0]), sequences_per_minibatch, seq_len,
+                 len(inputs[0]))
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                feed_dict[ph] = arr
+            truncated_len = len(inputs[0])
+        else:
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+                truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
+                feed_dict[ph] = truncated_arr
+                truncated_len = len(truncated_arr)
+
+        self.get_session().run(
+            [t.init_op for t in self.multi_gpu_towers], feed_dict=feed_dict)
+
+        self.num_tuples_loaded = truncated_len
+        tuples_per_device = truncated_len // len(self.devices)
+        assert tuples_per_device > 0, "No data loaded?"
+        assert tuples_per_device % self._loaded_per_device_batch_size == 0
+        return tuples_per_device
+
+    @override(Policy)
+    @DeveloperAPI
+    def learn_on_loaded_buffer(self, offset = 0, data_loader_buffer: int = 0):
+        feed_dict = {
+           self._batch_index: offset,
+           self._per_device_batch_size: self._loaded_per_device_batch_size,
+           self._max_seq_len: self._loaded_max_seq_len,
+        }
+        for tower in self.multi_gpu_towers:
+            feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
+
+        fetches = {"train": self._apply_op}
+        for tower_num, tower in enumerate(self.multi_gpu_towers):
+            tower_fetch = tower.loss_graph._get_grad_and_stats_fetches()
+            fetches["tower_{}".format(tower_num)] = tower_fetch
+
+        return self.get_session().run(fetches, feed_dict=feed_dict)
 
     def _get_input_dict_and_dummy_batch(self, view_requirements,
                                         existing_inputs):
@@ -603,3 +808,197 @@ class DynamicTFPolicy(TFPolicy):
         if not isinstance(self.model, tf.keras.Model):
             self._update_ops = self.model.update_ops()
         return loss
+
+    def _create_tower(self, device, device_input_placeholders, num_data_in):
+        """Creates a "tower" on given device by making a copy of self.
+
+        Creates tf vars from given placeholders on `device` and feeds these vars
+        into the copy (the tower).
+
+        Args:
+            device (tf.device): The tf device to be used (a GPU).
+            device_input_placeholders (List[tf1.placeholder]): A list of
+                placeholders (on CPU) to be used as inputs for the
+                to-be-generated tf variables on `device`.
+            num_data_in (int):
+        """
+        assert num_data_in <= len(device_input_placeholders)
+        with tf.device(device):
+            with tf1.name_scope(TOWER_SCOPE_NAME):
+                device_input_batches = []
+                device_input_slices = []
+                for i, ph in enumerate(device_input_placeholders):
+                    current_batch = tf1.Variable(
+                        ph,
+                        trainable=False,
+                        validate_shape=False,
+                        collections=[])
+                    device_input_batches.append(current_batch)
+                    if i < num_data_in:
+                        scale = self._max_seq_len
+                        granularity = self._max_seq_len
+                    else:
+                        scale = self._max_seq_len
+                        granularity = 1
+                    current_slice = tf.slice(
+                        current_batch,
+                        ([self._batch_index // scale * granularity] +
+                         [0] * len(ph.shape[1:])),
+                        ([self._per_device_batch_size // scale * granularity] +
+                         [-1] * len(ph.shape[1:])))
+                    current_slice.set_shape(ph.shape)
+                    device_input_slices.append(current_slice)
+                graph_obj = self.copy(device_input_slices)
+                device_grads = graph_obj.gradients(self._optimizer,
+                                                   graph_obj._loss)
+            return Tower(
+                tf.group(
+                    *[batch.initializer for batch in device_input_batches]),
+                device_grads, graph_obj)
+
+
+class LocalSyncParallelOptimizer:
+    """Optimizer that runs in parallel across multiple local devices.
+
+    LocalSyncParallelOptimizer automatically splits up and loads training data
+    onto specified local devices (e.g. GPUs) with `load_data()`. During a call
+    to `optimize()`, the devices compute gradients over slices of the data in
+    parallel. The gradients are then averaged and applied to the shared
+    weights.
+
+    The data loaded is pinned in device memory until the next call to
+    `load_data`, so you can make multiple passes (possibly in randomized order)
+    over the same data once loaded.
+
+    This is similar to tf1.train.SyncReplicasOptimizer, but works within a
+    single TensorFlow graph, i.e. implements in-graph replicated training:
+
+      https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
+
+    Args:
+        optimizer: Delegate TensorFlow optimizer object.
+        devices: List of the names of TensorFlow devices to parallelize over.
+        input_placeholders: List of input_placeholders for the loss function.
+            Tensors of these shapes will be passed to build_graph() in order
+            to define the per-device loss ops.
+        rnn_inputs: Extra input placeholders for RNN inputs. These will have
+            shape [BATCH_SIZE // MAX_SEQ_LEN, ...].
+        #max_per_device_batch_size: Number of tuples to optimize over at a time
+        #    per device. In each call to `optimize()`,
+        #    `len(devices) * per_device_batch_size` tuples of data will be
+        #    processed. If this is larger than the total data size, it will be
+        #    clipped.
+        build_graph: Function that takes the specified inputs and returns a
+            TF Policy instance.
+    """
+
+    #def __init__(self,
+    #             optimizer,
+    #             devices,
+    #             input_placeholders,
+    #             rnn_inputs,
+    #             max_per_device_batch_size, # set to 99999 always so far
+    #             build_graph,
+    #             grad_norm_clipping=None):
+
+    #def optimize(self, batch_index):
+    #    """Run a single step of SGD.
+
+    #    Runs a SGD step over a slice of the preloaded batch with size given by
+    #    self._loaded_per_device_batch_size and offset given by the batch_index
+    #    argument.
+
+    #    Updates shared model weights based on the averaged per-device
+    #    gradients.
+
+    #    Args:
+    #        batch_index: Offset into the preloaded data. This value must be
+    #            between `0` and `tuples_per_device`. The amount of data to
+    #            process is at most `max_per_device_batch_size`.
+    #            Used for pre-loading a train-batch once to a device, then
+    #            iterating over (subsampling through) this batch n times doing
+    #            minibatch SGD.
+
+    #    Returns:
+    #        The outputs of extra_ops evaluated over the batch.
+    #    """
+    #    feed_dict = {
+    #        self._batch_index: batch_index,
+    #        self._per_device_batch_size: self._loaded_per_device_batch_size,
+    #        self._max_seq_len: self._loaded_max_seq_len,
+    #    }
+    #    for tower in self._towers:
+    #        feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
+    #
+    #    fetches = {"train": self._train_op}
+    #    for tower_num, tower in enumerate(self._towers):
+    #        tower_fetch = tower.loss_graph._get_grad_and_stats_fetches()
+    #        fetches["tower_{}".format(tower_num)] = tower_fetch
+    #
+    #    return self.get_session().run(fetches, feed_dict=feed_dict)
+
+    #def get_common_loss(self):
+    #    return self._shared_loss
+
+    #def get_device_losses(self):
+    #    return [t.loss_graph for t in self._towers]
+
+
+# Each tower is a copy of the loss graph pinned to a specific device.
+Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
+
+
+def make_divisible_by(a, n):
+    if type(a) is int:
+        return a - a % n
+    return a[0:a.shape[0] - a.shape[0] % n]
+
+
+def average_gradients(tower_grads):
+    """Averages gradients across towers.
+
+    Calculate the average gradient for each shared variable across all towers.
+    Note that this function provides a synchronization point across all towers.
+
+    Args:
+        tower_grads: List of lists of (gradient, variable) tuples. The outer
+            list is over individual gradients. The inner list is over the
+            gradient calculation for each tower.
+
+    Returns:
+       List of pairs of (gradient, variable) where the gradient has been
+           averaged across all towers.
+
+    TODO(ekl): We could use NCCL if this becomes a bottleneck.
+    """
+
+    average_grads = []
+    for grad_and_vars in zip(*tower_grads):
+
+        # Note that each grad_and_vars looks like the following:
+        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+        grads = []
+        for g, _ in grad_and_vars:
+            if g is not None:
+                # Add 0 dimension to the gradients to represent the tower.
+                expanded_g = tf.expand_dims(g, 0)
+
+                # Append on a 'tower' dimension which we will average over
+                # below.
+                grads.append(expanded_g)
+
+        if not grads:
+            continue
+
+        # Average over the 'tower' dimension.
+        grad = tf.concat(axis=0, values=grads)
+        grad = tf.reduce_mean(grad, 0)
+
+        # Keep in mind that the Variables are redundant because they are shared
+        # across towers. So .. we will just return the first tower's pointer to
+        # the Variable.
+        v = grad_and_vars[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
+
+    return average_grads

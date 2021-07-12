@@ -13,6 +13,7 @@ TOWER_SCOPE_NAME = "tower"
 logger = logging.getLogger(__name__)
 
 
+# TODO: (sven) Move this into DynamicTfPolicy and deprecate this class.
 class LocalSyncParallelOptimizer:
     """Optimizer that runs in parallel across multiple local devices.
 

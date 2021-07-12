@@ -481,6 +481,52 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    def load_batch_into_buffer(self,
+                               batch: SampleBatch,
+                               data_loader_buffer: int = 0) -> int:
+        """Bulk-loads the given SampleBatch into the devices' memories.
+
+        The data is split equally across all the devices. If the data is not
+        evenly divisible by the batch size, excess data will be discarded.
+
+        The shape of the inputs must conform to the shapes of the input
+        placeholders this Policy was constructed with.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            data_loader_buffer (int): The index of the data loader buffer to
+                use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_buffer(self, offset = 0, data_loader_buffer: int = 0):
+        """Runs a single step of SGD on already loaded data in a buffer.
+
+        Runs a SGD step over a slice of the preloaded batch with size given by
+        self._loaded_per_device_batch_size and offset given by the `offset`
+        argument.
+
+        Updates shared model weights based on the averaged per-device
+        gradients.
+
+        Args:
+            offset: Offset into the preloaded data. This value must be
+                between `0` and `tuples_per_device`. The amount of data to
+                process is at most `max_per_device_batch_size`.
+                Used for pre-loading a train-batch once to a device, then
+                iterating over (subsampling through) this batch n times doing
+                minibatch SGD.
+
+        Returns:
+            The outputs of extra_ops evaluated over the batch.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Returns all local state.
 
