@@ -59,14 +59,12 @@ void ClusterResourceScheduler::InitResourceUnitInstanceInfo(){
   if (!predefined_unit_instance_resources.empty()){
     std::vector<std::string> results;
     boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
-    std::unordered_set<int64_t> predefined_unit_instance_resources;
     for (std::string &result: results){
       PredefinedResources resource = ResourceStringToEnum(result);
       RAY_CHECK(resource < PredefinedResources_MAX)
           << "Failed to parse predefined resource";
-      predefined_unit_instance_resources.emplace(resource);
+      predefined_unit_instance_resources_.emplace(resource);
     }
-    predefined_unit_instance_resources_ = predefined_unit_instance_resources;
   }
   std::string custom_unit_instance_resources = RayConfig::instance().custom_unit_instance_resources();
   if (!custom_unit_instance_resources.empty()){
