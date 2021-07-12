@@ -8,7 +8,7 @@ Ray Client
 The Ray Client is an API that connects a python script to a Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
 
-By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell.
+By changing ``ray.init()`` to ``ray.init(ray://<host>:<port>``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell.
 
 
 .. code-block:: python
@@ -17,7 +17,7 @@ By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to 
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
-   ray.client("<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001").connect()
 
    # Normal Ray code follows
    @ray.remote
@@ -62,7 +62,7 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
    import ray
 
    # replace with the appropriate host and port
-   ray.client("<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
    @ray.remote

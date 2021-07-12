@@ -151,6 +151,11 @@ def test_ray_init_local(shutdown_only):
         assert context.dashboard_url.split(":")[-1] == "22222"
 
 
+def test_ray_init_namespace(shutdown_only):
+    with ray.init("local://", namespace="abcdefg"):
+        assert ray.get_runtime_context().namespace == "abcdefg"
+
+
 def test_ray_init_invalid_keyword(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
         ray.init("localhost", logginglevel="<- missing underscore")

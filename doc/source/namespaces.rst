@@ -13,7 +13,7 @@ first connect to the cluster.
 
    ray.init(namespace="hello")
    # or using ray client
-   ray.client().namespace("world").connect()
+   ray.init("ray://<host>:<port>", namespace="hello")
 
 Named actors are only accessible within their namespaces.
 
