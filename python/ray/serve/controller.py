@@ -120,7 +120,13 @@ class ServeController:
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
         """Returns a dictionary of backend tag to backend config."""
-        return self.endpoint_state.get_endpoints()
+        # Convert tuples to lists for backwards compatibility.
+        endpoints = self.endpoint_state.get_endpoints()
+        for info in endpoints.values():
+            info["methods"] = list(info["methods"])
+            info["python_methods"] = list(info["python_methods"])
+
+        return endpoints
 
     def _validate_traffic_dict(self, traffic_dict: Dict[str, float]):
         for backend in traffic_dict:
