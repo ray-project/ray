@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, Union, Callable
+from typing import Dict, Any, Optional, Set, Union, Callable
 
 import pickle
 import warnings
@@ -203,6 +203,7 @@ class ResourceChangingScheduler(TrialScheduler):
             Resources, PlacementGroupFactory]] = None
         self._trials_to_reallocate: Dict[Trial, Union[
             None, dict, PlacementGroupFactory]] = {}
+        self._reallocated_trial_ids: Set[str] = set()
 
     @property
     def metric(self):
@@ -220,7 +221,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 self._base_trial_resources = trial.placement_group_factory
             else:
                 self._base_trial_resources = trial.resources
-        else:
+        elif trial.trial_id not in self._reallocated_trial_ids:
             if trial.uses_placement_groups:
                 trial_resources = trial.placement_group_factory
             else:
@@ -307,6 +308,7 @@ class ResourceChangingScheduler(TrialScheduler):
             logger.info(f"setting trial {trial} resource to {new_resources}")
             trial.placement_group_factory = None
             trial.update_resources(new_resources)
+            self._reallocated_trial_ids.add(trial.trial_id)
             return True
         return False
 
