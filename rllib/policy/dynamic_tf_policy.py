@@ -364,17 +364,17 @@ class DynamicTFPolicy(TFPolicy):
             # m=num_gpus
             self.multi_gpu_towers = []
 
-            num_gpus = config.get("num_gpus", 0)
-            if not num_gpus:
-                self.devices = ["/cpu:0"]
-            elif config.get("_fake_gpus"):
-                self.devices = [
-                    "/cpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-                ]
-            else:
-                self.devices = [
-                    "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-                ]
+            #num_gpus = config.get("num_gpus", 0)
+            #if not num_gpus:
+            #    self.devices = ["/cpu:0"]
+            #elif config.get("_fake_gpus"):
+            #    self.devices = [
+            #        "/cpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+            #    ]
+            #else:
+            #    self.devices = [
+            #        "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+            #    ]
 
             # self.optimizer = optimizer
             #self.devices = devices
@@ -398,14 +398,14 @@ class DynamicTFPolicy(TFPolicy):
                 tf.int32, name="per_device_batch_size")
             self._loaded_per_device_batch_size = max_per_device_batch_size
 
-            # When loading RNN input, we dynamically determine the max seq len
+            # When loading RNN input, we dynamically determine the max seq len.
             self._max_seq_len = tf1.placeholder(tf.int32, name="max_seq_len")
             self._loaded_max_seq_len = 1
 
             # Split on the CPU in case the data doesn't fit in GPU memory.
-            loss_inputs = [self._loss_input_dict_no_rnn.values()] + self._state_inputs
+            loss_inputs = list(self._loss_input_dict_no_rnn.values()) + self._state_inputs
             with tf.device("/cpu:0"):
-                data_splits = zip(#TODO: why zip here?
+                data_splits = zip(
                     *[tf.split(ph, len(self.devices)) for ph in loss_inputs])
 
             for device, device_placeholders in zip(self.devices, data_splits):

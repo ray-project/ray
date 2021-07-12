@@ -22,13 +22,12 @@ logger = logging.getLogger(__name__)
 class MultiGPULearnerThread(LearnerThread):
     """Learner that can use multiple GPUs and parallel loading.
 
-    This is for use with AsyncSamplesOptimizer.
+    This class is used for async sampling algorithms.
     """
 
     def __init__(self,
                  local_worker: RolloutWorker,
                  num_gpus: int = 1,
-                 lr: float = 0.0005,
                  train_batch_size: int = 500,
                  num_data_loader_buffers: int = 1,
                  minibatch_buffer_size: int = 1,
@@ -43,7 +42,6 @@ class MultiGPULearnerThread(LearnerThread):
             local_worker (RolloutWorker): Local RolloutWorker holding
                 policies this thread will call load_data() and optimizer() on.
             num_gpus (int): Number of GPUs to use for data-parallel SGD.
-            lr (float): Learning rate.
             train_batch_size (int): Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
             num_data_loader_buffers (int): Number of buffers to load data into
@@ -62,7 +60,6 @@ class MultiGPULearnerThread(LearnerThread):
         LearnerThread.__init__(self, local_worker, minibatch_buffer_size,
                                num_sgd_iter, learner_queue_size,
                                learner_queue_timeout)
-        self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
             self.devices = ["/cpu:0"]

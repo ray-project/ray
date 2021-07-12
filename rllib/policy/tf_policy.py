@@ -142,17 +142,28 @@ class TFPolicy(Policy):
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
 
-        # Log device and worker index.
+        # Log devices and worker index.
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
+        worker = get_global_worker()
+        worker_idx = worker.worker_index if worker else 0
         if tfv == 2:
-            from ray.rllib.evaluation.rollout_worker import get_global_worker
-            worker = get_global_worker()
-            worker_idx = worker.worker_index if worker else 0
-            if tf.config.list_physical_devices("GPU"):
-                logger.info("TFPolicy (worker={}) running on GPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
+            if config["_fake_gpus"] or config["num_gpus"] == 0 or \
+                not tf.config.list_physical_devices("GPU"):
+                logger.info("TFPolicy (worker={}) running on {}.".format(
+                    worker_idx if worker_idx > 0 else "local",
+                    "{} fake-GPUs".format(config["num_gpus"])
+                    if config["_fake_gpus"] else "CPU"))
+                self.devices = [
+                    f"/cpu:{i}" for i in range(config["num_gpus"] or 1)
+                ]
             else:
-                logger.info("TFPolicy (worker={}) running on CPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
+                logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
+                    worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
+                gpu_ids = ray.get_gpu_ids()
+                self.devices = [
+                    f"/gpu:{i}"
+                    for i, _ in enumerate(gpu_ids) if i < config["num_gpus"]
+                ]
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
