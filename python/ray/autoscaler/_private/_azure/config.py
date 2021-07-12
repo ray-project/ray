@@ -4,6 +4,7 @@ from pathlib import Path
 import random
 
 from azure.common.client_factory import get_client_from_cli_profile
+from azure.common.credentials import get_azure_cli_credentials
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
@@ -35,7 +36,10 @@ def _configure_resource_group(config):
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
     resource_client = _get_client(ResourceManagementClient, config)
 
-    subscription_id = resource_client.config.subscription_id
+    _, cli_subscription_id = get_azure_cli_credentials(
+        resource=ResourceManagementClient)
+    subscription_id = config["provider"].get("subscription_id",
+                                             cli_subscription_id)
     logger.info("Using subscription id: %s", subscription_id)
     config["provider"]["subscription_id"] = subscription_id
 
@@ -76,7 +80,11 @@ def _configure_resource_group(config):
         }
     }
 
-    resource_client.deployments.create_or_update(
+    if hasattr(resource_client.deployments, "create_or_update"):
+        create_or_update = resource_client.deployments.create_or_update
+    else:
+        create_or_update = resource_client.deployments.begin_create_or_update
+    create_or_update(
         resource_group_name=resource_group,
         deployment_name="ray-config",
         parameters=parameters).wait()

@@ -145,6 +145,11 @@ cc_proto_library(
     deps = [":event_proto"],
 )
 
+python_grpc_compile(
+    name = "event_py_proto",
+    deps = [":event_proto"],
+)
+
 # Job agent.
 proto_library(
     name = "job_agent_proto",

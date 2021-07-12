@@ -1,5 +1,6 @@
 import gym
 import logging
+import importlib.util
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
@@ -15,7 +16,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
 
@@ -305,6 +308,19 @@ class WorkerSet:
             return tf1.Session(
                 config=tf1.ConfigProto(**config["tf_session_args"]))
 
+        def valid_module(class_path):
+            if isinstance(class_path, str) and "." in class_path:
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}")
+            return False
+
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
@@ -313,9 +329,15 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
+        elif isinstance(config["input"], str) and \
+                registry_contains_input(config["input"]):
+            input_creator = registry_get_input(config["input"])
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
+        elif valid_module(config["input"]):
+            input_creator = (lambda ioctx: ShuffledInput(from_config(
+                config["input"], ioctx=ioctx)))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
