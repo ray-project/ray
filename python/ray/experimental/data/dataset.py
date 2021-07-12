@@ -13,11 +13,7 @@ if TYPE_CHECKING:
     import pyspark
     import ray.util.sgd
     import torch
-
-try:
     import tensorflow as tf
-except ImportError:
-    tf = None
 
 import collections
 import itertools
@@ -915,7 +911,9 @@ class Dataset(Generic[T]):
 
         # argument exception checking is done in from_generator
 
-        if tf is None:
+        try:
+            import tensorflow as tf
+        except ImportError:
             raise ValueError("tensorflow must be installed!")
 
         def make_generator():
