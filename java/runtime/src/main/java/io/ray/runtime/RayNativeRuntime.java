@@ -51,7 +51,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-      final String sessionDir = client.get("session_dir", null);
+      final String sessionDir = client.get("session_dir", "value");
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
     }

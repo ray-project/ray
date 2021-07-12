@@ -17,7 +17,7 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
     RAY_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
     freeReplyObject(auth_reply);
   }
-  auto reply = (redisReply *)redisCommand(context, "GET session_dir");
+  auto reply = (redisReply *)redisCommand(context, "HGET session_dir value");
   RAY_CHECK(reply->type != REDIS_REPLY_ERROR);
   std::string session_dir(reply->str);
   freeReplyObject(reply);
