@@ -214,11 +214,23 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
                      trial: Trial, **kwargs):
+        # use the first trial resources as the base
         if self._base_trial_resources is None:
             if trial.uses_placement_groups:
                 self._base_trial_resources = trial.placement_group_factory
             else:
                 self._base_trial_resources = trial.resources
+        else:
+            if trial.uses_placement_groups:
+                trial_resources = trial.placement_group_factory
+            else:
+                trial_resources = trial.resources
+            if trial_resources != self._base_trial_resources:
+                raise RuntimeError(
+                    "ResourceChangingScheduler doesn't support trials with "
+                    "varying base resources. First trial had "
+                    f"{self._base_trial_resources}, trial {trial} has "
+                    f"{trial_resources}.")
         return self._base_scheduler.on_trial_add(trial_runner, trial, **kwargs)
 
     def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
