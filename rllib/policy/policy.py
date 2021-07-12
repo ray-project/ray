@@ -322,7 +322,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
             actions_normalized: bool = True,
-        ) -> TensorType:
+    ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:

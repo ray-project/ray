@@ -374,8 +374,8 @@ class TorchPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
             actions_normalized: bool = True,
     ) -> TensorType:
 
