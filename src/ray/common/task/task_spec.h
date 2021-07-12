@@ -79,6 +79,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnv() const;
 
+  int GetRuntimeEnvHash() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -231,6 +233,51 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
+};
+
+/// \class WorkerCacheKey
+///
+/// Class used to cache workers, keyed by runtime_env.
+class WorkerCacheKey {
+ public:
+  /// Create a cache key with the given environment variable overrides and serialized
+  /// runtime_env.
+  ///
+  /// \param override_environment_variables The environment variable overrides set in this
+  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
+  /// worker.
+  WorkerCacheKey(
+      const std::unordered_map<std::string, std::string> override_environment_variables,
+      const std::string serialized_runtime_env);
+
+  bool operator==(const WorkerCacheKey &k) const;
+
+  /// Check if this worker's environment is empty (the default).
+  ///
+  /// \return true if there are no environment variables set and the runtime env is the
+  /// empty string (protobuf default) or a JSON-serialized empty dict.
+  bool EnvIsEmpty() const;
+
+  /// Get the hash for this worker's environment.
+  ///
+  /// \return The hash of the override_environment_variables and the serialized
+  /// runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
+
+ private:
+  /// The environment variable overrides for this worker.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
+  /// The JSON-serialized runtime env for this worker.
+  const std::string serialized_runtime_env;
+  /// The cached hash of the worker's environment.  This is set to 0
+  /// for unspecified or empty environments.
+  mutable std::size_t hash_ = 0;
 };
 
 }  // namespace ray

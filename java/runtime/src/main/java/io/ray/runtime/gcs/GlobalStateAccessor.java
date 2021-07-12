@@ -131,6 +131,15 @@ public class GlobalStateAccessor {
     }
   }
 
+  /** Get the node to connect for a Ray driver. */
+  public byte[] getNodeToConnectForDriver(String nodeIpAddress) {
+    // Fetch a node with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetNodeToConnectForDriver(globalStateAccessorNativePointer, nodeIpAddress);
+    }
+  }
+
   private void destroyGlobalStateAccessor() {
     synchronized (GlobalStateAccessor.class) {
       if (0 == globalStateAccessorNativePointer) {
@@ -167,4 +176,6 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
   private native byte[] nativeGetInternalKV(long nativePtr, String k);
+  
+  private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }

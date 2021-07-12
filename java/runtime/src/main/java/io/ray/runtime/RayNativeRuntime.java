@@ -11,6 +11,7 @@ import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
+import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
@@ -80,8 +81,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
+      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        RunManager.getAddressInfoAndFillConfig(rayConfig);
+        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
+        rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
+        rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
       if (rayConfig.getJobId() == JobId.NIL) {

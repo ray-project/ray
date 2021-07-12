@@ -64,7 +64,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -123,7 +123,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -173,7 +173,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -231,7 +231,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -304,7 +304,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -384,7 +384,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -449,7 +449,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = 0
+        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.

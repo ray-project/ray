@@ -116,6 +116,11 @@ def run(
     will gracefully shut down and checkpoint the latest experiment state.
     Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
 
+    Many aspects of Tune, such as the frequency of global checkpointing,
+    maximum pending placement group trials and the path of the result
+    directory be configured through environment variables. Refer to
+    :ref:`tune-env-vars` for a list of environment variables available.
+
     Examples:
 
     .. code-block:: python
@@ -247,9 +252,10 @@ def run(
         server_port (int): Port number for launching TuneServer.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
             or bool. LOCAL/True restores the checkpoint from the
-            local_checkpoint_dir, determined
-            by `name` and `local_dir`. REMOTE restores the checkpoint
-            from remote_checkpoint_dir. PROMPT provides CLI feedback.
+            local experiment directory, determined
+            by ``name`` and ``local_dir``. REMOTE restores the checkpoint
+            from ``upload_dir`` (as passed to ``sync_config``).
+            PROMPT provides CLI feedback.
             False forces a new experiment. ERRORED_ONLY resets and reruns
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
@@ -396,6 +402,7 @@ def run(
                 local_dir=local_dir,
                 upload_dir=sync_config.upload_dir,
                 sync_to_driver=sync_config.sync_to_driver,
+                sync_to_cloud=sync_config.sync_to_cloud,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,

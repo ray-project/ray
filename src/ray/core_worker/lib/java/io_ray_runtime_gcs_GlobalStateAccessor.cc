@@ -171,6 +171,19 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *env, job
   return nullptr;
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeToConnectForDriver(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring nodeIpAddress) {
+  std::string node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  std::string node_to_connect;
+  auto status =
+      gcs_accessor->GetNodeToConnectForDriver(node_ip_address, &node_to_connect);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return NativeStringToJavaByteArray(env, node_to_connect);
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -175,6 +175,20 @@ class GlobalStateAccessor {
   /// \return Value of the key.
   std::unique_ptr<std::string> GetInternalKV(const std::string &key);
 
+  /// Get the serialized system config from GCS.
+  ///
+  /// \return The serialized system config.
+  std::string GetSystemConfig();
+
+  /// Get the node to connect for a Ray driver.
+  ///
+  /// \param[in] node_ip_address The IP address of the desired node to connect.
+  /// \param[out] node_to_connect The info of the node to connect. To support
+  /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
+  /// Where used, it needs to be deserialized with protobuf function.
+  ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
+                                        std::string *node_to_connect);
+
  private:
   /// MultiItem transformation helper in template style.
   ///
@@ -216,6 +230,9 @@ class GlobalStateAccessor {
       promise.set_value(true);
     };
   }
+
+  std::string redis_address_;
+  std::string redis_ip_address_;
 
   /// Whether this client is connected to gcs server.
   bool is_connected_{false};

@@ -1,29 +1,64 @@
+import logging
+from pathlib import Path
 import builtins
-from typing import List, Any, Union, Optional, Tuple, TYPE_CHECKING
+from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
+    TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
     import pandas
     import dask
+    import mars
     import modin
     import pyspark
 
 import ray
 from ray.experimental.data.dataset import Dataset
-from ray.experimental.data.impl.block import ObjectRef, ListBlock, Block
+from ray.experimental.data.datasource import Datasource, RangeDatasource, \
+    JSONDatasource, CSVDatasource, ReadTask
+from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
+from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
+    BlockMetadata
+from ray.experimental.data.impl.block_list import BlockList
+from ray.experimental.data.impl.lazy_block_list import LazyBlockList
+
+T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
-def autoinit_ray(f):
-    def wrapped(*a, **kw):
-        if not ray.is_initialized():
-            ray.client.connect()
-        return f(*a, **kw)
+def _parse_paths(paths: Union[str, List[str]]
+                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
+    from pyarrow import fs
 
-    return wrapped
+    def parse_single_path(path: str):
+        if Path(path).exists():
+            return fs.LocalFileSystem(), path
+        else:
+            return fs.FileSystem.from_uri(path)
+
+    if isinstance(paths, str):
+        return parse_single_path(paths)
+
+    if not isinstance(paths, list) or any(not isinstance(p, str)
+                                          for p in paths):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+    else:
+        if len(paths) == 0:
+            raise ValueError("No data provided")
+
+        parsed_results = [parse_single_path(path) for path in paths]
+        fses, paths = zip(*parsed_results)
+        unique_fses = set(map(type, fses))
+        if len(unique_fses) > 1:
+            raise ValueError(
+                f"When specifying multiple paths, each path must have the "
+                f"same filesystem, but found: {unique_fses}")
+        return fses[0], list(paths)
 
 
-@autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -40,18 +75,25 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     block_size = max(1, len(items) // parallelism)
 
     blocks: List[ObjectRef[Block]] = []
+    metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = ListBlock.builder()
+        builder = SimpleBlock.builder()
         for item in items[i:i + block_size]:
             builder.add(item)
-        blocks.append(ray.put(builder.build()))
+        block = builder.build()
+        blocks.append(ray.put(block))
+        metadata.append(
+            BlockMetadata(
+                num_rows=block.num_rows(),
+                size_bytes=block.size_bytes(),
+                schema=type(items[0]),
+                input_files=None))
         i += block_size
 
-    return Dataset(blocks)
+    return Dataset(BlockList(blocks, metadata))
 
 
-@autoinit_ray
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -65,25 +107,10 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     Returns:
         Dataset holding the integers.
     """
-    block_size = max(1, n // parallelism)
-    blocks: List[ObjectRef[Block]] = []
-
-    @ray.remote
-    def gen_block(start: int, count: int) -> ListBlock:
-        builder = ListBlock.builder()
-        for value in builtins.range(start, start + count):
-            builder.add(value)
-        return builder.build()
-
-    i = 0
-    while i < n:
-        blocks.append(gen_block.remote(i, min(block_size, n - i)))
-        i += block_size
-
-    return Dataset(blocks)
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
-@autoinit_ray
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -100,27 +127,40 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     Returns:
         Dataset holding the integers as Arrow records.
     """
-    block_size = max(1, n // parallelism)
-    blocks = []
-    i = 0
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
+
+
+def read_datasource(datasource: Datasource[T],
+                    parallelism: int = 200,
+                    **read_args) -> Dataset[T]:
+    """Read a dataset from a custom data source.
+
+    Args:
+        datasource: The datasource to read data from.
+        parallelism: The requested parallelism of the read.
+        read_args: Additional kwargs to pass to the datasource impl.
+
+    Returns:
+        Dataset holding the data read from the datasource.
+    """
+
+    read_tasks = datasource.prepare_read(parallelism, **read_args)
 
     @ray.remote
-    def gen_block(start: int, count: int) -> "ArrowBlock":
-        import pyarrow
+    def remote_read(task: ReadTask) -> Block[T]:
+        return task()
 
-        return ArrowBlock(
-            pyarrow.Table.from_pydict({
-                "value": list(builtins.range(start, start + count))
-            }))
+    calls: List[Callable[[], ObjectRef[Block[T]]]] = []
+    metadata: List[BlockMetadata] = []
 
-    while i < n:
-        blocks.append(gen_block.remote(block_size * i, min(block_size, n - i)))
-        i += block_size
+    for task in read_tasks:
+        calls.append(lambda task=task: remote_read.remote(task))
+        metadata.append(task.get_metadata())
 
-    return Dataset(blocks)
+    return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
@@ -147,35 +187,48 @@ def read_parquet(paths: Union[str, List[str]],
     """
     import pyarrow.parquet as pq
 
-    pq_ds = pq.ParquetDataset(paths, **arrow_parquet_args)
+    if filesystem is None:
+        filesystem, paths = _parse_paths(paths)
+    pq_ds = pq.ParquetDataset(
+        paths, **arrow_parquet_args, filesystem=filesystem)
     pieces = pq_ds.pieces
-    data_pieces = []
-
-    for piece in pieces:
-        num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
-        for i in builtins.range(num_row_groups):
-            data_pieces.append(
-                pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
-                                       piece.file_options, i,
-                                       piece.partition_keys))
 
     read_tasks = [[] for _ in builtins.range(parallelism)]
-    for i, piece in enumerate(pieces):
-        read_tasks[i].append(piece)
+    # TODO(ekl) support reading row groups (maybe as an option)
+    for i, piece in enumerate(pq_ds.pieces):
+        read_tasks[i % len(read_tasks)].append(piece)
     nonempty_tasks = [r for r in read_tasks if r]
-    partitions = pq_ds.partitions
 
     @ray.remote
-    def gen_read(pieces: List[pq.ParquetDatasetPiece]):
-        print("Reading {} parquet pieces".format(len(pieces)))
-        table = piece.read(
-            columns=columns, use_threads=False, partitions=partitions)
+    def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
+        import pyarrow
+        logger.debug("Reading {} parquet pieces".format(len(pieces)))
+        tables = [piece.to_table() for piece in pieces]
+        if len(tables) > 1:
+            table = pyarrow.concat_tables(tables)
+        else:
+            table = tables[0]
         return ArrowBlock(table)
 
-    return Dataset([gen_read.remote(ps) for ps in nonempty_tasks])
+    calls: List[Callable[[], ObjectRef[Block]]] = []
+    metadata: List[BlockMetadata] = []
+    for pieces in nonempty_tasks:
+        calls.append(lambda pieces=pieces: gen_read.remote(pieces))
+        piece_metadata = [p.metadata for p in pieces]
+        metadata.append(
+            BlockMetadata(
+                num_rows=sum(m.num_rows for m in piece_metadata),
+                size_bytes=sum(
+                    sum(
+                        m.row_group(i).total_byte_size
+                        for i in builtins.range(m.num_row_groups))
+                    for m in piece_metadata),
+                schema=piece_metadata[0].schema.to_arrow_schema(),
+                input_files=[p.path for p in pieces]))
+
+    return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
@@ -189,8 +242,12 @@ def read_json(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_json(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_json_args: Other json read options to pass to pyarrow.
@@ -198,10 +255,14 @@ def read_json(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    return read_datasource(
+        JSONDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_json_args)
 
 
-@autoinit_ray
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
@@ -215,8 +276,12 @@ def read_csv(paths: Union[str, List[str]],
         # Read multiple local files.
         >>> ds.read_csv(["/path/to/file1", "/path/to/file2"])
 
+        # Read multiple directories.
+        >>> ds.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+
     Args:
-        paths: A single file path or a list of file paths (or directories).
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_csv_args: Other csv read options to pass to pyarrow.
@@ -224,10 +289,14 @@ def read_csv(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    return read_datasource(
+        CSVDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_csv_args)
 
 
-@autoinit_ray
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
@@ -253,15 +322,39 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    raise NotImplementedError  # P0
+    dataset = from_items(paths, parallelism=parallelism)
+    return dataset.map(
+        lambda path: _reader.read_file(
+            path,
+            include_paths=include_paths,
+            filesystem=filesystem))
 
 
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create a dataset from a Dask dataframe.
+    """Create a dataset from a Dask DataFrame.
 
     Args:
-        df: A Dask dataframe, which must be executed by Dask-on-Ray.
+        df: A Dask DataFrame.
+
+    Returns:
+        Dataset holding Arrow records read from the DataFrame.
+    """
+    import dask
+    from ray.util.dask import ray_dask_get
+
+    partitions = df.to_delayed()
+    persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
+    return from_pandas(
+        [next(iter(part.dask.values())) for part in persisted_partitions])
+
+
+def from_mars(df: "mars.DataFrame",
+              parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a MARS dataframe.
+
+    Args:
+        df: A MARS dataframe, which must be executed by MARS-on-Ray.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
@@ -294,7 +387,16 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
-    raise NotImplementedError  # P1
+    import pyarrow as pa
+
+    @ray.remote(num_returns=2)
+    def df_to_block(df: "pandas.DataFrame"):
+        block = ArrowBlock(pa.table(df))
+        return block, block.get_metadata(input_files=None)
+
+    res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
 def from_spark(df: "pyspark.sql.DataFrame",
@@ -309,3 +411,8 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
+
+
+def from_source(source: Any) -> Dataset[Any]:
+    """Create a dataset from a generic data source."""
+    raise NotImplementedError  # P0
