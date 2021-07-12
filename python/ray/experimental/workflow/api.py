@@ -120,6 +120,12 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     Args:
         workflow_id: The ID of the running workflow job.
 
+    Examples:
+        >>> res1 = workflow.run(trip, workflow_id="trip1")
+        >>> # you could "get_output()" in another machine
+        >>> res2 = workflow.get_output("trip1")
+        >>> assert ray.get(res1) == ray.get(res2)
+
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
