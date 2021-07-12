@@ -21,19 +21,19 @@ if cv2 is None:
         raise ModuleNotFoundError("Either scikit-image or opencv is required")
 
 
-def resize(img, height, width):
+def resize(img: np.ndarray, height: int, width: int) -> np.ndarray:
     if cv2:
         return cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
     return transform.resize(img, (height, width))
 
 
-def rgb2gray(img):
+def rgb2gray(img: np.ndarray) -> np.ndarray:
     if cv2:
         return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     return color.rgb2gray(img)
 
 
-def imread(img_file):
+def imread(img_file: str) -> np.ndarray:
     if cv2:
         return cv2.imread(img_file).astype(np.float32)
     return io.imread(img_file).astype(np.float32)
