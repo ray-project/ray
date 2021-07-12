@@ -323,7 +323,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_github_google_glog//:glog",
         "@msgpack",
     ],
 )
@@ -352,7 +351,6 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
-        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -1557,8 +1555,10 @@ cc_library(
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
         "@boost//:property_tree",
-        "@com_github_google_glog//:glog",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/debugging:failure_signal_handler",
+        "@com_google_absl//absl/debugging:stacktrace",
+        "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -1956,7 +1956,6 @@ filegroup(
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
