@@ -1675,7 +1675,7 @@ void NodeManager::HandleCancelResourceReserve(
     const rpc::CancelResourceReserveRequest &request,
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(INFO) << "Request to cancel reserved resource is received, "
+  RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
@@ -1790,7 +1790,7 @@ void NodeManager::MarkObjectsAsFailed(
       status = store_client_.Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(INFO) << "Marking plasma object failed " << object_id;
+      RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
