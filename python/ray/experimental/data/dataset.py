@@ -871,9 +871,9 @@ class Dataset(Generic[T]):
 
     def to_tf(self,
               label_column: str,
-              output_signature: List[tf.TypeSpec],
+              output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
-              args: Optional[Tuple[tf.Tensor]] = None,
+              args: Optional[Tuple["tf.Tensor"]] = None,
               prefetch_blocks: int = 0,
               batch_size: int = None) -> "tf.data.Dataset":
         """Return a TF data iterator over this dataset.
