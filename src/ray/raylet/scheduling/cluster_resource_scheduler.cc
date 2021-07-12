@@ -62,9 +62,8 @@ void ClusterResourceScheduler::InitResourceUnitInstanceInfo(){
     std::unordered_set<int64_t> predefined_unit_instance_resources;
     for (std::string &result: results){
       PredefinedResources resource = ResourceStringToEnum(result);
-      if (resource == PredefinedResources_MAX){
-        RAY_LOG(FATAL) << "Failed to parse predefined resource:" << result;
-      }
+      RAY_CHECK(resource < PredefinedResources_MAX)
+          << "Failed to parse predefined resource";
       predefined_unit_instance_resources.emplace(resource);
     }
     predefined_unit_instance_resources_ = predefined_unit_instance_resources;
