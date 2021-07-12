@@ -12,6 +12,7 @@ import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.gcs.RedisClient;
 import io.ray.runtime.generated.Common.WorkerType;
+import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
@@ -50,7 +51,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-      final String sessionDir = client.get("session_dir", null);
+      final String sessionDir = client.get("session_dir", "value");
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
     }
@@ -75,11 +76,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       Preconditions.checkNotNull(rayConfig.sessionDir);
       JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
-      if (rayConfig.workerMode == WorkerType.DRIVER) {
-        RunManager.getAddressInfoAndFillConfig(rayConfig);
-      }
-
       gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
+        rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
+        rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
+      }
 
       if (rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(gcsClient.nextJobId());

@@ -6,16 +6,18 @@ import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
 from ray.tune.error import TuneError
+from typing import Callable
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
+RLLIB_INPUT = "rllib_input"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR,
-    RLLIB_ACTION_DIST, TEST
+    RLLIB_ACTION_DIST, RLLIB_INPUT, TEST
 ]
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,27 @@ def register_env(name, env_creator):
     if not callable(env_creator):
         raise TypeError("Second argument must be callable.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
+
+
+def register_input(name: str, input_creator: Callable):
+    """Register a custom input api for RLLib.
+
+    Args:
+        name (str): Name to register.
+        input_creator (IOContext -> InputReader): Callable that creates an
+            input reader.
+    """
+    if not callable(input_creator):
+        raise TypeError("Second argument must be callable.", input_creator)
+    _global_registry.register(RLLIB_INPUT, name, input_creator)
+
+
+def registry_contains_input(name: str) -> bool:
+    return _global_registry.contains(RLLIB_INPUT, name)
+
+
+def registry_get_input(name: str) -> Callable:
+    return _global_registry.get(RLLIB_INPUT, name)
 
 
 def check_serializability(key, value):

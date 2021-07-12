@@ -205,7 +205,7 @@ test_cpp() {
   bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
     --test_arg=--ray-redis-password="1234"
   # run the cpp example
-  bazel run //cpp/example:example
+  cd cpp/example && bazel --nosystem_rc --nohome_rc run //:example
 
 }
 
