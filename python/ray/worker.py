@@ -718,7 +718,7 @@ def init(
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
         builder = ray.client(address)
-        builder._init_args(
+        builder._store_args(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,

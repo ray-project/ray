@@ -130,7 +130,7 @@ class ClientBuilder:
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unexpected keyword argument(s): {unknown}")
 
-    def _init_args(self, **kwargs) -> "ClientBuilder":
+    def _store_args(self, **kwargs) -> "ClientBuilder":
         """
         Some client builders may need configuration to start a new cluster,
         for example the _LocalClientBuilder will create a cluster locally.
