@@ -300,7 +300,8 @@ service RayletDriver {
   }
   rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {
   }
-  rpc ListNamedActors(ClientListNamedActorsRequest) returns (ClientListNamedActorsResponse) {
+  rpc ListNamedActors(ClientListNamedActorsRequest)
+    returns (ClientListNamedActorsResponse) {
   }
 }
 
