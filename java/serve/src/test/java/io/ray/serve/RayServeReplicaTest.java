@@ -45,7 +45,7 @@ public class RayServeReplicaTest {
       requestMetadata.setCallMethod("getBackendTag");
       ObjectRef<Object> resultRef =
           backendHandle
-              .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null)
+              .task(RayServeWrappedReplica::handleRequest, requestMetadata, (Object[]) null)
               .remote();
 
       Assert.assertEquals((String) resultRef.get(), backendTag);

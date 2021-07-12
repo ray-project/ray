@@ -51,7 +51,7 @@ public class RayServeWrappedReplica {
    *     backendDef.
    * @return the result of request being processed
    */
-  public Object handle_request(RequestMetadata requestMetadata, Object[] requestArgs) {
+  public Object handleRequest(RequestMetadata requestMetadata, Object[] requestArgs) {
     return backend.handleRequest(new Query(requestArgs, requestMetadata));
   }
 
@@ -61,7 +61,7 @@ public class RayServeWrappedReplica {
   }
 
   /** Wait until there is no request in processing. It is used for stopping replica gracefully. */
-  public void drain_pending_queries() {
+  public void drainPendingQueries() {
     backend.drainPendingQueries();
   }
 }

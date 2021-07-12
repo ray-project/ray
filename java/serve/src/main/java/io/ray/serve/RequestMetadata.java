@@ -12,7 +12,7 @@ public class RequestMetadata implements Serializable {
 
   private String endpoint;
 
-  private String callMethod = "__call__";
+  private String callMethod = "call";
 
   private String httpMethod;
 
