@@ -55,6 +55,14 @@ TEST(PrintLogTest, LogTestWithoutInit) {
   PrintLog();
 }
 
+TEST(PrintLogTest, LogTestEveryN) {
+  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
+  for (int i = 0; i < 1000; i++) {
+    RAY_LOG_EVERY_N(INFO, 100) << "this is log1";
+  }
+  RayLog::ShutDownRayLog();
+}
+
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
   RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
