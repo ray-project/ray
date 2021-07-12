@@ -171,6 +171,7 @@ test_python() {
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
+      -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
@@ -204,7 +205,7 @@ test_cpp() {
   bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
     --test_arg=--ray-redis-password="1234"
   # run the cpp example
-  bazel run //cpp/example:example
+  cd cpp/example && bazel --nosystem_rc --nohome_rc run //:example
 
 }
 
@@ -349,8 +350,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      # Remove suppress_output for now to avoid timeout
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh

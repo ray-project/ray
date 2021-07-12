@@ -146,6 +146,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
         CPlacementGroupID GetCurrentPlacementGroupId()
+        CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
@@ -177,7 +178,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const CAddress &owner_address,
                 const c_string &object_status)
 
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        CObjectID *object_id)
@@ -296,6 +296,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
+        int worker_shim_pid
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

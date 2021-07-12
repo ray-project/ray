@@ -40,6 +40,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -99,7 +100,8 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -185,6 +187,8 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
+  /// The PID of the process for setup worker runtime env.
+  pid_t worker_shim_pid;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -501,13 +505,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods related to storing and retrieving objects.
   ///
-
-  /// Set options for this client's interactions with the object store.
-  ///
-  /// \param[in] name Unique name for this object store client.
-  /// \param[in] limit The maximum amount of memory in bytes that this client
-  /// can use in the object store.
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
 
   /// Put an object into object store.
   ///
@@ -893,6 +890,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleStealTasks(const rpc::StealTasksRequest &request,
+                        rpc::StealTasksReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
@@ -1147,6 +1149,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// stops using the reference, the message will be published to the owner.
   void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
 
+  /// Process a subscribe message for object locations.
+  /// Since core worker owns the object directory, there are various raylets
+  /// that subscribe this object directory.
+  void ProcessSubscribeObjectLocations(
+      const rpc::WorkerObjectLocationsSubMessage &message);
+
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
@@ -1279,10 +1287,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
+  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

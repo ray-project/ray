@@ -41,6 +41,7 @@ dataclasses; python_version < '3.7'
 starlette
 
 # Requirements for running tests
+pyarrow==4.0.1
 blist; platform_system != "Windows"
 azure-common
 azure-mgmt-resource
@@ -48,8 +49,6 @@ msrestazure
 boto3
 cython >= 0.29.15
 dataclasses; python_version < '3.7'
-dask[complete]==2021.03.0; python_version < '3.7'
-dask[complete]==2021.06.0; python_version >= '3.7'
 feather-format
 google-api-python-client
 gym
@@ -85,5 +84,3 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
-# pyarrow v4.0.0 doesn't work in macOS
-pyarrow==3.0.0

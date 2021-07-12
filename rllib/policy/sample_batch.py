@@ -145,13 +145,21 @@ class SampleBatch(dict):
                 if s.get("seq_lens") is not None:
                     seq_lens.extend(s["seq_lens"])
 
-        out = {}
+        # If we don't have any samples (no or only empty SampleBatches),
+        # return an empty SampleBatch here.
+        if len(concat_samples) == 0:
+            return SampleBatch()
+
+        # Collect the concat'd data.
+        concatd_data = {}
         for k in concat_samples[0].keys():
-            out[k] = concat_aligned(
+            concatd_data[k] = concat_aligned(
                 [s[k] for s in concat_samples],
                 time_major=concat_samples[0].time_major)
+
+        # Return a new (concat'd) SampleBatch.
         return SampleBatch(
-            out,
+            concatd_data,
             seq_lens=seq_lens,
             _time_major=concat_samples[0].time_major,
             _zero_padded=zero_padded,
