@@ -44,7 +44,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
-      RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
+      RAY_LOG(DEBUG) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
@@ -204,8 +204,8 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
-    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(DEBUG) << "victim_addr.worker_id: " << victim_addr.worker_id
                   << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
@@ -625,7 +625,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId() << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
