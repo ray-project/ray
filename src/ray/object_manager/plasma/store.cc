@@ -222,10 +222,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     // 64-byte aligned, but in practice it often will be.
     pointer = reinterpret_cast<uint8_t *>(PlasmaAllocator::Memalign(kBlockSize, size));
     if (pointer) {
-      // If we manage to allocate the memory, return the pointer. If we cannot
-      // allocate the space, but we are also not allowed to evict anything to
-      // make more space, return an error to the client.
-      *error = PlasmaError::OutOfMemory;
+      // If we manage to allocate the memory, return the pointer.
+      *error = PlasmaError::OK;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.

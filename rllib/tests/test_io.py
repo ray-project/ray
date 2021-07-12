@@ -10,11 +10,13 @@ import time
 import unittest
 
 import ray
-from ray.tune.registry import register_env
+from ray.tune.registry import register_env, register_input, \
+    registry_get_input, registry_contains_input
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.offline import IOContext, JsonWriter, JsonReader
+from ray.rllib.offline import IOContext, JsonWriter, JsonReader, InputReader, \
+    ShuffledInput
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -230,6 +232,37 @@ class AgentIOTest(unittest.TestCase):
                 time.sleep(0.1)
             assert False, "did not see any simulation results"
 
+    def test_custom_input_procedure(self):
+        class CustomJsonReader(JsonReader):
+            def __init__(self, ioctx: IOContext):
+                super().__init__(ioctx.input_config["input_files"], ioctx)
+
+        def input_creator(ioctx: IOContext) -> InputReader:
+            return ShuffledInput(CustomJsonReader(ioctx))
+
+        register_input("custom_input", input_creator)
+        test_input_procedure = [
+            "custom_input",
+            input_creator,
+            "ray.rllib.examples.custom_input_api.CustomJsonReader",
+        ]
+        for input_procedure in test_input_procedure:
+            for fw in framework_iterator(frameworks=("torch", "tf")):
+                self.writeOutputs(self.test_dir, fw)
+                agent = PGTrainer(
+                    env="CartPole-v0",
+                    config={
+                        "input": input_procedure,
+                        "input_config": {
+                            "input_files": self.test_dir + fw
+                        },
+                        "input_evaluation": [],
+                        "framework": fw,
+                    })
+                result = agent.train()
+                self.assertEqual(result["timesteps_total"], 250)
+                self.assertTrue(np.isnan(result["episode_reward_mean"]))
+
 
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
@@ -354,6 +387,33 @@ class JsonIOTest(unittest.TestCase):
             self.test_dir + "/empty2",
         ])
         self.assertRaises(ValueError, lambda: reader.next())
+
+    def test_custom_input_registry(self):
+        config = {"input_config": {}}
+        ioctx = IOContext(self.test_dir, config, 0, None)
+
+        class CustomInputReader(InputReader):
+            def __init__(self, ioctx: IOContext):
+                self.ioctx = ioctx
+
+            def next(self):
+                return 0
+
+        def input_creator(ioctx: IOContext):
+            return ShuffledInput(CustomInputReader(ioctx))
+
+        register_input("custom_input", input_creator)
+        self.assertTrue(registry_contains_input("custom_input"))
+        creator = registry_get_input("custom_input")
+        self.assertIsNotNone(creator)
+        reader = creator(ioctx)
+        self.assertIsInstance(reader, ShuffledInput)
+        self.assertEqual(reader.next(), 0)
+        self.assertEqual(ioctx.log_dir, self.test_dir)
+        self.assertEqual(ioctx.config, config)
+        self.assertEqual(ioctx.worker_index, 0)
+        self.assertIsNone(ioctx.worker)
+        self.assertEqual(ioctx.input_config, {})
 
 
 if __name__ == "__main__":

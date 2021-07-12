@@ -50,6 +50,24 @@ def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
     return result
 
 
+def _hget_with_retry(redis_client,
+                     key,
+                     field,
+                     num_retries=NUM_REDIS_GET_RETRIES):
+    result = None
+    for i in range(num_retries):
+        result = redis_client.hget(key, field)
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            time.sleep(2)
+    if not result:
+        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                           "Has redis started correctly on the head node?")
+    return result
+
+
 class Node:
     """An encapsulation of the Ray processes on a single node.
 
@@ -182,16 +200,16 @@ class Node:
                     or self._ray_params.node_manager_port is None):
                 # Get the address info of the processes to connect to
                 # from Redis.
-                address_info = (
-                    ray._private.services.get_address_info_from_redis(
+                node_info = (
+                    ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
-                self._plasma_store_socket_name = address_info[
-                    "object_store_address"]
-                self._raylet_socket_name = address_info["raylet_socket_name"]
-                self._ray_params.node_manager_port = address_info[
-                    "node_manager_port"]
+                self._plasma_store_socket_name = (
+                    node_info.object_store_socket_name)
+                self._raylet_socket_name = node_info.raylet_socket_name
+                self._ray_params.node_manager_port = (
+                    node_info.node_manager_port)
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -230,7 +248,7 @@ class Node:
             self.start_head_processes()
             redis_client = self.create_redis_client()
             redis_client.set("session_name", self.session_name)
-            redis_client.set("session_dir", self._session_dir)
+            redis_client.hset("session_dir", "value", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
@@ -250,13 +268,11 @@ class Node:
                     "The current node has not been updated within 30 "
                     "seconds, this could happen because of some of "
                     "the Ray processes failed to startup.")
-            address_info = (ray._private.services.get_address_info_from_redis(
+            node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
-                log_warning=False))
-            self._ray_params.node_manager_port = address_info[
-                "node_manager_port"]
+                redis_password=self.redis_password))
+            self._ray_params.node_manager_port = node_info.node_manager_port
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -290,7 +306,8 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = _get_with_retry(redis_client, "session_dir")
+            session_dir = _hget_with_retry(redis_client, "session_dir",
+                                           "value")
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
