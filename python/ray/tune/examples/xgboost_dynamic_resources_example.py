@@ -142,6 +142,10 @@ def tune_xgboost():
         if result["training_iteration"] < 1:
             return None
 
+        # default values if resources_per_trial is unspecified
+        if base_trial_resource is None:
+            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+
         # Assume that the number of CPUs cannot go below what was
         # specified in tune.run
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
