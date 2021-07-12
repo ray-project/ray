@@ -1,8 +1,9 @@
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>
 
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
@@ -173,10 +174,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // retry dispatching the task once another task finishes and releases
           // its arguments.
           RAY_LOG(DEBUG) << "Dispatching task " << task_id
-                        << " would put this node over the max memory allowed for "
-                           "arguments of executing tasks ("
-                        << max_pinned_task_arguments_bytes_
-                        << "). Waiting to dispatch task until other tasks complete";
+                         << " would put this node over the max memory allowed for "
+                            "arguments of executing tasks ("
+                         << max_pinned_task_arguments_bytes_
+                         << "). Waiting to dispatch task until other tasks complete";
           RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
               << "Cannot dispatch task " << task_id
               << " until another task finishes and releases its arguments, but no other "
@@ -410,7 +411,7 @@ void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
     }
   } else {
     RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
-                  << ", most likely because the first execution failed";
+                   << ", most likely because the first execution failed";
   }
 }
 
@@ -932,7 +933,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
           spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
     RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
-                  << " on a remote node that are no longer available";
+                   << " on a remote node that are no longer available";
   }
 
   auto node_info_opt = get_node_info_(spillback_to);

@@ -284,8 +284,8 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     std::function<void(const ray::Status &)> callback, ray::Status status) {
   if (!status.ok()) {
     RAY_LOG(DEBUG) << "Failed to send spilled url for object " << object_id
-                  << " to object directory, considering the object to have been freed: "
-                  << status.ToString();
+                   << " to object directory, considering the object to have been freed: "
+                   << status.ToString();
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";
