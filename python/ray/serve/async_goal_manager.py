@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from ray.serve.common import GoalId
@@ -29,13 +29,19 @@ class AsyncGoalManager:
     def check_complete(self, goal_id: GoalId) -> bool:
         return goal_id not in self._pending_goals
 
-    async def wait_for_goal(self, goal_id: GoalId) -> None:
+    async def wait_for_goals(self, goal_ids: List[Optional[GoalId]]) -> None:
         start = time.time()
-        if goal_id not in self._pending_goals:
-            logger.debug(f"Goal {goal_id} not found")
-            return
 
-        event = self._pending_goals[goal_id]
-        await event.wait()
-        logger.debug(
-            f"Waiting for goal {goal_id} took {time.time() - start} seconds")
+        tasks = []
+        for goal_id in goal_ids:
+            if goal_id is None:
+                pass
+            elif goal_id not in self._pending_goals:
+                logger.debug(f"Goal {goal_id} not found")
+            else:
+                event = self._pending_goals[goal_id]
+                tasks.append(asyncio.create_task(event.wait()))
+
+        if len(tasks):
+            await asyncio.wait(tasks)
+            logger.debug(f"Waiting for goals took {time.time() - start}s")

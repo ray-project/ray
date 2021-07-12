@@ -82,8 +82,8 @@ class ServeController:
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    async def wait_for_goal(self, goal_id: GoalId) -> None:
-        await self.goal_manager.wait_for_goal(goal_id)
+    async def wait_for_goals(self, goal_ids: List[Optional[GoalId]]) -> None:
+        await self.goal_manager.wait_for_goals(goal_ids)
 
     async def _num_pending_goals(self) -> int:
         return self.goal_manager.num_pending_goals()
@@ -283,11 +283,11 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(
-            self, name: str, backend_config: BackendConfig,
-            replica_config: ReplicaConfig, python_methods: List[str],
-            version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
+    async def deploy(self, name: str, backend_config: BackendConfig,
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], prev_version: Optional[str],
+                     route_prefix: Optional[str]
+                     ) -> Tuple[List[Optional[GoalId]], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -315,6 +315,7 @@ class ServeController:
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
+            goal_ids = [goal_id]
             if name != HTTP_PROXY_DEPLOYMENT_NAME:
                 endpoint_info = EndpointInfo(
                     tuple(ALL_HTTP_METHODS),
@@ -326,16 +327,21 @@ class ServeController:
                         name: 1.0
                     }))
                 if endpoints is not None:
-                    await self._update_http_proxy_deployment(endpoints)
-            return goal_id, updating
+                    goal_ids.append(
+                        await self._update_http_proxy_deployment(endpoints))
+            return goal_ids, updating
 
     async def delete_deployment(self, name: str) -> List[Optional[GoalId]]:
         async with self.write_lock:
+            goal_ids = []
             endpoints = self.endpoint_state.delete_endpoint(name)
             if endpoints is not None:
-                await self._update_http_proxy_deployment(endpoints)
+                goal_ids.append(await
+                                self._update_http_proxy_deployment(endpoints))
 
-            return self.backend_state.delete_backend(name, force_kill=False)
+            goal_ids.append(
+                self.backend_state.delete_backend(name, force_kill=False))
+            return goal_ids
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.

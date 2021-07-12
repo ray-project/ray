@@ -137,8 +137,7 @@ class Client:
         instance.
         """
         if (not self._shutdown) and ray.is_initialized():
-            for goal_id in ray.get(self._controller.shutdown.remote()):
-                self._wait_for_goal(goal_id)
+            self._wait_for_goals(ray.get(self._controller.shutdown.remote()))
 
             ray.kill(self._controller, no_restart=True)
 
@@ -159,14 +158,12 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(self,
-                       goal_id: Optional[GoalId],
-                       timeout: Optional[float] = None) -> bool:
-        if goal_id is None:
-            return True
-
+    def _wait_for_goals(self,
+                        goal_ids: List[Optional[GoalId]],
+                        timeout: Optional[float] = None) -> bool:
         ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+            [self._controller.wait_for_goals.remote(goal_ids)],
+            timeout=timeout)
         return len(ready) == 1
 
     @_ensure_connected
@@ -223,10 +220,11 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        self._wait_for_goal(
+        self._wait_for_goals([
             ray.get(
                 self._controller.create_endpoint.remote(
-                    endpoint_name, {backend: 1.0}, route, upper_methods)))
+                    endpoint_name, {backend: 1.0}, route, upper_methods))
+        ])
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
@@ -234,8 +232,8 @@ class Client:
 
         Does not delete any associated backends.
         """
-        self._wait_for_goal(
-            ray.get(self._controller.delete_endpoint.remote(endpoint)))
+        self._wait_for_goals(
+            [ray.get(self._controller.delete_endpoint.remote(endpoint))])
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -274,10 +272,11 @@ class Client:
                 "config_options must be a BackendConfig or dictionary.")
         if isinstance(config_options, dict):
             config_options = BackendConfig.parse_obj(config_options)
-        self._wait_for_goal(
+        self._wait_for_goals([
             ray.get(
                 self._controller.update_backend_config.remote(
-                    backend_tag, config_options)))
+                    backend_tag, config_options))
+        ])
 
     @_ensure_connected
     def get_backend_config(self, backend_tag: str) -> BackendConfig:
@@ -358,10 +357,11 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        self._wait_for_goal(
+        self._wait_for_goals([
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config, replica_config)))
+                    backend_tag, backend_config, replica_config))
+        ])
 
     @_ensure_connected
     def deploy(self,
@@ -373,7 +373,7 @@ class Client:
                version: Optional[str] = None,
                prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
-               _blocking: Optional[bool] = True) -> Optional[GoalId]:
+               _blocking: Optional[bool] = True) -> List[Optional[GoalId]]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -410,7 +410,7 @@ class Client:
                                                      inspect.isfunction):
                 python_methods.append(method_name)
 
-        goal_id, updating = ray.get(
+        goal_ids, updating = ray.get(
             self._controller.deploy.remote(
                 name, backend_config, replica_config, python_methods, version,
                 prev_version, route_prefix))
@@ -425,13 +425,13 @@ class Client:
                         f"'{version}', not updating.")
 
         if _blocking:
-            self._wait_for_goal(goal_id)
-        else:
-            return goal_id
+            self._wait_for_goals(goal_ids)
+
+        return goal_ids
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
-        self._wait_for_goal(
+        self._wait_for_goals(
             ray.get(self._controller.delete_deployment.remote(name)))
 
     @_ensure_connected
@@ -461,9 +461,10 @@ class Client:
             force (bool): Whether or not to force the deletion, without waiting
               for graceful shutdown. Default to false.
         """
-        self._wait_for_goal(
+        self._wait_for_goals([
             ray.get(
-                self._controller.delete_backend.remote(backend_tag, force)))
+                self._controller.delete_backend.remote(backend_tag, force))
+        ])
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
