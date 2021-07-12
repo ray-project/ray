@@ -54,11 +54,7 @@ def do_test_log_likelihood(run,
                     obs_batch[0],
                     prev_action=prev_a,
                     prev_reward=prev_r,
-                    explore=True,
-                    # Do not unsquash actions
-                    # (remain in normalized [-1.0; 1.0] space).
-                    unsquash_actions=False,
-                ))
+                    explore=True))
 
         # Test all taken actions for their log-likelihoods vs expected values.
         if continuous:
@@ -93,9 +89,7 @@ def do_test_log_likelihood(run,
                     np.array([a]),
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
-                    prev_reward_batch=np.array([prev_r]) if prev_r else None,
-                    actions_normalized=True,
-                )
+                    prev_reward_batch=np.array([prev_r]) if prev_r else None)
                 check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.
         else:
