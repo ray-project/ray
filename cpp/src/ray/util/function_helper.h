@@ -25,8 +25,8 @@ class FunctionHelper {
 
   void LoadDll(const boost::filesystem::path &lib_path);
   void LoadFunctionsFromPaths(const std::vector<std::string> paths);
-  const EntryFuntion GetExecutableFunctions(const std::string &function_name);
-  const EntryFuntion GetExecutableMemberFunctions(const std::string &function_name);
+  const EntryFuntion &GetExecutableFunctions(const std::string &function_name);
+  const EntryFuntion &GetExecutableMemberFunctions(const std::string &function_name);
 
  private:
   FunctionHelper() = default;

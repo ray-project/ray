@@ -128,7 +128,7 @@ void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> paths
   }
 }
 
-const EntryFuntion FunctionHelper::GetExecutableFunctions(
+const EntryFuntion &FunctionHelper::GetExecutableFunctions(
     const std::string &function_name) {
   auto it = remote_funcs_.find(function_name);
   if (it == remote_funcs_.end()) {
@@ -139,7 +139,7 @@ const EntryFuntion FunctionHelper::GetExecutableFunctions(
   }
 }
 
-const EntryFuntion FunctionHelper::GetExecutableMemberFunctions(
+const EntryFuntion &FunctionHelper::GetExecutableMemberFunctions(
     const std::string &function_name) {
   auto it = remote_member_funcs_.find(function_name);
   if (it == remote_member_funcs_.end()) {

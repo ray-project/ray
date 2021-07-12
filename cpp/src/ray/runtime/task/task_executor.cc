@@ -16,26 +16,26 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const std::vector<msgpack::sbuffer> &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
-    return PackError("Function name of task is empty.");
+    return PackError("Task function name is empty");
   }
 
   msgpack::sbuffer result;
   do {
     try {
       if (actor_ptr) {
-        const auto fptr = FunctionManager::Instance().GetMemberFunction(func_name);
-        if (fptr == nullptr) {
+        auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
+        if (func_ptr == nullptr) {
           result = PackError("unknown actor task: " + func_name);
           break;
         }
-        result = (*fptr)(actor_ptr, args_buffer);
+        result = (*func_ptr)(actor_ptr, args_buffer);
       } else {
-        const auto fptr = FunctionManager::Instance().GetFunction(func_name);
-        if (fptr == nullptr) {
+        auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+        if (func_ptr == nullptr) {
           result = PackError("unknown function: " + func_name);
           break;
         }
-        result = (*fptr)(args_buffer);
+        result = (*func_ptr)(args_buffer);
       }
     } catch (const std::exception &ex) {
       result = PackError(ex.what());
