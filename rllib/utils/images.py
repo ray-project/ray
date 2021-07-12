@@ -1,14 +1,22 @@
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 try:
     import cv2
     cv2.ocl.setUseOpenCL(False)
+
+    logger.debug("CV2 found for image processing.")
 except ImportError:
     cv2 = None
 
 if cv2 is None:
     try:
         from skimage import color, io, transform
+
+        logger.debug("CV2 not found for image processing, using Skimage.")
     except ImportError:
         raise ModuleNotFoundError("Either scikit-image or opencv is required")
 
