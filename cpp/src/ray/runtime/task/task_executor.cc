@@ -12,43 +12,29 @@ namespace ray {
 
 namespace internal {
 /// Execute remote functions by networking stream.
-/// If `func_ptr` is provided, execute this function directly.
-/// Otherwise, use `func_name` to lookup function pointer.
-msgpack::sbuffer TaskExecutionHandler(const void *func_ptr, const std::string &func_name,
+msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const std::vector<msgpack::sbuffer> &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
-  if (func_ptr == nullptr && func_name.empty()) {
-    return PackError("Both function pointer and function name of task are empty.");
+  if (func_name.empty()) {
+    return PackError("Function name of task is empty.");
   }
 
   msgpack::sbuffer result;
   do {
     try {
       if (actor_ptr) {
-        const RemoteMemberFunction *fptr = nullptr;
-        if (func_ptr == nullptr) {
-          fptr = FunctionManager::Instance().GetMemberFunction(func_name);
-          if (fptr == nullptr) {
-            result = PackError("unknown actor task: " + func_name);
-            break;
-          }
-        } else {
-          fptr = static_cast<const RemoteMemberFunction *>(func_ptr);
+        const auto fptr = FunctionManager::Instance().GetMemberFunction(func_name);
+        if (fptr == nullptr) {
+          result = PackError("unknown actor task: " + func_name);
+          break;
         }
-
         result = (*fptr)(actor_ptr, args_buffer);
       } else {
-        const RemoteFunction *fptr = nullptr;
-        if (func_ptr == nullptr) {
-          fptr = FunctionManager::Instance().GetFunction(func_name);
-          if (fptr == nullptr) {
-            result = PackError("unknown function: " + func_name);
-            break;
-          }
-        } else {
-          fptr = static_cast<const RemoteFunction *>(func_ptr);
+        const auto fptr = FunctionManager::Instance().GetFunction(func_name);
+        if (fptr == nullptr) {
+          result = PackError("unknown function: " + func_name);
+          break;
         }
-
         result = (*fptr)(args_buffer);
       }
     } catch (const std::exception &ex) {
@@ -87,17 +73,16 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
-    std::pair<EntryFuntion, const void *> funcs;
+    EntryFuntion entry_function;
     if (actor_ptr == nullptr) {
-      funcs = static_cast<std::pair<EntryFuntion, const void *>>(
-          FunctionHelper::GetInstance().GetExecutableFunctions(func_name));
+      entry_function = FunctionHelper::GetInstance().GetExecutableFunctions(func_name);
     } else {
-      funcs = static_cast<std::pair<EntryFuntion, const void *>>(
-          FunctionHelper::GetInstance().GetExecutableMemberFunctions(func_name));
+      entry_function =
+          FunctionHelper::GetInstance().GetExecutableMemberFunctions(func_name);
     }
-    RAY_LOG(DEBUG) << "Get executable function" << func_name << " ok.";
-    auto result = funcs.first(funcs.second, func_name, args_buffer, actor_ptr);
-    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok.";
+    RAY_LOG(DEBUG) << "Get executable function " << func_name << " ok.";
+    auto result = entry_function(func_name, args_buffer, actor_ptr);
+    RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (ray::api::RayException &e) {
@@ -187,13 +172,13 @@ void TaskExecutor::Invoke(
 
   std::shared_ptr<msgpack::sbuffer> data;
   if (actor) {
-    auto result = internal::TaskExecutionHandler(
-        nullptr, typed_descriptor->FunctionName(), args_buffer, actor.get());
+    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                 args_buffer, actor.get());
     data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
   } else {
-    auto result = internal::TaskExecutionHandler(
-        nullptr, typed_descriptor->FunctionName(), args_buffer, nullptr);
+    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                 args_buffer, nullptr);
     data = std::make_shared<msgpack::sbuffer>(std::move(result));
     if (task_spec.IsActorCreationTask()) {
       std::unique_ptr<ActorContext> actorContext(new ActorContext());

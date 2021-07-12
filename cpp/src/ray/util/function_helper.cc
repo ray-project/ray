@@ -38,9 +38,9 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const void *, const std::string &, const std::vector<msgpack::sbuffer> &,
-        msgpack::sbuffer *)>(*lib, "TaskExecutionHandler");
-    auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib);
+        const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>(
+        *lib, "TaskExecutionHandler");
+    auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
       RAY_LOG(WARNING) << "No remote functions in library " << lib_path
                        << ", maybe it's not a dynamic library of Ray application.";
@@ -49,7 +49,6 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
     }
     RAY_LOG(INFO) << "The lib path: " << lib_path
                   << ", all remote functions: " << function_names;
-    entry_funcs_.emplace(lib_path.string(), entry_func);
     return;
   } catch (std::exception &e) {
     RAY_LOG(WARNING) << "Get execute function failed, lib_path: " << lib_path
@@ -61,8 +60,9 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   return;
 }
 
-std::string FunctionHelper::LoadAllRemoteFunctions(
-    const std::string lib_path, const boost::dll::shared_library &lib) {
+std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
+                                                   const boost::dll::shared_library &lib,
+                                                   const EntryFuntion &entry_function) {
   static const std::string internal_function_name = "GetRemoteFunctions";
   if (!lib.has(internal_function_name)) {
     RAY_LOG(WARNING) << "Internal function '" << internal_function_name
@@ -76,14 +76,15 @@ std::string FunctionHelper::LoadAllRemoteFunctions(
   auto function_maps = get_remote_func();
   for (const auto &pair : function_maps.first) {
     names_str.append(pair.first).append(", ");
+    remote_funcs_.emplace(pair.first, entry_function);
   }
   for (const auto &pair : function_maps.second) {
     names_str.append(pair.first).append(", ");
+    remote_member_funcs_.emplace(pair.first, entry_function);
   }
   if (!names_str.empty()) {
     names_str.pop_back();
     names_str.pop_back();
-    remote_funcs_.emplace(lib_path, function_maps);
   }
   return names_str;
 }
@@ -127,38 +128,26 @@ void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> paths
   }
 }
 
-std::pair<EntryFuntion, const RemoteFunction *> FunctionHelper::GetExecutableFunctions(
+const EntryFuntion FunctionHelper::GetExecutableFunctions(
     const std::string &function_name) {
-  for (auto &entry : remote_funcs_) {
-    auto pair = LookupExecutableFunctions<RemoteFunction>(function_name, entry.first,
-                                                          entry.second.first);
-    if (!pair.first) {
-      continue;
-    } else {
-      return pair;
-    }
+  auto it = remote_funcs_.find(function_name);
+  if (it == remote_funcs_.end()) {
+    throw RayFunctionNotFound("Executable function not found, the function name " +
+                              function_name);
+  } else {
+    return it->second;
   }
-
-  throw RayException("Executable functions not found, the function name " +
-                     function_name);
 }
 
-// Return a pair which contains a executable entry function and a remote member function
-// pointer.
-std::pair<EntryFuntion, const RemoteMemberFunction *>
-FunctionHelper::GetExecutableMemberFunctions(const std::string &function_name) {
-  for (auto &entry : remote_funcs_) {
-    auto pair = LookupExecutableFunctions<RemoteMemberFunction>(
-        function_name, entry.first, entry.second.second);
-    if (!pair.first) {
-      continue;
-    } else {
-      return pair;
-    }
+const EntryFuntion FunctionHelper::GetExecutableMemberFunctions(
+    const std::string &function_name) {
+  auto it = remote_member_funcs_.find(function_name);
+  if (it == remote_member_funcs_.end()) {
+    throw RayFunctionNotFound("Executable member function not found, the function name " +
+                              function_name);
+  } else {
+    return it->second;
   }
-
-  throw RayException("Executable member functions not found, the function name " +
-                     function_name);
 }
 
 }  // namespace api

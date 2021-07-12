@@ -163,7 +163,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   rpc::JobConfig job_config;
-  for (auto path : ConfigInternal::Instance().code_search_path) {
+  for (const auto &path : ConfigInternal::Instance().code_search_path) {
     job_config.add_code_search_path(path);
   }
   std::string serialized_job_config;

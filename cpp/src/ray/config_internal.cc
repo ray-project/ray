@@ -1,4 +1,5 @@
 #include <boost/dll/runtime_symbol_info.hpp>
+#include "absl/strings/str_split.h"
 #include "gflags/gflags.h"
 
 #include "config_internal.h"
@@ -50,20 +51,8 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
 
     if (!FLAGS_ray_code_search_path.empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
-      code_search_path.clear();
-      std::string separator = ":";
-      unsigned int start = 0;
-      while (start < FLAGS_ray_code_search_path.size()) {
-        auto end = FLAGS_ray_code_search_path.find(separator, start);
-        if (end == std::string::npos) {
-          end = FLAGS_ray_code_search_path.size();
-        }
-        if (start < end) {  // In case there are unnecessary separators.
-          code_search_path.emplace_back(
-              FLAGS_ray_code_search_path.substr(start, end - start));
-        }
-        start = end + separator.length();
-      }
+      code_search_path =
+          absl::StrSplit(FLAGS_ray_code_search_path, ':', absl::SkipEmpty());
     }
     if (!FLAGS_ray_address.empty()) {
       SetRedisAddress(FLAGS_ray_address);
@@ -95,7 +84,7 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     gflags::ShutDownCommandLineFlags();
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
-    if (code_search_path.size() == 0) {
+    if (code_search_path.empty()) {
       auto program_path = boost::dll::program_location().parent_path();
       RAY_LOG(INFO) << "No code search path found yet. "
                     << "The program location path " << program_path
