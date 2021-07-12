@@ -204,6 +204,40 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
+TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
+  ///
+  /// Test the subscription index is idempotent.
+  ///
+  auto node_id = NodeID::FromRandom();
+  auto oid = ObjectID::FromRandom();
+  SubscriptionIndex<ObjectID> subscription_index;
+
+  // Add the same entry many times.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.AddEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+
+  // Erase it and make sure it is erased.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.EraseEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  // Random mix.
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+}
+
 TEST_F(PublisherTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   rpc::PubsubLongPollingReply reply;
@@ -887,6 +921,31 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
   ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
+}
+
+// Test if registration / unregistration is idempotent.
+TEST_F(PublisherTest, TestRegistrationIdempotency) {
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
 }
 
 }  // namespace pubsub

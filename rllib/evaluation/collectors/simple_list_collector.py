@@ -280,25 +280,8 @@ class _AgentCollector:
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                 "env_id", "t"
             ] else 0)
-            # Python primitive or dict (e.g. INFOs).
-            if isinstance(data, (int, float, bool, str, dict)):
-                self.buffers[col] = [data for _ in range(shift)]
-            # np.ndarray, torch.Tensor, or tf.Tensor.
-            else:
-                shape = data.shape
-                dtype = data.dtype
-                if torch and isinstance(data, torch.Tensor):
-                    self.buffers[col] = \
-                        [torch.zeros(shape, dtype=dtype, device=data.device)
-                         for _ in range(shift)]
-                elif tf and isinstance(data, tf.Tensor):
-                    self.buffers[col] = \
-                        [tf.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
-                else:
-                    self.buffers[col] = \
-                        [np.zeros(shape=shape, dtype=dtype)
-                         for _ in range(shift)]
+            # Python primitive, tensor, or dict (e.g. INFOs).
+            self.buffers[col] = [data for _ in range(shift)]
 
 
 class _PolicyCollector:
@@ -691,8 +674,16 @@ class SimpleListCollector(SampleCollector):
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
+
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
+            # PID may be a newly added policy. Just confirm we have it in our
+            # policy map before proceeding with adding a new _PolicyCollector()
+            # to the group.
+            if pid not in policy_collector_group.policy_collectors:
+                assert pid in self.policy_map
+                policy_collector_group.policy_collectors[
+                    pid] = _PolicyCollector(policy)
             policy_collector_group.policy_collectors[
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
@@ -797,9 +788,18 @@ class SimpleListCollector(SampleCollector):
                 vectorized environments).
         """
         pid = self.agent_key_to_policy_id[agent_key]
+
+        # PID may be a newly added policy. Just confirm we have it in our
+        # policy map before proceeding with forward_pass_size=0.
+        if pid not in self.forward_pass_size:
+            assert pid in self.policy_map
+            self.forward_pass_size[pid] = 0
+            self.forward_pass_agent_keys[pid] = []
+
         idx = self.forward_pass_size[pid]
         if idx == 0:
             self.forward_pass_agent_keys[pid].clear()
+
         self.forward_pass_agent_keys[pid].append(agent_key)
         self.forward_pass_size[pid] += 1
 

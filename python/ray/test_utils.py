@@ -6,16 +6,18 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
 import traceback
-from typing import Dict
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -506,6 +508,13 @@ def client_test_enabled() -> bool:
     return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
 def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
@@ -544,19 +553,65 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def get_wheel_filename() -> str:
-    """Returns the filename used for the Ray wheel of the current build."""
-    ray_version = ray.__version__
-    python_version = f"{sys.version_info.major}{sys.version_info.minor}"
-    os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if python_version == "38" else "macosx_10_13_intel",
-        "linux": "manylinux2014_x86_64",
-        "win32": "win_amd64"
-    }
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
 
-    wheel_filename = (
-        f"ray-{ray_version}-cp{python_version}-"
-        f"cp{python_version}{'m' if python_version != '38' else ''}"
-        f"-{os_strings[sys.platform]}.whl")
-    return wheel_filename
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch

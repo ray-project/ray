@@ -1,4 +1,5 @@
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
@@ -10,7 +11,7 @@ class GrpcBasedResourceBroadcaster {
  public:
   GrpcBasedResourceBroadcaster(
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      std::function<void(rpc::ResourceUsageBatchData &)>
+      std::function<void(rpc::ResourceUsageBroadcastData &)>
           get_resource_usage_batch_for_broadcast,
       /* Default values should only be changed for testing. */
       std::function<void(const rpc::Address &,
@@ -44,6 +45,8 @@ class GrpcBasedResourceBroadcaster {
   std::string DebugString();
 
  private:
+  // The sequence number of the next broadcast to send.
+  int64_t seq_no_;
   // An asio service which does the broadcasting work.
   instrumented_io_context broadcast_service_;
   // The associated thread it runs on.
@@ -55,7 +58,7 @@ class GrpcBasedResourceBroadcaster {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// See GcsResourcManager::GetResourceUsageBatchForBroadcast. This is passed as an
   /// argument for unit testing purposes only.
-  std::function<void(rpc::ResourceUsageBatchData &)>
+  std::function<void(rpc::ResourceUsageBroadcastData &)>
       get_resource_usage_batch_for_broadcast_;
 
   std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,

@@ -23,8 +23,6 @@ torch, _ = try_import_torch()
 class TestDDPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        np.random.seed(42)
-        torch.manual_seed(42)
         ray.init()
 
     @classmethod
@@ -34,6 +32,7 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
         config["learning_starts"] = 0
@@ -363,7 +362,7 @@ class TestDDPG(unittest.TestCase):
             prev_fw_loss = (c, a, t)
 
             # Update weights from our batch (n times).
-            for update_iteration in range(10):
+            for update_iteration in range(6):
                 print("train iteration {}".format(update_iteration))
                 if fw == "tf":
                     in_ = self._get_batch_helper(obs_size, actions, batch_size)
@@ -546,8 +545,10 @@ class TestDDPG(unittest.TestCase):
             for k, v in weights_dict.items() if re.search(
                 "default_policy/(actor_(hidden_0|out)|sequential(_1)?)/", k)
         }
-        model_dict["low_action"] = convert_to_torch_tensor(np.array([0.0]))
-        model_dict["action_range"] = convert_to_torch_tensor(np.array([1.0]))
+        model_dict["policy_model.action_out_squashed.low_action"] = \
+            convert_to_torch_tensor(np.array([0.0]))
+        model_dict["policy_model.action_out_squashed.action_range"] = \
+            convert_to_torch_tensor(np.array([1.0]))
         return model_dict
 
 

@@ -21,8 +21,7 @@
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/core_worker_server.h"
+#include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -42,8 +41,8 @@ class SubscriptionIndex {
   ~SubscriptionIndex() = default;
 
   /// Add a new entry to the index.
-  /// NOTE: If the entry already exists, it raises assert failure.
-  void AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
+  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
+  bool AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
   absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
@@ -53,9 +52,7 @@ class SubscriptionIndex {
   /// NOTE: It cannot erase subscribers that were never added.
   bool EraseSubscriber(const SubscriberID &subscriber_id);
 
-  /// Erase the object id and subscriber id from the index. Return the number of erased
-  /// entries.
-  /// NOTE: It cannot erase subscribers that were never added.
+  /// Erase the object id and subscriber id from the index.
   bool EraseEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
 
   /// Return true if the object id exists in the index.
@@ -161,7 +158,8 @@ class PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id_binary The key_id that the subscriber is subscribing to.
-  virtual void RegisterSubscription(const rpc::ChannelType channel_type,
+  /// \return True if registration is new. False otherwise.
+  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
                                     const SubscriberID &subscriber_id,
                                     const std::string &key_id_binary) = 0;
 
@@ -245,7 +243,8 @@ class Publisher : public PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id_binary The key_id that the subscriber is subscribing to.
-  void RegisterSubscription(const rpc::ChannelType channel_type,
+  /// \return True if the registration is new. False otherwise.
+  bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
                             const std::string &key_id_binary) override;
 
@@ -310,6 +309,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
+  FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 

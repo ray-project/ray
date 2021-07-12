@@ -31,7 +31,7 @@ pip install --upgrade pip
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-for PYTHON_VERSION in "3.6" "3.7" "3.8" 
+for PYTHON_VERSION in "3.6" "3.7" "3.8" "3.9"
 do
     env_name="${RAY_VERSION}-${PYTHON_VERSION}-env"
     conda create -y -n "${env_name}" python=${PYTHON_VERSION}
@@ -44,7 +44,7 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
+    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray=="${RAY_VERSION}"
 
     failed=false
     printf "\n\n\n"

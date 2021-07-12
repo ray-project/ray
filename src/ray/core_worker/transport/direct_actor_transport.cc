@@ -530,6 +530,15 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto steal_callback = [this, task_spec,
+                         reply](rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
+                   << worker_context_.GetWorkerID()
+                   << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
+    reply->set_task_stolen(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
   auto dependencies = task_spec.GetDependencies(false);
 
   if (task_spec.IsActorTask()) {
@@ -538,19 +547,21 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
           std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
-              task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
+              task_main_io_service_, *waiter_, pool_, is_asyncio_, max_concurrency_)));
       it = result.first;
     }
 
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
-                    std::move(send_reply_callback), task_spec.TaskId(), dependencies);
+                    std::move(send_reply_callback), nullptr, task_spec.TaskId(),
+                    dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
         request.sequence_number(), request.client_processed_up_to(),
         std::move(accept_callback), std::move(reject_callback),
-        std::move(send_reply_callback), task_spec.TaskId(), dependencies);
+        std::move(send_reply_callback), std::move(steal_callback), task_spec.TaskId(),
+        dependencies);
   }
 }
 
@@ -564,6 +575,16 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
   normal_scheduling_queue_->ScheduleRequests();
 }
 
+void CoreWorkerDirectTaskReceiver::HandleStealTasks(
+    const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(reply);
+  RAY_LOG(DEBUG) << "Number of tasks stolen is " << n_tasks_stolen;
+
+  // send reply back
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
@@ -574,20 +595,13 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
                                                           int max_concurrency) {
   RAY_CHECK(max_concurrency_ == 0)
       << "SetMaxActorConcurrency should only be called at most once.";
-  RAY_CHECK(fiber_state_ == nullptr);
   RAY_CHECK(pool_ == nullptr);
   RAY_CHECK(max_concurrency >= 1);
-  if (max_concurrency > 1) {
-    max_concurrency_ = max_concurrency;
-    is_asyncio_ = is_asyncio;
-    if (is_asyncio_) {
-      RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-      fiber_state_.reset(new FiberState(max_concurrency));
-    } else {
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
-                    << ", creating new fiber thread.";
-      pool_.reset(new BoundedExecutor(max_concurrency));
-    }
+  max_concurrency_ = max_concurrency;
+  is_asyncio_ = is_asyncio;
+  if (!is_asyncio_ && max_concurrency_ > 1) {
+    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency_;
+    pool_.reset(new BoundedExecutor(max_concurrency_));
   }
 }
 

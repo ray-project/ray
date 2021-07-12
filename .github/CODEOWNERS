@@ -6,6 +6,9 @@
 
 # ==== Ray core ====
 
+# API compatibility
+/dashboard/modules/snapshot @wuisawesome
+
 # All C++ code.
 /src/ray @ray-project/ray-core-cpp
 

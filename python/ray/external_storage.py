@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import random
+import time
 import urllib
 from collections import namedtuple
 from typing import List, IO, Tuple
@@ -461,6 +462,21 @@ class UnstableFileStorage(FileSystemStorage):
             return super().spill_objects(object_refs, owner_addresses)
 
 
+class SlowFileStorage(FileSystemStorage):
+    """This class is for testing slow object spilling."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._min_delay = 1
+        self._max_delay = 2
+
+    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        delay = random.random() * (
+            self._max_delay - self._min_delay) + self._min_delay
+        time.sleep(delay)
+        return super().spill_objects(object_refs, owner_addresses)
+
+
 def setup_external_storage(config):
     """Setup the external storage according to the config."""
     global _external_storage
@@ -477,8 +493,11 @@ def setup_external_storage(config):
             _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "unstable_fs":
             # This storage is used to unit test unstable file system for fault
-            # tolerance
+            # tolerance.
             _external_storage = UnstableFileStorage(**config["params"])
+        elif storage_type == "slow_fs":
+            # This storage is used to unit test slow filesystems.
+            _external_storage = SlowFileStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:

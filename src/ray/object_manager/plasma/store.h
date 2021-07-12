@@ -52,8 +52,10 @@ class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              bool hugepages_enabled, const std::string &socket_name,
-              uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
+              std::string fallback_directory, bool hugepages_enabled,
+              const std::string &socket_name, uint32_t delay_on_oom_ms,
+              float object_spilling_threshold,
+              ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
               ray::DeleteObjectCallback delete_object_callback);
@@ -85,6 +87,7 @@ class PlasmaStore {
   ///        device_num = 1 corresponds to GPU0,
   ///        device_num = 2 corresponds to GPU1, etc.
   /// \param client The client that created the object.
+  /// \param fallback_allocator Whether to allow falling back to the fs allocator
   /// \param result The object that has been created.
   /// \return One of the following error codes:
   ///  - PlasmaError::OK, if the object was created successfully.
@@ -97,8 +100,9 @@ class PlasmaStore {
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, int64_t data_size,
-                           int64_t metadata_size, int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject *result);
+                           int64_t metadata_size, plasma::flatbuf::ObjectSource source,
+                           int device_num, const std::shared_ptr<Client> &client,
+                           bool fallback_allocator, PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -197,15 +201,27 @@ class PlasmaStore {
     // created by the object manager.
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
-    RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
-    size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    if (!RayConfig::instance().plasma_unlimited()) {
+      RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+    }
+    size_t available = 0;
+    if (num_bytes_in_use < PlasmaAllocator::GetFootprintLimit()) {
+      available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    }
     callback(available);
   }
+
+  void PrintDebugDump() const;
+
+  // NOTE(swang): This will iterate through all objects in the
+  // object store, so it should be called sparingly.
+  std::string GetDebugDump() const;
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        PlasmaObject *object);
+                                        bool fallback_allocator, PlasmaObject *object,
+                                        bool *spilling_required);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
@@ -234,7 +250,7 @@ class PlasmaStore {
 
   uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
                           ptrdiff_t *offset, const std::shared_ptr<Client> &client,
-                          bool is_create, PlasmaError *error);
+                          bool is_create, bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();
@@ -281,6 +297,9 @@ class PlasmaStore {
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
 
+  /// The percentage of object store memory used above which spilling is triggered.
+  const float object_spilling_threshold_;
+
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;
 
@@ -291,6 +310,9 @@ class PlasmaStore {
   /// serviceable because there is not enough memory. The request will be
   /// retried when this timer expires.
   std::shared_ptr<boost::asio::deadline_timer> create_timer_;
+
+  /// Timer for printing debug information.
+  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_;
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
@@ -317,6 +339,13 @@ class PlasmaStore {
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
+
+  /// Whether we have dumped debug information on OOM yet. This limits dump
+  /// (which can be expensive) to once per OOM event.
+  bool dumped_on_oom_ = false;
+
+  /// A running total of the objects that have ever been created on this node.
+  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

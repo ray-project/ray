@@ -9,6 +9,7 @@ import yaml
 import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
+from click.exceptions import ClickException
 
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
@@ -39,6 +40,46 @@ def ignore_k8s_operator_configs(paths):
 
 CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 
+EXPECTED_LOCAL_CONFIG_STR = """
+cluster_name: minimal-manual
+provider:
+  head_ip: xxx.yyy
+  type: local
+  worker_ips:
+  - aaa.bbb
+  - ccc.ddd
+  - eee.fff
+auth:
+  ssh_private_key: ~/.ssh/id_rsa
+  ssh_user: user
+docker: {}
+max_workers: 3
+available_node_types:
+  local.cluster.node:
+    max_workers: 3
+    min_workers: 3
+    node_config: {}
+    resources: {}
+head_node_type: local.cluster.node
+head_start_ray_commands:
+- ray stop
+- ulimit -c unlimited; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+- ray stop
+- ray start --address=$RAY_HEAD_IP:6379
+cluster_synced_files: []
+idle_timeout_minutes: 5
+upscaling_speed: 1.0
+file_mounts: {}
+file_mounts_sync_continuously: false
+head_setup_commands: []
+initialization_commands: []
+rsync_exclude: []
+rsync_filter: []
+setup_commands: []
+worker_setup_commands: []
+"""  # noqa E501
+
 
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
@@ -46,6 +87,9 @@ class AutoscalingConfigTest(unittest.TestCase):
             try:
                 if "aws/example-multi-node-type.yaml" in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                    continue
+                if "local" in config_path:
+                    # local tested in testValidateLocal
                     continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
@@ -177,6 +221,46 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail(
                     "Config did not pass multi node types auto fill test!")
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testValidateLocal(self):
+        """
+        Tests local node provider config validation for the most common use
+        case of bootstrapping a cluster at a static set of ips.
+        """
+        local_config_path = os.path.join(
+            RAY_PATH, "autoscaler/local/example-minimal-manual.yaml")
+        base_config = yaml.safe_load(open(local_config_path).read())
+        base_config["provider"]["head_ip"] = "xxx.yyy"
+        base_config["provider"]["worker_ips"] = [
+            "aaa.bbb", "ccc.ddd", "eee.fff"
+        ]
+        base_config["auth"]["ssh_user"] = "user"
+        base_config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
+
+        test_prepare_config = copy.deepcopy(base_config)
+        prepared_config = prepare_config(test_prepare_config)
+        try:
+            validate_config(prepared_config)
+        except Exception:
+            self.fail("Failed to validate local/example-minimal-manual.yaml")
+        expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
+        assert prepared_config == expected_prepared
+
+        no_worker_config = copy.deepcopy(base_config)
+        del no_worker_config["provider"]["worker_ips"]
+        with pytest.raises(ClickException):
+            prepare_config(no_worker_config)
+        no_head_config = copy.deepcopy(base_config)
+        del no_head_config["provider"]["head_ip"]
+        with pytest.raises(ClickException):
+            prepare_config(no_head_config)
+        for field in "head_node", "worker_nodes", "available_node_types":
+            faulty_config = copy.deepcopy(base_config)
+            faulty_config[field] = "This field shouldn't be in here."
+            with pytest.raises(ClickException):
+                prepare_config(faulty_config)
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \

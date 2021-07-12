@@ -40,8 +40,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
-    gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_node_manager_ =
@@ -114,7 +113,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
     ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
     auto request = Mocker::GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
 
     // Schedule the placement_group with zero node.
     scheduler_->ScheduleUnplacedBundles(
@@ -142,7 +141,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
     auto request = Mocker::GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
 
     // Schedule the placement_group with 1 available node, and the lease request should be
     // send to the node.
@@ -184,7 +183,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
     // Failed to schedule the placement group, because the node resources is not enough.
     auto request = Mocker::GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
     scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
                                         success_handler);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
@@ -258,7 +257,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReplyFailure) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto request = Mocker::GenCreatePlacementGroupRequest();
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -298,7 +297,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
   };
   auto request =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 3, 2);
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The node resource is not enough, scheduling failed.
@@ -316,7 +315,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto request = Mocker::GenCreatePlacementGroupRequest();
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -363,7 +362,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
   for (int index = 0; index < 10; ++index) {
     auto request =
         Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
-    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+    auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
     scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
                                         success_handler);
 
@@ -404,7 +403,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   };
   auto request =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
@@ -420,7 +419,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   auto create_placement_group_request2 =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
   auto placement_group2 =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2, "");
   scheduler_->ScheduleUnplacedBundles(placement_group2, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
@@ -437,7 +436,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -475,7 +474,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
   // Schedule the placement_group with 1 available node, and the lease request should be
@@ -507,7 +506,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
   // Schedule the placement_group with 1 available node, and the lease request should be
@@ -555,7 +554,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   // One node does not have enough resources, so we will divide bundles to two nodes.
   auto request =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   RAY_CHECK(raylet_clients_[0]->num_lease_requested > 0);
   RAY_CHECK(raylet_clients_[1]->num_lease_requested > 0);
@@ -590,7 +589,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest(
       "pg1", rpc::PlacementStrategy::STRICT_SPREAD);
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
@@ -669,7 +668,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   };
   auto request = Mocker::GenCreatePlacementGroupRequest(
       "", rpc::PlacementStrategy::STRICT_SPREAD, 2, 2);
-  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The number of nodes is less than the number of bundles, scheduling failed.
@@ -779,7 +778,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -815,7 +814,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -855,7 +854,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -890,7 +889,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
@@ -944,7 +943,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
@@ -1000,7 +999,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
   auto placement_group =
-      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {

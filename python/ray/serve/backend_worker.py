@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pickle
 import traceback
 import inspect
 from typing import Any, Callable
@@ -86,10 +87,14 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
-                request_metadata: RequestMetadata,
+                pickled_request_metadata: bytes,
                 *request_args,
                 **request_kwargs,
         ):
+            # The request metadata should be pickled for performance.
+            request_metadata: RequestMetadata = pickle.loads(
+                pickled_request_metadata)
+
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
