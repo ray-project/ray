@@ -348,8 +348,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        # Dump the object directly if the list contains only 1 item,
-        # matching the return type of ray.get().
         items_ser = dumps_from_server(items, client_id, self)
         return ray_client_pb2.GetResponse(valid=True, data=items_ser)
 

@@ -127,7 +127,7 @@ message GetResponse {
   // Whether or not the data was successfully retrieved
   bool valid = 1;
   // The data blob containing a list of serialized objects, on success.
-  // Total size and the order of objects matches those in `GetRequest.ids`.
+  // Total size and the order of objects match those in `GetRequest.ids`.
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;
