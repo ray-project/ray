@@ -6,7 +6,7 @@ import json
 import logging
 
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.actor import ActorClass
     from ray.remote_function import RemoteFunction
@@ -140,21 +140,20 @@ class ClientAPI:
         """
         return self.worker.get_actor(name)
 
-    def list_actors(self,
-                    all_namespaces: bool = False) -> List[Dict[str, str]]:
-        """Get all named actors in the system.
-
-        By default, only actors in the current namespace will be returned. If
-        `all_namespaces` is set to True, all actors in the cluster will be
-        returned.
+    def list_named_actors(self, all_namespaces: bool = False) -> List[str]:
+        """List all named actors in the system.
 
         Actors must have been created with Actor.options(name="name").remote().
         This works for both detached & non-detached actors.
 
-        Returns a list of one dictionary per actor:
-            {"namespace": <namespace>, "name": <name>}
+        By default, only actors in the current namespace will be returned
+        and the returned entries will simply be their name.
+
+        If `all_namespaces` is set to True, all actors in the cluster will be
+        returned regardless of namespace, and the retunred entries will be of
+        the form '<namespace>/<name>'.
         """
-        return self.worker.list_actors(all_namespaces)
+        return self.worker.list_named_actors(all_namespaces)
 
     def kill(self, actor: "ClientActorHandle", *, no_restart=True):
         """kill forcibly stops an actor running in the cluster

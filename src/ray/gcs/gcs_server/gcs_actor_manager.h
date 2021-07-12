@@ -253,7 +253,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
 
-  /// Get info names of named actors in the namespace.
+  /// Get names of named actors.
   //
   /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
   /// \param[in] namespace The namespace to filter to if all_namespaces is false.
@@ -500,7 +500,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     KILL_ACTOR_REQUEST = 5,
-    LIST_ACTORS_REQUEST = 6,
+    LIST_NAMED_ACTORS_REQUEST = 6,
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};

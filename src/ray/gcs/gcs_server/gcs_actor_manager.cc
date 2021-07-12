@@ -268,7 +268,7 @@ void GcsActorManager::HandleListNamedActors(const rpc::ListNamedActorsRequest &r
     reply->add_named_actors_list()->CopyFrom(named_actor_info);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::LIST_ACTORS_REQUEST];
+  ++counts_[CountType::LIST_NAMED_ACTORS_REQUEST];
 }
 
 void GcsActorManager::HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
