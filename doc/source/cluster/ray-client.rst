@@ -36,7 +36,7 @@ You can also connect using the ClientBuilder API, but this will eventually be de
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster. 
-   # `ray.client` which will be deprecated in future releases, so we recommend
+   # `ray.client` will be deprecated in future releases, so we recommend
    # using `ray.init("ray://<head_node_host>:10001")` instead.
    ray.client("<head_node_host>:10001").connect()
 
