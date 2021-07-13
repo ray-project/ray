@@ -13,11 +13,11 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import tune
 
 # Always import tensorflow using this utility function:
+tf1, tf, tfv = try_import_tf()
 # tf1: The installed tf1.x package OR the tf.compat.v1 module within
 #   a 2.x tf installation.
 # tf: The installed tf package (whatever tf version was installed).
 # tfv: The tf version int (either 1 or 2).
-tf1, tf, tfv = try_import_tf()
 
 # To enable eager mode, do:
 # >> tf1.enable_eager_execution()
