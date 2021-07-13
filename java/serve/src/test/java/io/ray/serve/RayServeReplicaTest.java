@@ -3,6 +3,9 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.serializer.Hessian2Seserializer;
+import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -10,10 +13,11 @@ public class RayServeReplicaTest {
 
   @SuppressWarnings("unused")
   @Test
-  public void test() {
+  public void test() throws IOException {
 
     boolean inited = Ray.isInitialized();
 
+    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
 
     try {
@@ -26,15 +30,20 @@ public class RayServeReplicaTest {
               .setName(controllerName)
               .remote();
 
-      BackendConfig backendConfig = new BackendConfig();
+      BackendConfig.Builder backendConfig = BackendConfig.newBuilder();
+
+      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+
+      byte[] initArgsBytes = Hessian2Seserializer.encode(initArgs);
+
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   backendTag,
                   replicaTag,
                   "io.ray.serve.ReplicaContext",
-                  new Object[] {backendTag, replicaTag, controllerName, new Object()},
-                  backendConfig,
+                  initArgsBytes,
+                  backendConfig.build().toByteArray(),
                   controllerName)
               .remote();
 

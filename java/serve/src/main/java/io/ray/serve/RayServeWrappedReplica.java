@@ -4,7 +4,11 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.serializer.Hessian2Seserializer;
+import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.ReflectUtil;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
@@ -19,11 +23,17 @@ public class RayServeWrappedReplica {
       String backendTag,
       String replicaTag,
       String backendDef,
-      Object[] initArgs,
-      BackendConfig backendConfig,
+      byte[] initArgsbytes,
+      byte[] backendConfigBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
-          IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+          IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
+
+    // Parse BackendConfig.
+    BackendConfig backendConfig = BackendConfigUtil.parseFrom(backendConfigBytes);
+
+    // Parse init args.
+    Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(backendDef);
@@ -41,6 +51,27 @@ public class RayServeWrappedReplica {
 
     // Construct worker replica.
     backend = new RayServeReplica(callable, backendConfig, optional.get());
+  }
+
+  private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
+      throws IOException {
+
+    String sourceLanguage = "JAVA";
+    switch (sourceLanguage) {
+      case "JAVA":
+        Object result = Hessian2Seserializer.decode(initArgsbytes);
+        if (result == null) {
+          return new Object[0];
+        }
+        return (Object[]) result;
+
+      case "PYTHON":
+        // TODO
+        return null;
+      default:
+        // not support.
+        return null;
+    }
   }
 
   /**

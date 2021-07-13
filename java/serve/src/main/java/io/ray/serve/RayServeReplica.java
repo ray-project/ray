@@ -9,6 +9,7 @@ import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
@@ -190,7 +191,7 @@ public class RayServeReplica {
   public void drainPendingQueries() {
     while (true) {
       try {
-        Thread.sleep(config.getExperimentalGracefulShutdownWaitLoopS() * 1000);
+        Thread.sleep((long) (config.getExperimentalGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
@@ -212,8 +213,8 @@ public class RayServeReplica {
    *
    * @param userConfig new user's configuration
    */
-  private void reconfigure(Object userConfig) {
-    if (userConfig == null) {
+  private void reconfigure(com.google.protobuf.ByteString userConfig) {
+    if (userConfig == null || userConfig.size() == 0) {
       return;
     }
     try {

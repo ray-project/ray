@@ -28,9 +28,14 @@
       <version>${project.version}</version>
     </dependency>
 <dependency>
+  <groupId>com.caucho</groupId>
+  <artifactId>hessian</artifactId>
+  <version>4.0.62</version>
+</dependency>
+<dependency>
   <groupId>com.google.guava</groupId>
   <artifactId>guava</artifactId>
-  <version>27.0.1-jre</version>
+  <version>30.0-jre</version>
 </dependency>
 <dependency>
   <groupId>org.apache.commons</groupId>

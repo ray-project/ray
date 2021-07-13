@@ -25,6 +25,7 @@ def gen_java_deps():
             "org.yaml:snakeyaml:1.26",
             "redis.clients:jedis:2.8.0",
             "net.java.dev.jna:jna:5.5.0",
+            "com.caucho:hessian:4.0.62",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",
@@ -35,6 +36,6 @@ def gen_java_deps():
             ),
         ],
         repositories = [
-            "https://repo1.maven.org/maven2/",
+            "http://mvn.dev.alipay.net:8080/artifactory/repo",
         ],
     )
