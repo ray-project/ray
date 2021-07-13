@@ -264,28 +264,29 @@ When the ``serve_debugging.py`` driver hits the breakpoint, it will tell you to 
 .. code-block:: text
 
     Active breakpoints:
-    0: ray::RayServeWorker_BoostingModel.handle_request() | /Users/pcmoritz/ray/python/ray/serve/backend_worker.py:249
+    index | timestamp           | Ray task                                     | filename:lineno
+    0     | 2021-07-13 23:49:14 | ray::RayServeWrappedReplica.handle_request() | /home/pcmoritz/ray/python/ray/serve/backend_worker.py:249
     Traceback (most recent call last):
 
-      File "/Users/pcmoritz/ray/python/ray/serve/backend_worker.py", line 244, in invoke_single
-        result = await method_to_call(arg)
+      File "/home/pcmoritz/ray/python/ray/serve/backend_worker.py", line 242, in invoke_single
+        result = await method_to_call(*args, **kwargs)
 
-      File "/Users/pcmoritz/ray/python/ray/async_compat.py", line 29, in wrapper
-        return func(*args, **kwargs)
-
-      File "serve_debugging.py", line 23, in __call__
+      File "serve_debugging.py", line 24, in __call__
         prediction = self.model.predict([payload])[0]
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 2165, in predict
+      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1188, in predict
         raw_predictions = self.decision_function(X)
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 2120, in decision_function
+      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1143, in decision_function
         X = check_array(X, dtype=DTYPE, order="C", accept_sparse='csr')
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 531, in check_array
+      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 63, in inner_f
+        return f(*args, **kwargs)
+
+      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 673, in check_array
         array = np.asarray(array, order=order, dtype=dtype)
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
+      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
         return array(a, dtype, copy=False, order=order)
 
     ValueError: could not convert string to float: 'a'
