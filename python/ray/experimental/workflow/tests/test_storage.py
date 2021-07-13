@@ -8,6 +8,7 @@ import boto3
 from moto import mock_s3
 from mock_server import *  # noqa
 
+from pytest_lazyfixture import lazy_fixture
 
 def some_func(x):
     return x + 1
@@ -50,8 +51,8 @@ def s3_storage(aws_credentials, s3_server):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("raw_storage", [
-    pytest.lazy_fixture("filesystem_storage"),
-    pytest.lazy_fixture("s3_storage")
+    lazy_fixture("filesystem_storage"),
+    lazy_fixture("s3_storage")
 ])
 async def test_raw_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
@@ -130,8 +131,8 @@ async def test_raw_storage(ray_start_regular, raw_storage):
 
 
 @pytest.mark.parametrize("raw_storage", [
-    pytest.lazy_fixture("filesystem_storage"),
-    pytest.lazy_fixture("s3_storage")
+    lazy_fixture("filesystem_storage"),
+    lazy_fixture("s3_storage")
 ])
 def test_workflow_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
