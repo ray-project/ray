@@ -87,7 +87,7 @@ def resume(workflow_id: str,
     Args:
         workflow_id: The id of the workflow to resume.
         storage: The external storage URL or a custom storage class. If not
-            specified, ``$(pwd)/.workflow_data`` will be used.
+            specified, ``file:///tmp/ray/workflow_data`` will be used.
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
