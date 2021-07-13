@@ -14,6 +14,11 @@ if __name__ == "__main__":
     env = env_creator({})
     register_env("waterworld", env_creator)
 
+    obs_space = env.observation_space
+    act_spc = env.action_space
+
+    policies = {agent: (None, obs_space, act_spc, {}) for agent in env.agents}
+
     tune.run(
         "APEX_DDPG",
         stop={"episodes_total": 60000},
@@ -26,7 +31,7 @@ if __name__ == "__main__":
             "num_workers": 2,
             # Method specific
             "multiagent": {
-                "policies": set(env.agents),
+                "policies": policies,
                 "policy_mapping_fn": (
                     lambda agent_id, episode, **kwargs: agent_id),
             },
