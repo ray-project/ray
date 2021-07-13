@@ -140,7 +140,7 @@ def test_many_placement_groups():
         remove_placement_group(pg)
 
 
-ray.client().env({}).connect()
+ray.init(address="auto")
 
 scale_to(TEST_NUM_NODES)
 assert num_alive_nodes(
