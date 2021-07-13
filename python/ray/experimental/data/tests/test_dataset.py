@@ -668,6 +668,24 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute())
 
 
+def test_to_torch(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    torch_ds = ds.to_torch(...)
+
+
 def test_json_read(ray_start_regular_shared, tmp_path):
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})

@@ -856,7 +856,11 @@ class Dataset(Generic[T]):
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 
-    def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
+    def to_torch(self, label_column, feature_columns=None,
+                 feature_column_dtypes=None,
+                 label_column_dtype=None, prefetch_blocks=0) \
+        -> \
+        "torch.utils.data.IterableDataset":
         """Return a Torch data iterator over this dataset.
 
         Note that you probably want to call ``.split()`` on this dataset if
@@ -867,7 +871,36 @@ class Dataset(Generic[T]):
         Returns:
             A torch IterableDataset.
         """
-        raise NotImplementedError  # P1
+        try:
+            import torch
+        except ImportError:
+            raise ValueError("torch must be installed!")
+
+        assert len(feature_column_dtypes)
+
+        def convert_to_tensor()
+
+        def generator():
+            for row in self.iter_rows(prefetch_blocks=prefetch_blocks):
+                target_col = row.pop(label_column)
+                feature_tensors = []
+                for col in feature_columns:
+                    column = row[col]
+                    column_tensor = torch.as_tensor(column).view(-1, 1)
+                    feature_tensors.append(column_tensor)
+
+                label_tensor = torch.as_tensor(target_col).view(-1, 1)
+
+                yield (feature_tensors, label_tensor)
+
+        class BatchIterableDataset(torch.utils.data.IterableDataset):
+            def __init__(self):
+                pass
+
+            def __iter__(self):
+                pass
+
+
 
     def to_tf(self, **todo) -> "tf.data.Dataset":
         """Return a TF data iterator over this dataset.
