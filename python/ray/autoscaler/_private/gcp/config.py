@@ -26,7 +26,7 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     "displayName": "Ray Autoscaler Service Account ({})".format(VERSION),
 }
 DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
-                                 "roles/compute.admin", 
+                                 "roles/compute.admin",
                                  "roles/iam.serviceAccountUser")
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
