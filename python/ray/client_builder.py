@@ -68,15 +68,7 @@ class ClientBuilder:
         self._job_config = JobConfig()
         self._init_args_dict = {}
         self._catch_all_dict = {}
-
-        # Check environment variables for default values
-        namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
-        if namespace_env_var:
-            self.namespace(namespace_env_var)
-
-        runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
-        if runtime_env_var:
-            self.env(json.loads(runtime_env_var))
+        self._fill_defaults_from_env()
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -119,6 +111,16 @@ class ClientBuilder:
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
 
+    def _fill_defaults_from_env(self):
+        # Check environment variables for default values
+        namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
+        if namespace_env_var and self._job_config.runtime_env is None:
+            self.namespace(namespace_env_var)
+
+        runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+        if runtime_env_var and self._job_config.ray_namespace is not None:
+            self.env(json.loads(runtime_env_var))
+
     def _catch_all(self, **kwargs) -> "ClientBuilder":
         """
         Some client builders will take extra arguments that aren't part of the
@@ -142,6 +144,7 @@ class ClientBuilder:
             self.namespace(kwargs["namespace"])
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
+        self._fill_defaults_from_env()
         self._init_args_dict = kwargs
         return self
 
