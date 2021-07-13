@@ -226,7 +226,7 @@ print("success")
                 return False
         return True
 
-    ## Check that workers are eventually cleaned up.
+    # Check that workers are eventually cleaned up.
     wait_for_condition(all_workers_exited)
 
 

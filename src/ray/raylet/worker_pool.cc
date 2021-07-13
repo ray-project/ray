@@ -718,7 +718,8 @@ void WorkerPool::TryKillingIdleWorkers() {
   for (const auto &idle_pair : idle_of_all_languages_) {
     const auto &idle_worker = idle_pair.first;
     const auto &job_id = idle_worker->GetAssignedJobId();
-    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) && !finished_jobs_.count(job_id)) {
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) &&
+        !finished_jobs_.count(job_id)) {
       break;
     }
 
@@ -767,7 +768,8 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     RAY_CHECK(running_size >= workers_in_the_same_process.size());
     if (running_size - workers_in_the_same_process.size() <
-        static_cast<size_t>(num_workers_soft_limit_) && !finished_jobs_.count(job_id)) {
+            static_cast<size_t>(num_workers_soft_limit_) &&
+        !finished_jobs_.count(job_id)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
       // expect may slow the job.
       return;
