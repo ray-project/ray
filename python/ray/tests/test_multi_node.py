@@ -7,7 +7,7 @@ import ray
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
                             init_error_pubsub, get_error_message,
-                            object_memory_usage)
+                            object_memory_usage, wait_for_pid_to_exit)
 
 
 def test_error_isolation(call_ray_start):
@@ -183,6 +183,9 @@ import time
 import ray
 import numpy as np
 from ray.test_utils import object_memory_usage
+import os
+
+
 ray.init(address="{}")
 object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
@@ -192,10 +195,18 @@ while time.time() - start_time < 30:
         break
 else:
     raise Exception("Objects did not appear in object table.")
+
+@ray.remote
+def f():
+    return os.getpid()
+
+pid = ray.get(f.remote())
+print("pid:" + str(pid))
 print("success")
 """.format(address)
 
-    run_string_as_driver(driver_script)
+    out = run_string_as_driver(driver_script)
+    assert "success" in out
 
     # Make sure the objects are removed from the object table.
     start_time = time.time()
@@ -204,6 +215,12 @@ print("success")
             break
     else:
         raise Exception("Objects were not all removed from object table.")
+
+    # Check that workers are cleaned up.
+    for line in out.split("\n"):
+        if line.startswith("pid"):
+            pid = int(line.split(":")[1])
+            wait_for_pid_to_exit(pid)
 
 
 def test_drivers_named_actors(call_ray_start):
