@@ -116,6 +116,7 @@ class NodeUpdater:
         self.restart_only = restart_only
         self.update_time = None
         self.for_recovery = for_recovery
+        self.provider_config = provider_config
 
     def run(self):
         update_start_time = time.time()
@@ -128,32 +129,38 @@ class NodeUpdater:
                    "or also pass in `--use-normal-shells`.")
             cli_logger.abort(msg)
 
-        try:
-            with LogTimer(self.log_prefix +
-                          "Applied config {}".format(self.runtime_hash)):
-                self.do_update()
-        except Exception as e:
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-            cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
+        if self.provider_config.get('init_cmd_run_by_scheduler_not_ray_NodeUpdater', False):
+            cli_logger.print(
+                "The scheduler has already run init/setup commands " + 
+                "and will not use this NodeUpdater to run them"
+            )
+        else:
+            try:
+                with LogTimer(self.log_prefix +
+                            "Applied config {}".format(self.runtime_hash)):
+                    self.do_update()
+            except Exception as e:
+                self.provider.set_node_tags(
+                    self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+                cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
 
-            cli_logger.error("!!!")
-            if hasattr(e, "cmd"):
-                cli_logger.error(
-                    "Setup command `{}` failed with exit code {}. stderr:",
-                    cf.bold(e.cmd), e.returncode)
-            else:
-                cli_logger.verbose_error("{}", str(vars(e)))
-                # todo: handle this better somehow?
-                cli_logger.error("{}", str(e))
-            # todo: print stderr here
-            cli_logger.error("!!!")
-            cli_logger.newline()
+                cli_logger.error("!!!")
+                if hasattr(e, "cmd"):
+                    cli_logger.error(
+                        "Setup command `{}` failed with exit code {}. stderr:",
+                        cf.bold(e.cmd), e.returncode)
+                else:
+                    cli_logger.verbose_error("{}", str(vars(e)))
+                    # todo: handle this better somehow?
+                    cli_logger.error("{}", str(e))
+                # todo: print stderr here
+                cli_logger.error("!!!")
+                cli_logger.newline()
 
-            if isinstance(e, click.ClickException):
-                # todo: why do we ignore this here
-                return
-            raise
+                if isinstance(e, click.ClickException):
+                    # todo: why do we ignore this here
+                    return
+                raise
 
         tags_to_set = {
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
@@ -162,12 +169,22 @@ class NodeUpdater:
         if self.file_mounts_contents_hash is not None:
             tags_to_set[
                 TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
-
+        cli_logger.print(
+                "node {} will provider.set_node_tags with {} now", 
+                self.node_id,
+                tags_to_set,
+        )
         self.provider.set_node_tags(self.node_id, tags_to_set)
+        cli_logger.print(
+                f"node {self.node_id} cli_loger about to set labeled_value"
+        )
         cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.update_time = time.time() - update_start_time
         self.exitcode = 0
+        cli_logger.print(
+                f"node {self.node_id} exitcode set to 0 now from update start time {update_start_time}"
+        )
 
     def sync_file_mounts(self, sync_cmd, step_numbers=(0, 2)):
         # step_numbers is (# of previous steps, total steps)
