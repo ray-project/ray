@@ -495,11 +495,8 @@ class Policy(metaclass=ABCMeta):
         """
         state = {
             # The 4-tuple defining this policy.
-            "policy_spec": (
-                self.__class__,
-                self.observation_space,
-                self.action_space,
-                self.config),
+            "policy_spec": (self.__class__, self.observation_space,
+                            self.action_space, self.config),
             # All the policy's weights.
             "weights": self.get_weights(),
             # The current global timestep.

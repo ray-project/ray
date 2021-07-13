@@ -12,6 +12,7 @@ class PolicyMap(dict):
     writes the least recently used to disk. This allows adding 100s of
     policies to a Trainer for league-based setups w/o running out of memory.
     """
+
     def __init__(self, capacity=None, path=None, policy_config=None):
         """Initializes a PolicyMap instance.
 
@@ -104,7 +105,6 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
-
         def gen():
             for key in self.valid_keys:
                 yield key
@@ -113,7 +113,6 @@ class PolicyMap(dict):
 
     @override(dict)
     def values(self):
-
         def gen():
             for key in self.valid_keys:
                 yield self[key]
@@ -171,8 +170,10 @@ class PolicyMap(dict):
         # Read policy state from disk.
         with open(self.path + "/" + policy_id + self.extension, "r") as f:
             policy_state = pickle.load(f)
-        # Create policy object (from its spec: cls, obs-space, act-space, config).
-        policy = policy_state["policy_spec"][0](*policy_state["policy_spec"][1:])
+        # Create policy object (from its spec: cls, obs-space, act-space,
+        # config).
+        policy = policy_state["policy_spec"][0](
+            *policy_state["policy_spec"][1:])
         # Restore policy's state.
         policy.set_state(policy_state)
         self.cache[policy_id] = policy

@@ -250,17 +250,13 @@ class TrainTFMultiGPU:
             with tf_session.as_default():
                 with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
                     if policy._state_inputs:
-                        rnn_inputs = policy._state_inputs + [
-                            policy._seq_lens
-                        ]
+                        rnn_inputs = policy._state_inputs + [policy._seq_lens]
                     else:
                         rnn_inputs = []
-                    self.optimizers[policy_id] = (
-                        LocalSyncParallelOptimizer(
-                            policy._optimizer, self.devices,
-                            list(policy._loss_input_dict_no_rnn.values()),
-                            rnn_inputs, self.per_device_batch_size,
-                            policy.copy))
+                    self.optimizers[policy_id] = (LocalSyncParallelOptimizer(
+                        policy._optimizer, self.devices,
+                        list(policy._loss_input_dict_no_rnn.values()),
+                        rnn_inputs, self.per_device_batch_size, policy.copy))
 
                 tf_session.run(tf1.global_variables_initializer())
 

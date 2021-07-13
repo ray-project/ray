@@ -913,8 +913,9 @@ class RolloutWorker(ParallelIteratorWorker):
                         builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
-            info_out.update({pid: builders[pid].get(v)
-                             for pid, v in to_fetch.items()})
+            info_out.update(
+                {pid: builders[pid].get(v)
+                 for pid, v in to_fetch.items()})
         else:
             info_out = {
                 DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
@@ -1058,7 +1059,9 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_id: (policy_cls, observation_space, action_space, config)
         }
         add_map, add_prep = self._build_policy_map(
-            policy_dict, self.policy_config, seed=self.policy_config.get("seed"))
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
         new_policy = add_map[policy_id]
 
         self.policy_map.update(add_map)
@@ -1273,7 +1276,8 @@ class RolloutWorker(ParallelIteratorWorker):
         return func(self, *args)
 
     def _build_policy_map(
-            self, policy_dict: MultiAgentPolicyConfigDict,
+            self,
+            policy_dict: MultiAgentPolicyConfigDict,
             policy_config: TrainerConfigDict,
             session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             seed: Optional[int] = None,
@@ -1335,18 +1339,19 @@ class RolloutWorker(ParallelIteratorWorker):
                             else:
                                 sess = tf1.Session(
                                     config=tf1.ConfigProto(
-                                        gpu_options=tf1.GPUOptions(allow_growth=True)))
+                                        gpu_options=tf1.GPUOptions(
+                                            allow_growth=True)))
                             with sess.as_default():
                                 # Set graph-level seed.
                                 if seed is not None:
                                     tf1.set_random_seed(seed)
 
-                                policy_map[name] = cls(
-                                    obs_space, act_space, merged_conf)
+                                policy_map[name] = cls(obs_space, act_space,
+                                                       merged_conf)
                     # For tf-eager: no graph, no session.
                     else:
-                        policy_map[name] = cls(
-                            obs_space, act_space, merged_conf)
+                        policy_map[name] = cls(obs_space, act_space,
+                                               merged_conf)
             # Non-tf: No graph, no session.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)

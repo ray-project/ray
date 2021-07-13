@@ -205,8 +205,7 @@ class MultiAgentSampleBatchBuilder:
             post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id],
-                    policy.get_session())
+                    policy, post_batches[agent_id], policy.get_session())
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 

@@ -49,9 +49,8 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies: PolicyMap,
-                 policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
-                                             PolicyID],
+    def __init__(self, policies: PolicyMap, policy_mapping_fn: Callable[
+        [AgentID, "MultiAgentEpisode"], PolicyID],
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
                  extra_batch_callback: Callable[[SampleBatchType], None],

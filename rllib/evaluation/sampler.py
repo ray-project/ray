@@ -30,7 +30,6 @@ from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import clip_action, \
     unsquash_action, unbatch
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
     TensorStructType
@@ -399,9 +398,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter,
             self.rollout_fragment_length, self.horizon, self.clip_rewards,
             self.normalize_actions, self.clip_actions,
-            self.multiple_episodes_in_batch, self.callbacks,
-            self.perf_stats, self.soft_horizon, self.no_done_at_end,
-            self.observation_fn, self.sample_collector, self.render)
+            self.multiple_episodes_in_batch, self.callbacks, self.perf_stats,
+            self.soft_horizon, self.no_done_at_end, self.observation_fn,
+            self.sample_collector, self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -1164,7 +1163,6 @@ def _get_or_raise(mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]],
         ValueError: If `policy_id` cannot be found in `mapping`.
     """
     if policy_id not in mapping:
-        print()#TODO
         raise ValueError(
             "Could not find policy for agent: PolicyID `{}` not found "
             "in policy map, whose keys are `{}`.".format(

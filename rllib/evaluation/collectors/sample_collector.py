@@ -3,7 +3,6 @@ import logging
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
@@ -31,7 +30,7 @@ class SampleCollector(metaclass=ABCMeta):
     """
 
     def __init__(self,
-                 policy_map: Dict[PolicyID, Policy],
+                 policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
