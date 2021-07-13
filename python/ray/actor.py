@@ -1036,7 +1036,6 @@ def modify_class(cls):
                 ray.actor.exit_actor()
 
         def __ray_ready__(self):
-            worker = ray.worker.global_worker
             return True
 
     Class.__module__ = cls.__module__
