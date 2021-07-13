@@ -466,7 +466,9 @@ if __name__ == "__main__":
 
 
 # Ensure no remaining lib files.
-shutil.rmtree(os.path.join(ROOT_DIR, "build"))
+build_dir = os.path.join(ROOT_DIR, "build")
+if os.path.isdir(build_dir):
+    shutil.rmtree(build_dir)
 
 setuptools.setup(
     name=setup_spec.name,
