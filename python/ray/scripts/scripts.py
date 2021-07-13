@@ -199,7 +199,8 @@ def format_table(table):
     result = []
     col_width = [max(len(x) for x in col) for col in zip(*table)]
     for line in table:
-        result.append(" | ".join("{0:{1}}".format(x, col_width[i]) for i, x in enumerate(line)))
+        result.append(" | ".join(
+            "{0:{1}}".format(x, col_width[i]) for i, x in enumerate(line)))
     return result
 
 
@@ -226,14 +227,20 @@ def debug(address):
             data = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(active_session))
             sessions_data.append(data)
-        sessions_data = sorted(sessions_data, key=lambda data: data["timestamp"], reverse=True)
+        sessions_data = sorted(
+            sessions_data, key=lambda data: data["timestamp"], reverse=True)
         table = [["index", "timestamp", "Ray task", "filename:lineno"]]
         for i, data in enumerate(sessions_data):
-            date = datetime.utcfromtimestamp(data["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-            table.append([str(i), date, data["proctitle"], data["filename"] + ":" + str(data["lineno"])])
+            date = datetime.utcfromtimestamp(
+                data["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            table.append([
+                str(i), date, data["proctitle"],
+                data["filename"] + ":" + str(data["lineno"])
+            ])
         for i, line in enumerate(format_table(table)):
             print(line)
-            if i >= 1 and not sessions_data[i-1]["traceback"].startswith("NoneType: None"):
+            if i >= 1 and not sessions_data[i-1]["traceback"].startswith(
+                    "NoneType: None"):
                 print(sessions_data[i-1]["traceback"])
         inp = input("Enter breakpoint index or press enter to refresh: ")
         if inp == "":
