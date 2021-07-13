@@ -221,6 +221,10 @@ class ResourceChangingScheduler(TrialScheduler):
                 self._base_trial_resources = trial.placement_group_factory
             else:
                 self._base_trial_resources = trial.resources
+        # Raise error if the resources of a newly added trial don't match
+        # base resources, but allow trials that have already had their
+        # resources changed by ResourceChangingScheduler
+        # (those can be added again during loading from a checkpoint)
         elif trial.trial_id not in self._reallocated_trial_ids:
             if trial.uses_placement_groups:
                 trial_resources = trial.placement_group_factory
@@ -232,6 +236,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     "varying base resources. First trial had "
                     f"{self._base_trial_resources}, trial {trial} has "
                     f"{trial_resources}.")
+
         return self._base_scheduler.on_trial_add(trial_runner, trial, **kwargs)
 
     def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
@@ -305,9 +310,10 @@ class ResourceChangingScheduler(TrialScheduler):
     ) -> bool:
         """Returns True if new_resources were set."""
         if new_resources:
-            logger.info(f"setting trial {trial} resource to {new_resources}")
+            logger.info(f"Setting trial {trial} resource to {new_resources}")
             trial.placement_group_factory = None
             trial.update_resources(new_resources)
+            # keep track of all trials which had their resources changed
             self._reallocated_trial_ids.add(trial.trial_id)
             return True
         return False
