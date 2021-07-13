@@ -106,8 +106,8 @@ following recursive function as an example:
         if n == 1:
             return n
         else:
-            n_id = fact.remote(n - 1)
-            return n * ray.get(n_id)
+            n_ref = fact.remote(n - 1)
+            return n * ray.get(n_ref)
 
     breakpoint()
     result_ref = fact.remote(5)
@@ -144,8 +144,8 @@ the following output:
       7  	    if n == 1:
       8  	        return n
       9  	    else:
-     10  	        n_id = fact.remote(n - 1)
-     11  	        return n * ray.get(n_id)
+     10  	        n_ref = fact.remote(n - 1)
+     11  	        return n * ray.get(n_ref)
     (Pdb) p(n)
     5
     (Pdb)
