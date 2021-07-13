@@ -116,6 +116,11 @@ def run(
     will gracefully shut down and checkpoint the latest experiment state.
     Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
 
+    Many aspects of Tune, such as the frequency of global checkpointing,
+    maximum pending placement group trials and the path of the result
+    directory be configured through environment variables. Refer to
+    :ref:`tune-env-vars` for a list of environment variables available.
+
     Examples:
 
     .. code-block:: python
