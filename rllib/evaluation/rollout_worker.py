@@ -1253,8 +1253,9 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
-        self.policy_map[policy_id].export_model(export_dir)
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
+        self.policy_map[policy_id].export_model(export_dir, onnx=onnx)
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,
