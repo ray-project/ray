@@ -21,7 +21,7 @@ def recursion_factorial(n):
 
 def test_recursion_factorial():
     import ray
-    ray.init()
+    ray.init(namespace="workflow")
 
     outputs = workflow.run(recursion_factorial.step(10))
     assert ray.get(outputs) == 3628800

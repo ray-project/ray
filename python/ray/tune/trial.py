@@ -57,6 +57,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +71,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])

@@ -159,31 +159,31 @@ To optimize the hyperparameters of your training process, you will want to use a
 
 .. code-block:: python
 
-    # Be sure to first run `pip install hyperopt`
+    # Be sure to first run `pip install bayesian-optimization`
 
-    import hyperopt as hp
-    from ray.tune.suggest.hyperopt import HyperOptSearch
+    from ray.tune.suggest import ConcurrencyLimiter
+    from ray.tune.suggest.bayesopt import BayesOptSearch
 
-    # Create a HyperOpt search space
+    # Define the search space
     config = {
         "a": tune.uniform(0, 1),
         "b": tune.uniform(0, 20)
-
-        # Note: Arbitrary HyperOpt search spaces should be supported!
-        # "foo": tune.randn(0, 1))
     }
 
-    # Specify the search space and maximize score
-    hyperopt = HyperOptSearch(metric="score", mode="max")
-
-    # Execute 20 trials using HyperOpt and stop after 20 iterations
+    # Execute 20 trials using BayesOpt and stop after 20 iterations
     tune.run(
         trainable,
         config=config,
-        search_alg=hyperopt,
+        metric="score",
+        mode="max",
+        # Limit to two concurrent trials (otherwise we end up with random search)
+        search_alg=ConcurrencyLimiter(
+            BayesOptSearch(random_search_steps=4),
+            max_concurrent=2),
         num_samples=20,
-        stop={"training_iteration": 20}
-    )
+        stop={"training_iteration": 20},
+        verbose=2)
+
 
 Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
 spaces the search algorithms/underlying library expect.

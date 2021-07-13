@@ -323,7 +323,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_github_google_glog//:glog",
         "@msgpack",
     ],
 )
@@ -352,7 +351,6 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
-        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -1557,8 +1555,10 @@ cc_library(
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
         "@boost//:property_tree",
-        "@com_github_google_glog//:glog",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/debugging:failure_signal_handler",
+        "@com_google_absl//absl/debugging:stacktrace",
+        "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -1888,7 +1888,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/azure/*.json",
+        "python/ray/autoscaler/_private/_azure/*.json",
         "python/ray/autoscaler/aws/defaults.yaml",
         "python/ray/autoscaler/azure/defaults.yaml",
         "python/ray/autoscaler/gcp/defaults.yaml",
