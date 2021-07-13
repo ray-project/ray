@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
-#include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,6 +30,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -39,51 +39,6 @@ namespace raylet {
 
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
-
-/// \class WorkerCacheKey
-///
-/// Class used to cache workers, keyed by runtime_env.
-class WorkerCacheKey {
- public:
-  /// Create a cache key with the given environment variable overrides and serialized
-  /// runtime_env.
-  ///
-  /// \param override_environment_variables The environment variable overrides set in this
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env);
-
-  bool operator==(const WorkerCacheKey &k) const;
-
-  /// Check if this worker's environment is empty (the default).
-  ///
-  /// \return true if there are no environment variables set and the runtime env is the
-  /// empty string (protobuf default) or a JSON-serialized empty dict.
-  bool EnvIsEmpty() const;
-
-  /// Get the hash for this worker's environment.
-  ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
-
- private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
-  /// The JSON-serialized runtime env for this worker.
-  const std::string serialized_runtime_env;
-  /// The cached hash of the worker's environment.  This is set to 0
-  /// for unspecified or empty environments.
-  mutable std::size_t hash_ = 0;
-};
 
 /// \class WorkerPoolInterface
 ///
@@ -184,6 +139,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
   void SetNodeManagerPort(int node_manager_port);
 
+  /// Set agent manager.
+  void SetAgentManager(std::shared_ptr<AgentManager> agent_manager);
+
   /// Handles the event that a job is started.
   ///
   /// \param job_id ID of the started job.
@@ -208,11 +166,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
+  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
+                        pid_t worker_shim_pid,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -397,8 +357,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
-      const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {});
+      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
+      std::unordered_map<std::string, std::string> override_environment_variables = {},
+      const std::string &serialized_runtime_env_context = "{}");
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -426,6 +387,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_io_workers = 0;
   };
 
+  /// Some basic information about the starting worker process.
+  struct StartingWorkerProcessInfo {
+    /// The number of workers in the worker process.
+    int num_workers;
+    /// The number of pending registration workers in the worker process.
+    int num_starting_workers;
+    /// The type of the worker.
+    rpc::WorkerType worker_type;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -449,14 +420,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of starting worker processes
-    /// to the number of their unregistered workers.
-    std::unordered_map<Process, int> starting_worker_processes;
+    /// A map from the pids of this shim processes to the extra information of
+    /// the process. The shim process PID is the same with worker process PID, except
+    /// starting worker process in container.
+    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
-    /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    /// All tasks that have associated dedicated workers.
+    std::unordered_set<TaskID> tasks_with_dedicated_workers;
+    /// All tasks that have pending runtime envs.
+    std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -593,6 +567,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// A callback to get the current time.
   const std::function<double()> get_time_;
+  /// Agent manager.
+  std::shared_ptr<AgentManager> agent_manager_;
 };
 
 }  // namespace raylet

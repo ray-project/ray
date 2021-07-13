@@ -38,7 +38,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num),
       client_call_manager_(main_service),
       raylet_client_pool_(
-          std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)) {}
+          std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
+      pubsub_periodical_runner_(main_service_) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -58,6 +59,16 @@ void GcsServer::Start() {
 
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
+
+  if (config_.grpc_pubsub_enabled) {
+    // Init grpc based pubsub
+    // TODO(before merging): Make these constants configurable.
+    grpc_pubsub_publisher_.reset(new pubsub::Publisher(
+        /*periodical_runner=*/&pubsub_periodical_runner_,
+        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
+  }
 
   // Init gcs table storage.
   gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
@@ -341,7 +352,7 @@ void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data)
   if (config_.grpc_based_resource_broadcast) {
     grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
         raylet_client_pool_,
-        [this](rpc::ResourceUsageBatchData &buffer) {
+        [this](rpc::ResourceUsageBroadcastData &buffer) {
           gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
         }
 
@@ -488,13 +499,12 @@ void GcsServer::PrintDebugInfo() {
 
 void GcsServer::PrintAsioStats() {
   /// If periodic asio stats print is enabled, it will print it.
-  const auto asio_stats_print_interval_ms =
-      RayConfig::instance().asio_stats_print_interval_ms();
-  if (asio_stats_print_interval_ms != -1 &&
-      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    RAY_LOG(INFO) << "Event loop stats:\n\n" << main_service_.StatsString() << "\n\n";
+  const auto event_stats_print_interval_ms =
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
+    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
     execute_after(main_service_, [this] { PrintAsioStats(); },
-                  asio_stats_print_interval_ms /* milliseconds */);
+                  event_stats_print_interval_ms /* milliseconds */);
   }
 }
 

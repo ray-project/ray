@@ -192,11 +192,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
-    TaskDependencies(const std::vector<rpc::ObjectReference> &deps)
-        : num_missing_dependencies(deps.size()) {
-      const auto dep_ids = ObjectRefsToIds(deps);
-      dependencies.insert(dep_ids.begin(), dep_ids.end());
-    }
+    TaskDependencies(const absl::flat_hash_set<ObjectID> &deps)
+        : dependencies(std::move(deps)), num_missing_dependencies(dependencies.size()) {}
     /// The objects that the task depends on. These are the arguments to the
     /// task. These must all be simultaneously local before the task is ready
     /// to execute. Objects are removed from this set once

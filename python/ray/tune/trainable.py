@@ -22,6 +22,7 @@ from ray.tune.result import (
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
 
@@ -72,6 +73,8 @@ class Trainable:
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
+
+        disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -315,7 +318,7 @@ class Trainable:
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
-        Subclasses should override ``_save()`` instead to save state.
+        Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
         Args:

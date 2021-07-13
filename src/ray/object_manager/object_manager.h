@@ -40,6 +40,7 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
+#include "ray/object_manager/spilled_object.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -75,6 +76,8 @@ struct ObjectManagerConfig {
   int64_t object_store_memory = -1;
   /// The directory for shared memory files.
   std::string plasma_directory;
+  /// The directory for fallback allocation files.
+  std::string fallback_directory;
   /// Enable huge pages.
   bool huge_pages;
 };
@@ -99,7 +102,7 @@ class ObjectStoreRunner {
 class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                        bool is_worker_request) = 0;
+                        BundlePriority prio) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
@@ -141,25 +144,6 @@ class ObjectManager : public ObjectManagerInterface,
   void HandleFreeObjects(const rpc::FreeObjectsRequest &request,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Send object to remote object manager
-  ///
-  /// Object will be transfered as a sequence of chunks, small object(defined in config)
-  /// contains only one chunk
-  /// \param push_id Unique push id to indicate this push request
-  /// \param object_id Object id
-  /// \param owner_address The address of the object's owner
-  /// \param node_id The id of the receiver.
-  /// \param data_size Data size
-  /// \param metadata_size Metadata size
-  /// \param chunk_index Chunk index of this object chunk, start with 0
-  /// \param rpc_client Rpc client used to send message to remote object manager
-  /// \param on_complete Callback to run on completion.
-  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                       const rpc::Address &owner_address, const NodeID &node_id,
-                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                       std::function<void(const Status &)> on_complete);
 
   /// Receive an object chunk from a remote object manager. Small object may
   /// fit in one chunk.
@@ -214,13 +198,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
       instrumented_io_context &main_service, const NodeID &self_node_id,
-      const ObjectManagerConfig &config,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   ~ObjectManager();
 
@@ -248,12 +232,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// bundle local until the request is canceled with the returned ID.
   ///
   /// \param object_refs The bundle of objects that must be made local.
-  /// \param is_worker_request Whether this is a (`ray.get` or `ray.wait`)
-  /// request from a worker. If false, then it should be a request for a queued
-  /// task's arguments.
+  /// \param prio The bundle priority.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                bool is_worker_request) override;
+                BundlePriority prio) override;
 
   /// Cancels the pull request with the given ID. This cancels any fetches for
   /// objects that were passed to the original pull request, if no other pull
@@ -370,6 +352,59 @@ class ObjectManager : public ObjectManagerInterface,
       const std::vector<ObjectID> &object_ids,
       const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients);
 
+  /// Pushing a known local object to a remote object manager.
+  ///
+  /// \param object_id The object's object id.
+  /// \param node_id The remote node's id.
+  /// \return Void.
+  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+
+  /// Pushing a known spilled object to a remote object manager.
+  /// \param object_id The object's object id.
+  /// \param node_id The remote node's id.
+  /// \param spilled_url The url of the spilled object.
+  /// \return Void.
+  void PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+                          const std::string &spilled_url);
+
+  /// The internal implementation of pushing an object.
+  ///
+  /// \param chunk_reader Read the chunk into push_request's data fields; return
+  /// Status::OK() if the read succeeded.
+  /// \param release_chunk_callback Notify that a chunk is no longer needed.
+  void PushObjectInternal(
+      const ObjectID &object_id, const NodeID &node_id, uint64_t total_data_size,
+      uint64_t metadata_size, uint64_t num_chunks, rpc::Address owner_address,
+      std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
+      std::function<void(uint64_t)> release_chunk_callback);
+
+  /// Send one chunk of the object to remote object manager
+  ///
+  /// Object will be transfered as a sequence of chunks, small object(defined in config)
+  /// contains only one chunk
+  /// \param push_id Unique push id to indicate this push request
+  /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
+  /// \param node_id The id of the receiver.
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param chunk_index Chunk index of this object chunk, start with 0
+  /// \param rpc_client Rpc client used to send message to remote object manager
+  /// \param chunk_reader Read the chunk into push_request's data fields; return
+  /// Status::OK() if the read succeeded.
+  /// \param release_chunk_callback Notify that a chunk is no longer needed.
+  /// \param on_complete Callback to run on completion.
+  void SendObjectChunk(
+      const UniqueID &push_id, const ObjectID &object_id,
+      const rpc::Address &owner_address, const NodeID &node_id, uint64_t total_data_size,
+      uint64_t metadata_size, uint64_t chunk_index,
+      std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+      std::function<void(const Status &)> on_complete,
+      std::function<ray::Status(/*chunk_index*/ uint64_t,
+                                /*push_request*/ rpc::PushRequest &)>
+          chunk_reader,
+      std::function<void(/*chunk_index*/ uint64_t)> release_chunk_callback);
+
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
   void RunRpcService(int index);
@@ -425,8 +460,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  // Object store runner.
+  /// The object directory interface to access object information.
+  ObjectDirectoryInterface *object_directory_;
+
+  /// Object store runner.
   ObjectStoreRunner object_store_internal_;
 
   ObjectBufferPool buffer_pool_;
@@ -500,10 +537,20 @@ class ObjectManager : public ObjectManagerInterface,
   int64_t used_memory_ = 0;
 
   /// Running total of received chunks.
-  int64_t num_chunks_received_total_ = 0;
+  size_t num_chunks_received_total_ = 0;
 
-  /// Running total of received chunks that failed (duplicated).
-  int64_t num_chunks_received_failed_ = 0;
+  /// Running total of received chunks that failed. A finer-grained breakdown
+  /// is recorded below.
+  size_t num_chunks_received_total_failed_ = 0;
+
+  /// The total number of chunks that we failed to receive because they were
+  /// no longer needed by any worker or task on this node.
+  size_t num_chunks_received_cancelled_ = 0;
+
+  /// The total number of chunks that we failed to receive because we could not
+  /// create the object in plasma. This is usually due to out-of-memory in
+  /// plasma.
+  size_t num_chunks_received_failed_due_to_plasma_ = 0;
 };
 
 }  // namespace ray

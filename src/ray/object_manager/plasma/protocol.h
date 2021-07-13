@@ -62,18 +62,6 @@ flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
 Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn,
                      MessageType message_type, std::vector<uint8_t> *buffer);
 
-/* Set options messages. */
-
-Status SendSetOptionsRequest(const std::shared_ptr<StoreConn> &store_conn,
-                             const std::string &client_name, int64_t output_memory_limit);
-
-Status ReadSetOptionsRequest(uint8_t *data, size_t size, std::string *client_name,
-                             int64_t *output_memory_quota);
-
-Status SendSetOptionsReply(const std::shared_ptr<Client> &client, PlasmaError error);
-
-Status ReadSetOptionsReply(uint8_t *data, size_t size);
-
 /* Debug string messages. */
 
 Status SendGetDebugStringRequest(const std::shared_ptr<StoreConn> &store_conn);

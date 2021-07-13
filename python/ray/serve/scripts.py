@@ -18,8 +18,15 @@ from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
     type=str,
     help="Address of the running Ray cluster to connect to. "
     "Defaults to \"auto\".")
-def cli(address):
-    ray.init(address=address)
+@click.option(
+    "--namespace",
+    "-n",
+    default="serve",
+    required=False,
+    type=str,
+    help="Ray namespace to connect to. Defaults to \"serve\".")
+def cli(address, namespace):
+    ray.init(address=address, namespace=namespace)
 
 
 @cli.command(help="Start a detached Serve instance on the Ray cluster.")

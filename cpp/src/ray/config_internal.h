@@ -22,7 +22,7 @@ class ConfigInternal {
 
   std::string redis_password = "5241590000000000";
 
-  int node_manager_port = 62665;
+  int node_manager_port = 0;
 
   std::string dynamic_library_path = "";
 
@@ -35,6 +35,8 @@ class ConfigInternal {
   std::string job_id = "";
 
   std::string logs_dir = "";
+
+  std::string node_ip_address = "";
 
   static ConfigInternal &Instance() {
     static ConfigInternal config;

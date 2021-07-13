@@ -1,6 +1,5 @@
 
 #include "function_helper.h"
-#include <ray/api/logging.h>
 #include <boost/filesystem.hpp>
 #include <memory>
 #include "ray/util/logging.h"
@@ -45,6 +44,20 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   return lib;
 }
 
+std::string FunctionHelper::OutputAllRemoteFunctionNames(
+    const boost::dll::shared_library &lib) {
+  auto get_names_func =
+      boost::dll::import_alias<std::vector<std::string>()>(lib, "GetRemoteFunctionNames");
+  std::string names_str;
+  auto names = get_names_func();
+  for (const auto &name : names) {
+    names_str.append(name).append(", ");
+  }
+  names_str.pop_back();
+  names_str.pop_back();
+  return names_str;
+}
+
 std::function<msgpack::sbuffer(const std::string &, const std::vector<msgpack::sbuffer> &,
                                msgpack::sbuffer *)>
 FunctionHelper::GetEntryFunction(const std::string &lib_name) {
@@ -62,6 +75,8 @@ FunctionHelper::GetEntryFunction(const std::string &lib_name) {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
         const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>(
         *lib, "TaskExecutionHandler");
+    RAY_LOG(INFO) << "The lib name: " << lib_name
+                  << ", all remote functions: " << OutputAllRemoteFunctionNames(*lib);
     funcs_.emplace(lib_name, entry_func);
     return entry_func;
   } catch (std::exception &e) {

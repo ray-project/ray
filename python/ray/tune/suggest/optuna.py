@@ -8,7 +8,8 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict, \
+    validate_warmstart
 
 try:
     import optuna as ot
@@ -74,6 +75,12 @@ class OptunaSearch(Searcher):
         seed (int): Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
+        evaluated_rewards (list): If you have previously evaluated the
+            parameters passed in as points_to_evaluate you can avoid
+            re-running those trials by passing in the reward attributes
+            as a list so the optimiser can be told the results without
+            needing to re-compute the trial. Must be the same length as
+            points_to_evaluate.
 
     Tune automatically converts search spaces to Optuna's format:
 
@@ -122,7 +129,8 @@ class OptunaSearch(Searcher):
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional[BaseSampler] = None,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None,
+                 evaluated_rewards: Optional[List] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
@@ -153,6 +161,7 @@ class OptunaSearch(Searcher):
         self._space = space
 
         self._points_to_evaluate = points_to_evaluate or []
+        self._evaluated_rewards = evaluated_rewards
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
 
@@ -189,8 +198,16 @@ class OptunaSearch(Searcher):
             direction="minimize" if mode == "min" else "maximize",
             load_if_exists=True)
 
-        for point in self._points_to_evaluate:
-            self._ot_study.enqueue_trial(point)
+        if self._points_to_evaluate:
+            validate_warmstart(self._space, self._points_to_evaluate,
+                               self._evaluated_rewards)
+            if self._evaluated_rewards:
+                for point, reward in zip(self._points_to_evaluate,
+                                         self._evaluated_rewards):
+                    self.add_evaluated_point(point, reward)
+            else:
+                for point in self._points_to_evaluate:
+                    self._ot_study.enqueue_trial(point)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -266,17 +283,62 @@ class OptunaSearch(Searcher):
         except ValueError as exc:
             logger.warning(exc)  # E.g. if NaN was reported
 
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        if not self._space:
+            raise RuntimeError(
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
+        ot_trial_state = OptunaTrialState.COMPLETE
+        if error:
+            ot_trial_state = OptunaTrialState.FAIL
+        elif pruned:
+            ot_trial_state = OptunaTrialState.PRUNED
+
+        if intermediate_values:
+            intermediate_values_dict = {
+                i: value
+                for i, value in enumerate(intermediate_values)
+            }
+        else:
+            intermediate_values_dict = None
+
+        trial = ot.trial.create_trial(
+            state=ot_trial_state,
+            value=value,
+            params=parameters,
+            distributions=self._space,
+            intermediate_values=intermediate_values_dict)
+
+        self._ot_study.add_trial(trial)
+
     def save(self, checkpoint_path: str):
         save_object = (self._sampler, self._ot_trials, self._ot_study,
-                       self._points_to_evaluate)
+                       self._points_to_evaluate, self._evaluated_rewards)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        self._sampler, self._ot_trials, self._ot_study, \
-            self._points_to_evaluate = save_object
+        if len(save_object) == 5:
+            self._sampler, self._ot_trials, self._ot_study, \
+                self._points_to_evaluate, self._evaluated_rewards = save_object
+        else:
+            # Backwards compatibility
+            self._sampler, self._ot_trials, self._ot_study, \
+                self._points_to_evaluate = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict) -> Dict[str, Any]:
@@ -301,6 +363,11 @@ class OptunaSearch(Searcher):
             if isinstance(sampler, Quantized):
                 quantize = sampler.q
                 sampler = sampler.sampler
+                if isinstance(sampler, LogUniform):
+                    logger.warning(
+                        "Optuna does not handle quantization in loguniform "
+                        "sampling. The parameter will be passed but it will "
+                        "probably be ignored.")
 
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
@@ -321,10 +388,14 @@ class OptunaSearch(Searcher):
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     return ot.distributions.IntLogUniformDistribution(
-                        domain.lower, domain.upper, step=quantize or 1)
+                        domain.lower, domain.upper - 1, step=quantize or 1)
                 elif isinstance(sampler, Uniform):
+                    # Upper bound should be inclusive for quantization and
+                    # exclusive otherwise
                     return ot.distributions.IntUniformDistribution(
-                        domain.lower, domain.upper, step=quantize or 1)
+                        domain.lower,
+                        domain.upper - int(bool(not quantize)),
+                        step=quantize or 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return ot.distributions.CategoricalDistribution(
