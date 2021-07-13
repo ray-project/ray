@@ -85,15 +85,15 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
+        matches = glob.glob(f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
                             f"{minor_version_number}*-manylinux*")
         assert len(matches) == 1, (
-            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
+            f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
             f"{minor_version_number}*-manylinux*' instead of 1")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
-            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}*-manylinux*")
+            f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}*-manylinux*")
         return [os.path.basename(i) for i in matches]
 
 
