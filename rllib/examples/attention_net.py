@@ -1,3 +1,34 @@
+"""
+Example of using an RL agent (default: PPO) with an AttentionNet model,
+which is useful for environments where state is important but not explicitly
+part of the observations.
+
+For example, in the "repeat after me" environment (default here), the agent
+needs to repeat an observation from n timesteps before.
+AttentionNet keeps state of previous observations and uses transformers to learn
+a policy that successfully repeats previous observations.
+Without attention, the RL agent only "sees" the last observation, not the one
+n timesteps ago and cannot learn to repeat this previous observation.
+
+AttentionNet paper: https://arxiv.org/abs/1506.07704
+
+---
+Run this example with defaults (using Tune and AttentionNet on the "repeat
+after me" environment):
+$ python attention_net.py
+Then run again without attention:
+$ python attention_net.py --no-attention
+Compare the learning curve on TensorBoard:
+$ cd ~/ray-results/; tensorboard --logdir .
+There will be a huge difference between the version with and without attention!
+
+Other options for running this example:
+$ python attention_net.py --help
+
+TODO: Check Tensorboard/render to see if it works; add option without attention
+  and compare; does this work for PyTorch?; complete documentation, add other
+  cli options: --no-tune, --local
+"""
 import argparse
 import os
 
@@ -75,7 +106,7 @@ if __name__ == "__main__":
             # Attention net wrapping (for tf) can already use the native keras
             # model versions. For torch, this will have no effect.
             "_use_default_native_models": True,
-            "use_attention": True,
+            "use_attention": False,
             "max_seq_len": 10,
             "attention_num_transformer_units": 1,
             "attention_dim": 32,
