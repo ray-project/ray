@@ -195,7 +195,7 @@ def continue_debug_session():
 
 
 def format_table(table):
-    "Format a table as a list of lines with aligned columns."
+    """Format a table as a list of lines with aligned columns."""
     result = []
     col_width = [max(len(x) for x in col) for col in zip(*table)]
     for line in table:

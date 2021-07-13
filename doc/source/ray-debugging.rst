@@ -43,7 +43,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
     python debugging.py
 
 
-Each of the 4 executed tasks will drop into a breakpoint when the line
+Each of the 2 executed tasks will drop into a breakpoint when the line
 ``breakpoint()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
@@ -55,12 +55,12 @@ The ``ray debug`` command will print an output like this:
 
 .. code-block:: text
 
-    2020-11-04 15:35:50,011	INFO worker.py:672 -- Connecting to existing Ray cluster at address: 192.168.1.105:6379
+    2021-07-13 16:30:40,112	INFO scripts.py:216 -- Connecting to Ray instance at 192.168.2.61:6379.
+    2021-07-13 16:30:40,112	INFO worker.py:740 -- Connecting to existing Ray cluster at address: 192.168.2.61:6379
     Active breakpoints:
-    0: ray::f() | debugging.py:6
-
-    1: ray::f() | debugging.py:6
-
+    index | timestamp           | Ray task | filename:lineno
+    0     | 2021-07-13 23:30:37 | ray::f() | debugging.py:6
+    1     | 2021-07-13 23:30:37 | ray::f() | debugging.py:6
     Enter breakpoint index or press enter to refresh:
 
 
