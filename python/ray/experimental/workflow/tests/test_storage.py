@@ -12,7 +12,7 @@ def some_func2(x):
 
 
 def test_raw_storage():
-    ray.init()
+    ray.init(namespace="workflow")
     workflow_id = test_workflow_storage.__name__
     raw_storage = storage.get_global_storage()
     step_id = "some_step"
@@ -78,7 +78,7 @@ def test_raw_storage():
 
 
 def test_workflow_storage():
-    ray.init()
+    ray.init(namespace="workflow")
     workflow_id = test_workflow_storage.__name__
     raw_storage = storage.get_global_storage()
     step_id = "some_step"

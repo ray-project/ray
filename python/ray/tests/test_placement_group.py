@@ -28,8 +28,8 @@ class Increase:
         return x + 2
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_ready(ray_start_cluster, connect_to_client):
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_ready(ray_start_regular_shared, connect_to_client):
     @ray.remote
     class Actor:
         def __init__(self):
@@ -37,12 +37,6 @@ def test_placement_ready(ray_start_cluster, connect_to_client):
 
         def v(self):
             return 10
-
-    cluster = ray_start_cluster
-    num_nodes = 2
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
         pg = ray.util.placement_group(bundles=[{"CPU": 1}])
