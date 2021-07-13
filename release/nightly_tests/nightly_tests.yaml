@@ -252,3 +252,4 @@
   run:
     timeout: 7200 
     script: bash shuffle_data_loader/shuffle_data_loader_test.sh
+

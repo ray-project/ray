@@ -3,8 +3,7 @@
 # Exit immediately if any command fails.
 set -exo pipefail
 
-data_dir="s3://shuffling-data-loader-benchmarks/data/"
-stats_dir="s3://shuffling-data-loader-benchmarks/stats/"
+data_dir="s3://core-nightly-test/shuffle-data/"
 
 num_rows=$((4 * (10 ** 8)))
 num_row_groups_per_file=5
@@ -34,11 +33,11 @@ for max_concurrent_epochs in "${max_concurrent_epochs_list[@]}"; do
                                         --num-epochs "$num_epochs" \
                                         --max-concurrent-epochs "$max_concurrent_epochs" \
                                         --data-dir "$data_dir" \
-                                        --stats-dir "$stats_dir" \
-                                        --unique-stats
+                                        --no-stats
                                 done
                         done
                 done
         done
 
 echo '{"success": 1}' > "${TEST_OUTPUT_JSON}"
+
