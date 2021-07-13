@@ -116,7 +116,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 
     Examples:
         >>> ray.data.range_arrow(1000) \
-        ...   .map(lambda r: {"v2": r["value"] * 2}).show()
+        >>>   .map(lambda r: {"v2": r["value"] * 2}).show()
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -170,10 +170,10 @@ def read_parquet(paths: Union[str, List[str]],
     """Create an Arrow dataset from parquet files.
 
     Examples:
-        # Read a directory of files in remote storage.
+        >>> # Read a directory of files in remote storage.
         >>> ray.data.read_parquet("s3://bucket/path")
 
-        # Read multiple local files.
+        >>> # Read multiple local files.
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"])
 
     Args:
@@ -237,13 +237,13 @@ def read_json(paths: Union[str, List[str]],
     """Create an Arrow dataset from json files.
 
     Examples:
-        # Read a directory of files in remote storage.
+        >>> # Read a directory of files in remote storage.
         >>> ray.data.read_json("s3://bucket/path")
 
-        # Read multiple local files.
+        >>> # Read multiple local files.
         >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"])
 
-        # Read multiple directories.
+        >>> # Read multiple directories.
         >>> ray.data.read_json(["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
@@ -271,13 +271,13 @@ def read_csv(paths: Union[str, List[str]],
     """Create an Arrow dataset from csv files.
 
     Examples:
-        # Read a directory of files in remote storage.
+        >>> # Read a directory of files in remote storage.
         >>> ray.data.read_csv("s3://bucket/path")
 
-        # Read multiple local files.
+        >>> # Read multiple local files.
         >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
 
-        # Read multiple directories.
+        >>> # Read multiple directories.
         >>> ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
@@ -306,10 +306,10 @@ def read_binary_files(
     """Create a dataset from binary files of arbitrary contents.
 
     Examples:
-        # Read a directory of files in remote storage.
+        >>> # Read a directory of files in remote storage.
         >>> ray.data.read_binary_files("s3://bucket/path")
 
-        # Read multiple local files.
+        >>> # Read multiple local files.
         >>> ray.data.read_binary_files(["/path/to/file1", "/path/to/file2"])
 
     Args:

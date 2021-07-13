@@ -70,10 +70,10 @@ class Dataset(Generic[T]):
         can be quite slow. Consider using `.map_batches()` for performance.
 
         Examples:
-            # Transform python objects.
+            >>> # Transform python objects.
             >>> ds.map(lambda x: x * 2)
 
-            # Transform Arrow records.
+            >>> # Transform Arrow records.
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
 
         Time complexity: O(dataset size / parallelism)
@@ -107,20 +107,20 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Transform batches in parallel.
+            >>> # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
 
-            # Define a batch transform function that persists state across
-            # function invocations for efficiency with compute="actors".
+            >>> # Define a batch transform function that persists state across
+            >>> # function invocations for efficiency with compute="actors".
             >>> def batch_infer_fn(batch):
             ...    global model
             ...    if model is None:
             ...        model = init_model()
             ...    return model(batch)
 
-            # Apply the transform in parallel on GPUs. Since compute="actors",
-            # the transform will be applied on an autoscaling pool of Ray
-            # actors, each allocated 1 GPU by Ray.
+            >>> # Apply the transform in parallel on GPUs. Since
+            >>> # compute="actors", the transform will be applied on an
+            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
             ...    batch_infer_fn,
             ...    batch_size=256, compute="actors", num_gpus=1)
@@ -260,7 +260,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Set the number of output partitions to write to disk.
+            >>> # Set the number of output partitions to write to disk.
             >>> ds.repartition(100).write_parquet(...)
 
         Time complexity: O(dataset size / parallelism)
@@ -428,16 +428,16 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Sort using the entire record as the key.
+            >>> # Sort using the entire record as the key.
             >>> ds.sort()
 
-            # Sort by a single column.
+            >>> # Sort by a single column.
             >>> ds.sort("field1")
 
-            # Sort by multiple columns.
+            >>> # Sort by multiple columns.
             >>> ds.sort(["field1", "field2"])
 
-            # Sort by a key function.
+            >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
 
         Time complexity: O(dataset size / parallelism)
