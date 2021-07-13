@@ -28,6 +28,8 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
 DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
                                  "roles/compute.admin", 
                                  "roles/iam.serviceAccountUser")
+# NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
+# with ServiceAccounts.
 
 MAX_POLLS = 12
 POLL_INTERVAL = 5
