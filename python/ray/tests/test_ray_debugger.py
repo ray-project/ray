@@ -14,7 +14,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     @ray.remote
     def f():
-        ray.util.pdb.set_trace()
+        breakpoint()
         return 1
 
     result = f.remote()
@@ -45,7 +45,7 @@ def test_ray_debugger_commands(shutdown_only):
     @ray.remote
     def f():
         """We support unicode too: 🐛"""
-        ray.util.pdb.set_trace()
+        breakpoint()
 
     result1 = f.remote()
     result2 = f.remote()
@@ -80,7 +80,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
     @ray.remote
     def f():
-        ray.util.pdb.set_trace()
+        breakpoint()
         x = g.remote()
         return ray.get(x)
 
@@ -109,7 +109,7 @@ def test_ray_debugger_recursive(shutdown_only):
     def fact(n):
         if n < 1:
             return n
-        ray.util.pdb.set_trace()
+        breakpoint()
         n_id = fact.remote(n - 1)
         return n * ray.get(n_id)
 
