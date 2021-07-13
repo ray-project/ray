@@ -1,15 +1,17 @@
-"""Example of a custom gym environment and model. Run this for a demo.
+"""
+Example of a custom gym environment and model. Run this for a demo.
 
 This example shows:
   - using a custom environment
   - using a custom model
   - using Tune for grid search to try different learning rates
 
-Run example with: python custom_env.py
-For CLI options: python custom_env.py --help
+You can visualize experiment results in ~/ray_results using TensorBoard.
 
-With --use-tune, you can visualize experiment results in ~/ray_results using
-TensorBoard.
+Run example with defaults:
+$ python custom_env.py
+For CLI options:
+$ python custom_env.py --help
 """
 import argparse
 import gym
