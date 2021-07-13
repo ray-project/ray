@@ -7,6 +7,7 @@ from datetime import timedelta
 import ray
 import torch
 from ray.exceptions import RayActorError
+from ray.util.placement_group import get_current_placement_group
 from ray.util.sgd.torch.distributed_torch_runner import \
     LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -135,7 +136,34 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # The last time when this worker group was resized.
         self._last_resize = float("-inf")
 
+    def _get_or_create_placement_group(self, num_workers):
+        """Gets the current placement group or creates one for the workers.
+
+        If this worker is already in a placement group it will be returned.
+        This is primarily for when Tune is the upstream and will allocate
+        resources for SGD workers.
+
+        If this worker is not in a placement group, a new one will be
+        created. The placement group will have a single bundle for each
+        worker and use the SPREAD strategy for an even distribution.
+        """
+        pg = get_current_placement_group()
+        if pg is not None:
+            return pg
+        else:
+            bundle = {
+                "CPU": self._num_cpus_per_worker,
+                "GPU": int(self._use_gpu)
+            }
+            bundles = [bundle] * num_workers
+            pg = ray.util.placement_group(bundles, strategy="SPREAD")
+            logger.debug("Waiting for placement group to start.")
+            ray.get(pg.ready(), timeout=self._timeout_s)
+            logger.debug("Placement group has started.")
+            return pg
+
     def _init_dist_workers(self, num_workers):
+        pg = self._get_or_create_placement_group(num_workers)
         """Create `num_workers` remote workers."""
         # Generate actor class
         RemoteRunner = ray.remote(
@@ -144,7 +172,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
         # Start workers
         self.remote_workers = [
-            RemoteRunner.remote(**{
+            RemoteRunner.options(placement_group=pg).remote(**{
                 **self._params,
                 **self._dist_params
             }) for _ in range(num_workers)
