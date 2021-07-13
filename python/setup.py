@@ -22,32 +22,6 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-
-class SetupType(Enum):
-    RAY = 1
-    RAY_CPP = 2
-
-
-class SetupSpec:
-    def __init__(self, type, name, description):
-        self.type = type
-        self.name = name
-        self.description = description
-        self.files_to_include = list()
-        self.install_requires = list()
-        self.extras = {}
-
-
-if os.getenv("RAY_INSTALL_CPP") == "1":
-    # "ray-cpp" wheel package.
-    setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.")
-else:
-    # "ray" primary wheel package.
-    setup_spec = SetupSpec(
-        SetupType.RAY, "ray", "Ray provides a simple, "
-        "universal API for building distributed applications.")
-
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
@@ -67,6 +41,43 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
                "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+
+
+def find_version(*filepath):
+    # Extract version information from filepath
+    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
+class SetupType(Enum):
+    RAY = 1
+    RAY_CPP = 2
+
+
+class SetupSpec:
+    def __init__(self, type, name, description):
+        self.type = type
+        self.name = name
+        self.version = find_version("ray", "__init__.py")
+        self.description = description
+        self.files_to_include = list()
+        self.install_requires = list()
+        self.extras = {}
+
+
+if os.getenv("RAY_INSTALL_CPP") == "1":
+    # "ray-cpp" wheel package.
+    setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
+                           "A subpackage of Ray which provide Ray C++ API.")
+else:
+    # "ray" primary wheel package.
+    setup_spec = SetupSpec(
+        SetupType.RAY, "ray", "Ray provides a simple, "
+        "universal API for building distributed applications.")
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -139,7 +150,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
         ],
-        "cpp": ["ray-cpp"]
+        "cpp": ["ray-cpp==" + setup_spec.version]
     }
     if sys.version_info >= (3, 7, 0):
         setup_spec.extras["k8s"].append("kopf")
@@ -366,16 +377,6 @@ def copy_file(target_dir, filename, rootdir):
     return 0
 
 
-def find_version(*filepath):
-    # Extract version information from filepath
-    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                                  fp.read(), re.M)
-        if version_match:
-            return version_match.group(1)
-        raise RuntimeError("Unable to find version string.")
-
-
 def pip_run(build_ext):
     build(True, BUILD_JAVA, True)
 
@@ -481,7 +482,7 @@ if os.path.isdir(build_dir):
 
 setuptools.setup(
     name=setup_spec.name,
-    version=find_version("ray", "__init__.py"),
+    version=setup_spec.version,
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
     description=(setup_spec.description),
