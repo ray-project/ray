@@ -16,6 +16,11 @@ drop into a PDB session that you can then use to:
 Getting Started
 ---------------
 
+.. note::
+
+    On Python 3.6, the ``breakpoint()`` function is not supported and you need to use
+    ``ray.util.pdb.set_trace()`` instead.
+
 Take the following example:
 
 .. code-block:: python
