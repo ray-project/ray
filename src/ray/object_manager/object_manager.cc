@@ -402,12 +402,13 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
     if (object_reader->GetDataSize() == 0 && object_reader->GetMetadataSize() == 1) {
+      // TODO(scv119): handle object size changes in a more graceful way.
       RAY_LOG(WARNING) << object_id
                        << " is marked as failed but object_manager has stale info "
                        << " with data size: " << data_size
                        << ", metadata size: " << metadata_size
                        << ". This is likely due to race condition."
-                       << " Update the info and procceed sending failed object.";
+                       << " Update the info and proceed sending failed object.";
       local_objects_[object_id].object_info.data_size = 0;
       local_objects_[object_id].object_info.metadata_size = 1;
     } else {
@@ -510,8 +511,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   auto optional_chunk = chunk_reader->GetChunk(chunk_index);
   if (!optional_chunk.has_value()) {
     RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
-                   << " failed. "
-                   << " It may have been evicted.";
+                   << " failed. It may have been evicted.";
     on_complete(Status::IOError("Failed to read spilled object"));
     return;
   }

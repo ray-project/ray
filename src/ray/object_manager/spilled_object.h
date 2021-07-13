@@ -38,17 +38,29 @@ class IObjectReader {
 
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  /// Read from data/metadata sections into output.
+  /// Read from data sections into output.
   /// Return false if the object is corrupted or size/offset is invalid.
+  ///
+  /// \param offset offset to the data secton to copy from.
+  /// \param size number of bytes to copy.
+  /// \param output pointer to the memory location to copy to.
+  /// \return bool.
   virtual bool ReadFromDataSection(uint64_t offset, uint64_t size,
                                    char *output) const = 0;
+  /// Read from metadata sections into output.
+  /// Return false if the object is corrupted or size/offset is invalid.
+  ///
+  /// \param offset offset to the metadata secton to copy from.
+  /// \param size number of bytes to copy.
+  /// \param output pointer to the memory location to copy to.
+  /// \return bool.
   virtual bool ReadFromMetadataSection(uint64_t offset, uint64_t size,
                                        char *output) const = 0;
 };
 
 /// Reader for a local object spilled in the object_url.
 /// This class is thread safe.
-/// TODO(chenshen): rename it to SpilledObjectReader
+/// TODO(scv119): rename it to SpilledObjectReader
 class SpilledObject : public IObjectReader {
  public:
   /// Create a Spilled Object. Returns an empty optional if any error happens, such as

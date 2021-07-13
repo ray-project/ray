@@ -369,6 +369,8 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// The internal implementation of pushing an object.
   ///
+  /// \param object_id The object's id.
+  /// \param node_id The remote node's id.
   /// \param chunk_reader Chunk reader used to read a chunk of the object
   /// Status::OK() if the read succeeded.
   void PushObjectInternal(const ObjectID &object_id, const NodeID &node_id,
