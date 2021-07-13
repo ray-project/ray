@@ -265,11 +265,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
 std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
   std::string value;
   Status status = gcs_client_->InternalKV().Get(key, value);
-  if (status.ok()) {
-    return std::make_unique<std::string>(value);
-  } else {
-    return nullptr;
-  }
+  return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 
 std::string GlobalStateAccessor::GetSystemConfig() {
