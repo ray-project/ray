@@ -7,7 +7,8 @@ import pytest
 
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.test_utils import (init_error_pubsub, get_error_message, run_string_as_driver)
+from ray.test_utils import (init_error_pubsub, get_error_message,
+                            run_string_as_driver)
 
 
 def test_fill_object_store_exception(shutdown_only):
