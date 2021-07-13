@@ -14,6 +14,7 @@ import zipfile
 
 from itertools import chain
 from itertools import takewhile
+from enum import Enum
 
 import urllib.error
 import urllib.parse
@@ -22,22 +23,29 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 
+class SetupType(Enum):
+    RAY = 1
+    RAY_CPP = 2
+
+
 class SetupSpec:
-    def __init__(self, name, description):
+    def __init__(self, type, name, description):
+        self.type = type
         self.name = name
         self.description = description
         self.files_to_include = list()
+        self.install_requires = list()
         self.extras = {}
 
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
-    setup_spec = SetupSpec("ray-cpp",
+    setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
                            "A subpackage of Ray which provide Ray C++ API.")
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
-        "ray", "Ray provides a simple, "
+        SetupType.RAY, "ray", "Ray provides a simple, "
         "universal API for building distributed applications.")
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
@@ -80,7 +88,7 @@ if BUILD_JAVA or os.path.exists(
         os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
-if setup_spec.name == "ray-cpp":
+if setup_spec.type == SetupType.RAY_CPP:
     setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
     # C++ API library and project template files.
     setup_spec.files_to_include += [
@@ -121,7 +129,7 @@ ray_files += [
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
-if setup_spec.name == "ray":
+if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": ["colorful"],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
@@ -151,32 +159,33 @@ if setup_spec.name == "ray":
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
-install_requires = [
-    # TODO(alex) Pin the version once this PR is
-    # included in the stable release.
-    # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-    "aiohttp",
-    "aiohttp_cors",
-    "aioredis",
-    "click >= 7.0",
-    "colorama",
-    "dataclasses; python_version < '3.7'",
-    "filelock",
-    "gpustat",
-    "grpcio >= 1.28.1",
-    "jsonschema",
-    "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16; python_version < '3.9'",
-    "numpy >= 1.19.3; python_version >= '3.9'",
-    "protobuf >= 3.15.3",
-    "py-spy >= 0.2.0",
-    "pydantic >= 1.8",
-    "pyyaml",
-    "requests",
-    "redis >= 3.5.0",
-    "opencensus",
-    "prometheus_client >= 0.7.1",
-]
+if setup_spec.type == SetupType.RAY:
+    setup_spec.install_requires = [
+        # TODO(alex) Pin the version once this PR is
+        # included in the stable release.
+        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
+        "aiohttp",
+        "aiohttp_cors",
+        "aioredis",
+        "click >= 7.0",
+        "colorama",
+        "dataclasses; python_version < '3.7'",
+        "filelock",
+        "gpustat",
+        "grpcio >= 1.28.1",
+        "jsonschema",
+        "msgpack >= 1.0.0, < 2.0.0",
+        "numpy >= 1.16; python_version < '3.9'",
+        "numpy >= 1.19.3; python_version >= '3.9'",
+        "protobuf >= 3.15.3",
+        "py-spy >= 0.2.0",
+        "pydantic >= 1.8",
+        "pyyaml",
+        "requests",
+        "redis >= 3.5.0",
+        "opencensus",
+        "prometheus_client >= 0.7.1",
+    ]
 
 
 def is_native_windows_or_msys():
@@ -370,7 +379,7 @@ def find_version(*filepath):
 def pip_run(build_ext):
     build(True, BUILD_JAVA, True)
 
-    if setup_spec.name == "ray":
+    if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
         # We also need to install pickle5 along with Ray, so make sure that the
         # relevant non-Python pickle5 files get copied.
@@ -489,11 +498,12 @@ setuptools.setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
     ],
-    packages=setuptools.find_packages() if setup_spec.name == "ray" else [],
+    packages=setuptools.find_packages()
+    if setup_spec.type == SetupType.RAY else [],
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
-    install_requires=install_requires,
+    install_requires=setup_spec.install_requires,
     setup_requires=["cython >= 0.29.15", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
