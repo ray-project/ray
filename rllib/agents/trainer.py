@@ -943,7 +943,7 @@ class Trainer(Trainable):
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             full_fetch: bool = False,
             explore: bool = None,
-            normalize_actions: Optional[bool] = None,
+            unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
         """Computes an action for the specified policy on the local Worker.
@@ -968,8 +968,8 @@ class Trainer(Trainable):
                 This is always set to True if RNN state is specified.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            normalize_actions (bool): Should actions be normalized according to
-                the env's/Policy's action space?
+            unsquash_actions (bool): Should actions be unsquashed according to
+                 the env's/Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 env's/Policy's action space?
 
@@ -993,7 +993,7 @@ class Trainer(Trainable):
             prev_action,
             prev_reward,
             info,
-            normalize_actions=normalize_actions,
+            unsquash_actions=unsquash_actions,
             clip_actions=clip_actions,
             explore=explore)
 
@@ -1239,12 +1239,15 @@ class Trainer(Trainable):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
         """Export policy model with given policy_id to local directory.
 
         Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1252,7 +1255,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_model("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_model(export_dir, policy_id)
+        self.workers.local_worker().export_policy_model(
+            export_dir, policy_id, onnx)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -1505,6 +1509,11 @@ class Trainer(Trainable):
             path = os.path.join(export_dir, ExportFormat.MODEL)
             self.export_policy_model(path)
             exported[ExportFormat.MODEL] = path
+        if ExportFormat.ONNX in export_formats:
+            path = os.path.join(export_dir, ExportFormat.ONNX)
+            self.export_policy_model(
+                path, onnx=int(os.getenv("ONNX_OPSET", "11")))
+            exported[ExportFormat.ONNX] = path
         return exported
 
     def import_model(self, import_file: str):

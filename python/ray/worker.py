@@ -1664,8 +1664,7 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    handle = worker.core_worker.get_named_actor_handle(name)
-    return handle
+    return worker.core_worker.get_named_actor_handle(name)
 
 
 @client_mode_hook
