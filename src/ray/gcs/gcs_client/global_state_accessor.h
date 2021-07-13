@@ -169,7 +169,7 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
 
-  /// Get value of key from GCS Service.
+  /// Get value of the key from GCS Service.
   ///
   /// \param key key to get.
   /// \return Value of the key.
