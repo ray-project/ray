@@ -827,7 +827,7 @@ py_test(
 
 py_test(
     name = "xgboost_dynamic_resources_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
