@@ -212,12 +212,15 @@ def debug(address):
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
-        sorted_sessions = sorted(active_sessions, key=lambda session: session["timestamp"])
-        for i, active_session in enumerate(sorted_sessions):
+        sessions_data = []
+        for active_session in active_sessions:
             data = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(active_session))
+            sessions_data.append(data)
+        sessions_data = sorted(sessions_data, key=lambda data: data["timestamp"])
+        for i, data in enumerate(sessions_data):
             print(
-                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
+                str(i) + ": " + data["timestamp"] + " | " + data["proctitle"] + " | " + data["filename"] +
                 ":" + str(data["lineno"]))
             print(data["traceback"])
         inp = input("Enter breakpoint index or press enter to refresh: ")
