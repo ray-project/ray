@@ -114,11 +114,11 @@ class ClientBuilder:
     def _fill_defaults_from_env(self):
         # Check environment variables for default values
         namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
-        if namespace_env_var and self._job_config.runtime_env is None:
+        if namespace_env_var and self._job_config.ray_namespace is None:
             self.namespace(namespace_env_var)
 
         runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
-        if runtime_env_var and self._job_config.ray_namespace is not None:
+        if runtime_env_var and self._job_config.runtime_env is None:
             self.env(json.loads(runtime_env_var))
 
     def _catch_all(self, **kwargs) -> "ClientBuilder":
