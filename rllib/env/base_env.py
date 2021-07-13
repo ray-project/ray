@@ -479,6 +479,8 @@ class _MultiAgentEnvState:
             dones = self.last_dones
             self.last_dones = {}
             self.last_obs = {}
+            infos = self.last_infos
+            self.last_infos = {}
         # Only release those agents' rewards/dones/infos, whose
         # observations we have.
         else:
@@ -489,6 +491,9 @@ class _MultiAgentEnvState:
                 if ag in self.last_dones:
                     dones[ag] = self.last_dones[ag]
                     del self.last_dones[ag]
+                if ag in self.last_infos:
+                    infos[ag] = self.last_infos[ag]
+                    del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
         self.last_infos = {}

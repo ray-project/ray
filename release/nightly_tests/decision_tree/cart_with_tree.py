@@ -3,6 +3,7 @@ import numpy as np
 import ray
 from sklearn import datasets, metrics
 import time
+import tempfile
 import os
 import json
 """Binary tree with decision tree semantics and ASCII visualization."""
@@ -338,7 +339,7 @@ def best_split(tree, X, y):
 
 @ray.remote
 def run_in_cluster():
-    dataset = datasets.fetch_covtype()
+    dataset = datasets.fetch_covtype(data_home=tempfile.mkdtemp())
     X, y = dataset.data, dataset.target - 1
     training_size = 400000
     max_depth = 10
@@ -352,11 +353,23 @@ def run_in_cluster():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--concurrency", type=int, default=1)
+    args = parser.parse_args()
+
     ray.init(address=os.environ["RAY_ADDRESS"])
-    cluster_future = run_in_cluster.remote()
-    treetime, accuracy = ray.get(cluster_future)
-    print("Tree building took", treetime, " seconds")
-    print("Test Accuracy: ", accuracy)
+
+    futures = []
+    for i in range(args.concurrency):
+        print(f"concurrent run: {i}")
+        futures.append(run_in_cluster.remote())
+        time.sleep(10)
+
+    for i, f in enumerate(futures):
+        treetime, accuracy = ray.get(f)
+        print(f"Tree {i} building took {treetime} seconds")
+        print(f"Test Accuracy: {accuracy}")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps({"build_time": treetime, "success": 1}))

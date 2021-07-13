@@ -134,7 +134,8 @@ def after_init(trainer):
     reader = trainer.workers.local_worker().input_reader
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
-    if "d4rl" in trainer.config["input"]:
+    if isinstance(trainer.config["input"], str) and \
+            "d4rl" in trainer.config["input"]:
         dataset = reader.dataset
         replay_buffer.add_batch(dataset)
     # For a list of files, add each file's entire content to the buffer.

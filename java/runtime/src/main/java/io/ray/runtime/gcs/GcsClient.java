@@ -66,6 +66,11 @@ public class GcsClient {
     return placementGroups;
   }
 
+  public String getInternalKV(String key) {
+    byte[] value = globalStateAccessor.getInternalKV(key);
+    return value == null ? null : new String(value);
+  }
+
   public List<NodeInfo> getAllNodeInfo() {
     List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 

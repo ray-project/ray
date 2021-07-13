@@ -99,6 +99,16 @@
     prepare: python wait_cluster.py 4 600
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --no-streaming
 
+# Test autoscaling 1TB streaming shuffle with a large number of partitions.
+- name: autoscaling_shuffle_1tb_1000_partitions
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_autoscaling.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
+
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
 - name: shuffle_1tb_1000_partition
   cluster:
@@ -222,3 +232,13 @@
   run:
     timeout: 3000
     script: python decision_tree/cart_with_tree.py
+
+# Test 20 concurrent decision tree runs on autoscaling compute cluster.
+- name: decision_tree_autoscaling_20_runs
+  cluster:
+    app_config: decision_tree/decision_tree_app_config.yaml
+    compute_template: decision_tree/autoscaling_compute.yaml
+
+  run:
+    timeout: 9600
+    script: python decision_tree/cart_with_tree.py --concurrency=20

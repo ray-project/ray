@@ -162,7 +162,6 @@ def unsquash_action(action, action_space_struct):
     given Space's bounds (`low` and `high`). This only applies to Box
     components within the action space, whose dtype is float32 or float64.
 
-
     Args:
         action (Any): The action to be unsquashed. This could be any complex
             action, e.g. a dict or tuple.
