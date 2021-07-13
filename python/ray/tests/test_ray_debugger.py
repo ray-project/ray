@@ -55,7 +55,7 @@ def test_ray_debugger_commands(shutdown_only):
     p = pexpect.spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
-    p.expect("-> ray.util.pdb.set_trace()")
+    p.expect("-> breakpoint()")
     p.sendline("ll")
     # Cannot use the 🐛 symbol here because pexpect doesn't support
     # unicode, but this test also does nicely:
@@ -63,7 +63,7 @@ def test_ray_debugger_commands(shutdown_only):
     p.sendline("c")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
-    p.expect("-> ray.util.pdb.set_trace()")
+    p.expect("-> breakpoint()")
     p.sendline("c")
 
     ray.get([result1, result2])
