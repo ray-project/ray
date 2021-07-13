@@ -11,6 +11,7 @@ import re
 import select
 import socket
 import sys
+import time
 import uuid
 from pdb import Pdb
 import setproctitle
@@ -207,7 +208,8 @@ def connect_ray_pdb(host=None,
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,
-        "traceback": "\n".join(traceback.format_exception(*sys.exc_info()))
+        "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
+        "timestamp": time.time(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)

@@ -212,7 +212,8 @@ def debug(address):
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
-        for i, active_session in enumerate(active_sessions):
+        sorted_sessions = sorted(active_sessions, key=lambda session: session["timestamp"])
+        for i, active_session in enumerate(sorted_sessions):
             data = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(active_session))
             print(
