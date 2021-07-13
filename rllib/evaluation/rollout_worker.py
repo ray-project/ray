@@ -419,7 +419,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return env
 
             # We can't auto-wrap a BaseEnv.
-            elif isinstance(self.env, BaseEnv):
+            elif isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
                 def wrap(env):
                     return env
@@ -993,8 +993,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # `get_unwrapped` not implemented (returned empty list). Call func
+        # directly on `self.async_env`.
         if not envs:
             return [func(self.async_env)]
+        # Vectorized env. Call func on all sub-envs.
         else:
             return [func(e) for e in envs]
 
@@ -1453,7 +1456,7 @@ def _validate_env(env: Any) -> EnvType:
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
 
-    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv]
+    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
         raise ValueError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "

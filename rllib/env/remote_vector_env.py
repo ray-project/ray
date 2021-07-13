@@ -74,6 +74,7 @@ class RemoteVectorEnv(BaseEnv):
         logger.debug("Got obs batch for actors {}".format(env_ids))
         return obs, rewards, dones, infos, {}
 
+    @override(BaseEnv)
     @PublicAPI
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, actions in action_dict.items():
@@ -81,6 +82,7 @@ class RemoteVectorEnv(BaseEnv):
             obj_ref = actor.step.remote(actions)
             self.pending[obj_ref] = actor
 
+    @override(BaseEnv)
     @PublicAPI
     def try_reset(self,
                   env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
@@ -89,50 +91,56 @@ class RemoteVectorEnv(BaseEnv):
         self.pending[obj_ref] = actor
         return ASYNC_RESET_RETURN
 
+    @override(BaseEnv)
     @PublicAPI
     def stop(self) -> None:
         if self.actors is not None:
             for actor in self.actors:
                 actor.__ray_terminate__.remote()
 
-
-@ray.remote(num_cpus=0)
-class _RemoteMultiAgentEnv:
-    """Wrapper class for making a multi-agent env a remote actor."""
-
-    def __init__(self, make_env, i):
-        self.env = make_env(i)
-
-    def reset(self):
-        obs = self.env.reset()
-        # each keyed by agent_id in the env
-        rew = {agent_id: 0 for agent_id in obs.keys()}
-        info = {agent_id: {} for agent_id in obs.keys()}
-        done = {"__all__": False}
-        return obs, rew, done, info
-
-    def step(self, action_dict):
-        return self.env.step(action_dict)
+    @override(BaseEnv)
+    @PublicAPI
+    def get_unwrapped(self):
+        return self.actors
 
 
-@ray.remote(num_cpus=0)
-class _RemoteSingleAgentEnv:
-    """Wrapper class for making a gym env a remote actor."""
+#@ray.remote(num_cpus=0)
+#class _RemoteMultiAgentEnv:
+#    """Wrapper class for making a multi-agent env a remote actor."""
 
-    def __init__(self, make_env, i):
-        self.env = make_env(i)
+#    def __init__(self, make_env, i):
+#        self.env = make_env(i)
 
-    def reset(self):
-        obs = {_DUMMY_AGENT_ID: self.env.reset()}
-        rew = {agent_id: 0 for agent_id in obs.keys()}
-        info = {agent_id: {} for agent_id in obs.keys()}
-        done = {"__all__": False}
-        return obs, rew, done, info
+#    def reset(self):
+#        obs = self.env.reset()
+#        # each keyed by agent_id in the env
+#        rew = {agent_id: 0 for agent_id in obs.keys()}
+#        info = {agent_id: {} for agent_id in obs.keys()}
+#        done = {"__all__": False}
+#        return obs, rew, done, info
 
-    def step(self, action):
-        obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
-        obs, rew, done, info = [{
-            _DUMMY_AGENT_ID: x
-        } for x in [obs, rew, done, info]]
-        done["__all__"] = done[_DUMMY_AGENT_ID]
-        return obs, rew, done, info
+#    def step(self, action_dict):
+#        return self.env.step(action_dict)
+
+
+#@ray.remote(num_cpus=0)
+#class _RemoteSingleAgentEnv:
+#    """Wrapper class for making a gym env a remote actor."""
+
+#    def __init__(self, make_env, i):
+#        self.env = make_env(i)
+
+#    def reset(self):
+#        obs = {_DUMMY_AGENT_ID: self.env.reset()}
+#        rew = {agent_id: 0 for agent_id in obs.keys()}
+#        info = {agent_id: {} for agent_id in obs.keys()}
+#        done = {"__all__": False}
+#        return obs, rew, done, info
+
+#    def step(self, action):
+#        obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
+#        obs, rew, done, info = [{
+#            _DUMMY_AGENT_ID: x
+#        } for x in [obs, rew, done, info]]
+#        done["__all__"] = done[_DUMMY_AGENT_ID]
+#        return obs, rew, done, info
