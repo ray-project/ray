@@ -106,10 +106,13 @@ def _match_running_client_server(command: List[str]) -> bool:
 class ProxyManager():
     def __init__(self,
                  redis_address: Optional[str],
-                 session_dir: Optional[str] = None):
+                 *,
+                 session_dir: Optional[str] = None,
+                 redis_password: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._redis_address = redis_address
+        self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
@@ -160,8 +163,12 @@ class ProxyManager():
         if self._node:
             return self._node
 
+        ray_params = RayParams(redis_address=self.redis_address)
+        if self._redis_password:
+            ray_params.redis_password = self._redis_password
+
         self._node = ray.node.Node(
-            RayParams(redis_address=self.redis_address),
+            ray_params,
             head=False,
             shutdown_at_exit=False,
             spawn_reaper=False,
@@ -208,7 +215,8 @@ class ProxyManager():
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=self.node.get_session_dir_path())
+            session_dir=self.node.get_session_dir_path(),
+            redis_password=self._redis_password)
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
@@ -499,11 +507,14 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 def serve_proxier(connection_str: str,
                   redis_address: str,
+                  *,
+                  redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None):
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
-    proxy_manager = ProxyManager(redis_address, session_dir)
+    proxy_manager = ProxyManager(
+        redis_address, session_dir=session_dir, redis_password=redis_password)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)

@@ -1693,25 +1693,26 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.placement_group_capture_child_tasks,
       "", /* debugger_breakpoint */
       actor_creation_options.serialized_runtime_env, override_environment_variables);
-  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
-                                   actor_creation_options.max_task_retries,
-                                   actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.max_concurrency,
-                                   actor_creation_options.is_detached, actor_name,
-                                   actor_creation_options.is_asyncio, extension_data);
 
-  // Add the actor handle before we submit the actor creation task, since the
-  // actor handle must be in scope by the time the GCS sends the
-  // WaitForActorOutOfScopeRequest.
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries);
+  std::string serialized_actor_handle;
+  actor_handle->Serialize(&serialized_actor_handle);
+  builder.SetActorCreationTaskSpec(
+      actor_id, serialized_actor_handle, actor_creation_options.max_restarts,
+      actor_creation_options.max_task_retries,
+      actor_creation_options.dynamic_worker_options,
+      actor_creation_options.max_concurrency, actor_creation_options.is_detached,
+      actor_name, actor_creation_options.is_asyncio, extension_data);
+  // Add the actor handle before we submit the actor creation task, since the
+  // actor handle must be in scope by the time the GCS sends the
+  // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
                                               CurrentCallSite(), rpc_address_,
                                               actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
-
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   Status status;
@@ -2119,6 +2120,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    {
+      std::unique_ptr<ActorHandle> self_actor_handle(
+          new ActorHandle(task_spec.GetSerializedActorHandle()));
+      // Register the handle to the current actor itself.
+      actor_manager_->RegisterActorHandle(std::move(self_actor_handle), ObjectID::Nil(),
+                                          GetCallerId(), CurrentCallSite(), rpc_address_);
+    }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);

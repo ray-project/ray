@@ -158,6 +158,9 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+# Cpp
+cpp/example/thirdparty/
+
 # streaming/python
 streaming/python/generated/
 streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/

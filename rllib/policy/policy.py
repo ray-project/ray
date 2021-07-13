@@ -14,7 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, unbatch, unsquash_action
+    get_base_struct_from_space, normalize_action, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -161,7 +161,7 @@ class Policy(metaclass=ABCMeta):
             clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            unsquash_actions: bool = None,
+            normalize_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -176,7 +176,7 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            unsquash_actions (bool): Should actions be unsquashed according to
+            normalize_actions (bool): Should actions be normalized according to
                 the Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 Policy's action space?
@@ -195,10 +195,8 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
-        # If policy works in normalized space, we should unsquash the action.
-        # Use value of config.normalize_actions, if None.
-        unsquash_actions = \
-            unsquash_actions if unsquash_actions is not None \
+        normalize_actions = \
+            normalize_actions if normalize_actions is not None \
             else self.config["normalize_actions"]
         clip_actions = clip_actions if clip_actions is not None else \
             self.config["clip_actions"]
@@ -246,12 +244,9 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        # If we work in normalized action space (normalize_actions=True),
-        # we re-translate here into the env's action space.
-        if unsquash_actions:
-            single_action = unsquash_action(single_action,
-                                            self.action_space_struct)
-        # Clip, according to env's action space.
+        if normalize_actions:
+            single_action = normalize_action(single_action,
+                                             self.action_space_struct)
         elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
@@ -319,10 +314,8 @@ class Policy(metaclass=ABCMeta):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            actions_normalized: bool = True,
-    ) -> TensorType:
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -337,10 +330,6 @@ class Policy(metaclass=ABCMeta):
                 Batch of previous action values.
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
-            actions_normalized (bool): Is the given `actions` already
-                normalized (between -1.0 and 1.0) or not? If not and
-                `normalize_actions=True`, we need to normalize the given
-                actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:

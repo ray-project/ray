@@ -483,7 +483,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.make_env_fn = make_env
 
-        #self.tf_sess = None
         policy_dict = _validate_and_canonicalize(
             policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
@@ -899,11 +898,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
+            builders = {}
             to_fetch = {}
-            #if self.tf_sess is not None:
-            #    builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-            #else:
-            #    builder = None
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
@@ -912,12 +908,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
-                    builder = TFRunBuilder(tf_session, "learn_on_batch")
+                    builders[pid] = TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(
-                        builder, batch)
+                        builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
-            info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
+            info_out.update({pid: builders[pid].get(v)
+                             for pid, v in to_fetch.items()})
         else:
             info_out = {
                 DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
@@ -1008,7 +1005,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Args:
             policy_id (str): ID of the policy to return.
-            
+
         Returns:
             Optional[Policy]: The policy under the given ID (or None if not
                 found).
