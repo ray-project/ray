@@ -17,6 +17,7 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
+
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -406,6 +407,14 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
+
+  // Subscribe to resource usage batches from the monitor.
+  const auto &resource_usage_batch_added =
+      [this](const ResourceUsageBatchData &resource_usage_batch) {
+        ResourceUsageBatchReceived(resource_usage_batch);
+      };
+  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
+      resource_usage_batch_added, /*done*/ nullptr));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -1628,6 +1637,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(
         task.GetTaskSpecification().GetMessage());
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
@@ -1666,8 +1676,8 @@ void NodeManager::HandleCancelResourceReserve(
     const rpc::CancelResourceReserveRequest &request,
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(INFO) << "Request to cancel reserved resource is received, "
-                << bundle_spec.DebugString();
+  RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
+                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
@@ -1781,7 +1791,7 @@ void NodeManager::MarkObjectsAsFailed(
       status = store_client_.Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(INFO) << "Marking plasma object failed " << object_id;
+      RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;

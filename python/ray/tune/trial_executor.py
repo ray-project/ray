@@ -93,7 +93,11 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -103,6 +107,8 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
+            group should be destroyed if it cannot replace any staged ones.
 
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "

@@ -209,16 +209,6 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
                                      const std::shared_ptr<Client> &client,
                                      bool is_create, bool fallback_allocator,
                                      PlasmaError *error) {
-  // First free up space from the client's LRU queue if quota enforcement is on.
-  std::vector<ObjectID> client_objects_to_evict;
-  bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
-                                                         &client_objects_to_evict);
-  if (!quota_ok) {
-    *error = PlasmaError::OutOfMemory;
-    return nullptr;
-  }
-  EvictObjects(client_objects_to_evict);
-
   // Try to evict objects until there is enough space.
   uint8_t *pointer = nullptr;
   int num_tries = 0;
@@ -232,10 +222,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     // 64-byte aligned, but in practice it often will be.
     pointer = reinterpret_cast<uint8_t *>(PlasmaAllocator::Memalign(kBlockSize, size));
     if (pointer) {
-      // If we manage to allocate the memory, return the pointer. If we cannot
-      // allocate the space, but we are also not allowed to evict anything to
-      // make more space, return an error to the client.
-      *error = PlasmaError::OutOfMemory;
+      // If we manage to allocate the memory, return the pointer.
+      *error = PlasmaError::OK;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.
@@ -403,7 +391,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   // Notify the eviction policy that this object was created. This must be done
   // immediately before the call to AddToClientObjectIds so that the
   // eviction policy does not have an opportunity to evict the object.
-  eviction_policy_.ObjectCreated(object_id, client.get(), true);
+  eviction_policy_.ObjectCreated(object_id, true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
   num_objects_unsealed_++;
@@ -782,7 +770,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  eviction_policy_.ClientDisconnected(client.get());
   std::unordered_map<ObjectID, ObjectTableEntry *> sealed_objects;
   for (const auto &object_id : client->object_ids) {
     auto it = store_info_.objects.find(object_id);
@@ -923,16 +910,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     DisconnectClient(client);
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
-  case fb::MessageType::PlasmaSetOptionsRequest: {
-    std::string client_name;
-    int64_t output_memory_quota;
-    RAY_RETURN_NOT_OK(
-        ReadSetOptionsRequest(input, input_size, &client_name, &output_memory_quota));
-    client->name = client_name;
-    bool success = eviction_policy_.SetClientQuota(client.get(), output_memory_quota);
-    RAY_RETURN_NOT_OK(SendSetOptionsReply(
-        client, success ? PlasmaError::OK : PlasmaError::OutOfMemory));
-  } break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(client, eviction_policy_.DebugString()));
   } break;
