@@ -6,6 +6,7 @@
 /python/ray/thirdparty_files/
 /python/ray/pyarrow_files/
 /python/ray/jars/
+/python/ray/cpp/
 /python/build
 /python/dist
 /python/python-driver-*

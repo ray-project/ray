@@ -321,13 +321,14 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Data Processing
+   :caption: Ray Data Processing
 
-   dataset.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   modin/index.rst
-   raydp.rst
+   data/dataset.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
+   data/package-ref.rst
 
 .. toctree::
    :hidden:
