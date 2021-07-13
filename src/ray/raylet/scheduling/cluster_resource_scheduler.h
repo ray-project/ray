@@ -33,9 +33,6 @@ namespace ray {
 
 using rpc::HeartbeatTableData;
 
-// Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
-
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
@@ -421,6 +418,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string DebugString() const;
 
  private:
+  /// Init the information about which resources are unit_instance.
+  void InitResourceUnitInstanceInfo();
+
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
   ///
@@ -454,6 +454,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
+
+  // Specify predefine resources that consists of unit-size instances.
+  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
+
+  // Specify custom resources that consists of unit-size instances.
+  std::unordered_set<int64_t> custom_unit_instance_resources_{};
 };
 
 }  // end namespace ray

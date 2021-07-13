@@ -179,8 +179,9 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
-    RayConfig::instance().initialize("object_spilling_config,YQ==;max_io_workers," +
-                                     std::to_string(MAX_IO_WORKER_SIZE));
+    RayConfig::instance().initialize(
+        R"({"object_spilling_config": "dummy", "max_io_workers": )" +
+        std::to_string(MAX_IO_WORKER_SIZE) + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -1000,7 +1001,6 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
 
   // Start two IO workers. These don't count towards the limit.
   {
-    RAY_LOG(INFO) << "XXX";
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
     auto worker = CreateSpillWorker(Process());
@@ -1011,7 +1011,6 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     worker_pool_->PushSpillWorker(worker);
   }
   {
-    RAY_LOG(INFO) << "YYY";
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
     auto worker = CreateRestoreWorker(Process());

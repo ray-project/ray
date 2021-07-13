@@ -506,13 +506,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to storing and retrieving objects.
   ///
 
-  /// Set options for this client's interactions with the object store.
-  ///
-  /// \param[in] name Unique name for this object store client.
-  /// \param[in] limit The maximum amount of memory in bytes that this client
-  /// can use in the object store.
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
@@ -894,6 +887,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
       const std::string &name);
 
+  /// Returns a list of the named actors currently in the system.
+  ///
+  /// Each actor is returned as a pair of <namespace, name>.
+  /// This includes actors that are pending placement or being restarted.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all namespaces.
+  /// \return The list of <namespace, name> pairs and a status.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
+      bool all_namespaces);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -1121,6 +1124,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
 
+  /// Get all named actors in local mode.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
+  ListNamedActorsLocalMode();
+
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
   /// the task spec.
@@ -1163,6 +1170,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// It is used for the ref counting protocol. When the borrower
   /// stops using the reference, the message will be published to the owner.
   void ProcessSubscribeForRefRemoved(const rpc::WorkerRefRemovedSubMessage &message);
+
+  /// Process a subscribe message for object locations.
+  /// Since core worker owns the object directory, there are various raylets
+  /// that subscribe this object directory.
+  void ProcessSubscribeObjectLocations(
+      const rpc::WorkerObjectLocationsSubMessage &message);
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
@@ -1296,10 +1309,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
+  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

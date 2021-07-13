@@ -20,6 +20,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
+from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -105,10 +106,13 @@ def _match_running_client_server(command: List[str]) -> bool:
 class ProxyManager():
     def __init__(self,
                  redis_address: Optional[str],
-                 session_dir: Optional[str] = None):
+                 *,
+                 session_dir: Optional[str] = None,
+                 redis_password: Optional[str] = None):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
-        self.redis_address = redis_address
+        self._redis_address = redis_address
+        self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
@@ -116,7 +120,7 @@ class ProxyManager():
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
-        self._session_dir: str = session_dir or ""
+        self._node: Optional[ray.node.Node] = None
         atexit.register(self._cleanup)
 
     def _get_unused_port(self) -> int:
@@ -138,30 +142,39 @@ class ProxyManager():
                 return port
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
-    def _get_redis_address(self) -> str:
+    @property
+    def redis_address(self) -> str:
         """
         Returns the provided Ray Redis address, or creates a new cluster.
         """
-        if self.redis_address:
-            return self.redis_address
+        if self._redis_address:
+            return self._redis_address
         # Start a new, locally scoped cluster.
         connection_tuple = ray.init()
-        self.redis_address = connection_tuple["redis_address"]
+        self._redis_address = connection_tuple["redis_address"]
         self._session_dir = connection_tuple["session_dir"]
-        return self.redis_address
+        return self._redis_address
 
-    def _get_session_dir(self) -> str:
+    @property
+    def node(self) -> ray.node.Node:
+        """Gets a 'ray.Node' object for this node (the head node).
+        If it does not already exist, one is created using the redis_address.
         """
-        Gets the session_dir of this running Ray session. This usually
-        looks like /tmp/ray/session_<timestamp>.
-        """
-        if self._session_dir:
-            return self._session_dir
-        # Connect a driver to an already running cluster.
-        connection_tuple = ray.init(address=self._get_redis_address())
-        ray.shutdown()
-        self._session_dir = connection_tuple["session_dir"]
-        return self._session_dir
+        if self._node:
+            return self._node
+
+        ray_params = RayParams(redis_address=self.redis_address)
+        if self._redis_password:
+            ray_params.redis_password = self._redis_password
+
+        self._node = ray.node.Node(
+            ray_params,
+            head=False,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+            connect_only=True)
+
+        return self._node
 
     def create_specific_server(self, client_id: str) -> SpecificServer:
         """
@@ -191,13 +204,19 @@ class ProxyManager():
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
+        output, error = self.node.get_log_file_handles(
+            f"ray_client_server_{specific_server.port}", unique=True)
+
         proc = start_ray_client_server(
-            self._get_redis_address(),
+            self.redis_address,
             specific_server.port,
+            stdout_file=output,
+            stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=self._get_session_dir())
+            session_dir=self.node.get_session_dir_path(),
+            redis_password=self._redis_password)
 
         # Wait for the process being run transitions from the shim process
         # to the actual RayClient Server.
@@ -292,8 +311,11 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             return None
 
         stub = ray_client_pb2_grpc.RayletDriverStub(chan)
-        return getattr(stub, method)(
-            request, metadata=[("client_id", client_id)])
+        try:
+            return getattr(stub, method)(
+                request, metadata=[("client_id", client_id)])
+        except Exception:
+            logger.exception(f"Proxying call to {method} failed!")
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
         return self._call_inner_function(request, context, "Init")
@@ -317,6 +339,10 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
     def KVExists(self, request,
                  context=None) -> ray_client_pb2.KVExistsResponse:
         return self._call_inner_function(request, context, "KVExists")
+
+    def ListNamedActors(self, request, context=None
+                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        return self._call_inner_function(request, context, "ListNamedActors")
 
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
@@ -436,6 +462,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 new_iter, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 yield self.modify_connection_info_resp(resp)
+        except Exception:
+            logger.exception("Proxying Datapath failed!")
         finally:
             server.set_result(None)
             with self.clients_lock:
@@ -474,17 +502,23 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
         resp_stream = stub.Logstream(
             request_iterator, metadata=[("client_id", client_id)])
-        for resp in resp_stream:
-            yield resp
+        try:
+            for resp in resp_stream:
+                yield resp
+        except Exception:
+            logger.exception("Proxying Logstream failed!")
 
 
 def serve_proxier(connection_str: str,
                   redis_address: str,
+                  *,
+                  redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None):
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
-    proxy_manager = ProxyManager(redis_address, session_dir)
+    proxy_manager = ProxyManager(
+        redis_address, session_dir=session_dir, redis_password=redis_password)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)

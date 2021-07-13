@@ -146,6 +146,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
         CPlacementGroupID GetCurrentPlacementGroupId()
+        CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
@@ -161,6 +162,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
         pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
+        pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListNamedActors(
+            c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PutObjectIntoPlasma(const CRayObject &object,
@@ -177,7 +180,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const CAddress &owner_address,
                 const c_string &object_status)
 
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        CObjectID *object_id)

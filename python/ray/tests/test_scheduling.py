@@ -442,9 +442,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert object_memory_usage() == 0
+    wait_for_condition(lambda: object_memory_usage() == 0)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -480,7 +478,7 @@ def test_many_args(ray_start_cluster):
     for i in range(100):
         args = [np.random.choice(xs) for _ in range(10)]
         tasks.append(f.remote(i, *args))
-    ray.get(tasks)
+    ray.get(tasks, timeout=30)
 
     num_tasks_submitted, num_leases_requested = (
         ray.worker.global_worker.core_worker.get_task_submission_stats())

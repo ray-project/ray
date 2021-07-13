@@ -24,21 +24,22 @@ CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
         # You should override this to point to an offline dataset.
         "input": "sampler",
-        # Offline RL does not need IS estimators.
+        # Switch off off-policy evaluation.
         "input_evaluation": [],
         # Number of iterations with Behavior Cloning Pretraining.
         "bc_iters": 20000,
-        # CQL Loss Temperature.
+        # CQL loss temperature.
         "temperature": 1.0,
-        # Num Actions to sample for CQL Loss.
+        # Number of actions to sample for CQL loss.
         "num_actions": 10,
-        # Whether to use the Lagrangian for Alpha Prime (in CQL Loss).
+        # Whether to use the Lagrangian for Alpha Prime (in CQL loss).
         "lagrangian": False,
-        # Lagrangian Threshold.
+        # Lagrangian threshold.
         "lagrangian_thresh": 5.0,
-        # Min Q Weight multiplier.
+        # Min Q weight multiplier.
         "min_q_weight": 5.0,
-        # Replay Buffer should be size of offline dataset.
+        # Replay buffer should be larger or equal the size of the offline
+        # dataset.
         "buffer_size": int(1e6),
     })
 # __sphinx_doc_end__
@@ -133,7 +134,8 @@ def after_init(trainer):
     reader = trainer.workers.local_worker().input_reader
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
-    if "d4rl" in trainer.config["input"]:
+    if isinstance(trainer.config["input"], str) and \
+            "d4rl" in trainer.config["input"]:
         dataset = reader.dataset
         replay_buffer.add_batch(dataset)
     # For a list of files, add each file's entire content to the buffer.

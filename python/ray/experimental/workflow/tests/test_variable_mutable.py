@@ -22,7 +22,7 @@ def variable_mutable():
 
 def test_variable_mutable():
     import ray
-    ray.init()
+    ray.init(namespace="workflow")
 
     outputs = workflow.run(variable_mutable.step())
     assert ray.get(outputs) == []
