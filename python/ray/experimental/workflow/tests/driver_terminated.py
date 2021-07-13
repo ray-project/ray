@@ -1,3 +1,4 @@
+import sys
 import time
 import ray
 from ray.experimental import workflow
@@ -14,6 +15,7 @@ def foo(x):
 
 
 if __name__ == "__main__":
+    sleep_duration = float(sys.argv[1])
     ray.init(address="auto", namespace="workflow")
-    wf = workflow.run(foo.step(0), workflow_id="cluster_failure")
-    assert ray.get(wf) == 20
+    wf = workflow.run(foo.step(0), workflow_id="driver_terminated")
+    time.sleep(sleep_duration)
