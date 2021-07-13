@@ -157,19 +157,20 @@ py_test(
 )
 
 # CQL
-py_test(
-    name = "run_regression_tests_pendulum_cql_tf",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include the zipped json data file as well.
-    data = [
-        "tuned_examples/cql/pendulum-cql.yaml",
-        "tests/data/pendulum/enormous.zip",
-    ],
-    args = ["--yaml-dir=tuned_examples/cql"]
-)
+# Skipping due to high flakiness.
+#py_test(
+#    name = "run_regression_tests_pendulum_cql_tf",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    # Include the zipped json data file as well.
+#    data = [
+#        "tuned_examples/cql/pendulum-cql.yaml",
+#        "tests/data/pendulum/enormous.zip",
+#    ],
+#    args = ["--yaml-dir=tuned_examples/cql"]
+#)
 
 py_test(
     name = "run_regression_tests_pendulum_cql_torch",
@@ -504,15 +505,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-py_test(
-    name = "run_regression_tests_pendulum_sac_torch",
-    main = "tests/run_regression_tests.py",
-    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
-)
+# Skipping due to high flakiness.
+#py_test(
+#    name = "run_regression_tests_pendulum_sac_torch",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+#    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+#)
 
 py_test(
     name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
@@ -1377,12 +1379,13 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
-py_test(
-    name = "test_curiosity",
-    tags = ["utils", "flaky"],
-    size = "large",
-    srcs = ["utils/exploration/tests/test_curiosity.py"]
-)
+# Skipping due to high flakiness.
+#py_test(
+#    name = "test_curiosity",
+#    tags = ["utils", "flaky"],
+#    size = "large",
+#    srcs = ["utils/exploration/tests/test_curiosity.py"]
+#)
 
 py_test(
     name = "test_explorations",

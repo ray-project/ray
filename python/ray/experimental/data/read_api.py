@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
-import functools
 import builtins
-import inspect
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
@@ -17,7 +15,7 @@ if TYPE_CHECKING:
 import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
-    ReadTask
+    JSONDatasource, CSVDatasource, ReadTask
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
@@ -28,17 +26,6 @@ from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-def autoinit_ray(f: Callable) -> Callable:
-    @functools.wraps(f)
-    def wrapped(*a, **kw):
-        if not ray.is_initialized():
-            ray.client().connect()
-        return f(*a, **kw)
-
-    setattr(wrapped, "__signature__", inspect.signature(f))
-    return wrapped
 
 
 def _parse_paths(paths: Union[str, List[str]]
@@ -72,95 +59,6 @@ def _parse_paths(paths: Union[str, List[str]]
         return fses[0], list(paths)
 
 
-def _expand_directory(path: str,
-                      filesystem: "pyarrow.fs.FileSystem",
-                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
-    """
-    Expand the provided directory path to a list of file paths.
-
-    Args:
-        path: The directory path to expand.
-        filesystem: The filesystem implementation that should be used for
-            reading these files.
-        exclude_prefixes: The file relative path prefixes that should be
-            excluded from the returned file set. Default excluded prefixes are
-            "." and "_".
-
-    Returns:
-        A list of file paths contained in the provided directory.
-    """
-    from pyarrow.fs import FileSelector
-    selector = FileSelector(path, recursive=True)
-    files = filesystem.get_file_info(selector)
-    base_path = selector.base_dir
-    filtered_paths = []
-    for file_ in files:
-        if not file_.is_file:
-            continue
-        file_path = file_.path
-        if not file_path.startswith(base_path):
-            continue
-        relative = file_path[len(base_path):]
-        if any(relative.startswith(prefix) for prefix in [".", "_"]):
-            continue
-        filtered_paths.append(file_path)
-    # We sort the paths to guarantee a stable order.
-    return sorted(filtered_paths)
-
-
-def _resolve_paths_and_filesystem(
-        paths: Union[str, List[str]],
-        filesystem: "pyarrow.fs.FileSystem" = None
-) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
-    """
-    Resolves and normalizes all provided paths, infers a filesystem from the
-    paths and ensures that all paths use the same filesystem, and expands all
-    directory paths to the underlying file paths.
-
-    Args:
-        paths: A single file/directory path or a list of file/directory paths.
-            A list of paths can contain both files and directories.
-        filesystem: The filesystem implementation that should be used for
-            reading these files. If None, a filesystem will be inferred. If not
-            None, the provided filesystem will still be validated against all
-            filesystems inferred from the provided paths to ensure
-            compatibility.
-    """
-    from pyarrow.fs import FileType, _resolve_filesystem_and_path
-
-    if isinstance(paths, str):
-        paths = [paths]
-    elif (not isinstance(paths, list)
-          or any(not isinstance(p, str) for p in paths)):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
-
-    resolved_paths = []
-    for path in paths:
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
-        if filesystem is None:
-            filesystem = resolved_filesystem
-        elif type(resolved_filesystem) != type(filesystem):
-            raise ValueError("All paths must use same filesystem.")
-        resolved_path = filesystem.normalize_path(resolved_path)
-        resolved_paths.append(resolved_path)
-
-    expanded_paths = []
-    for path in resolved_paths:
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            expanded_paths.extend(_expand_directory(path, filesystem))
-        elif file_info.type == FileType.File:
-            expanded_paths.append(path)
-        else:
-            raise FileNotFoundError(path)
-    return expanded_paths, filesystem
-
-
-@autoinit_ray
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -196,7 +94,6 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     return Dataset(BlockList(blocks, metadata))
 
 
-@autoinit_ray
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -214,7 +111,6 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
-@autoinit_ray
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -235,7 +131,6 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
 
-@autoinit_ray
 def read_datasource(datasource: Datasource[T],
                     parallelism: int = 200,
                     **read_args) -> Dataset[T]:
@@ -266,7 +161,6 @@ def read_datasource(datasource: Datasource[T],
     return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
@@ -335,7 +229,6 @@ def read_parquet(paths: Union[str, List[str]],
     return Dataset(LazyBlockList(calls, metadata))
 
 
-@autoinit_ray
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
@@ -362,37 +255,14 @@ def read_json(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    import pyarrow as pa
-    from pyarrow import json
-    import numpy as np
-
-    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-
-    @ray.remote(num_returns=2)
-    def json_read(read_paths: List[str]):
-        logger.debug(f"Reading {len(read_paths)} files.")
-        tables = []
-        for read_path in read_paths:
-            with filesystem.open_input_file(read_path) as f:
-                tables.append(
-                    json.read_json(
-                        f,
-                        read_options=json.ReadOptions(use_threads=False),
-                        **arrow_json_args))
-        block = ArrowBlock(pa.concat_tables(tables))
-        return block, block.get_metadata(input_files=read_paths)
-
-    res = [
-        json_read.remote(read_paths)
-        for read_paths in np.array_split(paths, parallelism)
-        if len(read_paths) > 0
-    ]
-
-    blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return read_datasource(
+        JSONDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_json_args)
 
 
-@autoinit_ray
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
@@ -419,37 +289,14 @@ def read_csv(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    import pyarrow as pa
-    from pyarrow import csv
-    import numpy as np
-
-    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-
-    @ray.remote(num_returns=2)
-    def csv_read(read_paths: List[str]):
-        logger.debug(f"Reading {len(read_paths)} files.")
-        tables = []
-        for read_path in read_paths:
-            with filesystem.open_input_file(read_path) as f:
-                tables.append(
-                    csv.read_csv(
-                        f,
-                        read_options=csv.ReadOptions(use_threads=False),
-                        **arrow_csv_args))
-        block = ArrowBlock(pa.concat_tables(tables))
-        return block, block.get_metadata(input_files=read_paths)
-
-    res = [
-        csv_read.remote(read_paths)
-        for read_paths in np.array_split(paths, parallelism)
-        if len(read_paths) > 0
-    ]
-
-    blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return read_datasource(
+        CSVDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **arrow_csv_args)
 
 
-@autoinit_ray
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
@@ -483,7 +330,6 @@ def read_binary_files(
             filesystem=filesystem))
 
 
-@autoinit_ray
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
@@ -503,7 +349,6 @@ def from_dask(df: "dask.DataFrame",
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
-@autoinit_ray
 def from_mars(df: "mars.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
@@ -517,7 +362,6 @@ def from_mars(df: "mars.DataFrame",
     raise NotImplementedError  # P1
 
 
-@autoinit_ray
 def from_modin(df: "modin.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
@@ -532,7 +376,6 @@ def from_modin(df: "modin.DataFrame",
     raise NotImplementedError  # P1
 
 
-@autoinit_ray
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
@@ -556,7 +399,6 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@autoinit_ray
 def from_spark(df: "pyspark.sql.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
@@ -571,7 +413,6 @@ def from_spark(df: "pyspark.sql.DataFrame",
     raise NotImplementedError  # P2
 
 
-@autoinit_ray
 def from_source(source: Any) -> Dataset[Any]:
     """Create a dataset from a generic data source."""
     raise NotImplementedError  # P0

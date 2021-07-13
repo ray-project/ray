@@ -31,10 +31,10 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
+#include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/object_manager/plasma/quota_aware_policy.h"
 
 namespace plasma {
 
@@ -268,7 +268,7 @@ class PlasmaStore {
   /// to the eviction policy.
   PlasmaStoreInfo store_info_;
   /// The state that is managed by the eviction policy.
-  QuotaAwarePolicy eviction_policy_;
+  EvictionPolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>

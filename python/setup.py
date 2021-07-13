@@ -26,6 +26,7 @@ SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+INSTALL_CPP = os.getenv("RAY_INSTALL_CPP") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -61,6 +62,15 @@ if BUILD_JAVA or os.path.exists(
         os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
+if INSTALL_CPP:
+    ray_files.append("ray/core/src/ray/cpp/default_worker")
+    # C++ API library and project template files.
+    ray_files += [
+        os.path.join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk("ray/cpp")
+        for filename in filenames
+    ]
+
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
@@ -74,8 +84,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
-    "ray/autoscaler/_private/azure/azure-vm-template.json",
-    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/_private/_azure/azure-vm-template.json",
+    "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
