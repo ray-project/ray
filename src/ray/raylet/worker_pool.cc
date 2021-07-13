@@ -443,6 +443,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Currently we don't erase the job from `all_jobs_` , as a workaround for
   // https://github.com/ray-project/ray/issues/11437.
   // unfinished_jobs_.erase(job_id);
+  finished_jobs_.insert(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -715,11 +716,12 @@ void WorkerPool::TryKillingIdleWorkers() {
   running_size -= pending_exit_idle_workers_.size();
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
-    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+    const auto &idle_worker = idle_pair.first;
+    const auto &job_id = idle_worker->GetAssignedJobId();
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) && !finished_jobs_.count(job_id)) {
       break;
     }
 
-    const auto &idle_worker = idle_pair.first;
     if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
       // If the worker is pending exit, just skip it.
       continue;
@@ -765,7 +767,7 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     RAY_CHECK(running_size >= workers_in_the_same_process.size());
     if (running_size - workers_in_the_same_process.size() <
-        static_cast<size_t>(num_workers_soft_limit_)) {
+        static_cast<size_t>(num_workers_soft_limit_) && !finished_jobs_.count(job_id)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
       // expect may slow the job.
       return;
