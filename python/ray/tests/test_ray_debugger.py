@@ -14,7 +14,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     @ray.remote
     def f():
-        breakpoint()
+        ray.util.pdb.set_trace()
         return 1
 
     result = f.remote()
@@ -45,7 +45,7 @@ def test_ray_debugger_commands(shutdown_only):
     @ray.remote
     def f():
         """We support unicode too: 🐛"""
-        breakpoint()
+        ray.util.pdb.set_trace()
 
     result1 = f.remote()
     result2 = f.remote()
@@ -55,7 +55,7 @@ def test_ray_debugger_commands(shutdown_only):
     p = pexpect.spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
-    p.expect("-> breakpoint()")
+    p.expect("-> ray.util.pdb.set_trace()")
     p.sendline("ll")
     # Cannot use the 🐛 symbol here because pexpect doesn't support
     # unicode, but this test also does nicely:
@@ -63,7 +63,7 @@ def test_ray_debugger_commands(shutdown_only):
     p.sendline("c")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
-    p.expect("-> breakpoint()")
+    p.expect("-> ray.util.pdb.set_trace()")
     p.sendline("c")
 
     ray.get([result1, result2])
@@ -80,7 +80,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
     @ray.remote
     def f():
-        breakpoint()
+        ray.util.pdb.set_trace()
         x = g.remote()
         return ray.get(x)
 
@@ -109,7 +109,7 @@ def test_ray_debugger_recursive(shutdown_only):
     def fact(n):
         if n < 1:
             return n
-        breakpoint()
+        ray.util.pdb.set_trace()
         n_id = fact.remote(n - 1)
         return n * ray.get(n_id)
 
