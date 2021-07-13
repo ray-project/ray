@@ -20,7 +20,7 @@ def some_func2(x):
 @pytest.fixture(scope="function")
 def filesystem_storage(tmp_path):
     storage.set_global_storage(
-        storage.create_storage(f"file:///{str(tmp_path)}/.workflow_data"))
+        storage.create_storage(f"file:///{str(tmp_path)}/workflow_data"))
     yield storage.get_global_storage()
 
 
