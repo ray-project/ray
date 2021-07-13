@@ -7,7 +7,8 @@ from datetime import timedelta
 import ray
 import torch
 from ray.exceptions import RayActorError
-from ray.util.placement_group import get_current_placement_group
+from ray.util.placement_group import get_current_placement_group, \
+    remove_placement_group
 from ray.util.sgd.torch.distributed_torch_runner import \
     LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -136,21 +137,22 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # The last time when this worker group was resized.
         self._last_resize = float("-inf")
 
-    def _get_or_create_placement_group(self, num_workers):
-        """Gets the current placement group or creates one for the workers.
+        # This is set only if a placement group is created by the worker group.
+        self._worker_placement_group = None
 
-        If this worker is already in a placement group it will be returned.
-        This is primarily for when Tune is the upstream and will allocate
-        resources for SGD workers.
+    def _create_placement_group(self, num_workers):
+        """Creates a placement group for the workers.
 
-        If this worker is not in a placement group, a new one will be
-        created. The placement group will have a single bundle for each
-        worker and use the SPREAD strategy for an even distribution.
+        If this worker is already in a placement group then a new one will
+        not be created. This is primarily for when Tune is the upstream and
+        will allocate resources for SGD workers.
+
+        If this worker is not in a placement group, a new one will be created
+        and set. The placement group will have a single bundle for each worker
+        and use the SPREAD strategy for an even distribution.
         """
         pg = get_current_placement_group()
-        if pg is not None:
-            return pg
-        else:
+        if pg is None:
             bundle = {
                 "CPU": self._num_cpus_per_worker,
                 "GPU": int(self._use_gpu)
@@ -160,15 +162,17 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             logger.debug("Waiting for placement group to start.")
             ray.get(pg.ready(), timeout=self._timeout_s)
             logger.debug("Placement group has started.")
-            return pg
+            self.placement_group = pg
 
     def _init_dist_workers(self, num_workers):
-        pg = self._get_or_create_placement_group(num_workers)
         """Create `num_workers` remote workers."""
         # Generate actor class
         RemoteRunner = ray.remote(
             num_cpus=self._num_cpus_per_worker,
             num_gpus=int(self._use_gpu))(DistributedTorchRunner)
+
+        # Get placement group
+        pg = self._worker_placement_group or "default"
 
         # Start workers
         self.remote_workers = [
@@ -380,7 +384,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
     def _terminate_remote_workers(self, cleanup):
         """Blocks on worker shutdown and then terminates each worker actor.
 
-        If graceful shutdown fails, forcefully kills all actors.
+        Return:
+            Whether or not workers were shutdown gracefully.
         """
         try:
             ray.get(cleanup)
@@ -388,26 +393,28 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 worker.__ray_terminate__.remote()
                 for worker in self.remote_workers
             ]
+            return True
         except RayActorError:
-            logger.warning("Failed to shutdown gracefully, forcing a "
-                           "shutdown.")
-            self.reset()
+            logger.warning("Failed to shutdown gracefully.")
+            return False
 
     def shutdown(self, force=False):
-        if not force:
-            cleanup = [
-                worker.shutdown.remote() for worker in self.remote_workers
-            ]
-            self._terminate_remote_workers(cleanup)
-        else:
-            self.reset()
+        force_kill = force
+        if not force_kill:
+            cleanup = self._shutdown_remote_workers()
+            force_kill = not self._terminate_remote_workers(cleanup)
+        if force_kill:
+            for worker in self.remote_workers:
+                logger.debug(f"Killing worker {worker}.")
+                ray.kill(worker)
         self.remote_workers = []
+        # Remove worker placement group.
+        if self._worker_placement_group:
+            remove_placement_group(self._worker_placement_group)
+            self._worker_placement_group = None
 
     def reset(self):
-        for worker in self.remote_workers:
-            logger.debug(f"Killing worker {worker}.")
-            ray.kill(worker)
-        self.remote_workers = []
+        self.shutdown(force=True)
 
     def should_scale_up(self):
         worker_gap = self._max_workers - self.num_workers
@@ -612,13 +619,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
         return worker_stats
 
     def shutdown(self, force=False):
-        if not force:
-            cleanup = self.remote_worker_group._shutdown_remote_workers()
-            self.local_worker.shutdown()
-            self.remote_worker_group._terminate_remote_workers(cleanup)
-        else:
-            self.local_worker.shutdown()
-            self.remote_worker_group.reset()
+        self.local_worker.shutdown()
+        self.remote_worker_group.shutdown(force=force)
 
         self.local_worker = None
         self.remote_worker_group = DeactivatedWorkerGroup()
