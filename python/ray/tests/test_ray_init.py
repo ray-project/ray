@@ -164,7 +164,7 @@ def test_ray_init_invalid_keyword(shutdown_only):
 
 def test_ray_init_invalid_keyword_with_client(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
-        ray.init("ray://127.0.0.0", logginglevel="mispelled")
+        ray.init("ray://127.0.0.0", logginglevel="<- missing underscore")
     assert "logginglevel" in str(excinfo.value)
 
 
