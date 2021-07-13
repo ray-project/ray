@@ -1,6 +1,6 @@
 import logging
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
-    Dict, Optional, Union, Tuple, TYPE_CHECKING
+    Dict, Optional, Union, TYPE_CHECKING
 
 import os
 
@@ -873,7 +873,6 @@ class Dataset(Generic[T]):
               label_column: str,
               output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
-              args: Optional[Tuple["tf.Tensor"]] = None,
               prefetch_blocks: int = 0,
               batch_size: int = None) -> "tf.data.Dataset":
         """Return a TF data iterator over this dataset.
@@ -898,9 +897,6 @@ class Dataset(Generic[T]):
                 of `tf.TypeSpec` objects corresponding to (features, label).
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
-            args:(Optional[Tuple[tf.Tensor]]): A tuple of `tf.Tensor` objects
-                that will be evaluated and passed to the iterator as
-                NumPy-array arguments.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
@@ -927,7 +923,7 @@ class Dataset(Generic[T]):
                 yield (batch.values, target_col.values)
 
         return tf.data.Dataset.from_generator(
-            make_generator, output_signature=output_signature, args=args)
+            make_generator, output_signature=output_signature)
 
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
