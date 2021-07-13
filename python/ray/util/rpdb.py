@@ -97,7 +97,10 @@ class RemotePdb(Pdb):
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
-            self, completekey="tab", stdin=self.handle, stdout=self.handle,
+            self,
+            completekey="tab",
+            stdin=self.handle,
+            stdout=self.handle,
             skip=["ray.*"])
         self.backup = []
         if self._patch_stdstreams:
