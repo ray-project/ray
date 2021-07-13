@@ -2,7 +2,7 @@
 
 This training run will start 4 workers on 4 nodes (including head node).
 
-Test owner: krfricke
+Test owner: Yard1 (primary), krfricke
 
 Acceptance criteria: Should run through and report final results.
 """
@@ -11,9 +11,9 @@ import os
 import time
 
 import ray
-from xgboost_ray import RayParams
+from lightgbm_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from ray.util.lightgbm.release_test_util import train_ray
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
@@ -40,7 +40,7 @@ if __name__ == "__main__":
             regression=False,
             use_gpu=False,
             ray_params=ray_params,
-            xgboost_params=None,
+            lightgbm_params=None,
         )
 
     start = time.time()

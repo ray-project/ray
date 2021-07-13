@@ -3,7 +3,7 @@
 This training run will start 32 Ray Tune trials, each starting 4 actors.
 The cluster comprises 32 nodes.
 
-Test owner: krfricke
+Test owner: Yard1 (primary), krfricke
 
 Acceptance criteria: Should run through and report final results, as well
 as the Ray Tune results table. No trials should error. All trials should
@@ -17,9 +17,9 @@ import time
 import ray
 from ray import tune
 
-from xgboost_ray import RayParams
+from lightgbm_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from ray.util.lightgbm.release_test_util import train_ray
 
 
 def train_wrapper(config, ray_params):
@@ -31,7 +31,7 @@ def train_wrapper(config, ray_params):
         regression=False,
         use_gpu=False,
         ray_params=ray_params,
-        xgboost_params=config,
+        lightgbm_params=config,
     )
 
 

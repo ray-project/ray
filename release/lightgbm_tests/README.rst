@@ -1,7 +1,7 @@
-XGBoost on Ray tests
+LightGBM on Ray tests
 ====================
 
-This directory contains various XGBoost on Ray release tests.
+This directory contains various LightGBM on Ray release tests.
 
 You should run these tests with the `releaser <https://github.com/ray-project/releaser>`_ tool.
 

@@ -1,4 +1,4 @@
-cluster_name: ray-xgboost-release-cpu-moderate
+cluster_name: ray-lightgbm-release-cpu-moderate
 
 max_workers: 32
 
@@ -32,7 +32,7 @@ head_node_type: cpu_4_ondemand
 worker_default_node_type: cpu_4_ondemand
 
 file_mounts: {
-    "~/xgboost_tests": "."
+    "~/lightgbm_tests": "."
 }
 
 file_mounts_sync_continuously: false
