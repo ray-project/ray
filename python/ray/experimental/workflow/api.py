@@ -60,7 +60,7 @@ def run(entry_workflow: "Workflow",
             type of the workflow will be ObjectRef[T] if the output step is
             a workflow step returning type T.
         storage: The external storage URL or a custom storage class. If not
-            specified, ``$(pwd)/.workflow_data`` will be used.
+            specified, ``/tmp/ray/workflow_data`` will be used.
         workflow_id: A unique identifier that can be used to resume the
             workflow. If not specified, a random id will be generated.
 
@@ -87,7 +87,7 @@ def resume(workflow_id: str,
     Args:
         workflow_id: The id of the workflow to resume.
         storage: The external storage URL or a custom storage class. If not
-            specified, ``file:///tmp/ray/workflow_data`` will be used.
+            specified, ``/tmp/ray/workflow_data`` will be used.
 
     Returns:
         An object reference that can be used to retrieve the workflow result.

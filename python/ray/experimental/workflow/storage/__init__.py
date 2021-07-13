@@ -16,8 +16,10 @@ def create_storage(storage_url: str) -> Storage:
     Args:
         storage_url: A URL indicates the storage type and root path.
         Currently only two types of storages are supported: local fs and s3
-        For local fs, a path is needed, i.e.:
+        For local fs, a path is needed, it can be either a URI with scheme
+        file:// or just a local path, i.e.:
            file:///local_path
+           local_path
 
         For s3, bucket, path are necessary. In the meantime, other parameters
         can be passed as well, like credientials or regions, i.e.:
@@ -30,7 +32,7 @@ def create_storage(storage_url: str) -> Storage:
         A storage instance.
     """
     parsed_url = parse.urlparse(storage_url)
-    if parsed_url.scheme == "file":
+    if parsed_url.scheme == "file" or parsed_url.scheme == "":
         return FilesystemStorageImpl(parsed_url.path)
     elif parsed_url.scheme == "s3":
         bucket = parsed_url.netloc
@@ -53,16 +55,16 @@ _global_storage = None
 def get_global_storage() -> Storage:
     global _global_storage
     if _global_storage is None:
-        storage_url = os.get("RAY_WORKFLOW_STORAGE")
+        storage_url = os.environ.get("RAY_WORKFLOW_STORAGE")
         if storage_url is None:
             # We should use get_temp_dir_path, but for ray client, we don't
             # have this one. We need a flag to tell whether it's a client
             # or a driver to use the right dir.
             # For now, just use /tmp/ray/workflow_data
-            logger.warning("Use default local dir: `/tmp/ray/workflow_data`. "
-                           "This should only be used for testing purpose."
-                           "Or put it in some other place")
-
+            logger.warning(
+                "Using default local dir: `/tmp/ray/workflow_data`. "
+                "This should only be used for testing purposes.")
+[I
             storage_url = "file:///tmp/ray/workflow_data"
         _global_storage = create_storage(storage_url)
     return _global_storage
