@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gym.spaces import Tuple, MultiDiscrete, Dict
+from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import os
 
 import ray
@@ -81,6 +81,8 @@ if __name__ == "__main__":
             grouping, obs_space=obs_space, act_space=act_space))
 
     if args.run == "contrib/MADDPG":
+        obs_space = Discrete(6)
+        act_space = TwoStepGame.action_space
         config = {
             "learning_starts": 100,
             "env_config": {
@@ -88,8 +90,14 @@ if __name__ == "__main__":
             },
             "multiagent": {
                 "policies": {
-                    "pol1": PolicySpec(config={"agent_id": 0}),
-                    "pol2": PolicySpec(config={"agent_id": 1}),
+                    "pol1": PolicySpec(
+                        observation_space=obs_space,
+                        action_space=act_space,
+                        config={"agent_id": 0}),
+                    "pol2": PolicySpec(
+                        observation_space=obs_space,
+                        action_space=act_space,
+                        config={"agent_id": 1}),
                 },
                 "policy_mapping_fn": (
                     lambda aid, **kwargs: "pol2" if aid else "pol1"),
