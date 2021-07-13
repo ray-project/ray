@@ -31,6 +31,7 @@ tf1, tf, tfv = try_import_tf()
 # new APIs (some of which are not supported by tf1.x), specify your "framework"
 # as "tf" and check for the version (tfv) to be 2:
 
+# Example:
 # >> def dense(x, W, b):
 # ..   return tf.nn.sigmoid(tf.matmul(x, W) + b)
 #
