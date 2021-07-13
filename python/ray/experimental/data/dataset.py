@@ -875,7 +875,11 @@ class Dataset(Generic[T]):
               feature_columns: Optional[List[str]] = None,
               prefetch_blocks: int = 0,
               batch_size: int = None) -> "tf.data.Dataset":
-        """Return a TF data iterator over this dataset.
+        """Return a TF Dataset over this dataset.
+
+        The TF Dataset will be created from the generator returned by the
+        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
+        arguments will be passed to that method.
 
         This is only supported for datasets convertible to Arrow records.
 
