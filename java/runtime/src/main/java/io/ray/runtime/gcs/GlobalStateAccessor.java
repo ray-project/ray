@@ -106,6 +106,13 @@ public class GlobalStateAccessor {
     }
   }
 
+  public byte[] getInternalKV(String k) {
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, k);
+    }
+  }
+
   /** Returns A list of actor info with ActorInfo protobuf schema. */
   public List<byte[]> getAllActorInfo() {
     // Fetch a actor list with protobuf bytes format from GCS.
@@ -167,6 +174,8 @@ public class GlobalStateAccessor {
       long nativePtr, String name, boolean global);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
+
+  private native byte[] nativeGetInternalKV(long nativePtr, String k);
 
   private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }
