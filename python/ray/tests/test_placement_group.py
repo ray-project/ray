@@ -29,7 +29,7 @@ class Increase:
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
-def test_placement_ready(ray_start_regular_shared, connect_to_client):
+def test_placement_ready(ray_start_regular, connect_to_client):
     @ray.remote
     class Actor:
         def __init__(self):
