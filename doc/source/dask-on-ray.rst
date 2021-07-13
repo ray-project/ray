@@ -22,10 +22,10 @@ specify any callable as the scheduler that you would like Dask to use to execute
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
 .. note::
-  We always ensure the latest Dask versions are compatible to the Ray nightly.
+   We always ensure that the latest Dask versions are compatible with Ray nightly.
   The table below shows the latest Dask versions that are tested with Ray versions.
 
-  .. list-table:: The core Ray API we use in this document.
+  .. list-table:: Latest Dask versions for each Ray version.
      :header-rows: 1
 
      * - Ray Version
