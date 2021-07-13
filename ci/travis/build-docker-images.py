@@ -129,6 +129,9 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
             if image_name in ["ray", "ray-deps", "ray-worker-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
+                # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
+                # can be found.
+                build_args["FIND_LINKS_PATH"] = ".whl/"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):

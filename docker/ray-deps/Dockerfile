@@ -3,11 +3,13 @@ FROM rayproject/base-deps:nightly"$GPU"
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH
+ARG FIND_LINKS_PATH
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 COPY $WHEEL_PATH .
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install $(basename $WHEEL_PATH)[all] \
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH \
+    $(basename $WHEEL_PATH)[all] \
     $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         "six==1.13.0" \
         "boto3==1.4.8" \
