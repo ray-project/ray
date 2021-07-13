@@ -64,7 +64,6 @@ def get_global_storage() -> Storage:
             logger.warning(
                 "Using default local dir: `/tmp/ray/workflow_data`. "
                 "This should only be used for testing purposes.")
-[I
             storage_url = "file:///tmp/ray/workflow_data"
         _global_storage = create_storage(storage_url)
     return _global_storage
