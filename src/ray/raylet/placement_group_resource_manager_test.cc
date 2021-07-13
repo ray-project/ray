@@ -215,7 +215,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
   ASSERT_TRUE(update_called_);
   ASSERT_TRUE(delete_called_);
-  // CheckRemainingResourceCorrect(remaining_resource_instance);
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare) {
