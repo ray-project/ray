@@ -1,13 +1,15 @@
 import os
 import pytest
+import psutil
 import sys
 import time
 
 import ray
+from ray import ray_constants
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
                             init_error_pubsub, get_error_message,
-                            object_memory_usage, wait_for_pid_to_exit)
+                            object_memory_usage, wait_for_condition)
 
 
 def test_error_isolation(call_ray_start):
@@ -198,11 +200,13 @@ else:
 
 @ray.remote
 def f():
-    return os.getpid()
+    time.sleep(1)
 
-pid = ray.get(f.remote())
-print("pid:" + str(pid))
 print("success")
+# Submit some tasks without waiting for them to finish. Their workers should
+# still get cleaned up eventually, even if they get started after the driver
+# exits.
+[f.remote() for _ in range(10)]
 """.format(address)
 
     out = run_string_as_driver(driver_script)
@@ -216,11 +220,14 @@ print("success")
     else:
         raise Exception("Objects were not all removed from object table.")
 
-    # Check that workers are cleaned up.
-    for line in out.split("\n"):
-        if line.startswith("pid"):
-            pid = int(line.split(":")[1])
-            wait_for_pid_to_exit(pid)
+    def all_workers_exited():
+        for proc in psutil.process_iter():
+            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+                return False
+        return True
+
+    ## Check that workers are eventually cleaned up.
+    wait_for_condition(all_workers_exited)
 
 
 def test_drivers_named_actors(call_ray_start):
