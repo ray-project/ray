@@ -25,7 +25,7 @@ Take the following example:
 
     @ray.remote
     def f(x):
-        ray.util.pdb.set_trace()
+        breakpoint()
         return x * x
 
     futures = [f.remote(i) for i in range(2)]
@@ -39,7 +39,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
 
 
 Each of the 4 executed tasks will drop into a breakpoint when the line
-``ray.util.pdb.set_trace()`` is executed. You can attach to the debugger by running
+``breakpoint()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
 .. code-block:: bash
@@ -109,7 +109,7 @@ following recursive function as an example:
             n_id = fact.remote(n - 1)
             return n * ray.get(n_id)
 
-    ray.util.pdb.set_trace()
+    breakpoint()
     result_ref = fact.remote(5)
     result = ray.get(result_ref)
 
