@@ -10,7 +10,7 @@ def signature_check(a, b, c=1):
 
 
 def test_signature_check():
-    ray.init()
+    ray.init(namespace="workflow")
 
     with pytest.raises(TypeError):
         signature_check(1, 2)
