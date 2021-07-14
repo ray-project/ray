@@ -2481,6 +2481,24 @@ py_test(
 #    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer",
+#    main = "examples/self_play_league_based_with_open_spiel_markov_soccer.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer",
+#    main = "examples/self_play_league_based_with_open_spiel_markov_soccer.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
 py_test(
     name = "examples/trajectory_view_api_tf",
     main = "examples/trajectory_view_api.py",

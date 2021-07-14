@@ -1,17 +1,30 @@
-"""Example showing how one can implement a simple self-play training workflow.
+"""Example showing how one can implement a league-based training workflow.
 
-Uses the open spiel adapter of RLlib with the "connect_four" game and
-a multi-agent setup with a "main" policy and n "main_v[x]" policies
-(x=version number), which are all at-some-point-frozen copies of
-"main". At the very beginning, "main" plays against RandomPolicy.
+Uses the open spiel adapter of RLlib with the "markov_soccer" game and
+a simplified multi-agent, league-based setup:
+https://deepmind.com/blog/article/AlphaStar-Grandmaster-level-in- \
+StarCraft-II-using-multi-agent-reinforcement-learning
 
-Checks for the training progress after each training update via a custom
-callback. We simply measure the win rate of "main" vs the opponent
-("main_v[x]" or RandomPolicy at the beginning) by looking through the
-achieved rewards in the episodes in the train batch. If this win rate
-reaches some configurable threshold, we add a new policy to
-the policy map (a frozen copy of the current "main" one) and change the
-policy_mapping_fn to make new matches of "main" vs the just added one.
+Our league consists of three groups of policies:
+- main policies: The current main policy plus prior versions of it.
+- main exploiters: Trained by playing only against different "main policies".
+- league exploiters: Trained by playing against any policy in the league.
+
+We start with 1 policy from each group, setting all 3 of these to an initial
+PPO policy and allowing all 3 policies to be trained.
+After each train update - via our custom callback, we decide for each
+trainable policy, whether to make a copy and freeze it. Frozen policies
+will not be altered anymore. However, they remain in the league for
+future matches against trainable policies.
+Matchmaking happens via a policy_mapping_fn, which needs to be altered
+after every change (addition) to the league. The mapping function
+randomly maps agents in a way, such that:
+- Frozen main exploiters play against the one (currently trainable) main
+  policy.
+- Trainable main exploiters play against any main policy (including already
+  frozen main policies).
+- Frozen league exploiters play against any trainable policy in the league.
+- Trainable league exploiters play against any policy in the league.
 
 After training for n iterations, a configurable number of episodes can
 be played by the user against the "main" agent on the command line.
@@ -22,6 +35,7 @@ import numpy as np
 import os
 import pyspiel
 from open_spiel.python.rl_environment import Environment
+import random
 
 import ray
 from ray import tune
@@ -74,12 +88,17 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-class SelfPlayCallback(DefaultCallbacks):
+class LeagueBasedSelfPlayCallback(DefaultCallbacks):
+
     def __init__(self):
         super().__init__()
-        # 0=RandomPolicy, 1=1st main policy snapshot,
-        # 2=2nd main policy snapshot, etc..
-        self.current_opponent = 0
+        # All policies in the league.
+        self.main_policies = {"main_0"}
+        self.main_exploiters = {"main_exploiter_0"}
+        self.league_exploiters = {"league_exploiter_0"}
+        # Set of currently trainable policies in the league.
+        self.trainable_policies = \
+            self.main_policies | self.main_exploiters | self.league_exploiters
 
     def on_train_result(self, *, trainer, result, **kwargs):
         # Get the win rate for the train batch.
@@ -136,7 +155,7 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)#TODO
 
     # TODO: (sven) remove this once we support simplified multiagent configs.
     #  PR in-flight.
@@ -148,14 +167,21 @@ if __name__ == "__main__":
                  lambda _: OpenSpielEnv(pyspiel.load_game("markov_soccer")))
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
-        # agent_id = [0|1] -> policy depends on episode ID
-        # This way, we make sure that both policies sometimes play agent0
-        # (start player) and sometimes agent1 (player to move 2nd).
-        return "main" if episode.episode_id % 2 == agent_id else "random"
+        # Pick, whether this is ...
+        type_ = random.choice([1, 2])
+        # 1) A league exploiter vs any match.
+        if type_ == 1:
+            #TODO: main_exploiters should not be updated when playing against league exploiters
+            return "league_exploiter_0" if episode.episode_id % 2 == agent_id\
+                else random.choice(["main_0", "main_exploiter_0"])
+        # 2) A main exploiter vs main match.
+        else:
+            return "main_0" if episode.episode_id % 2 == agent_id \
+                else "main_exploiter_0"
 
     config = {
         "env": "markov_soccer",
-        "callbacks": SelfPlayCallback,
+        "callbacks": LeagueBasedSelfPlayCallback,
         "num_sgd_iter": 20,
         "num_envs_per_worker": 5,
         "multiagent": {
@@ -165,9 +191,11 @@ if __name__ == "__main__":
             # custom callback defined above (`SelfPlayCallback`).
             "policies": {
                 # Our main policy, we'd like to optimize.
-                "main": (None, OBS_SPACE, ACTION_SPACE, {}),
-                # An initial random opponent to play against.
-                "random": (RandomPolicy, OBS_SPACE, ACTION_SPACE, {}),
+                "main_0": (None, OBS_SPACE, ACTION_SPACE, {}),
+                # Initial main exploiter.
+                "main_exploiter_0": (None, OBS_SPACE, ACTION_SPACE, {}),
+                # Initial league exploiter.
+                "league_exploiter_0": (None, OBS_SPACE, ACTION_SPACE, {}),
             },
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)
@@ -211,7 +239,7 @@ if __name__ == "__main__":
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
         human_player = 1
-        env = Environment("connect_four")
+        env = Environment("markov_soccer")
 
         while num_episodes < args.num_episodes_human_play:
             print("You play as {}".format("o" if human_player else "x"))
