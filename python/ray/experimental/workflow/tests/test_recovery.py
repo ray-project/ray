@@ -5,10 +5,9 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import RaySystemError
+from ray.exceptions import RaySystemError, RayTaskError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
-from ray.experimental.workflow.recovery import WorkflowNotResumableError
 from ray.experimental.workflow import workflow_storage
 
 
@@ -60,7 +59,7 @@ def simple(x):
 
 
 def test_recovery_simple():
-    ray.init()
+    ray.init(namespace="workflow")
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
@@ -78,7 +77,7 @@ def test_recovery_simple():
 
 
 def test_recovery_complex():
-    ray.init()
+    ray.init(namespace="workflow")
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
@@ -98,9 +97,9 @@ def test_recovery_complex():
 
 
 def test_recovery_non_exists_workflow():
-    ray.init()
-    with pytest.raises(WorkflowNotResumableError):
-        workflow.resume("this_workflow_id_does_not_exist")
+    ray.init(namespace="workflow")
+    with pytest.raises(RayTaskError):
+        ray.get(workflow.resume("this_workflow_id_does_not_exist"))
     ray.shutdown()
 
 
@@ -114,7 +113,7 @@ def test_recovery_cluster_failure():
     subprocess.run(["ray stop"], shell=True)
     proc.kill()
     time.sleep(1)
-    ray.init()
+    ray.init(namespace="workflow")
     assert ray.get(workflow.resume("cluster_failure")) == 20
     ray.shutdown()
 
@@ -128,7 +127,7 @@ def recursive_chain(x):
 
 
 def test_shortcut():
-    ray.init()
+    ray.init(namespace="workflow")
     output = workflow.run(recursive_chain.step(0), workflow_id="shortcut")
     assert ray.get(output) == 100
     # the shortcut points to the step with output checkpoint

@@ -99,6 +99,16 @@
     prepare: python wait_cluster.py 4 600
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --no-streaming
 
+# Test autoscaling 1TB streaming shuffle with a large number of partitions.
+- name: autoscaling_shuffle_1tb_1000_partitions
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute_autoscaling.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
+
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
 - name: shuffle_1tb_1000_partition
   cluster:
@@ -147,23 +157,43 @@
 - name: dask_on_ray_large_scale_test_no_spilling
   cluster:
     app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+    compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 5 600
-    script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+    prepare: python wait_cluster.py 21 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
 
-# Test large scale dask on ray test without spilling.
+  smoke_test:
+    cluster:
+      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+    run:
+      timeout: 7200
+      prepare: python wait_cluster.py 5 600
+      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+
+# Test large scale dask on ray test with spilling.
 - name: dask_on_ray_large_scale_test_spilling
   cluster:
     app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+    compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 5 600
-    script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
+    prepare: python wait_cluster.py 21 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
+
+  smoke_test:
+    cluster:
+      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+    run:
+      timeout: 7200
+      prepare: python wait_cluster.py 5 600
+      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
 
 # Stress tests with many tasks
 - name: stress_test_many_tasks

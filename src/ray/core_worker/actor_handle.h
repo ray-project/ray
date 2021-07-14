@@ -38,7 +38,7 @@ class ActorHandle {
               const std::string &extension_data, int64_t max_task_retries);
 
   /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized);
+  explicit ActorHandle(const std::string &serialized);
 
   /// Constructs an ActorHandle from a gcs::ActorTableData message.
   ActorHandle(const rpc::ActorTableData &actor_table_data);

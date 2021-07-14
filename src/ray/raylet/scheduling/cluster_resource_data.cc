@@ -1,4 +1,5 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+
 #include "ray/common/task/scheduling_resources.h"
 
 const std::string resource_labels[] = {
@@ -12,6 +13,16 @@ const std::string ResourceEnumToString(PredefinedResources resource) {
          "trace: https://github.com/ray-project/ray/issues/new.";
   std::string label = resource_labels[resource];
   return label;
+}
+
+const PredefinedResources ResourceStringToEnum(const std::string &resource) {
+  for (std::size_t i = 0; i < resource_labels->size(); i++) {
+    if (resource_labels[i] == resource) {
+      return static_cast<PredefinedResources>(i);
+    }
+  }
+  // The resource is invalid.
+  return PredefinedResources_MAX;
 }
 
 std::string VectorToString(const std::vector<FixedPoint> &vector) {

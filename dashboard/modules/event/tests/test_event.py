@@ -184,22 +184,22 @@ async def test_monitor_events(enable_event_module):
             common_log,
             max_bytes=10,
             backup_count=10)
-        read_events = []
+        test_events1 = []
         monitor_task = monitor_events(
             temp_dir,
-            lambda x: read_events.extend(x),
+            lambda x: test_events1.extend(x),
             scan_interval_seconds=0.01)
         assert not monitor_task.done()
         count = 10
 
-        async def _writer(*args, spin=True):
+        async def _writer(*args, read_events, spin=True):
             for x in range(*args):
                 test_logger.info("%s", x)
                 if spin:
                     while str(x) not in read_events:
                         await asyncio.sleep(0.01)
 
-        async def _check_events(expect_events, timeout=10):
+        async def _check_events(expect_events, read_events, timeout=10):
             start_time = time.time()
             while True:
                 sorted_events = sorted(int(i) for i in read_events)
@@ -214,19 +214,23 @@ async def test_monitor_events(enable_event_module):
                 await asyncio.sleep(1)
 
         await asyncio.gather(
-            _writer(count), _check_events([str(i) for i in range(count)]))
+            _writer(count, read_events=test_events1),
+            _check_events(
+                [str(i) for i in range(count)], read_events=test_events1))
 
         monitor_task.cancel()
-        read_events = []
+        test_events2 = []
         monitor_task = monitor_events(
             temp_dir,
-            lambda x: read_events.extend(x),
+            lambda x: test_events2.extend(x),
             scan_interval_seconds=0.1)
 
-        await _check_events([str(i) for i in range(count)])
+        await _check_events(
+            [str(i) for i in range(count)], read_events=test_events2)
 
-        await _writer(count, count * 2)
-        await _check_events([str(i) for i in range(count * 2)])
+        await _writer(count, count * 2, read_events=test_events2)
+        await _check_events(
+            [str(i) for i in range(count * 2)], read_events=test_events2)
 
         log_file_count = len(os.listdir(temp_dir))
 
@@ -237,10 +241,14 @@ async def test_monitor_events(enable_event_module):
             backup_count=10)
         assert len(os.listdir(temp_dir)) == log_file_count
 
-        await _writer(count * 2, count * 3, spin=False)
-        await _check_events([str(i) for i in range(count * 3)])
-        await _writer(count * 3, count * 4, spin=False)
-        await _check_events([str(i) for i in range(count * 4)])
+        await _writer(
+            count * 2, count * 3, spin=False, read_events=test_events2)
+        await _check_events(
+            [str(i) for i in range(count * 3)], read_events=test_events2)
+        await _writer(
+            count * 3, count * 4, spin=False, read_events=test_events2)
+        await _check_events(
+            [str(i) for i in range(count * 4)], read_events=test_events2)
 
         # Test cancel monitor task.
         monitor_task.cancel()
