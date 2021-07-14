@@ -315,31 +315,44 @@ def sort_main():
     parts = _load_manifest(constants.INPUT_MANIFEST_FILE)
     boundaries = sortlib.get_boundaries(args.num_reducers)
 
-    mapper_results = np.empty((args.num_mappers, args.num_reducers),
-                              dtype=object)
     opt = {
         "num_returns": args.num_reducers,
         "memory": args.input_part_size * 2,
     }
+    mapper_results = None
+    merge_results = []
+    merge_count = 0
+    merge_concurrency = 6 * args.num_reducers
+
+    def submit_merge_tasks():
+        nonlocal merge_count
+        if mapper_results is None:
+            return
+        if merge_count > merge_concurrency:
+            ray.wait(merge_results,
+                     num_returns=merge_count - merge_concurrency)
+        merge_results.extend([
+            merge_mapper_blocks.remote(
+                *mapper_results[:, r].tolist(),
+                part_id=constants.merge_part_ids(r, merge_count),
+            ) for r in range(args.num_reducers)
+        ])
+        merge_count += args.num_reducers
+
     for part_id, node, path in parts:
+        m = part_id % args.merge_factor
+        if m == 0:
+            submit_merge_tasks()
+            mapper_results = np.empty((args.merge_factor, args.num_reducers),
+                                      dtype=object)
         if not args.skip_input:
             opt.update(_node_res(node))
-        mapper_results[part_id, :] = mapper.options(**opt).remote(
-            part_id, boundaries, path)
+        mapper_results[m, :] = mapper.options(**opt).remote(
+            m, boundaries, path)
 
-    merge_results = []
-    for m in range(args.num_merged_mappers):
-        for r in range(args.num_reducers):
-            start = m * args.merge_factor
-            end = start + args.merge_factor
-            part_id = constants.merge_part_ids(r, m)
-            task = merge_mapper_blocks.remote(
-                *mapper_results[start:end, r].tolist(),
-                part_id=part_id,
-            )
-            merge_results.append(task)
+    submit_merge_tasks()
+    mapper_results = None
 
-    del mapper_results
     merge_results = ray.get(merge_results)
     merge_results.sort(key=lambda p: p.node)
     reducer_inputs = [
