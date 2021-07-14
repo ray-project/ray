@@ -155,6 +155,10 @@ if "RAY_EXPERIMENTAL_DATA_API" in os.environ:
     from ray.experimental import data
     __all__.append(data)
 
+# Vendored packages
+from ray.vendor import cloudpickle, colorama
+__all__ += ["cloudpickle", "colorama"]
+
 
 # Remove modules from top-level ray
 def _ray_user_setup_function():

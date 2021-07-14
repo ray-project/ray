@@ -18,7 +18,7 @@ from typing import Any, Dict, Tuple, Optional, List
 import click
 import warnings
 
-import colorama
+from ray import colorama
 
 
 class _ColorfulMock:

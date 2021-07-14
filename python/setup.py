@@ -104,9 +104,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful"],
+    "default": ["colorful", "filelock"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
     "observability": [
         "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
@@ -115,6 +114,8 @@ extras = {
 }
 if sys.version_info >= (3, 7, 0):
     extras["k8s"].append("kopf")
+
+extras["tune"] = extras["default"] + ["pandas", "tabulate", "tensorboardX"]
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",
@@ -138,9 +139,7 @@ install_requires = [
     "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
-    "colorama",
     "dataclasses; python_version < '3.7'",
-    "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
