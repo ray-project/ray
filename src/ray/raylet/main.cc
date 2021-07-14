@@ -20,10 +20,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/thread_pool.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-#include "ray/common/thread_pool.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -109,10 +109,11 @@ int main(int argc, char *argv[]) {
   // // IO Service for node manager.
   // instrumented_io_context main_service;
 
-  // // Ensure that the IO service keeps running. Without this, the service will exit as soon
+  // // Ensure that the IO service keeps running. Without this, the service will exit as
+  // soon
   // // as there is no more work to be processed.
   // boost::asio::io_service::work main_work(main_service);
-  auto& main_service = ray::thread_pool::_io_pool.GetIOService();
+  auto &main_service = ray::thread_pool::_io_pool.GetIOService();
   // Initialize gcs client
   // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
   // `enable_async_conn` as false.

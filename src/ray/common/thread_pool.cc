@@ -6,5 +6,5 @@ namespace thread_pool {
 CPUThreadPool _cpu_pool(4);
 IOThreadPool _io_pool;
 
-}
-}
+}  // namespace thread_pool
+}  // namespace ray
