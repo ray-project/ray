@@ -13,17 +13,14 @@ from torchvision.models import resnet50
 
 class Preprocessor:
     def __init__(self):
-        self.torch_transform = transforms.Compose(
-            [
-                transforms.Resize(224),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
+        self.torch_transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     def __call__(self, img_bytes):
         try:
