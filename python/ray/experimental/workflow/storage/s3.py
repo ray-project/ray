@@ -78,43 +78,45 @@ class S3StorageImpl(Storage):
         return data
 
     @data_save_error
-    async def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
-                                       metadata: Dict[str, Any]) -> None:
+    async def save_step_input_metadata(
+            self, workflow_id: str, step_id: StepID,
+            metadata: Dict[str, Any]) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id,
                                  STEP_INPUTS_METADATA)
         await self._put_object(path, metadata, True)
 
     @data_load_error
-    async def load_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID) -> Dict[str, Any]:
+    async def load_step_output_metadata(self, workflow_id: str, step_id: StepID
+                                        ) -> Awaitable[Dict[str, Any]]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id,
                                  STEP_OUTPUTS_METADATA)
         data = await self._get_object(path, True)
         return data
 
     @data_save_error
-    async def save_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID,
-                                        metadata: Dict[str, Any]) -> None:
+    async def save_step_output_metadata(
+            self, workflow_id: str, step_id: StepID,
+            metadata: Dict[str, Any]) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id,
                                  STEP_OUTPUTS_METADATA)
         await self._put_object(path, metadata, True)
 
     @data_load_error
-    async def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
+    async def load_step_output(self, workflow_id: str,
+                               step_id: StepID) -> Awaitable[Any]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
         data = await self._get_object(path)
         return data
 
     @data_save_error
     async def save_step_output(self, workflow_id: str, step_id: StepID,
-                               output: Any) -> None:
+                               output: Any) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
         await self._put_object(path, output)
 
     @data_load_error
     async def load_step_func_body(self, workflow_id: str,
-                                  step_id: StepID) -> Callable:
+                                  step_id: StepID) -> Awaitable[Callable]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id,
                                  STEP_FUNC_BODY)
         data = await self._get_object(path)
@@ -122,41 +124,41 @@ class S3StorageImpl(Storage):
 
     @data_save_error
     async def save_step_func_body(self, workflow_id: str, step_id: StepID,
-                                  func_body: Callable) -> None:
+                                  func_body: Callable) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id,
                                  STEP_FUNC_BODY)
         await self._put_object(path, func_body)
 
     @data_load_error
     async def load_step_args(self, workflow_id: str,
-                             step_id: StepID) -> ArgsType:
+                             step_id: StepID) -> Awaitable[ArgsType]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
         data = await self._get_object(path)
         return data
 
     @data_save_error
     async def save_step_args(self, workflow_id: str, step_id: StepID,
-                             args: ArgsType) -> None:
+                             args: ArgsType) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
         await self._put_object(path, args)
 
     @data_load_error
     async def load_object_ref(self, workflow_id: str,
-                              object_id) -> ray.ObjectRef:
+                              object_id) -> Awaitable[ray.ObjectRef]:
         path = self._get_s3_path(workflow_id, OBJECTS_DIR, object_id)
         data = await self._get_object(path)
         return ray.put(data)  # simulate an ObjectRef
 
     @data_save_error
     async def save_object_ref(self, workflow_id: str,
-                              obj_ref: ray.ObjectRef) -> None:
+                              obj_ref: ray.ObjectRef) -> Awaitable[None]:
         path = self._get_s3_path(workflow_id, OBJECTS_DIR, obj_ref.hex())
         data = await obj_ref
         await self._put_object(path, data)
 
     @data_load_error
     async def get_step_status(self, workflow_id: str,
-                              step_id: StepID) -> StepStatus:
+                              step_id: StepID) -> Awaitable[StepStatus]:
         path = self._get_s3_path(workflow_id, STEPS_DIR, step_id) + "/"
         async with self._client() as s3:
             response = await s3.list_objects_v2(

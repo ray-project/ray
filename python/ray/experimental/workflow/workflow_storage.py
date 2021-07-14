@@ -103,7 +103,7 @@ class WorkflowStorage:
             tasks.append(
                 self._update_dynamic_output(outer_most_step_id,
                                             dynamic_output_id))
-        asyncio_run(*tasks)
+        asyncio_run(asyncio.gather(tasks))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
@@ -150,8 +150,9 @@ class WorkflowStorage:
         return asyncio_run(
             self._storage.load_object_ref(self._workflow_id, object_id))
 
-    async def _update_dynamic_output(self, outer_most_step_id: StepID,
-                                     dynamic_output_step_id: StepID) -> None:
+    async def _update_dynamic_output(
+            self, outer_most_step_id: StepID,
+            dynamic_output_step_id: StepID) -> Awaitable[None]:
         """Update dynamic output.
 
         There are two steps involved:
@@ -182,7 +183,7 @@ class WorkflowStorage:
             await self._storage.save_step_output_metadata(
                 self._workflow_id, outer_most_step_id, metadata)
 
-    async def _locate_output_step_id(self, step_id: StepID):
+    async def _locate_output_step_id(self, step_id: StepID) -> Awaitable[str]:
         metadata = await self._storage.load_step_output_metadata(
             self._workflow_id, step_id)
         return (metadata.get("dynamic_output_step_id")
@@ -275,4 +276,4 @@ class WorkflowStorage:
             self._write_step_inputs(w.id, w.get_inputs())
             for w in workflow.iter_workflows_in_dag()
         ]
-        asyncio_run(*tasks)
+        asyncio_run(asyncio.gather(tasks))

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import ray
 from ray.experimental.workflow.common import StepID
-from typing import Any, Callable, List, Dict, Tuple
+from typing import Any, Awaitable, Callable, List, Dict, Tuple
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -39,8 +39,8 @@ class Storage(metaclass=abc.ABCMeta):
     """
 
     @abstractmethod
-    async def load_step_input_metadata(self, workflow_id: str,
-                                       step_id: StepID) -> Dict[str, Any]:
+    async def load_step_input_metadata(self, workflow_id: str, step_id: StepID
+                                       ) -> Awaitable[Dict[str, Any]]:
         """Load the input metadata of a step.
 
         Args:
@@ -55,8 +55,9 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    async def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
-                                       metadata: Dict[str, Any]) -> None:
+    async def save_step_input_metadata(
+            self, workflow_id: str, step_id: StepID,
+            metadata: Dict[str, Any]) -> Awaitable[None]:
         """Save the input metadata of a step.
 
         Args:
@@ -69,8 +70,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    async def load_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID) -> Dict[str, Any]:
+    async def load_step_output_metadata(self, workflow_id: str, step_id: StepID
+                                        ) -> Awaitable[Dict[str, Any]]:
         """Load the output metadata of a step.
 
         Args:
@@ -85,9 +86,9 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    async def save_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID,
-                                        metadata: Dict[str, Any]) -> None:
+    async def save_step_output_metadata(
+            self, workflow_id: str, step_id: StepID,
+            metadata: Dict[str, Any]) -> Awaitable[None]:
         """Save the output metadata of a step.
 
         Args:
@@ -100,7 +101,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    async def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
+    async def load_step_output(self, workflow_id: str,
+                               step_id: StepID) -> Awaitable[Any]:
         """Load the output of the workflow step from checkpoint.
 
         Args:
@@ -116,7 +118,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def save_step_output(self, workflow_id: str, step_id: StepID,
-                               output: Any) -> None:
+                               output: Any) -> Awaitable[None]:
         """Save the output of a workflow step.
 
         Args:
@@ -129,7 +131,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def load_step_func_body(self, workflow_id: str,
-                                  step_id: StepID) -> Callable:
+                                  step_id: StepID) -> Awaitable[Callable]:
         """Load the function body of the workflow step.
 
         Args:
@@ -145,7 +147,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def save_step_func_body(self, workflow_id: str, step_id: StepID,
-                                  func_body: Callable) -> None:
+                                  func_body: Callable) -> Awaitable[None]:
         """Save the function body of the workflow step.
 
         Args:
@@ -159,7 +161,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def load_step_args(self, workflow_id: str,
-                             step_id: StepID) -> ArgsType:
+                             step_id: StepID) -> Awaitable[ArgsType]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
@@ -177,7 +179,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def save_step_args(self, workflow_id: str, step_id: StepID,
-                             args: ArgsType) -> None:
+                             args: ArgsType) -> Awaitable[None]:
         """Save the function body of the workflow step.
 
         Args:
@@ -191,7 +193,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def load_object_ref(self, workflow_id: str,
-                              object_id: str) -> ray.ObjectRef:
+                              object_id: str) -> Awaitable[ray.ObjectRef]:
         """Load the input object ref.
 
         Args:
@@ -207,7 +209,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def save_object_ref(self, workflow_id: str,
-                              obj_ref: ray.ObjectRef) -> None:
+                              obj_ref: ray.ObjectRef) -> Awaitable[None]:
         """Save the input object ref.
 
         Args:
@@ -220,7 +222,7 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abstractmethod
     async def get_step_status(self, workflow_id: str,
-                              step_id: StepID) -> StepStatus:
+                              step_id: StepID) -> Awaitable[StepStatus]:
         """Check the status of a step in the storage.
 
         Args:
