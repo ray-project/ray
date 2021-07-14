@@ -14,19 +14,20 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
-def evenly_distribute_cpus_gpus(
-        trial_runner: "trial_runner.TrialRunner", trial: Trial,
-        result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
-) -> Union[None, PlacementGroupFactory, Resources]:
+def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
+                                trial: Trial, result: Dict[str, Any],
+                                scheduler: "ResourceChangingScheduler"
+                                ) -> Union[None, PlacementGroupFactory]:
     """This is a basic resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
 
     The function naively balances free resources (CPUs and GPUs) between
     trials, giving them all equal priority, ensuring that all resources
-    are always being used. If for some reason a trial ends up with
-    more resources than there are free ones, it will adjust downwards.
+    are always being used. All of the resources will be placed in one bundle.
 
+    If for some reason a trial ends up with
+    more resources than there are free ones, it will adjust downwards.
     It will also ensure that trial as at least as many resources as
     it started with (``base_trial_resource``).
 
