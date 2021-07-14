@@ -506,13 +506,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to storing and retrieving objects.
   ///
 
-  /// Set options for this client's interactions with the object store.
-  ///
-  /// \param[in] name Unique name for this object store client.
-  /// \param[in] limit The maximum amount of memory in bytes that this client
-  /// can use in the object store.
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
@@ -886,6 +879,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
       const std::string &name);
 
+  /// Returns a list of the named actors currently in the system.
+  ///
+  /// Each actor is returned as a pair of <namespace, name>.
+  /// This includes actors that are pending placement or being restarted.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all namespaces.
+  /// \return The list of <namespace, name> pairs and a status.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
+      bool all_namespaces);
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -1112,6 +1115,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Get a handle to a named actor for local mode.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
+
+  /// Get all named actors in local mode.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
+  ListNamedActorsLocalMode();
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from

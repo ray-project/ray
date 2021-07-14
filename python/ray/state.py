@@ -773,6 +773,13 @@ class GlobalState:
         self._check_connected()
         return json.loads(self.global_state_accessor.get_system_config())
 
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        """Get the node to connect for a Ray driver."""
+        self._check_connected()
+        node_info_str = (self.global_state_accessor.
+                         get_node_to_connect_for_driver(node_ip_address))
+        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""

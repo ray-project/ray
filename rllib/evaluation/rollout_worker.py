@@ -1071,8 +1071,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        add_map, add_prep = self._build_policy_map(policy_dict,
-                                                   self.policy_config)
+        if self.tf_sess is not None:
+            with self.tf_sess.graph.as_default():
+                with self.tf_sess.as_default():
+                    add_map, add_prep = self._build_policy_map(
+                        policy_dict, self.policy_config)
+        else:
+            add_map, add_prep = self._build_policy_map(policy_dict,
+                                                       self.policy_config)
         new_policy = add_map[policy_id]
 
         self.policy_map.update(add_map)
@@ -1247,8 +1253,9 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
-        self.policy_map[policy_id].export_model(export_dir)
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
+        self.policy_map[policy_id].export_model(export_dir, onnx=onnx)
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,

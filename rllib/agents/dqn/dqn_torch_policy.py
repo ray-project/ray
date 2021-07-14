@@ -62,7 +62,7 @@ class QLoss:
             # Indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0.
-            floor_equal_ceil = (ub - lb < 0.5).float()
+            floor_equal_ceil = ((ub - lb) < 0.5).float()
 
             # (batch_size, num_atoms, num_atoms)
             l_project = F.one_hot(lb.long(), num_atoms)
@@ -79,7 +79,7 @@ class QLoss:
             # Rainbow paper claims that using this cross entropy loss for
             # priority is robust and insensitive to `prioritized_replay_alpha`
             self.td_error = softmax_cross_entropy_with_logits(
-                logits=q_logits_t_selected, labels=m)
+                logits=q_logits_t_selected, labels=m.detach())
             self.loss = torch.mean(self.td_error * importance_weights)
             self.stats = {
                 # TODO: better Q stats for dist dqn

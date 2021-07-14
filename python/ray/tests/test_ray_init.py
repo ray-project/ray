@@ -141,9 +141,9 @@ def test_ray_init_from_workers(ray_start_cluster):
         address, _redis_password=password, _node_ip_address="127.0.0.3")
     assert info["node_ip_address"] == "127.0.0.3"
 
-    address_info = ray._private.services.get_address_info_from_redis(
-        address, "127.0.0.3", redis_password=password, log_warning=False)
-    assert address_info["node_manager_port"] == node2.node_manager_port
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        address, "127.0.0.3", redis_password=password)
+    assert node_info.node_manager_port == node2.node_manager_port
 
 
 def test_ray_init_local(shutdown_only):
