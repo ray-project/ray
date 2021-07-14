@@ -940,8 +940,11 @@ class Dataset(Generic[T]):
         """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider implementing a custom writeable datasource
+        and using ``.write_datasource()``.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size)
 
         Returns:
             A list of remote Pandas dataframes created from this dataset.
@@ -957,8 +960,11 @@ class Dataset(Generic[T]):
         """Convert this dataset into a distributed set of Arrow tables.
 
         This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider implementing a custom writeable datasource
+        and using ``.write_datasource()``.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size)
 
         Returns:
             A list of remote Arrow tables created from this dataset.
