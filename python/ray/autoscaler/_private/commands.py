@@ -452,8 +452,11 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
         cli_logger.success("No nodes remaining.")
 
 
-def kill_node(config_file: str, yes: bool, hard: bool,
-              override_cluster_name: Optional[str]) -> Optional[str]:
+def kill_node(config_file: str,
+              yes: bool,
+              hard: bool,
+              override_cluster_name: Optional[str],
+              _node: Optional[str] = None) -> Optional[str]:
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -470,7 +473,13 @@ def kill_node(config_file: str, yes: bool, hard: bool,
     if not nodes:
         cli_logger.print("No worker nodes detected.")
         return None
-    node = random.choice(nodes)
+    if not _node:
+        node = random.choice(nodes)
+    else:
+        # Kill specific node if supplied via hidden arg.
+        # Used exclusively by autoscaler to stop Ray on nodes of on-prem
+        # clusters.
+        node = _node
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
     if hard:
         provider.terminate_node(node)

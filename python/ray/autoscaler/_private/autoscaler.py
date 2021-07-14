@@ -24,6 +24,7 @@ from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.node_provider import \
     record_local_head_state_if_needed
+from ray.autoscaler._private.local.node_provider import stop_ray_on_local_nodes
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -225,10 +226,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -246,10 +244,7 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -318,9 +313,7 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
-                    self.prom_metrics.stopped_nodes.inc(
-                        len(nodes_to_terminate))
-                    self.provider.terminate_nodes(nodes_to_terminate)
+                    self._terminate_nodes_and_cleanup(nodes_to_terminate)
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -355,6 +348,16 @@ class StandardAutoscaler:
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
+        """Terminate specified nodes and clean associated autoscaler state."""
+        if isinstance(self.provider, LocalNodeProvider):
+            # Need to explicitly stop Ray for on-prem clusters.
+            stop_ray_on_local_nodes(nodes_to_terminate, self.config_path)
+        self.provider.terminate_nodes(nodes_to_terminate)
+        for node in nodes_to_terminate:
+            self.node_tracker.untrack(node)
+            self.prom_metrics.stopped_nodes.inc()
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:

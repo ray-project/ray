@@ -1,5 +1,6 @@
 from filelock import FileLock
 from threading import RLock
+from typing import List
 import json
 import os
 import socket
@@ -10,6 +11,7 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_WORKER,
                                  NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
                                  TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
                                  STATUS_UP_TO_DATE)
+from ray.autoscaler._private.commands import kill_node
 from ray.autoscaler._private.local.config import bootstrap_local
 from ray.autoscaler._private.local.config import get_lock_path
 from ray.autoscaler._private.local.config import get_state_path
@@ -285,3 +287,14 @@ def record_local_head_state_if_needed(
         local_provider.create_node(node_config={}, tags=head_tags, count=1)
 
         assert head_ip in local_provider.non_terminated_nodes({})
+
+
+def stop_ray_on_local_nodes(nodes_to_terminate: List[str], config_path: str):
+    """Stops Ray on specified nodes."""
+    for node in nodes_to_terminate:
+        kill_node(
+            config_path,
+            yes=True,
+            hard=False,
+            override_cluster_name=None,
+            _node=node)
