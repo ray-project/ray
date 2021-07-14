@@ -246,10 +246,12 @@ By default, transformations are executed using Ray tasks. For transformations th
 
     # Preprocess the data.
     ds = ds.map(preprocess)
+    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
 
     # Apply GPU batch inference with actors, and assign each actor a GPU using
     # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
     ds = ds.map_batches(batch_infer, compute="actors", batch_size=256, num_gpus=1)
+    # -> Map Progress (16 actors 4 pending): 100%|█████| 200/200 [00:07<00:00, 27.60it/s]
 
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
