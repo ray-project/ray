@@ -78,12 +78,14 @@ def evenly_distribute_cpus_gpus(
     else:
         upper_cpu_limit = math.ceil(total_available_cpus / len(
             trial_runner.get_live_trials()) / min_cpu)
+        upper_cpu_limit = max(min_cpu, upper_cpu_limit)
 
     if min_gpu == 0:
         upper_gpu_limit = 0
     else:
         upper_gpu_limit = math.ceil(total_available_gpus / len(
             trial_runner.get_live_trials()) / min_gpu)
+        upper_gpu_limit = max(min_gpu, upper_gpu_limit)
 
     # Function to check how many CPUs and GPUs a trial is using currently
     def get_used_cpus_and_gpus(t: Trial):
