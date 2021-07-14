@@ -47,7 +47,7 @@ Datasource Compatibility Matrices
    * - Binary Files
      - ``ray.data.read_binary_files()``
      - ✅
-   * - Read from Custom Datasource
+   * - Custom Datasource
      - ``ray.data.read_datasource()``
      - ✅
    * - Spark Dataframe
@@ -82,7 +82,7 @@ Datasource Compatibility Matrices
    * - Parquet File Format
      - ``ds.write_parquet()``
      - ✅
-   * - Write to Custom Datasource
+   * - Custom Datasource
      - ``ds.write_datasource()``
      - ✅
    * - Spark Dataframe
