@@ -31,25 +31,31 @@ def get_args():
     )
     parser.add_argument(
         "--total_data_size",
-        default=1 * 1000 * 1024 * 1024 * 1024,
+        default=2 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=256,
+        default=512,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=16,
+        default=32,
         type=int,
         help="number of reduce actors",
     )
     parser.add_argument(
+        "--merger_concurrency",
+        default=4,
+        type=int,
+        help="number of merge tasks per node",
+    )
+    parser.add_argument(
         "--num_merged_mappers",
-        default=16,
+        default=32,
         type=int,
         help="number of merged mapper blocks per reducer",
     )
@@ -322,7 +328,7 @@ def sort_main():
     mapper_results = None
     merge_results = []
     merge_count = 0
-    merge_concurrency = 6 * args.num_reducers
+    merge_concurrency = args.merger_concurrency * args.num_reducers
 
     def submit_merge_tasks():
         nonlocal merge_count
