@@ -264,7 +264,7 @@ Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` 
 .. code-block:: python
 
     @ray.remote
-    def consume(data):
+    def consume(data: Dataset[int]) -> int:
         num_batches = 0
         for batch in data.iter_batches():
             num_batches += 1
@@ -283,7 +283,7 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
         def __init__(self, rank: int):
             ...
 
-        def train(self, shard: Dataset) -> int:
+        def train(self, shard: Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
                 ...
             return shard.count()
