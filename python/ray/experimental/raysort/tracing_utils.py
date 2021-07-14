@@ -15,7 +15,7 @@ HISTOGRAM_BOUNDARIES = list(range(50, 200, 50))
 def timeit(
     event: str,
     report_time=False,
-    report_in_progress=False,
+    report_in_progress=True,
     report_completed=True,
 ):
     def decorator(f):
@@ -37,8 +37,7 @@ def timeit(
                                             echo=report_completed)
                 return ret
             finally:
-                progress_tracker.dec.remote(f"{event}_in_progress",
-                                            echo=report_in_progress)
+                progress_tracker.dec.remote(f"{event}_in_progress")
 
         return wrapped_f
 
@@ -48,17 +47,20 @@ def timeit(
 def get_metrics(_args):
     return {
         "gauges": [
-            "mapper_in_progress",
-            "reducer_in_progress",
-            "sorting_in_progress",
-            "mapper_completed",
-            "reducer_completed",
-            "sorting_completed",
+            "map_in_progress",
+            "merge_in_progress",
+            "reduce_in_progress",
+            "sort_in_progress",
+            "map_completed",
+            "merge_completed",
+            "reduce_completed",
+            "sort_completed",
         ],
         "histograms": [
-            ("mapper_time", HISTOGRAM_BOUNDARIES),
-            ("reducer_time", HISTOGRAM_BOUNDARIES),
-            ("sorting_time", HISTOGRAM_BOUNDARIES),
+            ("map_time", HISTOGRAM_BOUNDARIES),
+            ("merge_time", HISTOGRAM_BOUNDARIES),
+            ("reduce_time", HISTOGRAM_BOUNDARIES),
+            ("sort_time", HISTOGRAM_BOUNDARIES),
         ],
     }
 
