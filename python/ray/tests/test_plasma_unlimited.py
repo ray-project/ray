@@ -1,4 +1,5 @@
 import numpy as np
+import json
 import random
 import os
 import shutil
@@ -200,17 +201,27 @@ def test_fd_reuse_no_memory_corruption(shutdown_only):
     platform.system() != "Linux",
     reason="Only Linux handles fallback allocation disk full error.")
 def test_fallback_allocation_failure(shutdown_only):
+    file_system_config = {
+        "type": "filesystem",
+        "params": {
+            "directory_path": "/tmp",
+        }
+    }
     ray.init(
         object_store_memory=100e6,
         _temp_dir="/dev/shm",
-        _system_config={"plasma_unlimited": True})
+        _system_config={
+            "object_spilling_config": json.dumps(file_system_config),
+        })
     shm_size = shutil.disk_usage("/dev/shm").total
     object_size = max(100e6, shm_size // 5)
     num_exceptions = 0
     refs = []
     for i in range(8):
+        print("Start put", i)
         try:
-            refs.append(ray.put(np.zeros(object_size, dtype=np.uint8)))
+            refs.append(
+                ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
         except ray.exceptions.ObjectStoreFullError:
             num_exceptions = num_exceptions + 1
     assert num_exceptions > 0

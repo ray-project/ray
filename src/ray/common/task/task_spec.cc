@@ -92,6 +92,11 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+const std::string TaskSpecification::GetSerializedActorHandle() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().serialized_actor_handle();
+}
+
 JobID TaskSpecification::JobId() const {
   if (message_->job_id().empty() /* e.g., empty proto default */) {
     return JobID::Nil();

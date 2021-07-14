@@ -124,14 +124,15 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     .. code-block:: shell
 
       pip install -e python --verbose
-      bazel build //cpp/example:example
+      cd cpp/example/
+      bazel build //:example
 
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
 
     .. code-block:: shell
 
       ray stop
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so
+      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so
 
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
 
@@ -139,7 +140,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
       ray stop
       ray start --head
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so --ray-address=127.0.0.1:6379
+      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so --ray-address=127.0.0.1:6379
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
