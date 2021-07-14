@@ -104,7 +104,7 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful"],
+    "default": ["aiohttp", "aiohttp_cors", "aioredis", "colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
@@ -134,9 +134,6 @@ install_requires = [
     # TODO(alex) Pin the version once this PR is
     # included in the stable release.
     # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-    "aiohttp",
-    "aiohttp_cors",
-    "aioredis",
     "click >= 7.0",
     "colorama",
     "dataclasses; python_version < '3.7'",
