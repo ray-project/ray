@@ -264,7 +264,7 @@ def build_pipeline(steps):
                 }
 
             step_conf["commands"] = [
-                "pip install -q -r requirements.txt",
+                "pip install -q -r release/requirements.txt",
                 "pip install -U boto3 botocore",
                 f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray",
                 cmd,
@@ -285,7 +285,7 @@ def alert_pipeline(stats: bool = False):
         cmd += " --stats"
 
     step_conf["commands"] = [
-        "pip install -q -r requirements.txt",
+        "pip install -q -r release/requirements.txt",
         "pip install -U boto3 botocore",
         cmd,
     ]
