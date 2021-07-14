@@ -315,7 +315,7 @@ Contributing
 Contributions to Datasets are welcome! There are many potential improvements, including:
 
 - Supporting more datasources and transforms.
-- Improving compatibility with ecosystem libraries.
+- Integration with more ecosystem libraries.
 - Adding features that require partitioning such as groupby() and join().
 - Performance optimizations.
 
