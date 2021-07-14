@@ -9,7 +9,7 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
-
+RUN ls -l $FIND_LINKS_PATH
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install --find-links $FIND_LINKS_PATH \
     $(basename $WHEEL_PATH)[all] \
     $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
