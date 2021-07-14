@@ -104,7 +104,7 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful", "filelock"],
+    "default": ["colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "k8s": ["kubernetes"],
     "observability": [
@@ -114,8 +114,6 @@ extras = {
 }
 if sys.version_info >= (3, 7, 0):
     extras["k8s"].append("kopf")
-
-extras["tune"] = extras["default"] + ["pandas", "tabulate", "tensorboardX"]
 
 extras["rllib"] = extras["tune"] + [
     "dm_tree",
@@ -140,6 +138,7 @@ install_requires = [
     "aioredis",
     "click >= 7.0",
     "dataclasses; python_version < '3.7'",
+    "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
