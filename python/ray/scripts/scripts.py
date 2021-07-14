@@ -239,9 +239,9 @@ def debug(address):
             ])
         for i, line in enumerate(format_table(table)):
             print(line)
-            if i >= 1 and not sessions_data[i-1]["traceback"].startswith(
+            if i >= 1 and not sessions_data[i - 1]["traceback"].startswith(
                     "NoneType: None"):
-                print(sessions_data[i-1]["traceback"])
+                print(sessions_data[i - 1]["traceback"])
         inp = input("Enter breakpoint index or press enter to refresh: ")
         if inp == "":
             print()
