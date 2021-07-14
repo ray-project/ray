@@ -24,7 +24,6 @@ torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
-    from ray.rllib.utils.typing import PartialTrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
