@@ -890,7 +890,7 @@ class Dataset(Generic[T]):
         Note that this function will set the Dask scheduler to Dask-on-Ray
         globally, via the config.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Dask DataFrame created from this dataset.
@@ -919,7 +919,7 @@ class Dataset(Generic[T]):
     def to_mars(self) -> "mars.DataFrame":
         """Convert this dataset into a MARS dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A MARS dataframe created from this dataset.
@@ -929,7 +929,7 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
@@ -944,7 +944,7 @@ class Dataset(Generic[T]):
         underlying data, consider implementing a custom writeable datasource
         and using ``.write_datasource()``.
 
-        Time complexity: O(dataset size)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A list of remote Pandas dataframes created from this dataset.
@@ -964,7 +964,7 @@ class Dataset(Generic[T]):
         underlying data, consider implementing a custom writeable datasource
         and using ``.write_datasource()``.
 
-        Time complexity: O(dataset size)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A list of remote Arrow tables created from this dataset.
