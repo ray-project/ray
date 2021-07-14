@@ -38,34 +38,34 @@ Datasource Compatibility Matrices
      - Read API
      - Status
    * - CSV File Format
-     - ``ray.data.read_csv()``
+     - ``ray.experimental.data.read_csv()``
      - ✅
    * - JSON File Format
-     - ``ray.data.read_json()``
+     - ``ray.experimental.data.read_json()``
      - ✅
    * - Parquet File Format
-     - ``ray.data.read_parquet()``
+     - ``ray.experimental.data.read_parquet()``
      - ✅
    * - Binary Files
-     - ``ray.data.read_binary_files()``
+     - ``ray.experimental.data.read_binary_files()``
      - ✅
    * - Custom Datasource
-     - ``ray.data.read_datasource()``
+     - ``ray.experimental.data.read_datasource()``
      - ✅
    * - Spark Dataframe
-     - ``ray.data.from_spark()``
+     - ``ray.experimental.data.from_spark()``
      - (todo)
    * - Dask Dataframe
-     - ``ray.data.from_dask()``
+     - ``ray.experimental.data.from_dask()``
      - ✅
    * - Modin Dataframe
-     - ``ray.data.from_modin()``
+     - ``ray.experimental.data.from_modin()``
      - (todo)
    * - MARS Dataframe
-     - ``ray.data.from_mars()``
+     - ``ray.experimental.data.from_mars()``
      - (todo)
    * - Pandas Dataframe Objects
-     - ``ray.data.from_pandas()``
+     - ``ray.experimental.data.from_pandas()``
      - ✅
 
 
@@ -122,9 +122,9 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
-talk about ray.data.read_*, from_<df>, read_datasource, range, items for testing
+talk about ray.experimental.data.read_*, from_<df>, read_datasource, range, items for testing
 
-Example: ray.data.range(100) -> str(), count, schema, etc. inspection
+Example: ray.experimental.data.range(100) -> str(), count, schema, etc. inspection
 
 Example: read parquet, basic transform, saving data
 
