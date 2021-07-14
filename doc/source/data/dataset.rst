@@ -173,37 +173,103 @@ Finally, you can create a Dataset from an existing data in the Ray object store 
     dask_df = dd.from_pandas(pdf, npartitions=10)
     ds = ray.data.from_dask(dask_df)
 
+Saving Datasets
+---------------
+
+Datasets can be written to local or remote storage using ``.write_csv()``, ``.write_json()``, ``.write_parquet()``.
+
+.. code-block:: python
+
+    # Write to csv files in /tmp/output.
+    ds = ray.data.range(10).write_csv("/tmp/output")
+    # -> /tmp/output/data0.csv, /tmp/output/data1.csv, ...
+
+    # Use repartition to control the number of output files:
+    ds = ray.data.range(1).write_csv("/tmp/output2")
+    # -> /tmp/output/data0.csv
 
 Transforming Datasets
 ---------------------
 
-Saving Datasets
----------------
+Datasets can be transformed in parallel using ``.map()``. Transformations are executed *eagerly* and block until the operation is finished. Datasets also supports ``.filter()`` and ``.flat_map()``.
+
+.. code-block:: python
+
+    ds = ray.data.range(10000)
+    ds = ds.map(lambda x: x * 2)
+    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
+    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    ds.take(5)
+    # -> [0, 2, 4, 6, 8]
+
+    ds.filter(lambda x: x > 5).take(5)
+    # -> [6, 8, 10, 12, 14]
+
+    ds.flat_map(lambda x: [x, -x]).take(5)
+    # -> [0, 0, 2, -2, 4]
+
+To take advantage of vectorized UDFs, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since the DataFrame size can be changed.
+
+.. code-block:: python
+
+    ds = ray.data.range(10000)
+    ds = ds.map_batches(lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
+    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
+    ds.take(5)
+    # -> [ArrowRow({'value': 0}), ArrowRow({'value': 2}), ...]
+
+By default, transformations are executed using Ray tasks. For transformations that require setup, specify ``compute="actors"`` and Ray will use an autoscaling actor pool to execute your transforms instead. The following is an end-to-end example of reading, transforming, and saving batch inference results using Datasets:
+
+.. code-block:: python
+
+    # Example of GPU batch inference on an ImageNet model.
+    model = None
+
+    def preprocess(image: bytes) -> bytes:
+        ...
+
+    def batch_infer(batch: pandas.DataFrame) -> pandas.DataFrame:
+        global model
+        if model is None:
+            model = ImageNetModel()
+        return model(batch)
+
+    ds = ray.data.read_binary_files("s3://bucket/image-dir")
+
+    # Preprocess the data.
+    ds = ds.map(preprocess)
+
+    # Apply GPU batch inference with actors, and assign each actor a GPU using
+    # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
+    ds = ds.map_batches(batch_infer, compute="actors", batch_size=256, num_gpus=1)
+
+    # Save the results.
+    ds.repartitoin(1).write_json("s3://bucket/inference-results.json")
 
 Consuming datasets
 ------------------
 
-talk about split(), iter_batch/rows, to_torch(), to_tf(), to_<df>
+iter_batches/rows
+    Example: passing datasets between Ray tasks / actors
 
-Example: passing datasets between Ray tasks / actors
+split/to_torch/tf
+    Example: pseudocode read features, split, send to training actors
 
-Example: pseudocode read features, split, send to training actors
-
-Example: converting to/from a dask-on-ray dataset
-
-Parallel transforms
--------------------
-
-talk about map fn, repartition
-
-Example: read binary files, map_batches with actors / GPU
-
-Example: map_batches using pandas batch udf for efficiency
+to_dask
+    Example: converting to a dask-on-ray dataset
 
 Custom datasources
 ------------------
 
-talk about custom datasource examples
+Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+
+.. code-block:: python
+
+    # Read from a custom datasource.
+    ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
+
+    # Write to a custom datasource.
+    ds.write_datasource(YourCustomDatasource(), **write_args)
 
 Pipelining data processing and ML computations
 ----------------------------------------------
