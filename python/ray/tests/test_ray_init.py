@@ -168,6 +168,31 @@ def test_ray_init_invalid_keyword_with_client(shutdown_only):
     assert "logginglevel" in str(excinfo.value)
 
 
+def test_ray_init_valid_keyword_with_client(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        # num_cpus is a valid argument for regular ray.init, but not for
+        # init(ray://)
+        ray.init("ray://127.0.0.0", num_cpus=1)
+    assert "num_cpus" in str(excinfo.value)
+
+
+def test_ray_init_local_with_unstable_parameter(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        # _redis_password is a valid init argument, but should be passed as
+        # internal_config={"_redis_password": "1234"} for local.
+        ray.init("local://", _redis_password="1234")
+    assert "_redis_password" in str(excinfo.value)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        # Passing an invalid unstable parameter through internal_config
+        # should error
+        ray.init("local://", internal_config={"_asdfasd": "1234"})
+    assert "_asdfasd" in str(excinfo.value)
+
+    # Make sure local:// works when unstables passed correctly
+    ray.init("local://", internal_config={"_node_ip_address": "0.0.0.0"})
+
+
 def test_env_var_override():
     with unittest.mock.patch.dict(os.environ, {"RAY_NAMESPACE": "envName"}), \
             ray_start_client_server() as given_connection:

@@ -66,8 +66,6 @@ class ClientBuilder:
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self._job_config = JobConfig()
-        self._init_args_dict = {}
-        self._catch_all_dict = {}
         self._fill_defaults_from_env()
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
@@ -136,20 +134,47 @@ class ClientBuilder:
         """
         Some client builders may need configuration to start a new cluster,
         for example the _LocalClientBuilder will create a cluster locally.
-        You can specify the arguments for the eventual ray.init call here.
+        This method will be called with all of the default ray.init arguments.
         """
+        # Use namespace and runtime_env from ray.init call
+        if kwargs.get("namespace") is not None:
+            self.namespace(kwargs["namespace"])
+            del kwargs["namespace"]
+        if kwargs.get("runtime_env") is not None:
+            self.env(kwargs["runtime_env"])
+            del kwargs["runtime_env"]
+        if not kwargs:
+            return self
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(
+            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+
+
+class _LocalClientBuilder(ClientBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._init_args_dict = {}
+        self._internal_config = {}
+
+    def _store_args(self, **kwargs) -> "ClientBuilder":
+        for argument in kwargs:
+            if argument.startswith("_"):
+                raise RuntimeError(
+                    f"Unexpected keyword argument: {argument}. Unstable "
+                    "parameters using the local client should be passed "
+                    "through the `internal_config`, e.g. ray.init"
+                    "(local://..., internal_config={{argument: value}}")
         if kwargs.get("job_config") is not None:
             self._job_config = kwargs.get("job_config")
         if kwargs.get("namespace") is not None:
             self.namespace(kwargs["namespace"])
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
+        self._internal_config = kwargs.pop("internal_config", {})
         self._fill_defaults_from_env()
         self._init_args_dict = kwargs
         return self
 
-
-class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...) or
@@ -163,7 +188,8 @@ class _LocalClientBuilder(ClientBuilder):
         connection_dict = ray.init(
             address=self.address,
             job_config=self._job_config,
-            **self._init_args_dict)
+            **self._init_args_dict,
+            **self._internal_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(

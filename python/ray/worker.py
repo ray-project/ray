@@ -574,6 +574,7 @@ def init(
         log_to_driver=True,
         namespace=None,
         runtime_env=None,
+        internal_config=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -624,8 +625,8 @@ def init(
             will set `address` to `RAY_ADDRESS`.
             Addresses can be prefixed with a protocol to connect using Ray
             Client. For example, passing in the address
-            "ray://123.45.67.89:50005" will attempt to start a ray client
-            session through the specified address.
+            "ray://123.45.67.89:50005" will connect to the cluster at the
+            given address using the Ray client.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -664,6 +665,11 @@ def init(
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use
+        internal_config (dict): Dictionary mapping names of a unstable
+            parameters to values, e.g. {"_redis_password": "1234"}. This is
+            only used for initializing a local client (ray.init(local://...)).
+            Values in this dictionary will be used to configure the local
+            cluster.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -718,36 +724,24 @@ def init(
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
         builder = ray.client(address)
-        builder._store_args(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources,
-            object_store_memory=object_store_memory,
-            local_mode=local_mode,
-            ignore_reinit_error=ignore_reinit_error,
-            include_dashboard=include_dashboard,
-            dashboard_host=dashboard_host,
-            dashboard_port=dashboard_port,
-            job_config=job_config,
-            configure_logging=configure_logging,
-            logging_level=logging_level,
-            logging_format=logging_format,
-            log_to_driver=log_to_driver,
-            namespace=namespace,
-            runtime_env=runtime_env,
-            # Unstable parameters
-            _enable_object_reconstruction=_enable_object_reconstruction,
-            _redis_max_memory=_redis_max_memory,
-            _plasma_directory=_plasma_directory,
-            _node_ip_address=_node_ip_address,
-            _driver_object_store_memory=_driver_object_store_memory,
-            _memory=_memory,
-            _redis_password=_redis_password,
-            _temp_dir=_temp_dir,
-            _lru_evict=_lru_evict,
-            _metrics_export_port=_metrics_export_port,
-            _system_config=_system_config,
-            _tracing_startup_hook=_tracing_startup_hook)
+
+        # Forward any keyword arguments that were changed from their default
+        # values to the builder, and separate out unstable parameters into
+        # internal_config.
+        init_sig = inspect.signature(init)
+        passed_kwargs = {}
+        for argument_name, param_obj in init_sig.parameters.items():
+            if argument_name in {"kwargs", "address"}:
+                # kwargs and address are handled separately
+                continue
+            default_value = param_obj.default
+            passed_value = locals()[argument_name]
+            if passed_value != default_value:
+                # passed value is different than default, pass to the client
+                # builder
+                passed_kwargs[argument_name] = passed_value
+
+        builder._store_args(**passed_kwargs)
         builder._catch_all(**kwargs)
         return builder.connect()
 
@@ -756,6 +750,11 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
+
+    if internal_config is not None:
+        # Should only be used with local client
+        raise RuntimeError("`internal_config` should only be used with "
+                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
