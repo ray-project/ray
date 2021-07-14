@@ -19,7 +19,7 @@ Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A da
 
 Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries just like any other Ray object. This flexibility is a unique characteristic of Ray Datasets.
 
-Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__ and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Datasets offers a more basic set of features, and executes operations eagerly for simplicity. It is intended that users cast Datasets into more featureful dataframe types (e.g., ``ds.to_dask()``) for advanced usage.
+Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__ and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Datasets offers a more basic set of features, and executes operations eagerly for simplicity. It is intended that users cast Datasets into more featureful dataframe types (e.g., ``ds.to_dask()``) for advanced operations.
 
 Datasource Compatibility Matrices
 ---------------------------------
