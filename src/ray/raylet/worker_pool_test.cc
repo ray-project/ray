@@ -1218,8 +1218,8 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
       {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
   auto task_id = TaskID::ForDriverTask(JOB_ID);
   auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
-  TaskSpecification java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID,
-                                                actor_id, actor_jvm_options, task_id);
+  TaskSpecification java_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, actor_jvm_options, task_id);
   ASSERT_EQ(worker_pool_->PopWorker(java_task_spec), nullptr);
   last_process = worker_pool_->LastStartedWorkerProcess();
   pid_t java_shim_pid = last_process.GetId();
