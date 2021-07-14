@@ -214,6 +214,7 @@ def connect_ray_pdb(host=None,
         "lineno": parentframeinfo.lineno,
         "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
         "timestamp": time.time(),
+        "job_id": ray.get_runtime_context().job_id.hex(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
