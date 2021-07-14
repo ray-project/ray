@@ -13,7 +13,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrainer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.client().connect()
+        ray.init()
 
     def test_add_delete_policy(self):
         env = gym.make("CartPole-v0")

@@ -176,10 +176,7 @@ class TrainTFMultiGPU:
                 # Policy seems to be new and doesn't have an optimizer yet.
                 # Add it here and continue.
                 elif policy_id not in self.optimizers:
-                    with self.workers.local_worker().tf_sess.graph.as_default(
-                    ):
-                        with self.workers.local_worker().tf_sess.as_default():
-                            self.add_optimizer(policy_id)
+                    self.add_optimizer(policy_id)
 
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -202,6 +199,7 @@ class TrainTFMultiGPU:
         with learn_timer:
             fetches = {}
             for policy_id, tuples_per_device in num_loaded_tuples.items():
+                policy = self.workers.local_worker().get_policy(policy_id)
                 optimizer = self.optimizers[policy_id]
                 num_batches = max(
                     1,

@@ -580,7 +580,8 @@ class TFPolicy(Policy):
                 signature_def_map = self._build_signature_def()
                 builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
                 builder.add_meta_graph_and_variables(
-                    self.get_session(), [tf1.saved_model.tag_constants.SERVING],
+                    self.get_session(),
+                    [tf1.saved_model.tag_constants.SERVING],
                     signature_def_map=signature_def_map,
                     saver=tf1.summary.FileWriter(export_dir).add_graph(
                         graph=self.get_session().graph))

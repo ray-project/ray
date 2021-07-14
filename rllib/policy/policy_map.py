@@ -152,11 +152,13 @@ class PolicyMap(dict):
         policy = self.cache[delkey]
         # Get its state for writing to disk.
         policy_state = policy.get_state()
+        # Add class of Policy to state.
+        policy_state["_cls"] = policy.__class__
         # Closes policy's tf session, if any.
         self._close_session(policy)
         # Remove from memory.
-        # TODO: (sven) this should clear the tf Graph as well, if the Trainer
-        #  would not hold a
+        # TODO: (sven) This should clear the tf Graph as well, if the Trainer
+        #  would not hold parts of the graph (e.g. in tf multi-GPU setups).
         del self.cache[delkey]
         # Write state to disk.
         with open(self.path + "/" + delkey + self.extension, "wb") as f:
@@ -188,4 +190,4 @@ class PolicyMap(dict):
         sess = policy.get_session()
         # Closes the tf session, if any.
         if sess is not None:
-            sess.__exit__(None, None, None)
+            sess.close()
