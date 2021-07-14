@@ -45,7 +45,9 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+  std::shared_ptr<WorkerInterface> PopWorker(
+      const TaskSpecification &task_spec,
+      const std::string &allocated_instances_serialized_json) {
     num_pops++;
     const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
                                 task_spec.SerializedRuntimeEnv()};
