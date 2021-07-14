@@ -175,11 +175,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
-  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
-  /// the functionality as part of a larger transaction.
-  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
-      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
-
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.

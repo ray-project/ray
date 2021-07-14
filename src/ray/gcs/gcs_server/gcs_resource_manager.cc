@@ -386,30 +386,30 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBroadcastData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
   resources_buffer_proto_.Swap(&buffer);
-  if (!resources_buffer_.empty()) {
-    for (auto &resources : resources_buffer_) {
-      buffer.add_batch()->mutable_data()->Swap(&resources.second);
-    }
-    resources_buffer_.clear();
-  }
-}
-
-void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
-    rpc::ResourceUsageBatchData &buffer) {
-  for (auto &resources : resources_buffer_) {
-    buffer.add_batch()->Swap(&resources.second);
+  while (!resources_buffer_.empty() &&
+         buffer->ByteSizeLong() <
+             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
+    auto element = std::begin(resources_buffer_);
+    buffer.add_batch()->mutable_data()->Swap(&element.second);
+    resources_buffer_.erase(element);
   }
 }
 
 void GcsResourceManager::SendBatchedResourceUsage() {
   absl::MutexLock guard(&resource_buffer_mutex_);
-  if (!resources_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    GetResourceUsageBatchForBroadcast_Locked(*batch);
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
+  auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+  while (!resources_buffer_.empty() &&
+         batch->ByteSizeLong() <
+             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
+    auto element = std::begin(resources_buffer_);
+    batch->add_batch()->Swap(&element->second);
+    resources_buffer_.erase(element);
+  }
+
+  if (total_size > 0) {
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
-    resources_buffer_.clear();
+    stats::OutboundHeartbeatSizeKB.Record(batch->ByteSizeLong() / 1024.0);
   }
 }
 
