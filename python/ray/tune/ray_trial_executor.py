@@ -687,7 +687,10 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(self, timeout: Optional[float] = None) -> \
+    def get_next_available_trial(
+        self,
+        timeout: Optional[float] = None,
+        max_returns: Optional[int] = None) -> \
             Tuple[Optional[Trial], int]:
         if not self._running:
             return None, 0
@@ -699,7 +702,11 @@ class RayTrialExecutor(TrialExecutor):
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
         start = time.time()
-        ready, _ = ray.wait(shuffled_results, timeout=timeout)
+        num_returns = len(shuffled_results)
+        if max_returns:
+            num_returns = min(num_returns, max_returns)
+        ready, _ = ray.wait(
+            shuffled_results, num_returns=num_returns, timeout=timeout)
         if not ready:
             return None, 0
         result_id = ready[0]
