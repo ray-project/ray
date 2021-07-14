@@ -115,8 +115,8 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
-        >>> ray.data.range_arrow(1000) \
-        >>>   .map(lambda r: {"v2": r["value"] * 2}).show()
+        >>> ds = ray.data.range_arrow(1000)
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show()
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.

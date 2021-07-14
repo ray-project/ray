@@ -1,43 +1,114 @@
 Ray Datasets
 ============
 
+Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
+
+.. image:: dataset.svg
+
+..
+  https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
+
+Concepts
+--------
+Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either Arrow table format or in a Python list (for Arrow incompatible objects). Splitting the dataset into blocks allows for parallel transformation and ingest of the data. The following figure visualizes a dataset that has three Arrow table blocks, each block holding 1000 rows each:
+
+.. image:: dataset-arch.svg
+
+..
+  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+
+Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries just like any other Ray object. This flexibility is a unique characteristic of Ray Datasets.
+
+Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__ and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Datasets offers a more basic set of features, and executes operations eagerly for simplicity. It is intended that users cast Datasets into more featureful dataframe types (e.g., ``ds.to_dask()``) for advanced usage.
+
+Datasource Compatibility Matrices
+---------------------------------
+
 .. warning::
-  This feature is currently in preview, and its API may change.
 
-Ray Datasets are the standard way to load and exchange data between Ray libraries and applications. You can think of a Ray Dataset as a distributed collection of data records, which can be either serializable Python objects or structured data (Arrow records). Datasets support basic parallel transformations, and can be ``split()`` into pieces for ingest into Ray's distributed machine learning libraries.
-
-For those familiar with Apache Arrow, Ray Datasets can be thought of as implementing "distributed Arrow".
-
-Under the hood, Datasets are implemented using Ray objects. Data records are organized into data *blocks*, each of which is a Ray object holding an Arrow table. A Dataset is simply a list of these block references and their metadata. Datasets implement parallel operations using Ray tasks and actors to transform their data blocks. Since Datasets are just lists of Ray object refs, they can also be passed between Ray tasks and actors just like any other object. Datasets support conversion to/from several more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and also conversion into TensorFlow and PyTorch dataset formats.
-
-Data Source Compatibility Matrices
-----------------------------------
+  Ray Datasets is currently in early preview and its API may change without warning.
 
 
 .. list-table:: Input compatibility matrix
    :header-rows: 1
 
    * - Input Type
-     - Code Example
+     - Read API
+     - Status
+   * - CSV File Format
+     - ``ray.data.read_csv()``
+     - ✅
+   * - JSON File Format
+     - ``ray.data.read_json()``
+     - ✅
+   * - Parquet File Format
+     - ``ray.data.read_parquet()``
+     - ✅
+   * - Binary Files
+     - ``ray.data.read_binary_files()``
+     - ✅
+   * - Read from Custom Datasource
+     - ``ray.data.read_datasource()``
+     - ✅
    * - Spark Dataframe
-     - TBD
+     - ``ray.data.from_spark()``
+     - (todo)
    * - Dask Dataframe
-     - TBD
+     - ``ray.data.from_dask()``
+     - ✅
    * - Modin Dataframe
-     - TBD
+     - ``ray.data.from_modin()``
+     - (todo)
+   * - MARS Dataframe
+     - ``ray.data.from_mars()``
+     - (todo)
+   * - Pandas Dataframe Objects
+     - ``ray.data.from_pandas()``
+     - ✅
 
 
 .. list-table:: Output compatibility matrix
    :header-rows: 1
 
    * - Output Type
-     - Code Example
-   * - Pytorch Iterator
-     - TBD
-   * - Tensorflow Iterator
-     - TBD
+     - Dataset API
+     - Status
+   * - CSV File Format
+     - ``ds.write_csv()``
+     - ✅
+   * - JSON File Format
+     - ``ds.write_json()``
+     - ✅
+   * - Parquet File Format
+     - ``ds.write_parquet()``
+     - ✅
+   * - Write to Custom Datasource
+     - ``ds.write_datasource()``
+     - ✅
+   * - Spark Dataframe
+     - ``ds.to_spark()``
+     - (todo)
+   * - Dask Dataframe
+     - ``ds.to_dask()``
+     - ✅
    * - Modin Dataframe
-     - TBD
+     - ``ds.to_modin()``
+     - (todo)
+   * - MARS Dataframe
+     - ``ds.to_mars()``
+     - (todo)
+   * - Pandas Dataframe Objects
+     - ``ds.to_pandas()``
+     - ✅
+   * - Pandas Dataframe Iterator
+     - ``ds.iter_batches()``
+     - ✅
+   * - PyTorch Iterable Dataset
+     - ``ds.to_torch()``
+     - ✅
+   * - TensorFlow Iterable Dataset
+     - ``ds.to_tf()``
+     - ✅
 
 
 Creating, Transforming, and Saving Datasets
