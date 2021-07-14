@@ -1,6 +1,10 @@
 Ray Datasets
 ============
 
+.. tip::
+
+  Ray Datasets is available in early preview at ``ray.experimental.data``.
+
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
 .. image:: dataset.svg
@@ -23,10 +27,6 @@ Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-gu
 
 Datasource Compatibility Matrices
 ---------------------------------
-
-.. warning::
-
-  Ray Datasets is currently in early preview and its API may change without warning.
 
 
 .. list-table:: Input compatibility matrix
