@@ -216,7 +216,7 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
     # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
     # -> [0, 0, 2, -2, 4]
 
-To take advantage of vectorized UDFs, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since your map function can return an output batch of any size.
+To take advantage of vectorized functions, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since your map function can return an output batch of any size.
 
 .. code-block:: python
 
