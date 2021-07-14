@@ -3,8 +3,6 @@ import subprocess
 import sys
 import time
 import pytest
-from pytest_lazyfixture import lazy_fixture
-from ray.tests.conftest import *  # noqa
 
 import ray
 from ray.exceptions import RaySystemError, RayTaskError
@@ -60,32 +58,26 @@ def simple(x):
     return z
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-def test_recovery_simple(raw_storage, ray_start_regular):
+def test_recovery_simple():
+    ray.init(namespace="workflow")
     utils.unset_global_mark()
-    print(raw_storage.storage_url)
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
         output = workflow.run(simple.step("x"), workflow_id=workflow_id)
         ray.get(output)
     utils.set_global_mark()
-    output = workflow.resume(workflow_id, raw_storage)
+    output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"
     utils.unset_global_mark()
     # resume from workflow output checkpoint
-    output = workflow.resume(workflow_id, raw_storage)
+    output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"
+    ray.shutdown()
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-def test_recovery_complex(raw_storage, ray_start_regular):
+def test_recovery_complex():
+    ray.init(namespace="workflow")
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
@@ -93,24 +85,22 @@ def test_recovery_complex(raw_storage, ray_start_regular):
         output = workflow.run(complex.step("x"), workflow_id=workflow_id)
         ray.get(output)
     utils.set_global_mark()
-    output = workflow.resume(workflow_id, raw_storage)
+    output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
     utils.unset_global_mark()
     # resume from workflow output checkpoint
-    output = workflow.resume(workflow_id, raw_storage)
+    output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
+    ray.shutdown()
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-def test_recovery_non_exists_workflow(raw_storage, ray_start_regular):
+def test_recovery_non_exists_workflow():
+    ray.init(namespace="workflow")
     with pytest.raises(RayTaskError):
-        ray.get(
-            workflow.resume("this_workflow_id_does_not_exist", raw_storage))
+        ray.get(workflow.resume("this_workflow_id_does_not_exist"))
+    ray.shutdown()
 
 
 def test_recovery_cluster_failure():
@@ -136,11 +126,8 @@ def recursive_chain(x):
         return 100
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-def test_shortcut(raw_storage, ray_start_regular):
+def test_shortcut():
+    ray.init(namespace="workflow")
     output = workflow.run(recursive_chain.step(0), workflow_id="shortcut")
     assert ray.get(output) == 100
     # the shortcut points to the step with output checkpoint
