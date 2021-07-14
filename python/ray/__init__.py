@@ -1,6 +1,8 @@
 import os
 import logging
 
+from ray.experimental import data
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,7 +154,6 @@ __all__ += [
 ]
 
 # Add an alias so we can point to the final location in docs.
-from ray.experimental import data
 __all__.append(data)
 
 
