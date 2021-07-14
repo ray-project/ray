@@ -1,3 +1,5 @@
+#pragma once
+
 #include <boost/asio.hpp>
 #include <boost/fiber/all.hpp>
 #include "ray/common/asio/instrumented_io_context.h"
@@ -36,10 +38,19 @@ class IOThreadPool {
     using R = decltype(f());
     boost::fibers::promise<R> promise;
     auto future = promise.get_future();
-    io_service_->post([f = std::move(f), p = std::move(promise)]() { p.set_value(f()); });
+    io_service_->post([f = std::move(f), p = std::move(promise)]() {
+      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, &p] () mutable {
+        p.set_value(f());
+      });
+      _.join();
+    });
     return future;
   }
   instrumented_io_context &GetIOService() { return *io_service_; }
+
+  bool stopped() {
+    return io_service_->stopped();
+  }
 
  private:
   std::shared_ptr<instrumented_io_context> io_service_;

@@ -21,6 +21,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/common/thread_pool.h"
 
 namespace ray {
 namespace rpc {
@@ -107,6 +108,8 @@ class ServerCallFactory {
 template <class ServiceHandler, class Request, class Reply>
 using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                        SendReplyCallback);
+template <class ServiceHandler, class Request, class Reply>
+using HandleRequestFunctionCo = Status (ServiceHandler::*)(const Request &, Reply *);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
@@ -235,6 +238,41 @@ class ServerCallImpl : public ServerCall {
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;
+};
+
+template <class ServiceHandler, class Request, class Reply>
+class ServerCallCoImpl : public ServerCallImpl<ServiceHandler, Request, Reply> {
+ public:
+  ServerCallCoImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
+                   HandleRequestFunctionCo<ServiceHandler, Request, Reply> handle_request_function,
+                   instrumented_io_context &io_service, std::string call_name)
+      : ServerCallImpl<ServiceHandler, Request, Reply>(factory, service_handler, nullptr, io_service, std::move(call_name)),
+        handle_request_function_co_(handle_request_function) {}
+
+  void HandleRequest() override {
+    if (!ray::thread_pool::_io_pool.stopped()) {
+      ray::thread_pool::io_post([this] {
+        this->state_ = ServerCallState::PROCESSING;
+        // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
+        // a different thread, and will cause `this` to be deleted.
+        const auto &factory = this->factory_;
+        // Create a new `ServerCall` to accept the next incoming request.
+        // We create this before handling the request so that the it can be populated by
+        // the completion queue in the background if a new request comes in.
+        factory.CreateCall();
+        auto status = (this->service_handler_.*handle_request_function_co_)(this->request_, &this->reply_).get();
+        this->SendReply(status);
+      });
+    } else {
+      // Handle service for rpc call has stopped, we must handle the call here
+      // to send reply and remove it from cq
+      RAY_LOG(DEBUG) << "Handle service has been closed.";
+      this->SendReply(Status::Invalid("HandleServiceClosed"));
+    }
+  }
+ private:
+  HandleRequestFunctionCo<ServiceHandler, Request, Reply> handle_request_function_co_;
+
 };
 
 /// Represents the generic signature of a `FooService::AsyncService::RequestBar()`
