@@ -182,7 +182,7 @@ Finally, you can create a Dataset from existing data in the Ray object store or 
 Saving Datasets
 ---------------
 
-Datasets can be written to local or remote storage using ``.write_csv()``, ``.write_json()``, ``.write_parquet()``.
+Datasets can be written to local or remote storage using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``.
 
 .. code-block:: python
 
