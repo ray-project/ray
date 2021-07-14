@@ -14,7 +14,9 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either Arrow table format or in a Python list (for Arrow incompatible objects). Splitting the dataset into blocks allows for parallel transformation and ingest of the data. The following figure visualizes a dataset that has three Arrow table blocks, each block holding 1000 rows each:
+Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either Arrow table format or in a Python list (for Arrow incompatible objects). Splitting the dataset into blocks allows for parallel transformation and ingest of the data.
+
+The following figure visualizes a dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
 .. image:: dataset-arch.svg
 
