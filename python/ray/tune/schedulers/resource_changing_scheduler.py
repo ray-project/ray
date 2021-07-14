@@ -278,11 +278,16 @@ class ResourceChangingScheduler(TrialScheduler):
 
         any_resources_changed = False
 
+        new_trials_to_reallocate = {}
         for trial, new_resources in self._trials_to_reallocate.items():
+            if trial.status == Trial.RUNNING:
+                new_trials_to_reallocate[trial] = new_resources
+                logger.debug(f"{trial} is still running, skipping for now")
+                continue
             any_resources_changed = (any_resources_changed
                                      or self.set_trial_resources(
                                          trial, new_resources))
-        self._trials_to_reallocate.clear()
+        self._trials_to_reallocate = new_trials_to_reallocate
 
         if any_resources_changed:
             # force reconcilation to ensure resource changes
