@@ -176,6 +176,15 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_to_arrow(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+
 def test_pandas_roundtrip(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})

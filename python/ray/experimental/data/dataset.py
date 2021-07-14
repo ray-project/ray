@@ -836,7 +836,7 @@ class Dataset(Generic[T]):
             if batch_format == "pandas":
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
-                return batch._table
+                return batch.to_arrow_table()
             elif batch_format == "_blocks":
                 return batch
             else:
@@ -937,7 +937,7 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P1
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
-        """Convert this dataset into a set of Pandas dataframes.
+        """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -950,6 +950,23 @@ class Dataset(Generic[T]):
         @ray.remote
         def block_to_df(block: ArrowBlock):
             return block.to_pandas()
+
+        return [block_to_df.remote(block) for block in self._blocks]
+
+    def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
+        """Convert this dataset into a distributed set of Arrow tables.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        Time complexity: O(1)
+
+        Returns:
+            A list of remote Arrow tables created from this dataset.
+        """
+
+        @ray.remote
+        def block_to_df(block: ArrowBlock):
+            return block.to_arrow_table()
 
         return [block_to_df.remote(block) for block in self._blocks]
 
