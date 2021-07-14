@@ -23,7 +23,7 @@ The following figure visualizes a dataset that has three Arrow table blocks, eac
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
 
-Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries just like any other object reference. This flexibility is a unique characteristic of Ray Datasets.
+Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries like any other object reference. This flexibility is a unique characteristic of Ray Datasets.
 
 Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__ and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Datasets offers a more basic set of features, and executes operations eagerly for simplicity. It is intended that users cast Datasets into more featureful dataframe types (e.g., ``ds.to_dask()``) for advanced operations.
 
@@ -148,12 +148,24 @@ Example: read binary files, map_batches with actors / GPU
 
 Example: map_batches using pandas batch udf for efficiency
 
-Pipelining data processing and ML computations
-----------------------------------------------
-
-feature coming soon
-
 Custom datasources
 ------------------
 
-talk about custom datasource examples and contributions welcome
+talk about custom datasource examples
+
+Pipelining data processing and ML computations
+----------------------------------------------
+
+This feature is planned for development. Please provide your input on this `GitHub RFC <https://github.com/ray-project/ray/issues/16852>`__.
+
+Contributing
+------------
+
+Contributions to Datasets are welcome! There are many potential improvements, including:
+
+- Supporting more datasources and transforms.
+- Improving compatibility with ecosystem libraries.
+- Adding features that require partitioning such as groupby() and join().
+- Performance optimizations.
+
+Get started with Ray Python development `here <https://docs.ray.io/en/master/development.html#python-develop>`__.
