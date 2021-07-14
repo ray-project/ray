@@ -726,8 +726,7 @@ def init(
         builder = ray.client(address)
 
         # Forward any keyword arguments that were changed from their default
-        # values to the builder, and separate out unstable parameters into
-        # internal_config.
+        # values to the builder
         init_sig = inspect.signature(init)
         passed_kwargs = {}
         for argument_name, param_obj in init_sig.parameters.items():
