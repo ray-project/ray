@@ -97,6 +97,9 @@ Datasource Compatibility Matrices
    * - MARS Dataframe
      - ``ds.to_mars()``
      - (todo)
+   * - Arrow Table Objects
+     - ``ds.to_arrow()``
+     - ✅
    * - Pandas Dataframe Objects
      - ``ds.to_pandas()``
      - ✅
