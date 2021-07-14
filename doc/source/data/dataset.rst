@@ -49,9 +49,6 @@ Datasource Compatibility Matrices
    * - Binary Files
      - ``ray.data.read_binary_files()``
      - ✅
-   * - Custom Datasource
-     - ``ray.data.read_datasource()``
-     - ✅
    * - Spark Dataframe
      - ``ray.data.from_spark()``
      - (todo)
@@ -70,6 +67,9 @@ Datasource Compatibility Matrices
    * - Arrow Table Objects
      - ``ray.data.from_arrow()``
      - ✅
+   * - Custom Datasource
+     - ``ray.data.read_datasource()``
+     - ✅
 
 
 .. list-table:: Output compatibility matrix
@@ -86,9 +86,6 @@ Datasource Compatibility Matrices
      - ✅
    * - Parquet File Format
      - ``ds.write_parquet()``
-     - ✅
-   * - Custom Datasource
-     - ``ds.write_datasource()``
      - ✅
    * - Spark Dataframe
      - ``ds.to_spark()``
@@ -119,6 +116,9 @@ Datasource Compatibility Matrices
      - ✅
    * - TensorFlow Iterable Dataset
      - ``ds.to_tf()``
+     - ✅
+   * - Custom Datasource
+     - ``ds.write_datasource()``
      - ✅
 
 
