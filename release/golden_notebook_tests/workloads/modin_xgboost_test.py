@@ -1,29 +1,27 @@
 import argparse
+import json
+import os
+import time
 
 import modin.pandas as pd
 import ray
 from xgboost_ray import RayDMatrix, RayParams, train
 
-FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-           "00280/HIGGS.csv.gz"
+from utils.utils import is_anyscale_connect
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing.")
-args = parser.parse_args()
+HIGGS_S3_URI = "s3://ray-ci-higgs/HIGGS.csv"
+SIMPLE_HIGGS_S3_URI = "s3://ray-ci-higgs/simpleHIGGS.csv"
 
 
 def main():
-    ray.client("anyscale://").connect()
-
     print("Loading HIGGS data.")
 
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
 
     if args.smoke_test:
-        data = pd.read_csv(FILE_URL, names=colnames, nrows=1000)
+        data = pd.read_csv(SIMPLE_HIGGS_S3_URI, names=colnames)
     else:
-        data = pd.read_csv(FILE_URL, names=colnames)
+        data = pd.read_csv(HIGGS_S3_URI, names=colnames)
 
     print("Loaded HIGGS data.")
 
@@ -49,4 +47,30 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Finish quickly for testing.")
+    args = parser.parse_args()
+
+    start = time.time()
+
+    client_builder = ray.client()
+    if is_anyscale_connect():
+        job_name = os.environ.get("RAY_JOB_NAME", "modin_xgboost_test")
+        client_builder.job_name(job_name)
+    client_builder.connect()
+
     main()
+
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/modin_xgboost_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    print("Test Successful!")

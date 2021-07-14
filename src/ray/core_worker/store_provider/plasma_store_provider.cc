@@ -77,11 +77,6 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
   RAY_IGNORE_EXPR(store_client_.Disconnect());
 }
 
-Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
-                                                       int64_t limit_bytes) {
-  return store_client_.SetClientOptions(name, limit_bytes);
-}
-
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id,
                                           const rpc::Address &owner_address,

@@ -1,6 +1,5 @@
 
 #include "function_helper.h"
-#include <ray/api/logging.h>
 #include <boost/filesystem.hpp>
 #include <memory>
 #include "ray/util/logging.h"

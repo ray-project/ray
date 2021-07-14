@@ -52,7 +52,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import _random_string, check_oversized_pickle
+from ray._private.utils import check_oversized_pickle
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -170,6 +170,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def worker_id(self):
+        return self.core_worker.get_worker_id().binary()
+
+    @property
     def should_capture_child_tasks_in_placement_group(self):
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
@@ -215,6 +219,9 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+                ray.client().connect()
+                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -658,8 +665,7 @@ def init(
         _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address (str): The IP address of the node that we are on.
-        _driver_object_store_memory (int): Limit the amount of memory the
-            driver can use in the object store for creating objects.
+        _driver_object_store_memory (int): Deprecated.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
@@ -1155,8 +1161,7 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
-        driver_object_store_memory: Limit the amount of memory the driver can
-            use in the object store when creating objects.
+        driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
@@ -1190,18 +1195,10 @@ def connect(node,
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
-        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
-        worker.worker_id = _random_string()
     else:
         # This is the code path of driver mode.
         if job_id is None:
             job_id = ray.state.next_job_id()
-        # When tasks are executed on remote workers in the context of multiple
-        # drivers, the current job ID is used to keep track of which job is
-        # responsible for the task so that error messages will be propagated to
-        # the correct driver.
-        worker.worker_id = ray._private.utils.compute_driver_id_from_job(
-            job_id).binary()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
@@ -1263,6 +1260,10 @@ def connect(node,
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
 
+    # Make sure breakpoint() in the user's code will
+    # always invoke the Ray debugger.
+    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1292,8 +1293,8 @@ def connect(node,
     worker.core_worker.notify_raylet()
 
     if driver_object_store_memory is not None:
-        worker.core_worker.set_object_store_client_options(
-            f"ray_driver_{os.getpid()}", driver_object_store_memory)
+        logger.warning("`driver_object_store_memory` is deprecated"
+                       " and will be removed in the future.")
 
     # Start the import thread
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):
@@ -1447,6 +1448,10 @@ def get(object_refs, *, timeout=None):
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
+
+    Ordering for an input list of object refs is preserved for each object
+    returned. That is, if an object ref to A precedes an object ref to B in the
+    input list, then A will precede B in the returned list.
 
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
@@ -1663,8 +1668,7 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    handle = worker.core_worker.get_named_actor_handle(name)
-    return handle
+    return worker.core_worker.get_named_actor_handle(name)
 
 
 @client_mode_hook
@@ -1911,7 +1915,7 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.5--please use the ``env_vars``
+            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

@@ -1,6 +1,6 @@
 from functools import partial
-import numpy as np
 from gym.spaces import Box, Dict, Tuple
+import numpy as np
 from scipy.stats import beta, norm
 import tree  # pip install dm_tree
 import unittest
@@ -28,8 +28,8 @@ class TestDistributions(unittest.TestCase):
     def setUpClass(cls) -> None:
         # Set seeds for deterministic tests (make sure we don't fail
         # because of "bad" sampling).
-        np.random.seed(42)
-        torch.manual_seed(42)
+        np.random.seed(42 + 1)
+        torch.manual_seed(42 + 1)
 
     def _stability_test(self,
                         distribution_cls,
@@ -96,8 +96,10 @@ class TestDistributions(unittest.TestCase):
         # Create categorical distribution with n categories.
         inputs_space = Box(
             -1.0, 2.0, shape=(batch_size, num_categories), dtype=np.float32)
+        inputs_space.seed(42)
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
+        values_space.seed(42)
 
         inputs = inputs_space.sample()
 
@@ -156,11 +158,13 @@ class TestDistributions(unittest.TestCase):
             -1.0,
             2.0,
             shape=(batch_size, num_sub_distributions * num_categories))
+        inputs_space.seed(42)
         values_space = Box(
             0,
             num_categories - 1,
             shape=(num_sub_distributions, batch_size),
             dtype=np.int32)
+        values_space.seed(42)
 
         inputs = inputs_space.sample()
         input_lengths = [num_categories] * num_sub_distributions
@@ -222,6 +226,8 @@ class TestDistributions(unittest.TestCase):
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussian ActionDistribution for all frameworks."""
         input_space = Box(-2.0, 2.0, shape=(2000, 10))
+        input_space.seed(42)
+
         low, high = -2.0, 1.0
 
         for fw, sess in framework_iterator(session=True):
@@ -314,6 +320,7 @@ class TestDistributions(unittest.TestCase):
     def test_diag_gaussian(self):
         """Tests the DiagGaussian ActionDistribution for all frameworks."""
         input_space = Box(-2.0, 1.0, shape=(2000, 10))
+        input_space.seed(42)
 
         for fw, sess in framework_iterator(session=True):
             cls = DiagGaussian if fw != "torch" else TorchDiagGaussian
@@ -378,8 +385,10 @@ class TestDistributions(unittest.TestCase):
 
     def test_beta(self):
         input_space = Box(-2.0, 1.0, shape=(2000, 10))
+        input_space.seed(42)
         low, high = -1.0, 2.0
         plain_beta_value_space = Box(0.0, 1.0, shape=(2000, 5))
+        plain_beta_value_space.seed(42)
 
         for fw, sess in framework_iterator(session=True):
             cls = TorchBeta if fw == "torch" else Beta
@@ -424,6 +433,7 @@ class TestDistributions(unittest.TestCase):
             values_scaled = values * (high - low) + low
             if fw == "torch":
                 values_scaled = torch.Tensor(values_scaled)
+            print(values_scaled)
             out = beta_distribution.logp(values_scaled)
             check(
                 out,
@@ -439,6 +449,7 @@ class TestDistributions(unittest.TestCase):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
+            input_space.seed(42)
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
@@ -472,11 +483,13 @@ class TestDistributions(unittest.TestCase):
                 "a": Box(-1.0, 1.0, shape=(batch_size, 4))
             }),
         ])
+        input_space.seed(42)
         std_space = Box(
             -0.05, 0.05, shape=(
                 batch_size,
                 3,
             ))
+        std_space.seed(42)
 
         low, high = -1.0, 1.0
         value_space = Tuple([
@@ -486,6 +499,7 @@ class TestDistributions(unittest.TestCase):
                 "a": Box(0.0, 1.0, shape=(batch_size, 2), dtype=np.float32)
             })
         ])
+        value_space.seed(42)
 
         for fw, sess in framework_iterator(session=True):
             if fw == "torch":

@@ -51,8 +51,8 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     if (iter->second->state_ == CommitState::COMMITTED) {
       // If the bundle state is already committed, it means that prepare request is just
       // stale.
-      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly. This should "
-                       "only happen when GCS restarts.";
+      RAY_LOG(DEBUG) << "Duplicate prepare bundle request, skip it directly. This should "
+                        "only happen when GCS restarts.";
       return true;
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
@@ -92,7 +92,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   } else {
     // Ignore request If the bundle state is already committed.
     if (it->second->state_ == CommitState::COMMITTED) {
-      RAY_LOG(INFO) << "Duplicate committ bundle request, skip it directly.";
+      RAY_LOG(DEBUG) << "Duplicate committ bundle request, skip it directly.";
       return;
     }
   }
@@ -119,7 +119,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
-    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
+    RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
     return;
   }
   const auto &bundle_state = it->second;

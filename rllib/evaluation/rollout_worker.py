@@ -157,7 +157,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn: "ObservationFunction" = None,
             observation_filter: str = "NoFilter",
             clip_rewards: bool = None,
-            clip_actions: bool = True,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
             env_config: EnvConfigDict = None,
             model_config: ModelConfigDict = None,
             policy_config: TrainerConfigDict = None,
@@ -249,6 +250,8 @@ class RolloutWorker(ParallelIteratorWorker):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
+            normalize_actions (bool): Whether to normalize actions to the
+                action space's bounds.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
             env_config (EnvConfigDict): Config to pass to the env creator.
@@ -498,6 +501,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Numpy.
             np.random.seed(seed)
             # Gym.env.
+            # This will silently fail for most OpenAI gyms
+            # (they do nothing and return None per default)
             if not hasattr(self.env, "seed"):
                 logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
@@ -513,8 +518,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         torch.version.cuda) >= 10.2:
                     os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
                 else:
-                    # Not all Operations support this.
-                    torch.use_deterministic_algorithms(True)
+                    from distutils.version import LooseVersion
+                    if LooseVersion(
+                            torch.__version__) >= LooseVersion("1.8.0"):
+                        # Not all Operations support this.
+                        torch.use_deterministic_algorithms(True)
+                    else:
+                        torch.set_determinstic(True)
                 # This is only for Convolution no problem.
                 torch.backends.cudnn.deterministic = True
             # Tf2.x.
@@ -662,6 +672,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
@@ -684,6 +695,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
+                normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
@@ -1059,8 +1071,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        add_map, add_prep = self._build_policy_map(policy_dict,
-                                                   self.policy_config)
+        if self.tf_sess is not None:
+            with self.tf_sess.graph.as_default():
+                with self.tf_sess.as_default():
+                    add_map, add_prep = self._build_policy_map(
+                        policy_dict, self.policy_config)
+        else:
+            add_map, add_prep = self._build_policy_map(policy_dict,
+                                                       self.policy_config)
         new_policy = add_map[policy_id]
 
         self.policy_map.update(add_map)
@@ -1235,8 +1253,9 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
-        self.policy_map[policy_id].export_model(export_dir)
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
+        self.policy_map[policy_id].export_model(export_dir, onnx=onnx)
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,
