@@ -215,14 +215,21 @@ class S3StorageImpl(Storage):
 
     @property
     def storage_url(self) -> str:
-        uri = f"s3://{self._bucket}/{self._s3_path}"
-        params = [("region_name", self._region_name),
-                  ("endpoint_url", self._endpoint_url),
+        params = [("region_name", self._region_name), ("endpoint_url",
+                                                       self._endpoint_url),
                   ("aws_access_key_id", self._aws_access_key_id),
-                  ("aws_secret_access_key", self._aws_secret_access_key),
-                  ("aws_session_token", self._aws_session_token)]
-        params = '&'.join(['='.join(param) for param in params if param[1] is not None])
-        parsed_url = parse.ParseResult(scheme="s3", netloc=self._bucket, path=self._s3_path, params="", query=params, fragment="")
+                  ("aws_secret_access_key",
+                   self._aws_secret_access_key), ("aws_session_token",
+                                                  self._aws_session_token)]
+        params = "&".join(
+            ["=".join(param) for param in params if param[1] is not None])
+        parsed_url = parse.ParseResult(
+            scheme="s3",
+            netloc=self._bucket,
+            path=self._s3_path,
+            params="",
+            query=params,
+            fragment="")
         return parse.urlunparse(parsed_url)
 
     def _get_s3_path(self, *args) -> str:

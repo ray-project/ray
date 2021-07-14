@@ -109,7 +109,8 @@ def test_recovery_complex(raw_storage, ray_start_regular):
      lazy_fixture("s3_storage")])
 def test_recovery_non_exists_workflow(raw_storage, ray_start_regular):
     with pytest.raises(RayTaskError):
-        ray.get(workflow.resume("this_workflow_id_does_not_exist", raw_storage))
+        ray.get(
+            workflow.resume("this_workflow_id_does_not_exist", raw_storage))
 
 
 def test_recovery_cluster_failure():
@@ -123,7 +124,7 @@ def test_recovery_cluster_failure():
     proc.kill()
     time.sleep(1)
     ray.init(namespace="workflow")
-    assert ray.get(workflow.resume("cluster_failure", raw_storage)) == 20
+    assert ray.get(workflow.resume("cluster_failure")) == 20
     ray.shutdown()
 
 
