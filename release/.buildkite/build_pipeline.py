@@ -241,7 +241,7 @@ def build_pipeline(steps):
 
             logging.info(f"Adding test: {test_base}/{test_name}")
 
-            cmd = str(f"python e2e.py "
+            cmd = str(f"python release/e2e.py "
                       f"--ray-branch {RAY_BRANCH} "
                       f"--category {RAY_BRANCH} "
                       f"--test-config {test_file} "
@@ -280,7 +280,7 @@ def build_pipeline(steps):
 def alert_pipeline(stats: bool = False):
     step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = "python alert.py"
+    cmd = "python release/alert.py"
     if stats:
         cmd += " --stats"
 
