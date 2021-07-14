@@ -38,6 +38,12 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         def v(self):
             return 10
 
+    # bundle is placement group reserved resources and can't be used in bundles
+    with pytest.raises(Exception):
+        ray.util.placement_group(bundles=[{"bundle": 1}])
+    # This test is to test the case that even there all resource in the
+    # bundle got allocated, we are still able to return from ready[I
+    # since ready use 0 CPU
     with connect_to_client_or_not(connect_to_client):
         pg = ray.util.placement_group(bundles=[{"CPU": 1}])
         ray.get(pg.ready())
