@@ -1,8 +1,6 @@
 import os
 import logging
 
-from ray.experimental import data
-
 logger = logging.getLogger(__name__)
 
 
@@ -154,6 +152,8 @@ __all__ += [
 ]
 
 # Add an alias so we can point to the final location in docs.
+# TODO(ekl) remove this once datasets is out of alpha.
+from ray.experimental import data  # noqa
 __all__.append(data)
 
 

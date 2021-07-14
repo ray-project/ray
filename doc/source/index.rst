@@ -279,18 +279,6 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Data Processing
-
-   data/dataset.rst
-   data/package-ref.rst
-   data/dask-on-ray.rst
-   data/mars-on-ray.rst
-   data/modin/index.rst
-   data/raydp.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -330,6 +318,18 @@ Papers
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Data Processing
+
+   data/dataset.rst
+   data/package-ref.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
 
 .. toctree::
    :hidden:

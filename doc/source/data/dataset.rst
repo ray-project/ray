@@ -1,5 +1,5 @@
-Ray Datasets
-============
+Datasets: Distributed Arrow on Ray
+==================================
 
 .. tip::
 
@@ -14,9 +14,9 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either Arrow table format or in a Python list (for Arrow incompatible objects). Splitting the dataset into blocks allows for parallel transformation and ingest of the data.
+Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either Arrow table format or in a Python list (for Arrow incompatible objects). Splitting the dataset into blocks allows for parallel transformation and ingest of the data.
 
-The following figure visualizes a dataset that has three Arrow table blocks, each block holding 1000 rows each:
+The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
 .. image:: dataset-arch.svg
 
@@ -122,11 +122,57 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
-talk about ray.data.read_*, from_<df>, read_datasource, range, items for testing
+Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
-Example: ray.data.range(100) -> str(), count, schema, etc. inspection
+.. code-block:: python
 
-Example: read parquet, basic transform, saving data
+    # Create a Dataset of Python objects.
+    ds = ray.data.range(10000)
+    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+
+    ds.take(5)
+    # -> [0, 1, 2, 3, 4]
+
+    ds.count())
+    # -> 100
+
+    # Create a Dataset of Arrow records.
+    ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
+    # -> Dataset(num_rows=10000, num_blocks=200, schema={col1: int64, col2: string})
+
+    ds.show(2)
+    # -> ArrowRow({'col1': 0, 'col2': '0'})
+    # -> ArrowRow({'col1': 1, 'col2': '1'})
+
+    ds.schema()
+    # -> col1: int64
+    # -> col2: string
+
+Datasets can also be created from files on local disk or remote datasources such as S3. Any filesystem `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__ can be used to specify file locations:
+
+.. code-block:: python
+
+    # Read a directory of files in remote storage.
+    ds = ray.data.read_csv("s3://bucket/path")
+
+    # Read multiple local files.
+    ds = ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
+
+    # Read multiple directories.
+    ds = ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+
+Finally, you can create a Dataset from an existing data in the Ray object store or Ray compatible distributed DataFrames:
+
+.. code-block:: python
+
+    # Create a Dataset from a list of Pandas DataFrame objects.
+    pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.experimental.data.from_pandas([ray.put(pdf)])
+
+    # Create a Dataset from a Dask-on-Ray DataFrame.
+    dask_df = dd.from_pandas(pdf, npartitions=10)
+    ds = ray.data.from_dask(dask_df)
+
 
 Transforming Datasets
 ---------------------

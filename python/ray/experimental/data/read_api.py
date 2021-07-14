@@ -17,9 +17,9 @@ from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask
 from ray.experimental.data.impl import reader as _reader
-from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
-    BlockMetadata
+from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow, \
+    DelegatingArrowBlockBuilder
+from ray.experimental.data.impl.block import ObjectRef, Block, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
@@ -78,17 +78,12 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = SimpleBlock.builder()
+        builder = DelegatingArrowBlockBuilder()
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(
-            BlockMetadata(
-                num_rows=block.num_rows(),
-                size_bytes=block.size_bytes(),
-                schema=type(items[0]),
-                input_files=None))
+        metadata.append(block.get_metadata(input_files=None))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata))
