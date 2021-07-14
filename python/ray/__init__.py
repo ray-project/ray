@@ -151,6 +151,7 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+# Add an alias so we can point to the final location in docs.
 from ray.experimental import data
 __all__.append(data)
 
