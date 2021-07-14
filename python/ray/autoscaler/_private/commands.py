@@ -473,13 +473,15 @@ def kill_node(config_file: str,
     if not nodes:
         cli_logger.print("No worker nodes detected.")
         return None
-    if not _node:
-        node = random.choice(nodes)
-    else:
+    if _node:
         # Kill specific node if supplied via hidden arg.
         # Used exclusively by autoscaler to stop Ray on nodes of on-prem
         # clusters.
         node = _node
+    else:
+        # The publically advertised, cli-accessible behavior of kill_node is to
+        # pick a random node.
+        node = random.choice(nodes)
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
     if hard:
         provider.terminate_node(node)

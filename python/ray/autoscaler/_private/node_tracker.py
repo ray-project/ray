@@ -51,6 +51,7 @@ class NodeTracker:
         Args:
             node_id (str): The node id which failed.
         """
+        # `if` block ensures it's ok to untrack a node twice.
         if node_id in self.node_mapping:
             self.lru_order.remove(node_id)
             del self.node_mapping[node_id]
