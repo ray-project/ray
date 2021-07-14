@@ -181,12 +181,12 @@ Datasets can be written to local or remote storage using ``.write_csv()``, ``.wr
 .. code-block:: python
 
     # Write to csv files in /tmp/output.
-    ds = ray.data.range(10).write_csv("/tmp/output")
+    ds = ray.data.range(10000).write_csv("/tmp/output")
     # -> /tmp/output/data0.csv, /tmp/output/data1.csv, ...
 
     # Use repartition to control the number of output files:
-    ds = ray.data.range(1).write_csv("/tmp/output2")
-    # -> /tmp/output/data0.csv
+    ds = ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
+    # -> /tmp/output2/data0.csv
 
 Transforming Datasets
 ---------------------
@@ -226,7 +226,7 @@ By default, transformations are executed using Ray tasks. For transformations th
     model = None
 
     def preprocess(image: bytes) -> bytes:
-        ...
+        return image
 
     def batch_infer(batch: pandas.DataFrame) -> pandas.DataFrame:
         global model
@@ -244,19 +244,49 @@ By default, transformations are executed using Ray tasks. For transformations th
     ds = ds.map_batches(batch_infer, compute="actors", batch_size=256, num_gpus=1)
 
     # Save the results.
-    ds.repartitoin(1).write_json("s3://bucket/inference-results.json")
+    ds.repartition(1).write_json("s3://bucket/inference-results")
 
-Consuming datasets
-------------------
+Exchanging datasets
+-------------------
 
-iter_batches/rows
-    Example: passing datasets between Ray tasks / actors
+Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``. This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
-split/to_torch/tf
-    Example: pseudocode read features, split, send to training actors
+.. code-block:: python
 
-to_dask
-    Example: converting to a dask-on-ray dataset
+    @ray.remote
+    def consume(data):
+        num_batches = 0
+        for batch in data.iter_batches():
+            num_batches += 1
+        return num_batches
+
+    ds = ray.data.range(10000)
+    ray.get(consume.remote(ds))
+    # -> 200
+
+Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is supported if you pass in a list of actor handles to the ``split()`` function along with the number of desired splits. This is a common pattern useful for loading and splitting data between distributed training actors:
+
+.. code-block:: python
+
+    @ray.remote(num_gpus=1)
+    class Worker:
+        def __init__(self, rank: int):
+            ...
+
+        def train(self, shard: Dataset) -> int:
+            for batch in shard.iter_batches(batch_size=256):
+                ...
+            return shard.num_rows()
+
+    workers = [Worker.remote(i) for i in range(16)]
+    # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
+    ds = ray.data.range(10000)
+    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    shards = ds.split(n=16, locality_hints=workers)
+    # -> [Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>),
+    #     Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>), ...]
+    ray.get([w.train.remote(s) for s in shards])
+    # -> [650, 650, ...]
 
 Custom datasources
 ------------------
