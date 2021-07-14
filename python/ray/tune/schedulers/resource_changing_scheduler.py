@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 def evenly_distribute_cpus_gpus(
         trial_runner: "trial_runner.TrialRunner", trial: Trial,
-        result: Dict[str, Any],
-        base_trial_resource: Union[PlacementGroupFactory, Resources]
+        result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
 ) -> Union[None, PlacementGroupFactory, Resources]:
     """This is a basic resource allocating function.
 
@@ -42,10 +41,13 @@ def evenly_distribute_cpus_gpus(
             Can be used to obtain information about other trials.
         trial (Trial): The trial to allocate new resources to.
         result (Dict[str, Any]): The latest results of trial.
-        base_trial_resource (Union[PlacementGroupFactory, Resources]):
-            Base trial resources as defined in
-            ``tune.run(resources_per_trial)``
+        scheduler (ResourceChangingScheduler): The scheduler calling
+            the function.
     """
+
+    # Get base trial resources as defined in
+    # ``tune.run(resources_per_trial)``
+    base_trial_resource = scheduler._base_trial_resources
 
     if not isinstance(base_trial_resource, PlacementGroupFactory):
         raise ValueError("evenly_distribute_cpus_gpus only supports"
@@ -142,11 +144,10 @@ class ResourceChangingScheduler(TrialScheduler):
             live trial resource requiements during tuning. This function
             will be called on each trial as it finishes one step of training.
             The function must take four arguments: ``TrialRunner``, current
-            ``Trial``, current result :class:`dict` and the base trial
-            resource ``PlacementGroupFactory`` or ``Resource`` (depending on
-            whether placement groups are used). The function must return a
-            ``PlacementGroupFactory``, ``Resources``, :class:`dict` or None
-            (signifying no need for an update). If
+            ``Trial``, current result :class:`dict` and the
+            ``ResourceChangingScheduler`` calling it. The function must
+            return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
+            or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
             By default, :func:`evenly_distribute_cpus_gpus` will be used,
@@ -168,7 +169,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial_runner: "trial_runner.TrialRunner",
                 trial: Trial,
                 result: Dict[str, Any],
-                base_trial_resource: Union[PlacementGroupFactory, Resources]
+                scheduler: "ResourceChangingScheduler"
             ) -> Union[None, PlacementGroupFactory, Resource]:
                 # logic here
                 # usage of PlacementGroupFactory is strongly preferred
@@ -186,8 +187,8 @@ class ResourceChangingScheduler(TrialScheduler):
             self,
             base_scheduler: Optional[TrialScheduler] = None,
             resources_allocation_function: Optional[Callable[[
-                "trial_runner.TrialRunner", Trial, Dict[str, Any], Union[
-                    PlacementGroupFactory, Resources]
+                "trial_runner.TrialRunner", Trial, Dict[str, Any],
+                "ResourceChangingScheduler"
             ], Union[None, PlacementGroupFactory,
                      Resources]]] = evenly_distribute_cpus_gpus,
     ) -> None:
@@ -348,7 +349,7 @@ class ResourceChangingScheduler(TrialScheduler):
             return None
 
         new_resources = self._resources_allocation_function(
-            trial_runner, trial, result, self._base_trial_resources)
+            trial_runner, trial, result, self)
 
         # if we can check if the new resources are the same,
         # we do that here and skip resource allocation

@@ -112,8 +112,7 @@ def tune_xgboost():
 
     def example_resources_allocation_function(
             trial_runner: "trial_runner.TrialRunner", trial: Trial,
-            result: Dict[str, Any],
-            base_trial_resource: Union[PlacementGroupFactory, Resources]
+            result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
     ) -> Union[None, PlacementGroupFactory, Resources]:
         """This is a basic example of a resource allocating function.
 
@@ -133,10 +132,13 @@ def tune_xgboost():
                 Can be used to obtain information about other trials.
             trial (Trial): The trial to allocate new resources to.
             result (Dict[str, Any]): The latest results of trial.
-            base_trial_resource (Union[PlacementGroupFactory, Resources]):
-                Base trial resources as defined in
-                ``tune.run(resources_per_trial)``
+            scheduler (ResourceChangingScheduler): The scheduler calling
+                the function.
         """
+
+        # Get base trial resources as defined in
+        # ``tune.run(resources_per_trial)``
+        base_trial_resource = scheduler._base_trial_resources
 
         # Don't bother if this is just the first iteration
         if result["training_iteration"] < 1:
