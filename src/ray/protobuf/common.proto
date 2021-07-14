@@ -505,3 +505,9 @@ enum PlacementStrategy {
   STRICT_SPREAD = 3;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+// Info about a named actor.
+message NamedActorInfo {
+  string ray_namespace = 1;
+  string name = 2;
+}

@@ -14,7 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, normalize_action, unbatch
+    get_base_struct_from_space, unbatch, unsquash_action
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -161,7 +161,7 @@ class Policy(metaclass=ABCMeta):
             clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            normalize_actions: bool = None,
+            unsquash_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -176,7 +176,7 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            normalize_actions (bool): Should actions be normalized according to
+            unsquash_actions (bool): Should actions be unsquashed according to
                 the Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 Policy's action space?
@@ -195,8 +195,10 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
-        normalize_actions = \
-            normalize_actions if normalize_actions is not None \
+        # If policy works in normalized space, we should unsquash the action.
+        # Use value of config.normalize_actions, if None.
+        unsquash_actions = \
+            unsquash_actions if unsquash_actions is not None \
             else self.config["normalize_actions"]
         clip_actions = clip_actions if clip_actions is not None else \
             self.config["clip_actions"]
@@ -244,9 +246,12 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        if normalize_actions:
-            single_action = normalize_action(single_action,
-                                             self.action_space_struct)
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
+        if unsquash_actions:
+            single_action = unsquash_action(single_action,
+                                            self.action_space_struct)
+        # Clip, according to env's action space.
         elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
@@ -314,8 +319,10 @@ class Policy(metaclass=ABCMeta):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -330,6 +337,10 @@ class Policy(metaclass=ABCMeta):
                 Batch of previous action values.
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
+            actions_normalized (bool): Is the given `actions` already
+                 normalized (between -1.0 and 1.0) or not? If not and
+                 `normalize_actions=True`, we need to normalize the given
+                 actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:
@@ -528,7 +539,8 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Note: The file format will depend on the deep learning framework used.
@@ -537,6 +549,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             export_dir (str): Local writable directory.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
 
