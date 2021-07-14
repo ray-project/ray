@@ -739,9 +739,8 @@ def init(
                 # passed value is different than default, pass to the client
                 # builder
                 passed_kwargs[argument_name] = passed_value
-
-        builder._store_args(**passed_kwargs)
-        builder._catch_all(**kwargs)
+        passed_kwargs.update(kwargs)
+        builder._init_args(**passed_kwargs)
         return builder.connect()
 
     if kwargs:

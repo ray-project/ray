@@ -119,22 +119,13 @@ class ClientBuilder:
         if runtime_env_var and self._job_config.runtime_env is None:
             self.env(json.loads(runtime_env_var))
 
-    def _catch_all(self, **kwargs) -> "ClientBuilder":
+    def _init_args(self, **kwargs) -> "ClientBuilder":
         """
-        Some client builders will take extra arguments that aren't part of the
-        default ray.init arguments. This method will be called with any
-        extra arguments, and can be overwritten to handle those arguments.
-        """
-        if not kwargs:
-            return self
-        unknown = ", ".join(kwargs)
-        raise RuntimeError(f"Unexpected keyword argument(s): {unknown}")
-
-    def _store_args(self, **kwargs) -> "ClientBuilder":
-        """
-        Some client builders may need configuration to start a new cluster,
-        for example the _LocalClientBuilder will create a cluster locally.
-        This method will be called with all of the default ray.init arguments.
+        When a client builder is constructed through ray.init, for example
+        `ray.init(ray://..., namespace=...)`, all of the
+        arguments passed into ray.init are passed again into this method.
+        Custom client builders can override this method to do their own
+        handling/validation of arguments.
         """
         # Use namespace and runtime_env from ray.init call
         if kwargs.get("namespace") is not None:
@@ -156,7 +147,7 @@ class _LocalClientBuilder(ClientBuilder):
         self._init_args_dict = {}
         self._internal_config = {}
 
-    def _store_args(self, **kwargs) -> "ClientBuilder":
+    def _init_args(self, **kwargs) -> "ClientBuilder":
         for argument in kwargs:
             if argument.startswith("_"):
                 raise RuntimeError(
