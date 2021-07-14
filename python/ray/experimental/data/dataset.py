@@ -979,7 +979,7 @@ class Dataset(Generic[T]):
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Spark dataframe created from this dataset.
