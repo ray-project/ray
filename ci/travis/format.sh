@@ -47,7 +47,7 @@ builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
-SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}' || echo none)
+SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
