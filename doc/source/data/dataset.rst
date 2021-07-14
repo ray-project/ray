@@ -209,9 +209,11 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
     # -> [0, 2, 4, 6, 8]
 
     ds.filter(lambda x: x > 5).take(5)
+    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
     # -> [6, 8, 10, 12, 14]
 
     ds.flat_map(lambda x: [x, -x]).take(5)
+    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
     # -> [0, 0, 2, -2, 4]
 
 To take advantage of vectorized UDFs, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since the DataFrame size can be changed.
