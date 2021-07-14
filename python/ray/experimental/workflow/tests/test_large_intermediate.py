@@ -28,7 +28,7 @@ def simple_large_intermediate():
 
 def test_simple_large_intermediate():
     import ray
-    ray.init()
+    ray.init(namespace="workflow")
 
     start = time.time()
     outputs = workflow.run(simple_large_intermediate.step())
