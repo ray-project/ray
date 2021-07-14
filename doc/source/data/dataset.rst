@@ -286,7 +286,7 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
         def train(self, shard: Dataset) -> int:
             for batch in shard.iter_batches(batch_size=256):
                 ...
-            return shard.num_rows()
+            return shard.count()
 
     workers = [Worker.remote(i) for i in range(16)]
     # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
