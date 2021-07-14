@@ -110,10 +110,6 @@ def evenly_distribute_cpus_gpus(
     new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus, min_cpu))
     new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus, min_gpu))
 
-    print(
-        f"total_available_cpus:{total_available_cpus} min_cpu:{min_cpu} num_running_trials:{num_running_trials} upper_cpu_limit:{upper_cpu_limit} trial_used_cpus:{trial_used_cpus} used_cpus:{used_cpus} free_cpus:{free_cpus} new_cpu:{new_cpu}"
-    )
-
     # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
     return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
 
