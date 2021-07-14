@@ -93,7 +93,7 @@ def _get_wheel_name(minor_version_number):
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
-            f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}*-manylinux*")
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}*-manylinux*")
         return [os.path.basename(i) for i in matches]
 
 
