@@ -19,55 +19,20 @@
 #include <string>
 
 #include "absl/types/optional.h"
+#include "ray/object_manager/object_reader.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
-
-/// Reader over an immutable Ray object.
-class IObjectReader {
- public:
-  virtual ~IObjectReader() = default;
-
-  /// Return the size of data (exclusing metadata).
-  virtual uint64_t GetDataSize() const = 0;
-
-  /// Return the size of metadata.
-  virtual uint64_t GetMetadataSize() const = 0;
-
-  uint64_t GetObjectSize() const { return GetDataSize() + GetMetadataSize(); }
-
-  virtual const rpc::Address &GetOwnerAddress() const = 0;
-
-  /// Read from data sections into output.
-  /// Return false if the object is corrupted or size/offset is invalid.
-  ///
-  /// \param offset offset to the data secton to copy from.
-  /// \param size number of bytes to copy.
-  /// \param output pointer to the memory location to copy to.
-  /// \return bool.
-  virtual bool ReadFromDataSection(uint64_t offset, uint64_t size,
-                                   char *output) const = 0;
-  /// Read from metadata sections into output.
-  /// Return false if the object is corrupted or size/offset is invalid.
-  ///
-  /// \param offset offset to the metadata secton to copy from.
-  /// \param size number of bytes to copy.
-  /// \param output pointer to the memory location to copy to.
-  /// \return bool.
-  virtual bool ReadFromMetadataSection(uint64_t offset, uint64_t size,
-                                       char *output) const = 0;
-};
-
 /// Reader for a local object spilled in the object_url.
 /// This class is thread safe.
-/// TODO(scv119): rename it to SpilledObjectReader
-class SpilledObject : public IObjectReader {
+class SpilledObjectReader : public IObjectReader {
  public:
   /// Create a Spilled Object. Returns an empty optional if any error happens, such as
   /// malformed url; corrupted/deleted file.
   ///
   /// \param object_url the object url in the form of {path}?offset={offset}&size={size}
-  static absl::optional<SpilledObject> CreateSpilledObject(const std::string &object_url);
+  static absl::optional<SpilledObjectReader> CreateSpilledObjectReader(
+      const std::string &object_url);
 
   uint64_t GetDataSize() const override;
 
@@ -80,9 +45,9 @@ class SpilledObject : public IObjectReader {
                                char *output) const override;
 
  private:
-  SpilledObject(std::string file_path, uint64_t total_size, uint64_t data_offset,
-                uint64_t data_size, uint64_t metadata_offset, uint64_t metadata_size,
-                rpc::Address owner_address);
+  SpilledObjectReader(std::string file_path, uint64_t total_size, uint64_t data_offset,
+                      uint64_t data_size, uint64_t metadata_offset,
+                      uint64_t metadata_size, rpc::Address owner_address);
 
   /// Parse the object url in the form of {path}?offset={offset}&size={size}.
   /// Return false if parsing failed.
@@ -128,11 +93,11 @@ class SpilledObject : public IObjectReader {
   static uint64_t ToUINT64(const std::string &s);
 
  private:
-  FRIEND_TEST(SpilledObjectTest, ParseObjectURL);
-  FRIEND_TEST(SpilledObjectTest, ToUINT64);
-  FRIEND_TEST(SpilledObjectTest, ReadUINT64);
-  FRIEND_TEST(SpilledObjectTest, ParseObjectHeader);
-  FRIEND_TEST(SpilledObjectTest, Getters);
+  FRIEND_TEST(SpilledObjectReaderTest, ParseObjectURL);
+  FRIEND_TEST(SpilledObjectReaderTest, ToUINT64);
+  FRIEND_TEST(SpilledObjectReaderTest, ReadUINT64);
+  FRIEND_TEST(SpilledObjectReaderTest, ParseObjectHeader);
+  FRIEND_TEST(SpilledObjectReaderTest, Getters);
   FRIEND_TEST(ChunkObjectReaderTest, GetNumChunks);
 
   const std::string file_path_;

@@ -392,11 +392,11 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   Status status = reader_status.second;
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to read object " << object_id
-                   << ". It may have been evicted.";
+                   << "from Plasma store. It may have been evicted.";
     return;
   }
 
-  std::shared_ptr<MemoryObjectReader> object_reader = std::move(reader_status.first);
+  auto object_reader = std::move(reader_status.first);
   RAY_CHECK(object_reader) << "object_reader can't be null";
 
   if (object_reader->GetDataSize() != data_size ||
@@ -427,18 +427,20 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
 void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
                                        const std::string &spilled_url) {
-  // SpilledObject::CreateSpilledObject does synchronous IO; schedule it off
+  // SpilledObjectReader::CreateSpilledObjectReader does synchronous IO; schedule it off
   // main thread.
   rpc_service_.post(
       [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size]() {
-        auto optional_spilled_object = SpilledObject::CreateSpilledObject(spilled_url);
+        auto optional_spilled_object =
+            SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
           RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
                          << ". It may have been evicted.";
           return;
         }
         auto chunk_object_reader = std::make_shared<ChunkObjectReader>(
-            std::make_shared<SpilledObject>(std::move(optional_spilled_object.value())),
+            std::make_shared<SpilledObjectReader>(
+                std::move(optional_spilled_object.value())),
             chunk_size);
 
         // Schedule PushObjectInternal back to main_service as PushObjectInternal access
@@ -510,7 +512,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   // read a chunk into push_request and handle errors.
   auto optional_chunk = chunk_reader->GetChunk(chunk_index);
   if (!optional_chunk.has_value()) {
-    RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
+    RAY_LOG(DEBUG) << "Read chunk " << chunk_index << " of object " << object_id
                    << " failed. It may have been evicted.";
     on_complete(Status::IOError("Failed to read spilled object"));
     return;

@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/object_manager/spilled_object.h"
+#include "ray/object_manager/spilled_object_reader.h"
 
 namespace ray {
 

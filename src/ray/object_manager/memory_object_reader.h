@@ -14,13 +14,13 @@
 
 #pragma once
 
+#include "ray/object_manager/object_reader.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/object_manager/spilled_object.h"
 
 namespace ray {
 
-/// A wrapper over plasma object.
-/// This class is thread safe.
+/// A wrapper over plasma object. Please reader ray/object_manager/object_reader.h
+/// for interface guanrantees. This class is thread safe.
 class MemoryObjectReader : public IObjectReader {
  public:
   MemoryObjectReader(plasma::ObjectBuffer object_buffer, rpc::Address owner_address);
