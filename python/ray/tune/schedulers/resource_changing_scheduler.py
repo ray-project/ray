@@ -78,13 +78,17 @@ def evenly_distribute_cpus_gpus(
         upper_cpu_limit = 0
     else:
         upper_cpu_limit = math.ceil(total_available_cpus / num_running_trials)
-        upper_cpu_limit = max(min_cpu, upper_cpu_limit)
+        upper_cpu_limit = math.ceil(upper_cpu_limit / min_cpu) * min_cpu
+        upper_cpu_limit = max(min_cpu,
+                              min(upper_cpu_limit, total_available_cpus))
 
     if min_gpu == 0:
         upper_gpu_limit = 0
     else:
         upper_gpu_limit = math.ceil(total_available_gpus / num_running_trials)
-        upper_gpu_limit = max(min_gpu, upper_gpu_limit)
+        upper_gpu_limit = math.ceil(upper_gpu_limit / min_gpu) * min_gpu
+        upper_gpu_limit = max(min_gpu,
+                              min(upper_gpu_limit, total_available_gpus))
 
     # Function to check how many CPUs and GPUs a trial is using currently
     def get_used_cpus_and_gpus(t: Trial):
@@ -109,6 +113,10 @@ def evenly_distribute_cpus_gpus(
     # Add free CPUs and GPUs enforcing upper and lower limits
     new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus, min_cpu))
     new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus, min_gpu))
+
+    print(
+        f"total_available_cpus:{total_available_cpus} min_cpu:{min_cpu} num_running_trials:{num_running_trials} upper_cpu_limit:{upper_cpu_limit} trial_used_cpus:{trial_used_cpus} used_cpus:{used_cpus} free_cpus:{free_cpus} new_cpu:{new_cpu}"
+    )
 
     # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
     return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
