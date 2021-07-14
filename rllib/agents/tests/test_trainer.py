@@ -15,6 +15,10 @@ class TestTrainer(unittest.TestCase):
     def setUpClass(cls):
         ray.init()
 
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_add_delete_policy(self):
         env = gym.make("CartPole-v0")
 
