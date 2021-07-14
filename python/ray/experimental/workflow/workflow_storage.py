@@ -103,7 +103,7 @@ class WorkflowStorage:
             tasks.append(
                 self._update_dynamic_output(outer_most_step_id,
                                             dynamic_output_id))
-        asyncio_run(asyncio.gather(tasks))
+        asyncio_run(asyncio.gather(*tasks))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
@@ -197,7 +197,7 @@ class WorkflowStorage:
         """
         # empty StepID represents the workflow driver
         try:
-            return self._locate_output_step_id("")
+            return asyncio_run(self._locate_output_step_id(""))
         except Exception as e:
             raise ValueError("Fail to get entrypoint step ID from workflow"
                              f"[id={self._workflow_id}]") from e
@@ -276,4 +276,4 @@ class WorkflowStorage:
             self._write_step_inputs(w.id, w.get_inputs())
             for w in workflow.iter_workflows_in_dag()
         ]
-        asyncio_run(asyncio.gather(tasks))
+        asyncio_run(asyncio.gather(*tasks))
