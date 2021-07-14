@@ -73,18 +73,19 @@ def evenly_distribute_cpus_gpus(
     # Set upper limits for resources based on number of live trials
     # to ensure that the trial cannot get more resources that it's
     # possible to run
+    len_running_trials_minus_this = len(trial_runner.get_live_trials()) - 1
     if min_cpu == 0:
         upper_cpu_limit = 0
     else:
-        upper_cpu_limit = math.ceil(total_available_cpus / len(
-            trial_runner.get_live_trials()) / min_cpu)
+        upper_cpu_limit = math.ceil(total_available_cpus / max(
+            1, (len_running_trials_minus_this * min_cpu)))
         upper_cpu_limit = max(min_cpu, upper_cpu_limit)
 
     if min_gpu == 0:
         upper_gpu_limit = 0
     else:
-        upper_gpu_limit = math.ceil(total_available_gpus / len(
-            trial_runner.get_live_trials()) / min_gpu)
+        upper_gpu_limit = math.ceil(total_available_gpus / max(
+            1, (len_running_trials_minus_this * min_gpu)))
         upper_gpu_limit = max(min_gpu, upper_gpu_limit)
 
     # Function to check how many CPUs and GPUs a trial is using currently
