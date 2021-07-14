@@ -1,5 +1,5 @@
-Ray Dataset API Reference
-=========================
+Ray Datasets API Reference
+==========================
 
 Creating a Dataset
 ------------------
