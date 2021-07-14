@@ -100,11 +100,14 @@ Datasource Compatibility Matrices
    * - Arrow Table Objects
      - ``ds.to_arrow()``
      - ✅
+   * - Arrow Table Iterator
+     - ``ds.iter_batches(batch_format="pyarrow")``
+     - ✅
    * - Pandas Dataframe Objects
      - ``ds.to_pandas()``
      - ✅
    * - Pandas Dataframe Iterator
-     - ``ds.iter_batches()``
+     - ``ds.iter_batches(batch_format="pandas")``
      - ✅
    * - PyTorch Iterable Dataset
      - ``ds.to_torch()``
