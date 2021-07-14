@@ -1746,7 +1746,7 @@ Status CoreWorker::CreatePlacementGroup(
       std::make_shared<std::promise<Status>>();
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
-    for (const auto resource : bundle) {
+    for (const auto &resource : bundle) {
       if (resource.first == kBundle_ResourceLabel) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
