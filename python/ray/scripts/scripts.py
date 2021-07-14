@@ -1359,7 +1359,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' or `pip install ray[default]
+    echo "ERROR: Please 'pip install py-spy' or 'pip install ray[default]'
     first"
     exit 1
 fi
