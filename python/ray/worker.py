@@ -666,10 +666,10 @@ def init(
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use
         internal_config (dict): Dictionary mapping names of a unstable
-            parameters to values, e.g. {"_redis_password": "1234"}. This is
+            parameters to values, e.g. {"redis_password": "1234"}. This is
             only used for initializing a local client (ray.init(local://...)).
             Values in this dictionary will be used to configure the local
-            cluster.
+            cluster. Parameter names should exclude the underscore prefix.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that

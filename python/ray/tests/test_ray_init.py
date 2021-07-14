@@ -187,11 +187,17 @@ def test_ray_init_local_with_unstable_parameter(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
         # Passing an invalid unstable parameter through internal_config
         # should error
-        ray.init("local://", internal_config={"_asdfasd": "1234"})
-    assert "_asdfasd" in str(excinfo.value)
+        ray.init("local://", internal_config={"asdfasd": "1234"})
+    assert "asdfasd" in str(excinfo.value)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        # Error if internal_config has valid parameter but with underscore
+        # still included
+        ray.init("local://", internal_config={"_node_ip_address": "0.0.0.0"})
+    assert "_node_ip_address" in str(excinfo.value)
 
     # Make sure local:// works when unstables passed correctly
-    ray.init("local://", internal_config={"_node_ip_address": "0.0.0.0"})
+    ray.init("local://", internal_config={"node_ip_address": "0.0.0.0"})
 
 
 def test_env_var_override():

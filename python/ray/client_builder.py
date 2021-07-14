@@ -153,7 +153,7 @@ class _LocalClientBuilder(ClientBuilder):
                 raise RuntimeError(
                     f"Unexpected keyword argument: {argument}. Unstable "
                     "parameters using the local client should be passed "
-                    "through the `internal_config`, e.g. ray.init"
+                    "through the `internal_config` dict, e.g. ray.init"
                     "(local://..., internal_config={{argument: value}}")
         if kwargs.get("job_config") is not None:
             self._job_config = kwargs.pop("job_config")
@@ -162,6 +162,20 @@ class _LocalClientBuilder(ClientBuilder):
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs.pop("runtime_env"))
         self._internal_config = kwargs.pop("internal_config", {})
+
+        # Prefix internal_config names with underscores
+        arg_names = list(self._internal_config)
+        for name in arg_names:
+            if name.startswith("_"):
+                stripped_name = name.lstrip("_")
+                raise RuntimeError(
+                    f"Found internal_config argument "
+                    f"`{name}`. Arguments passed in internal_config should "
+                    "not include the underscore prefix. Use "
+                    f"`{stripped_name}` instead.")
+            self._internal_config["_" + name] = self._internal_config[name]
+            del self._internal_config[name]
+
         self._fill_defaults_from_env()
         self._init_args_dict = kwargs
         return self
