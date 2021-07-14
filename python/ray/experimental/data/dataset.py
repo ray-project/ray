@@ -924,7 +924,7 @@ class Dataset(Generic[T]):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
-                yield (batch.values, target_col.values)
+                yield batch.values, target_col.values
 
         return tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature)
