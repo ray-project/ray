@@ -67,6 +67,9 @@ Datasource Compatibility Matrices
    * - Pandas Dataframe Objects
      - ``ray.data.from_pandas()``
      - ✅
+   * - Arrow Table Objects
+     - ``ray.data.from_arrow()``
+     - ✅
 
 
 .. list-table:: Output compatibility matrix

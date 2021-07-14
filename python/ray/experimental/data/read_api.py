@@ -386,11 +386,33 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     import pyarrow as pa
 
     @ray.remote(num_returns=2)
-    def df_to_block(df: "pandas.DataFrame"):
+    def df_to_block(df: "pandas.DataFrame") -> ArrowBlock:
         block = ArrowBlock(pa.table(df))
         return block, block.get_metadata(input_files=None)
 
     res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+
+
+def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
+               parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a set of Arrow tables.
+
+    Args:
+        dfs: A list of Ray object references to Arrow tables.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records from the tables.
+    """
+
+    @ray.remote(num_returns=2)
+    def to_block(table: "pyarrow.Table") -> ArrowBlock:
+        block = ArrowBlock(table)
+        return block, block.get_metadata(input_files=None)
+
+    res = [to_block.remote(t) for t in tables]
     blocks, metadata = zip(*res)
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 

@@ -168,6 +168,18 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_arrow(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_arrow([
+        ray.put(pa.Table.from_pandas(df1)),
+        ray.put(pa.Table.from_pandas(df2))
+    ])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
