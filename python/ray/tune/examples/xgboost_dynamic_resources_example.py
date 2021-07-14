@@ -24,6 +24,7 @@ class BreastCancerTrainable(Trainable):
     def setup(self, config):
         self.config = config
         self.nthread = config.pop("nthread", 1)
+        self.new_nthread = None
         self.model: xgb.Booster = None
         # Load dataset
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -62,6 +63,9 @@ class BreastCancerTrainable(Trainable):
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
+        if self.new_nthread:
+            self.nthread = self.new_nthread
+            self.new_nthread = None
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -74,10 +78,11 @@ class BreastCancerTrainable(Trainable):
 
     def update_resources(
             self, new_resources: Union[PlacementGroupFactory, Resources]):
+        # this is called before `load_checkpoint`
         if isinstance(new_resources, PlacementGroupFactory):
-            self.nthread = new_resources.head_cpus
+            self.new_nthread = new_resources.head_cpus
         else:
-            self.nthread = new_resources.cpu
+            self.new_nthread = new_resources.cpu
 
 
 def get_best_model_checkpoint(analysis):
