@@ -280,11 +280,14 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
 
     workers = [Worker.remote(i) for i in range(16)]
     # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
+
     ds = ray.data.range(10000)
     # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+
     shards = ds.split(n=16, locality_hints=workers)
     # -> [Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>),
     #     Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>), ...]
+
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
 
