@@ -65,7 +65,7 @@ class _MockTrialExecutor(RayTrialExecutor):
         return [self.results.get(trial, {})]
 
     def get_next_available_trial(self, timeout=None):
-        return self.next_trial or super().get_next_available_trial()
+        return (self.next_trial, 1) or super().get_next_available_trial()
 
     def get_next_failed_trial(self):
         return self.failed_trial or super().get_next_failed_trial()

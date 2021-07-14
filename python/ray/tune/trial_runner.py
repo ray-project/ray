@@ -243,6 +243,9 @@ class TrialRunner:
             self._max_pending_trials = int(max_pending_trials)
         self.trial_executor.set_max_pending_trials(self._max_pending_trials)
 
+        self._process_trials_per_iter = int(
+            os.getenv("TUNE_PROCESS_TRIALS_PER_ITER", "1"))
+
         self._metric = metric
 
         if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
@@ -669,55 +672,67 @@ class TrialRunner:
             with warn_if_slow("process_failed_trial"):
                 self._process_trial_failure(failed_trial, error_msg=error_msg)
         else:
-            # TODO(ujvl): Consider combining get_next_available_trial and
-            #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial(
+            trial, num_ready = self.trial_executor.get_next_available_trial(
                 timeout=timeout)  # blocking
-            if not trial:
-                return
-            if trial.is_restoring:
-                with warn_if_slow("process_trial_restore"):
-                    self._process_trial_restore(trial)
-                with warn_if_slow("callbacks.on_trial_restore"):
-                    self._callbacks.on_trial_restore(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-            elif trial.is_saving:
-                with warn_if_slow("process_trial_save") as _profile:
-                    self._process_trial_save(trial)
-                with warn_if_slow("callbacks.on_trial_save"):
-                    self._callbacks.on_trial_save(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-                if _profile.too_slow and trial.sync_on_checkpoint:
-                    # TODO(ujvl): Suggest using DurableTrainable once
-                    #  API has converged.
 
-                    msg = (
-                        "Consider turning off forced head-worker trial "
-                        "checkpoint syncs by setting sync_on_checkpoint=False"
-                        ". Note that this may result in faulty trial "
-                        "restoration if a failure occurs while the checkpoint "
-                        "is being synced from the worker to the head node.")
+            process_max = min(self._process_trials_per_iter, num_ready)
+            for i in range(process_max):
+                if not self._process_next_available_trial(trial=trial):
+                    break
 
-                    if trial.location.hostname and (trial.location.hostname !=
-                                                    get_node_ip_address()):
-                        if log_once("tune_head_worker_checkpoint"):
-                            logger.warning(msg)
+                trial, _ = self.trial_executor.get_next_available_trial(
+                    timeout=None)
 
-            else:
-                with warn_if_slow("process_trial"):
-                    self._process_trial(trial)
+    def _process_next_available_trial(self, trial: Trial) -> bool:
+        # TODO(ujvl): Consider combining get_next_available_trial and
+        #  fetch_result functionality so that we don't timeout on fetch.
 
-            # `self._queued_trial_decisions` now contains a final decision
-            # based on all results
-            if trial not in self._cached_trial_decisions:
-                final_decision = self._queued_trial_decisions.pop(
-                    trial.trial_id, None)
-                if final_decision:
-                    self._execute_action(trial, final_decision)
+        if not trial:
+            return False
+        if trial.is_restoring:
+            with warn_if_slow("process_trial_restore"):
+                self._process_trial_restore(trial)
+            with warn_if_slow("callbacks.on_trial_restore"):
+                self._callbacks.on_trial_restore(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
+        elif trial.is_saving:
+            with warn_if_slow("process_trial_save") as _profile:
+                self._process_trial_save(trial)
+            with warn_if_slow("callbacks.on_trial_save"):
+                self._callbacks.on_trial_save(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
+            if _profile.too_slow and trial.sync_on_checkpoint:
+                # TODO(ujvl): Suggest using DurableTrainable once
+                #  API has converged.
+
+                msg = ("Consider turning off forced head-worker trial "
+                       "checkpoint syncs by setting sync_on_checkpoint=False"
+                       ". Note that this may result in faulty trial "
+                       "restoration if a failure occurs while the checkpoint "
+                       "is being synced from the worker to the head node.")
+
+                if trial.location.hostname and (trial.location.hostname !=
+                                                get_node_ip_address()):
+                    if log_once("tune_head_worker_checkpoint"):
+                        logger.warning(msg)
+
+        else:
+            with warn_if_slow("process_trial"):
+                self._process_trial(trial)
+
+        # `self._queued_trial_decisions` now contains a final decision
+        # based on all results
+        if trial not in self._cached_trial_decisions:
+            final_decision = self._queued_trial_decisions.pop(
+                trial.trial_id, None)
+            if final_decision:
+                self._execute_action(trial, final_decision)
+
+        return True
 
     def _process_trial(self, trial):
         """Processes a trial result.

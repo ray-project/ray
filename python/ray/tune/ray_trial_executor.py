@@ -7,7 +7,7 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -687,9 +687,10 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(self, timeout: Optional[float] = None):
+    def get_next_available_trial(self, timeout: Optional[float] = None) -> \
+            Tuple[Optional[Trial], int]:
         if not self._running:
-            return None
+            return None, 0
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
 
@@ -700,7 +701,7 @@ class RayTrialExecutor(TrialExecutor):
         start = time.time()
         ready, _ = ray.wait(shuffled_results, timeout=timeout)
         if not ready:
-            return None
+            return None, 0
         result_id = ready[0]
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
@@ -713,7 +714,7 @@ class RayTrialExecutor(TrialExecutor):
                     BOTTLENECK_WARN_PERIOD_S))
 
             self._last_nontrivial_wait = time.time()
-        return self._running[result_id]
+        return self._running[result_id], len(ready)
 
     def fetch_result(self, trial):
         """Fetches result list of the running trials.

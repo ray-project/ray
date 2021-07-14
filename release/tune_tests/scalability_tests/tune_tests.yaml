@@ -79,3 +79,14 @@
     timeout: 3600
     prepare: python wait_cluster.py 16 600
     script: python workloads/test_xgboost_sweep.py
+
+
+- name: koch
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_24x64.yaml
+
+  run:
+    timeout: 1500
+    prepare: python wait_cluster.py 24 600
+    script: python workloads/test_koch.py
