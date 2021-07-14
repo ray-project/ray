@@ -83,7 +83,7 @@ class TestApexDQN(unittest.TestCase):
             policy = trainer.get_policy()
 
             try:
-                # first lr should be 0.0005, not 0.1 (ignored)
+                # first lr should be 1e-4, not 0.1 (ignored)
                 if fw == "tf":
                     check(policy._sess.run(policy.cur_lr), 1e-4)
                 else:
