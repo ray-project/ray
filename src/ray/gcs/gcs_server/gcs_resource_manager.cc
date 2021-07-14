@@ -387,10 +387,10 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
   absl::MutexLock guard(&resource_buffer_mutex_);
   resources_buffer_proto_.Swap(&buffer);
   while (!resources_buffer_.empty() &&
-         buffer->ByteSizeLong() <
+         buffer.ByteSizeLong() <
              RayConfig::instance().resource_broadcast_batch_size_bytes()) {
     auto element = std::begin(resources_buffer_);
-    buffer.add_batch()->mutable_data()->Swap(&element.second);
+    buffer.add_batch()->mutable_data()->Swap(&element->second);
     resources_buffer_.erase(element);
   }
 }
@@ -406,7 +406,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
     resources_buffer_.erase(element);
   }
 
-  if (total_size > 0) {
+  if (batch->ByteSizeLong() > 0) {
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     stats::OutboundHeartbeatSizeKB.Record(batch->ByteSizeLong() / 1024.0);
