@@ -119,14 +119,20 @@ Datasource Compatibility Matrices
      - ✅
 
 
-Creating, Transforming, and Saving Datasets
--------------------------------------------
+Creating Datasets
+-----------------
 
 talk about ray.data.read_*, from_<df>, read_datasource, range, items for testing
 
 Example: ray.data.range(100) -> str(), count, schema, etc. inspection
 
 Example: read parquet, basic transform, saving data
+
+Transforming Datasets
+---------------------
+
+Saving Datasets
+---------------
 
 Consuming datasets
 ------------------
