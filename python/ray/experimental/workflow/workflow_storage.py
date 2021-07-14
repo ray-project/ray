@@ -3,6 +3,7 @@ This module is higher-level abstraction of storage directly used by
 workflows.
 """
 
+import asyncio
 from typing import Awaitable, Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 
@@ -12,11 +13,11 @@ from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 
+
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
 def asyncio_run(coro):
-    import asyncio
     loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(coro)
+    return loop.run_until_complete(coro)
 
 
 @dataclass
