@@ -165,11 +165,11 @@ class _LocalClientBuilder(ClientBuilder):
                     "through the `internal_config`, e.g. ray.init"
                     "(local://..., internal_config={{argument: value}}")
         if kwargs.get("job_config") is not None:
-            self._job_config = kwargs.get("job_config")
+            self._job_config = kwargs.pop("job_config")
         if kwargs.get("namespace") is not None:
-            self.namespace(kwargs["namespace"])
+            self.namespace(kwargs.pop("namespace"))
         if kwargs.get("runtime_env") is not None:
-            self.env(kwargs["runtime_env"])
+            self.env(kwargs.pop("runtime_env"))
         self._internal_config = kwargs.pop("internal_config", {})
         self._fill_defaults_from_env()
         self._init_args_dict = kwargs
@@ -180,11 +180,6 @@ class _LocalClientBuilder(ClientBuilder):
         Begin a connection to the address passed in via ray.client(...) or
         ray.init("local://...")
         """
-        # Remove job_config, env, and namespace from args passed to init,
-        # since already configured by ClientBuilder.env and .namespace.
-        self._init_args_dict.pop("job_config", None)
-        self._init_args_dict.pop("namespace", None)
-        self._init_args_dict.pop("runtime_env", None)
         connection_dict = ray.init(
             address=self.address,
             job_config=self._job_config,
