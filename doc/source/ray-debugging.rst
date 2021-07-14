@@ -71,11 +71,11 @@ of the execution:
 .. code-block:: text
 
     (Pdb) bt
-      /Users/pcmoritz/ray/python/ray/workers/default_worker.py(170)<module>()
+      /home/ubuntu/ray/python/ray/workers/default_worker.py(170)<module>()
     -> ray.worker.global_worker.main_loop()
-      /Users/pcmoritz/ray/python/ray/worker.py(385)main_loop()
+      /home/ubuntu/ray/python/ray/worker.py(385)main_loop()
     -> self.core_worker.run_task_loop()
-    > /Users/pcmoritz/tmp/debugging.py(7)f()
+    > /home/ubuntu/tmp/debugging.py(7)f()
     -> return x * x
 
 You can inspect the value of ``x`` with ``print(x)``. You can see the current source code with ``ll``
@@ -126,7 +126,7 @@ enter. This will result in the following output:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(14)<module>()
     -> result_ref = fact.remote(5)
     (Pdb)
 
@@ -141,7 +141,7 @@ the following output:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) ll
       5  ->	@ray.remote
@@ -165,13 +165,13 @@ call site and use ``p(result)`` to print the result:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(14)<module>()
     -> result_ref = fact.remote(5)
     (Pdb) remote
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) p(n)
     5
@@ -179,7 +179,7 @@ call site and use ``p(result)`` to print the result:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) p(n)
     4
@@ -187,13 +187,13 @@ call site and use ``p(result)`` to print the result:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Return--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()->120
+    > /home/ubuntu/tmp/stepping.py(5)fact()->120
     -> @ray.remote
     (Pdb) get
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Return--
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()->None
+    > /home/ubuntu/tmp/stepping.py(14)<module>()->None
     -> result_ref = fact.remote(5)
     (Pdb) p(result)
     120
@@ -265,28 +265,28 @@ When the ``serve_debugging.py`` driver hits the breakpoint, it will tell you to 
 
     Active breakpoints:
     index | timestamp           | Ray task                                     | filename:lineno
-    0     | 2021-07-13 23:49:14 | ray::RayServeWrappedReplica.handle_request() | /home/pcmoritz/ray/python/ray/serve/backend_worker.py:249
+    0     | 2021-07-13 23:49:14 | ray::RayServeWrappedReplica.handle_request() | /home/ubuntu/ray/python/ray/serve/backend_worker.py:249
     Traceback (most recent call last):
 
-      File "/home/pcmoritz/ray/python/ray/serve/backend_worker.py", line 242, in invoke_single
+      File "/home/ubuntu/ray/python/ray/serve/backend_worker.py", line 242, in invoke_single
         result = await method_to_call(*args, **kwargs)
 
       File "serve_debugging.py", line 24, in __call__
         prediction = self.model.predict([payload])[0]
 
-      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1188, in predict
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1188, in predict
         raw_predictions = self.decision_function(X)
 
-      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1143, in decision_function
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1143, in decision_function
         X = check_array(X, dtype=DTYPE, order="C", accept_sparse='csr')
 
-      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 63, in inner_f
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 63, in inner_f
         return f(*args, **kwargs)
 
-      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 673, in check_array
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 673, in check_array
         array = np.asarray(array, order=order, dtype=dtype)
 
-      File "/home/pcmoritz/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
         return array(a, dtype, copy=False, order=order)
 
     ValueError: could not convert string to float: 'a'
