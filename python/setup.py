@@ -100,13 +100,16 @@ ray_files += [
     os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
 
+# Base dependencies for extras.
+base_deps = ["requests"]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful"],
-    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "default": base_deps + ["colorful"],
+    "serve": base_deps + ["uvicorn", "starlette", "fastapi"],
+    "tune": base_deps + ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
     "observability": [
         "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
@@ -151,7 +154,6 @@ install_requires = [
     "py-spy >= 0.2.0",
     "pydantic >= 1.8",
     "pyyaml",
-    "requests",
     "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",

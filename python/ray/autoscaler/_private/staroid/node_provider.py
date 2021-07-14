@@ -1,7 +1,6 @@
 import os
 import logging
 import time
-import requests
 from staroid import Staroid
 from kubernetes import client, config
 import socket
@@ -136,6 +135,8 @@ class StaroidNodeProvider(NodeProvider):
         established = False
         while time.time() - start_time < timeout:
             try:
+                import requests  # `requests` is not part of stdlib.
+
                 r = requests.get(
                     "{}/version".format(local_kube_api_addr), timeout=(3, 5))
                 if r.status_code == 200:
@@ -143,6 +144,13 @@ class StaroidNodeProvider(NodeProvider):
                     break
             except requests.exceptions.ConnectionError:
                 pass
+            except ImportError:
+                logger.exception(
+                    "Not all Ray Autoscaler dependencies were found. "
+                    "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+                    "only be usable via `pip install 'ray[default]'`. Please "
+                    "update your install command.")
+                raise
             time.sleep(3)
 
         if established:
