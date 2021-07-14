@@ -1,5 +1,5 @@
 import boto3
-from pathlib import Path
+import pytest
 from moto import mock_s3
 from mock_server import *  # noqa
 from ray.experimental.workflow import storage
@@ -9,7 +9,7 @@ from ray.experimental.workflow import storage
 def filesystem_storage():
     # TODO: use tmp path once fixed the path issues
     storage.set_global_storage(
-        storage.create_storage(f"/tmp/ray/workflow_data/"))
+        storage.create_storage("/tmp/ray/workflow_data/"))
     yield storage.get_global_storage()
 
 
