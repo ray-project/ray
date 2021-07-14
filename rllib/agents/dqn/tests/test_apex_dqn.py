@@ -3,6 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn.apex as apex
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 
@@ -59,6 +60,40 @@ class TestApexDQN(unittest.TestCase):
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
+
+    def test_apex_lr_schedule(self):
+        config = apex.APEX_DEFAULT_CONFIG.copy()
+        config["lr"] = 0.1
+        config["lr_schedule"] = [
+            [0, 0.0005],
+            [10000, 0.000001],
+        ]
+        config["num_workers"] = 2
+        config["train_batch_size"] = 1
+        config["learning_starts"] = 1
+        config["timesteps_per_iteration"] = 1
+        config["min_iter_time_s"] = 1
+
+        def get_lr(result):
+            return result["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
+
+        for fw in framework_iterator(config, frameworks=("tf", "torch")):
+            plain_config = config.copy()
+            trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
+            policy = trainer.get_policy()
+
+            try:
+                # first lr should be 0.0005, not 0.1 (ignored)
+                if fw == "tf":
+                    check(policy._sess.run(policy.cur_lr), 0.0005)
+                else:
+                    check(policy.cur_lr, 0.0005)
+                r1 = trainer.train()
+                r2 = trainer.train()
+                assert get_lr(r2) < get_lr(r1), \
+                    f"cur_lr should have decreased. Got {(r1,r2)}"
+            finally:
+                trainer.stop()
 
 
 if __name__ == "__main__":
