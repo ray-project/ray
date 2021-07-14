@@ -45,16 +45,16 @@ PolicySpec = namedtuple(
     [
         # If None, use the Trainer's default policy class stored under
         # `Trainer._policy_class`.
-        "policy_class",  # type: Optional[type]
+        "policy_class",
         # If None, use the env's observation space. If None and there is no Env
         # (e.g. offline RL), an error is thrown.
-        "observation_space",  # type: Optional[gym.Space]
+        "observation_space",
         # If None, use the env's action space. If None and there is no Env
         # (e.g. offline RL), an error is thrown.
-        "action_space",  # type: Optional[gym.Space]
+        "action_space",
         # Overrides defined keys in the main Trainer config.
         # If None, use {}.
-        "config",  # type: Optional[PartialTrainerConfigDict]
+        "config",
     ])
 # From 3.7 on, we could pass `defaults` into the above constructor.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
