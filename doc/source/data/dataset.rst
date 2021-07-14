@@ -136,7 +136,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
     ds.take(5)
     # -> [0, 1, 2, 3, 4]
 
-    ds.count())
+    ds.count()
     # -> 10000
 
     # Create a Dataset of Arrow records.
