@@ -65,13 +65,13 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["lr"] = 0.1
         config["lr_schedule"] = [
-            [0, 0.0005],
-            [10000, 0.000001],
+            [0, 1e-4],
+            [1000, 1e-9]
         ]
         config["num_workers"] = 2
-        config["train_batch_size"] = 1
-        config["learning_starts"] = 1
-        config["timesteps_per_iteration"] = 1
+        config["train_batch_size"] = 10
+        config["learning_starts"] = 10
+        config["timesteps_per_iteration"] = 10
         config["min_iter_time_s"] = 1
 
         def get_lr(result):
@@ -85,13 +85,13 @@ class TestApexDQN(unittest.TestCase):
             try:
                 # first lr should be 0.0005, not 0.1 (ignored)
                 if fw == "tf":
-                    check(policy._sess.run(policy.cur_lr), 0.0005)
+                    check(policy._sess.run(policy.cur_lr), 1e-4)
                 else:
-                    check(policy.cur_lr, 0.0005)
+                    check(policy.cur_lr, 1e-4)
                 r1 = trainer.train()
                 r2 = trainer.train()
                 assert get_lr(r2) < get_lr(r1), \
-                    f"cur_lr should have decreased. Got {(r1,r2)}"
+                    f"cur_lr should have decreased for {fw}. Got {(r1, r2)}"
             finally:
                 trainer.stop()
 
