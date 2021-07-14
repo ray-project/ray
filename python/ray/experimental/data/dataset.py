@@ -874,7 +874,7 @@ class Dataset(Generic[T]):
               output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
               prefetch_blocks: int = 0,
-              batch_size: int = None) -> "tf.data.Dataset":
+              batch_size: int = 1) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
         The TF Dataset will be created from the generator returned by the
@@ -903,7 +903,7 @@ class Dataset(Generic[T]):
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: Record batch size. Defaults to 1.
 
         Returns:
             A tf.data.Dataset.
