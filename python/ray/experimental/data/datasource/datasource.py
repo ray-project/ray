@@ -4,8 +4,9 @@ from typing import Any, Generic, List, Callable, Union, TypeVar
 import numpy as np
 
 import ray
+from ray.experimental.data.block import Block
+from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
-from ray.experimental.data.impl.block import Block, SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
 T = TypeVar("T")
