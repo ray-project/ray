@@ -139,6 +139,15 @@ public class GlobalStateAccessor {
       return this.nativeGetNodeToConnectForDriver(globalStateAccessorNativePointer, nodeIpAddress);
     }
   }
+  
+  /** Returns An actor address with Address protobuf schema. */
+  public byte[] getActorAddress(ActorId actorId) {
+    // Fetch an actor with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetActorAddress(globalStateAccessorNativePointer, actorId.getBytes());
+    }
+  }
 
   private void destroyGlobalStateAccessor() {
     synchronized (GlobalStateAccessor.class) {
@@ -167,6 +176,8 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
+
+  private native byte[] nativeGetActorAddress(long nativePtr, byte[] actorId);
 
   private native byte[] nativeGetPlacementGroupInfo(long nativePtr, byte[] placementGroupId);
 

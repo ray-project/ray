@@ -35,6 +35,11 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
+  public ObjectId putRaw(NativeRayObject obj, byte[] address) {
+    return new ObjectId(nativePut(obj, address));
+  }
+
+  @Override
   public void putRaw(NativeRayObject obj, ObjectId objectId) {
     nativePut(objectId.getBytes(), obj);
   }
@@ -108,6 +113,8 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   private static native byte[] nativePut(NativeRayObject obj);
+
+  private static native byte[] nativePut(NativeRayObject obj, byte[] address);
 
   private static native void nativePut(byte[] objectId, NativeRayObject obj);
 

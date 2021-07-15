@@ -104,6 +104,15 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *, jobject
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetActorAddress
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorAddress(JNIEnv *, jobject,
+                                                                  jlong, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetPlacementGroupInfo
  * Signature: (J[B)[B
  */

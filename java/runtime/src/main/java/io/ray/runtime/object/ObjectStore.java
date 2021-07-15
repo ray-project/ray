@@ -32,6 +32,15 @@ public abstract class ObjectStore {
   public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
+   * Put a raw object into object store, and assign ownership to actor.
+   *
+   * @param obj The ray object.
+   * @param address The address of the actor to assign ownership
+   * @return Generated ID of the object.
+   */
+  public abstract ObjectId putRaw(NativeRayObject obj, byte[] address);
+
+  /**
    * Put a raw object with specified ID into object store.
    *
    * @param obj The ray object.
@@ -51,6 +60,21 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     return putRaw(ObjectSerializer.serialize(object));
+  }
+
+  /**
+   * Serialize and put an object to the object store, and set its owner to an actor.
+   *
+   * @param object The object to put.
+   * @param address The address of the actor to assign ownership
+   * @return Id of the object.
+   */
+  public ObjectId put(Object object, byte[] address) {
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
+    }
+    return putRaw(ObjectSerializer.serialize(object), address);
   }
 
   /**

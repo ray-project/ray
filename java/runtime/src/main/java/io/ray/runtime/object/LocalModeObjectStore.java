@@ -44,6 +44,11 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
+  public ObjectId putRaw(NativeRayObject obj, byte[] address) {
+    throw new RuntimeException("Local mode does not support assigning owner in Put");
+  }
+
+  @Override
   public void putRaw(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
