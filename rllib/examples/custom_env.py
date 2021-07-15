@@ -75,7 +75,7 @@ parser.add_argument(
          "use PPO without grid search and no TensorBoard."
 )
 parser.add_argument(
-    "--local",
+    "--local-mode",
     action="store_true",
     help="Init Ray in local mode for easier debugging."
 )
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"Running with following CLI options: {args}")
 
-    ray.init(local_mode=args.local)
+    ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
     # register_env("corridor", lambda config: SimpleCorridor(config))

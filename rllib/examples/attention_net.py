@@ -104,7 +104,7 @@ def get_cli_args():
              "there is no TensorBoard support."
     )
     parser.add_argument(
-        "--local",
+        "--local-mode",
         action="store_true",
         help="Init Ray in local mode for easier debugging."
     )
@@ -117,7 +117,7 @@ def get_cli_args():
 if __name__ == "__main__":
     args = get_cli_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # register custom environments
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
