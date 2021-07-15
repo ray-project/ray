@@ -79,7 +79,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public <T> ObjectRef<T> put(T obj, ActorHandle<?> actor) {
+  public <T> ObjectRef<T> put(T obj, BaseActorHandle actor) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Putting Object in Task {} with {} as owner.",
                    workerContext.getCurrentTaskId(), actor.getId());

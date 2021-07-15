@@ -42,7 +42,7 @@ public interface RayRuntime {
    * @param actor The actor to assign ownership
    * @return A ObjectRef instance that represents the in-store object.
    */
-  <T> ObjectRef<T> put(T obj, ActorHandle<?> actor);
+  <T> ObjectRef<T> put(T obj, BaseActorHandle actor);
 
   /**
    * Get an object from the object store.
