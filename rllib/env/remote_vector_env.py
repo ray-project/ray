@@ -50,9 +50,9 @@ class RemoteVectorEnv(BaseEnv):
                 self.actors = []
                 while len(self.actors) < self.num_envs:
                     self.actors.append(self.make_env(len(self.actors)))
-            # `self.make_env` produces gym.Envs (or other similar types, such as
-            # MultiAgentEnv): Need to auto-wrap it here. The problem with this is
-            # that custom methods wil get lost.
+            # `self.make_env` produces gym.Envs (or other similar types, such
+            # as MultiAgentEnv): Need to auto-wrap it here. The problem with
+            # this is that custom methods wil get lost.
             else:
 
                 def make_remote_env(i):

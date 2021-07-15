@@ -90,7 +90,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         """ Curriculum learning as seen in Ray docs """
-        if result["episode_reward_mean"] > 200:
+        if result["episode_reward_mean"] > 0.0:
             phase = 0
         else:
             phase = 1

@@ -1610,13 +1610,18 @@ class Trainer(Trainable):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
+
             # Add convenience `_get_spaces` method.
-            env_object._get_spaces = lambda s: (s.observation_space, s.action_space)
+
+            def _get_spaces(s):
+                return s.observation_space, s.action_space
+
+            env_object._get_spaces = _get_spaces
+
             if config["remote_worker_envs"]:
                 register_env(
                     name,
-                    lambda config: ray.remote(num_cpus=0)(env_object).remote(config)
-                )
+                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
             else:
                 register_env(name, lambda config: env_object(config))
             return name

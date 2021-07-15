@@ -1411,8 +1411,8 @@ def _determine_spaces_for_multi_agent_dict(
         if hasattr(env, "observation_space") and isinstance(
                 env.observation_space, gym.Space):
             env_obs_space = env.observation_space
-        if hasattr(env, "action_space") and isinstance(
-                env.action_space, gym.Space):
+        if hasattr(env, "action_space") and isinstance(env.action_space,
+                                                       gym.Space):
             env_act_space = env.action_space
 
     for pid, policy_spec in multi_agent_dict.copy().items():
