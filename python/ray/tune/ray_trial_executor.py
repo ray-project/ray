@@ -451,8 +451,8 @@ class RayTrialExecutor(TrialExecutor):
             if not runner:
                 return False
         trial.set_runner(runner)
-        self.restore(trial, checkpoint)
         self._notify_trainable_of_new_resources_if_needed(trial)
+        self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:

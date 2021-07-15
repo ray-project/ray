@@ -18,6 +18,7 @@ STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
+CLASS_BODY = "class_body.pkl"
 
 
 @contextlib.contextmanager
@@ -257,3 +258,22 @@ class FilesystemStorageImpl(Storage):
     @property
     def storage_url(self) -> str:
         return str(self._workflow_root_dir)
+
+    async def load_actor_class_body(self, workflow_id: str) -> type:
+        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
+        try:
+            with _open_atomic(file_path, "rb") as f:
+                return ray.cloudpickle.load(f)
+        except Exception as e:
+            raise DataLoadError from e
+
+    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
+        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
+        try:
+            with _open_atomic(file_path, "wb") as f:
+                ray.cloudpickle.dump(cls, f)
+        except Exception as e:
+            raise DataSaveError from e
+
+    def __reduce__(self):
+        return FilesystemStorageImpl, (self._workflow_root_dir, )
