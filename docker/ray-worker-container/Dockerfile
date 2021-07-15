@@ -79,7 +79,7 @@ RUN apt-get update -y \
     && apt-get clean
 
 ARG WHEEL_PATH
-ARG FIND_LINKS_PATH
+ARG FIND_LINKS_PATH=".whl"
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8

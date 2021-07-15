@@ -3,7 +3,7 @@ FROM rayproject/base-deps:nightly"$GPU"
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH
-ARG FIND_LINKS_PATH
+ARG FIND_LINKS_PATH=".whl"
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
