@@ -110,6 +110,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       if (!global_state_accessor) {
         global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
             redis_address, ConfigInternal::Instance().redis_password));
+        RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       }
       session_dir = *global_state_accessor->GetInternalKV("session_dir");
     }
@@ -139,7 +140,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
   options.gcs_options = gcs_options;
   options.enable_logging = true;
-  options.log_dir = log_dir;
+  options.log_dir = std::move(log_dir);
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
