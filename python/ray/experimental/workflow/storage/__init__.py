@@ -39,10 +39,7 @@ def create_storage(storage_url: str) -> Storage:
         s3_path = parsed_url.path
         if not s3_path:
             raise ValueError(f"Invalid s3 path: {s3_path}")
-        params = dict({
-            tuple(param.split("=", 1))
-            for param in str(parsed_url.query).split("&")
-        })
+        params = dict(parse.parse_qsl(parsed_url.query))
         return S3StorageImpl(bucket, s3_path, **params)
     else:
         raise ValueError(f"Invalid url: {storage_url}")

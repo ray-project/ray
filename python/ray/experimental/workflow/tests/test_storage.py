@@ -2,12 +2,8 @@ import pytest
 import asyncio
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-import boto3
-from moto import mock_s3
-from mock_server import *  # noqa
-
+from ray.experimental.workflow.workflow_storage import asyncio_run
 from pytest_lazyfixture import lazy_fixture
 
 
@@ -17,37 +13,6 @@ def some_func(x):
 
 def some_func2(x):
     return x - 1
-
-
-@pytest.fixture(scope="function")
-def filesystem_storage(tmp_path):
-    storage.set_global_storage(
-        storage.create_storage(f"{str(tmp_path)}/workflow_data"))
-    yield storage.get_global_storage()
-
-
-@pytest.fixture(scope="function")
-def aws_credentials():
-    import os
-    old_env = os.environ
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    yield
-    os.environ = old_env
-
-
-@pytest.fixture(scope="function")
-def s3_storage(aws_credentials, s3_server):
-    with mock_s3():
-        client = boto3.client(
-            "s3", region_name="us-west-2", endpoint_url=s3_server)
-        client.create_bucket(Bucket="test_bucket")
-        url = ("s3://test_bucket/workflow"
-               f"?region_name=us-west-2&endpoint_url={s3_server}")
-        storage.set_global_storage(storage.create_storage(url))
-        yield storage.get_global_storage()
 
 
 @pytest.mark.asyncio
@@ -64,7 +29,6 @@ async def test_raw_storage(ray_start_regular, raw_storage):
     output = ["the_answer"]
     object_resolved = 42
     obj_ref = ray.put(object_resolved)
-
     # test creating normal objects
     await asyncio.gather(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
@@ -153,17 +117,17 @@ def test_workflow_storage(ray_start_regular, raw_storage):
     obj_ref = ray.put(object_resolved)
 
     # test basics
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
                                              input_metadata))
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio.run(raw_storage.save_step_args(workflow_id, step_id, args))
-    asyncio.run(raw_storage.save_object_ref(workflow_id, obj_ref))
-    asyncio.run(
+    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+    asyncio_run(raw_storage.save_object_ref(workflow_id, obj_ref))
+    asyncio_run(
         raw_storage.save_step_output_metadata(workflow_id, step_id,
                                               output_metadata))
-    asyncio.run(raw_storage.save_step_output(workflow_id, step_id, output))
+    asyncio_run(raw_storage.save_step_output(workflow_id, step_id, output))
 
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     assert wf_storage.load_step_output(step_id) == output
@@ -179,13 +143,13 @@ def test_workflow_storage(ray_start_regular, raw_storage):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step2"
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
                                              input_metadata))
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio.run(raw_storage.save_step_args(workflow_id, step_id, args))
-    asyncio.run(
+    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+    asyncio_run(
         raw_storage.save_step_output_metadata(workflow_id, step_id,
                                               output_metadata))
     inspect_result = wf_storage.inspect_step(step_id)
@@ -194,12 +158,12 @@ def test_workflow_storage(ray_start_regular, raw_storage):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step3"
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
                                              input_metadata))
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio.run(raw_storage.save_step_args(workflow_id, step_id, args))
+    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
@@ -209,10 +173,10 @@ def test_workflow_storage(ray_start_regular, raw_storage):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step4"
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
                                              input_metadata))
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
@@ -222,7 +186,7 @@ def test_workflow_storage(ray_start_regular, raw_storage):
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step5"
-    asyncio.run(
+    asyncio_run(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
                                              input_metadata))
     inspect_result = wf_storage.inspect_step(step_id)
