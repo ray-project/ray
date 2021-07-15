@@ -169,13 +169,13 @@ class TorchActorGroup(ActorGroup):
         super().start(executable_cls, ...)
         self.run(lambda _: setup_torch_process_group())
 
-class TFActorGroup(TrainingGroup):
+class TFActorGroup(ActorGroup):
     ...
 
 # HorovodExecutor can live in the Horovod repo, replacing the current
 # abstractions.
 # We will still maintain backwards compatibility.
-class HorovodActorGroup(TrainingGroup):
+class HorovodActorGroup(ActorGroup):
     ...
 
 # These actor groups can be used directly.
