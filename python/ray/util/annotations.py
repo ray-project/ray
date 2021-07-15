@@ -8,6 +8,15 @@ def PublicAPI(*args, **kwargs):
     Args:
         stability: Either "stable" for stable features or "beta" for APIs that
             are intended to be public but still in beta.
+
+    Examples:
+        >>> @PublicAPI
+        >>> def func(x):
+        >>>     return x
+
+        >>> @PublicAPI(stability="beta")
+        >>> def func(y):
+        >>>     return y
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return PublicAPI(stability="stable")(args[0])
@@ -40,7 +49,10 @@ def DeveloperAPI(obj):
     users and library developers. Their interfaces may change across minor
     Ray releases.
 
-    Over time, DeveloperAPI methods may be promoted to PublicAPI.
+    Examples:
+        >>> @DeveloperAPI
+        >>> def func(x):
+        >>>     return x
     """
 
     obj.__doc__ += (
@@ -52,6 +64,11 @@ def Deprecated(obj):
     """Annotation for documenting a deprecated API.
 
     Deprecated APIs may be removed in future releases of Ray.
+
+    Examples:
+        >>> @Deprecated
+        >>> def func(x):
+        >>>     return x
     """
 
     obj.__doc__ += ("\nDEPRECATED: This API is deprecated and may be "
