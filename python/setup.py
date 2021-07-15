@@ -100,16 +100,16 @@ ray_files += [
     os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
 
-# Base dependencies for extras.
-base_deps = ["requests"]
-
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": base_deps + ["colorful"],
-    "serve": base_deps + ["uvicorn", "starlette", "fastapi"],
-    "tune": base_deps + ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "default": [
+        "colorful",  # noqa
+        "requests"  # noqa
+    ],
+    "serve": ["uvicorn", "starlette", "fastapi", "requests"],
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
     "k8s": ["kubernetes"],
     "observability": [
         "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
