@@ -657,6 +657,39 @@ def test_env_installation_nonblocking(shutdown_only):
     proc.wait()
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_simultaneous_install(shutdown_only):
+    """Test that two envs can be installed without affecting each other."""
+    ray.init()
+
+    @ray.remote
+    class TensorflowWorker:
+        def __init__(self):
+            import tensorflow as tf
+            self.version = tf.__version__
+
+        def get_version(self):
+            return self.version
+
+    # Before we used a global lock on conda installs, these two envs would be
+    # installed concurrently, leading to errors:
+    # https://github.com/ray-project/ray/issues/17086
+    # Now we use a global lock, so the envs are installed sequentially.
+    tf1 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.4.2"]
+    }).remote()
+    tf2 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.5.0"]
+    }).remote()
+
+    assert ray.get(tf1.get_version.remote()) == "2.4.2"
+    assert ray.get(tf2.get_version.remote()) == "2.5.0"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
