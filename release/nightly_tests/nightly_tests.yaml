@@ -251,5 +251,16 @@
 
   run:
     timeout: 7200 
-    script: bash shuffle_data_loader/shuffle_data_loader_test.sh
-
+    script: >
+      python shuffle_data_loader/benchmark.py
+      --num-rows 100_000_000
+      --num-files 50
+      --num-row-groups-per-file 5
+      --num-reducers 32 --num-trainers 16
+      --batch-size 250000
+      --cluster
+      --num-trials 1
+      --num-epochs 10
+      --max-concurrent-epochs 2
+      --data-dir s3://core-nightly-test/shuffle-data/
+      --no-stats

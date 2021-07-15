@@ -7,9 +7,6 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - sudo apt-get install -y unzip
-  - cd ~ && wget https://codeload.github.com/ray-project/ray_shuffling_data_loader/zip/refs/heads/feat/benchmarks
-  - cd ~ && unzip benchmarks
   - pip uninstall -y ray
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
