@@ -871,18 +871,65 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P1
 
-    def to_tf(self, **todo) -> "tf.data.Dataset":
-        """Return a TF data iterator over this dataset.
+    def to_tf(self,
+              label_column: str,
+              output_signature: List["tf.TypeSpec"],
+              feature_columns: Optional[List[str]] = None,
+              prefetch_blocks: int = 0,
+              batch_size: int = 1) -> "tf.data.Dataset":
+        """Return a TF Dataset over this dataset.
+
+        The TF Dataset will be created from the generator returned by the
+        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
+        arguments will be passed to that method.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        Requires all datasets to have the same columns.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
 
+        The elements generated must be compatible with the given
+        ``output_signature`` argument (same as in
+        ``tf.data.Dataset.from_generator``).
+
         Time complexity: O(1)
+
+        Args:
+            label_column (str): The name of the column used as the label
+                (second element of the output tuple).
+            output_signature (List[tf.TypeSpec]): A 2-element list
+                of `tf.TypeSpec` objects corresponding to (features, label).
+            feature_columns (Optional[List[str]]): List of columns in datasets
+                to use. If None, all columns will be used.
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: Record batch size. Defaults to 1.
 
         Returns:
             A tf.data.Dataset.
         """
-        raise NotImplementedError  # P1
+
+        # argument exception checking is done in from_generator
+
+        try:
+            import tensorflow as tf
+        except ImportError:
+            raise ValueError("tensorflow must be installed!")
+
+        def make_generator():
+            for batch in self.iter_batches(
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
+                    batch_format="pandas"):
+                target_col = batch.pop(label_column)
+                if feature_columns:
+                    batch = batch[feature_columns]
+                yield batch.values, target_col.values
+
+        return tf.data.Dataset.from_generator(
+            make_generator, output_signature=output_signature)
 
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
