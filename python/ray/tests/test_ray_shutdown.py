@@ -87,7 +87,7 @@ def test_node_killed(ray_start_cluster):
         time.sleep(100)
 
     num_cpus = int(ray.available_resources()["CPU"])
-    tasks = [f.remote() for _ in range(num_cpus)] # noqa
+    tasks = [f.remote() for _ in range(num_cpus)]  # noqa
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) > 0)
 
     for worker in workers:
