@@ -83,7 +83,7 @@
 
 - name: koch
   cluster:
-    app_config: app_config.yaml
+    app_config: app_config_dev.yaml
     compute_template: tpl_24x64.yaml
 
   run:

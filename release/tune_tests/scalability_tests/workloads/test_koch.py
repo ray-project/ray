@@ -25,7 +25,7 @@ def main():
     os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"
     os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1600"
-    os.environ["TUNE_PLACEMENT_GROUP_RECON_INTERVAL"] = "30"
+    os.environ["TUNE_PROCESS_TRIALS_PER_ITER"] = "1600"
 
     ray.init(address="auto")
 

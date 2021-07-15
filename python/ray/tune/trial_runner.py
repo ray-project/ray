@@ -10,6 +10,7 @@ import traceback
 import warnings
 
 import ray
+from ray.tune.utils.profile import TimeProfiler
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
@@ -333,6 +334,8 @@ class TrialRunner:
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
 
+        self._timer = TimeProfiler("/tmp/tune_timer.csv")
+
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
             checkpoint_dir=self._local_checkpoint_dir,
@@ -499,18 +502,23 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self._timer.start()
         self._updated_queue = False
 
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
+        self._timer.measure("runner.is_finished")
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
+        self._timer.measure("executor_on_step_begin")
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
+        self._timer.measure("callbacks_on_step_begin")
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
+        self._timer.measure("get_next_trial")
 
         # Create pending trials. If the queue was updated before, only
         # continue updating if this was successful (next_trial is not None)
@@ -521,9 +529,13 @@ class TrialRunner:
                 if not self._update_trial_queue(blocking=False):
                     break
                 num_pending_trials += 1
+            self._timer.measure("update_trial_queue")
+        else:
+            self._timer.measure("trial_queue_no")
 
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._live_trials)
+        self._timer.measure("executor_stage_update")
 
         def _start_trial(trial: Trial) -> bool:
             """Helper function to start trial and call callbacks"""
@@ -548,6 +560,9 @@ class TrialRunner:
                 if next_trial is not None:
                     if _start_trial(next_trial):
                         may_handle_events = False
+            self._timer.measure("start_trial")
+        else:
+            self._timer.measure("start_trial_no")
 
         if may_handle_events:
             if self.trial_executor.get_running_trials():
@@ -555,16 +570,22 @@ class TrialRunner:
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
                 self._process_events(timeout=timeout)  # blocking
+                self._timer.measure("handle_events_process")
             else:
                 self.trial_executor.on_no_available_trials(self)
+                self._timer.measure("handle_events_no_process")
+        else:
+            self._timer.measure("handle_events_no_trials")
 
         self._stop_experiment_if_needed()
+        self._timer.measure("executor_on_step_begin")
 
         try:
             self.checkpoint()
         except Exception as e:
             logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
         self._iteration += 1
+        self._timer.measure("checkpoint")
 
         if self._server:
             with warn_if_slow("server"):
@@ -574,11 +595,15 @@ class TrialRunner:
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self)
+        self._timer.measure("executor_on_step_end")
+
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
+        self._timer.measure("callbacks_on_step_end")
 
         self._reconcile_live_trials()
+        self._timer.measure("conconcile_live")
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -1204,6 +1229,7 @@ class TrialRunner:
 
     def cleanup_trials(self):
         self.trial_executor.cleanup(self)
+        self._timer.stop()
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""
