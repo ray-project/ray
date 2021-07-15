@@ -896,13 +896,10 @@ class Dataset(Generic[T]):
         Returns:
             A torch IterableDataset.
         """
-        try:
-            import torch
-        except ImportError:
-            raise ValueError("torch must be installed!")
+        import torch
 
         from ray.experimental.data.impl.torch_iterable_dataset import \
-            RayIterableDataset
+            TorchIterableDataset
 
         if feature_columns and feature_column_dtypes:
             if len(feature_columns) != len(feature_column_dtypes):
@@ -913,8 +910,7 @@ class Dataset(Generic[T]):
                                  "match!")
 
         def make_generator():
-            for batch in self.iter_batches(
-                    prefetch_blocks=prefetch_blocks, batch_size=2):
+            for batch in self.iter_batches(prefetch_blocks=prefetch_blocks):
                 label_vals = batch.pop(label_column).values
                 label_tensor = torch.as_tensor(
                     label_vals, dtype=label_column_dtype)
@@ -941,7 +937,7 @@ class Dataset(Generic[T]):
                     label = label_tensor[i]
                     yield (features, label)
 
-        return RayIterableDataset(make_generator)
+        return TorchIterableDataset(make_generator)
 
     def to_tf(self,
               label_column: str,
