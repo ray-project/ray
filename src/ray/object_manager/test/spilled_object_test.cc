@@ -374,7 +374,7 @@ TYPED_TEST(ObjectReaderTest, GetChunk) {
 }
 
 TEST(StringAllocationTest, TestNoCopyWhenStringMoved) {
-  // Since protobuf allways allocate string on heap,
+  // Since protobuf always allocate string on heap,
   // move assign a string field doesn't copy the data.
   std::string s(1000, '\0');
   auto allocation_address = s.c_str();
