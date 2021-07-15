@@ -1,5 +1,5 @@
 #pragma once
-
+#include <type_traits>
 #include <boost/asio.hpp>
 #include <boost/fiber/all.hpp>
 #include "ray/common/asio/instrumented_io_context.h"
@@ -33,9 +33,10 @@ class IOThreadPool {
         io_service_);
   }
 
-  template <typename F>
-  auto post(F &&f) {
-    using R = decltype(f());
+  template <typename F,
+            typename R = typename std::result_of<F()>::type,
+            typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
+  boost::fibers::future<R> post(F &&f) {
     boost::fibers::promise<R> promise;
     auto future = promise.get_future();
     io_service_->post([f = std::move(f), p = std::move(promise)]() {
@@ -46,6 +47,23 @@ class IOThreadPool {
     });
     return future;
   }
+
+  template <typename F,
+            typename R = typename std::result_of<F()>::type,
+            typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
+  boost::fibers::future<R> post(F &&f) {
+    boost::fibers::promise<R> promise;
+    auto future = promise.get_future();
+    io_service_->post([f = std::move(f), p = std::move(promise)]() {
+      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, &p] () mutable {
+        f();
+        p.set_value();
+      });
+      _.join();
+    });
+    return future;
+  }
+
   instrumented_io_context &GetIOService() { return *io_service_; }
 
   bool stopped() {
@@ -61,12 +79,12 @@ extern IOThreadPool _io_pool;
 
 template <typename F, typename... Ts>
 auto io_post(F &&f, Ts &&... args) {
-  return _io_pool.post(std::move(f)(std::forward(args)...));
+  return _io_pool.post(std::bind(std::move(f), std::forward(args)...));
 }
 
 template <typename F, typename... Ts>
 auto cpu_post(F &&f, Ts &&... args) {
-  return _cpu_pool.post(std::move(f)(std::forward(args)...));
+  return _cpu_pool.post(std::bind(std::move(f), std::forward(args)...));
 }
 
 }  // namespace thread_pool

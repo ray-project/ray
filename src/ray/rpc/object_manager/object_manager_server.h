@@ -24,7 +24,7 @@ namespace ray {
 namespace rpc {
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
+  FIBER_RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
   RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
 
@@ -39,8 +39,9 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(const PushRequest &request, PushReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
+  // virtual void HandlePush(const PushRequest &request, PushReply *reply,
+  //                         SendReplyCallback send_reply_callback) = 0;
+  virtual Status HandlePush(const PushRequest &request, PushReply *reply) = 0;
   /// Handle a `Pull` request
   virtual void HandlePull(const PullRequest &request, PullReply *reply,
                           SendReplyCallback send_reply_callback) = 0;

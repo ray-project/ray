@@ -192,7 +192,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
- private:
+ protected:
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
@@ -258,9 +258,9 @@ using RequestCallFunction = void (GrpcService::AsyncService::*)(
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class ServiceHandler, class Request, class Reply>
 class ServerCallFactoryImpl : public ServerCallFactory {
+ public:
   using AsyncService = typename GrpcService::AsyncService;
 
- public:
   /// Constructor.
   ///
   /// \param[in] service The gRPC-generated `AsyncService`.
@@ -340,7 +340,7 @@ class FiberServerCallImpl : public ServerCallImpl<ServiceHandler, Request, Reply
         // We create this before handling the request so that the it can be populated by
         // the completion queue in the background if a new request comes in.
         factory.CreateCall();
-        auto status = (this->service_handler_.fiber_handle_request_function_)(this->request_, &this->reply_).get();
+        auto status = (this->service_handler_.*fiber_handle_request_function_)(this->request_, &this->reply_);
         this->SendReply(status);
       });
     } else {
@@ -352,6 +352,8 @@ class FiberServerCallImpl : public ServerCallImpl<ServiceHandler, Request, Reply
   }
  private:
   FiberHandleRequestFunction<ServiceHandler, Request, Reply> fiber_handle_request_function_;
+  template <class T1, class T2, class T3, class T4>
+  friend class FiberServerCallFactoryImpl;
 };
 
 template <class GrpcService, class ServiceHandler, class Request, class Reply>
