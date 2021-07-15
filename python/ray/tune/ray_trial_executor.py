@@ -451,6 +451,7 @@ class RayTrialExecutor(TrialExecutor):
             if not runner:
                 return False
         trial.set_runner(runner)
+        self._notify_trainable_of_new_resources_if_needed(trial)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
@@ -465,6 +466,22 @@ class RayTrialExecutor(TrialExecutor):
         elif train and not trial.is_restoring:
             self._train(trial)
         return True
+
+    def _notify_trainable_of_new_resources_if_needed(self, trial: Trial):
+        if trial.has_new_resources:
+            trainable = trial.runner
+            trial.has_new_resources = False
+            with self._change_working_directory(trial):
+                with warn_if_slow("update_resources"):
+                    try:
+                        ray.get(
+                            trainable.update_resources.remote(
+                                trial.placement_group_factory if trial.
+                                uses_placement_groups else trial.resources),
+                            timeout=DEFAULT_GET_TIMEOUT)
+                    except GetTimeoutError:
+                        logger.exception(
+                            "Trial %s: updating resources timed out.", trial)
 
     def _stop_trial(self,
                     trial,
@@ -948,6 +965,9 @@ class RayTrialExecutor(TrialExecutor):
             self.last_pg_recon = time.time()
 
         self._pg_manager.cleanup()
+
+    def force_reconcilation_on_next_step_end(self):
+        self.last_pg_recon = -float("inf")
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves the trial's state to a checkpoint asynchronously.

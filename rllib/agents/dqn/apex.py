@@ -131,6 +131,8 @@ class UpdateWorkerWeights:
                 self.weights = ray.put(
                     self.workers.local_worker().get_weights())
             actor.set_weights.remote(self.weights, _get_global_vars())
+            # Also update global vars of the local worker.
+            self.workers.local_worker().set_global_vars(_get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
             metrics = _get_shared_metrics()

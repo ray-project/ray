@@ -104,7 +104,7 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful"],
+    "default": ["colorful", "jsonschema"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
@@ -143,7 +143,6 @@ install_requires = [
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
-    "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16; python_version < '3.9'",
     "numpy >= 1.19.3; python_version >= '3.9'",

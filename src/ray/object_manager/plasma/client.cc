@@ -512,17 +512,6 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                     is_from_worker);
 }
 
-Status PlasmaClient::Impl::Get(const ObjectID *object_ids, int64_t num_objects,
-                               int64_t timeout_ms, ObjectBuffer *out,
-                               bool is_from_worker) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  const auto wrap_buffer = [](const ObjectID &object_id,
-                              const std::shared_ptr<Buffer> &buffer) { return buffer; };
-  return GetBuffers(object_ids, num_objects, timeout_ms, wrap_buffer, out,
-                    is_from_worker);
-}
-
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
@@ -758,12 +747,6 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
-}
-
-Status PlasmaClient::Get(const ObjectID *object_ids, int64_t num_objects,
-                         int64_t timeout_ms, ObjectBuffer *object_buffers,
-                         bool is_from_worker) {
-  return impl_->Get(object_ids, num_objects, timeout_ms, object_buffers, is_from_worker);
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
