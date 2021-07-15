@@ -5,7 +5,7 @@ def PublicAPI(obj):
     can expect these APIs to remain stable even across major Ray releases.
     """
 
-    # TODO(ekl) it would be nice to inject PublicAPI text into the docstring
+    obj.__doc__ += "\nPublicAPI: This API is stable across Ray releases."
     return obj
 
 
@@ -19,7 +19,8 @@ def DeveloperAPI(obj):
     Over time, DeveloperAPI methods may be promoted to PublicAPI.
     """
 
-    # TODO(ekl) it would be nice to inject DeveloperAPI text into the docstring
+    obj.__doc__ += (
+        "\nDeveloperAPI: This API may change across minor Ray releases.")
     return obj
 
 
@@ -29,5 +30,7 @@ def Deprecated(obj):
     Deprecated APIs may be removed in future releases of Ray.
     """
 
-    # TODO(ekl) it would be nice to inject deprecation text into the docstring
+    obj.__doc__ += (
+        "\nDEPRECATED: This API is deprecated and may be "
+        "removed in future Ray releases.")
     return obj
