@@ -17,7 +17,7 @@ class Datasource(Generic[T]):
     To read a datasource into a dataset, use ``ray.data.read_datasource()``.
     To write to a writable datasource, use ``Dataset.write_datasource()``.
 
-    See ``RangeDatasource`` and ``DummyOutputDatasource`` below for examples
+    See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
     """
 

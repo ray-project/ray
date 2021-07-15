@@ -18,8 +18,8 @@ from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask
 from ray.experimental.data.impl import reader as _reader
-from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
-from ray.experimental.data.impl.block_builder import SimpleBlock
+from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow, \
+    DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 
@@ -63,7 +63,7 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
-        >>> ds.from_items([1, 2, 3, 4, 5])
+        >>> ray.data.from_items([1, 2, 3, 4, 5])
 
     Args:
         items: List of local Python objects.
@@ -78,17 +78,12 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = SimpleBlock.builder()
+        builder = DelegatingArrowBlockBuilder()
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(
-            BlockMetadata(
-                num_rows=block.num_rows(),
-                size_bytes=block.size_bytes(),
-                schema=type(items[0]),
-                input_files=None))
+        metadata.append(block.get_metadata(input_files=None))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata))
@@ -98,7 +93,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds.range(10000).map(lambda x: x * 2).show()
+        >>> ray.data.range(10000).map(lambda x: x * 2).show()
 
     Args:
         n: The upper bound of the range of integers.
@@ -115,7 +110,8 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds.range_arrow(1000).map(lambda r: {"v2": r["value"] * 2}).show()
+        >>> ds = ray.data.range_arrow(1000)
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show()
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -169,11 +165,11 @@ def read_parquet(paths: Union[str, List[str]],
     """Create an Arrow dataset from parquet files.
 
     Examples:
-        # Read a directory of files in remote storage.
-        >>> ds.read_parquet("s3://bucket/path")
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_parquet("s3://bucket/path")
 
-        # Read multiple local files.
-        >>> ds.read_parquet(["/path/to/file1", "/path/to/file2"])
+        >>> # Read multiple local files.
+        >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -236,14 +232,14 @@ def read_json(paths: Union[str, List[str]],
     """Create an Arrow dataset from json files.
 
     Examples:
-        # Read a directory of files in remote storage.
-        >>> ds.read_json("s3://bucket/path")
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_json("s3://bucket/path")
 
-        # Read multiple local files.
-        >>> ds.read_json(["/path/to/file1", "/path/to/file2"])
+        >>> # Read multiple local files.
+        >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"])
 
-        # Read multiple directories.
-        >>> ds.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> # Read multiple directories.
+        >>> ray.data.read_json(["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -270,14 +266,14 @@ def read_csv(paths: Union[str, List[str]],
     """Create an Arrow dataset from csv files.
 
     Examples:
-        # Read a directory of files in remote storage.
-        >>> ds.read_csv("s3://bucket/path")
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_csv("s3://bucket/path")
 
-        # Read multiple local files.
-        >>> ds.read_csv(["/path/to/file1", "/path/to/file2"])
+        >>> # Read multiple local files.
+        >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
 
-        # Read multiple directories.
-        >>> ds.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> # Read multiple directories.
+        >>> ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -305,11 +301,11 @@ def read_binary_files(
     """Create a dataset from binary files of arbitrary contents.
 
     Examples:
-        # Read a directory of files in remote storage.
-        >>> ds.read_binary_files("s3://bucket/path")
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_binary_files("s3://bucket/path")
 
-        # Read multiple local files.
-        >>> ds.read_binary_files(["/path/to/file1", "/path/to/file2"])
+        >>> # Read multiple local files.
+        >>> ray.data.read_binary_files(["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -390,11 +386,33 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     import pyarrow as pa
 
     @ray.remote(num_returns=2)
-    def df_to_block(df: "pandas.DataFrame"):
+    def df_to_block(df: "pandas.DataFrame") -> ArrowBlock:
         block = ArrowBlock(pa.table(df))
         return block, block.get_metadata(input_files=None)
 
     res = [df_to_block.remote(df) for df in dfs]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+
+
+def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
+               parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a dataset from a set of Arrow tables.
+
+    Args:
+        dfs: A list of Ray object references to Arrow tables.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding Arrow records from the tables.
+    """
+
+    @ray.remote(num_returns=2)
+    def to_block(table: "pyarrow.Table") -> ArrowBlock:
+        block = ArrowBlock(table)
+        return block, block.get_metadata(input_files=None)
+
+    res = [to_block.remote(t) for t in tables]
     blocks, metadata = zip(*res)
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
