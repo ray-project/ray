@@ -166,7 +166,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port,
                 from None
 
 
-def continue_debug_session(live_jobs: Set[str]):
+def continue_debug_session():
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -183,14 +183,13 @@ def continue_debug_session(live_jobs: Set[str]):
                 data = ray.experimental.internal_kv._internal_kv_get(key)
                 if data:
                     session = json.loads(data)
-                    if ("exit_debugger" in session
-                            or data["job_id"] not in live_jobs):
+                    if "exit_debugger" in session:
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session(live_jobs)
+                    continue_debug_session()
                     return
                 time.sleep(1.0)
 
@@ -218,13 +217,13 @@ def debug(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
+        continue_debug_session()
+
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {
             job["JobID"]
             for job in ray.state.jobs() if not job["IsDead"]
         }
-        continue_debug_session(live_jobs)
-
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
