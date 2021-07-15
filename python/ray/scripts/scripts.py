@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Optional
 
 import click
 import copy
