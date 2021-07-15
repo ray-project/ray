@@ -10,13 +10,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import tensorflow as tf
-import torch
-from torch.utils.data import DataLoader
 
 import ray
 
-from ray.util.dask import ray_dask_get
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
 from ray.experimental.data.block import Block
@@ -35,6 +31,18 @@ def test_basic(ray_start_regular_shared):
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+def test_batch_tensors(ray_start_regular_shared):
+    import torch
+    ds = ray.experimental.data.from_items(
+        [torch.tensor([0, 0]) for _ in range(40)])
+    res = "Dataset(num_rows=40, num_blocks=40, schema=<class 'torch.Tensor'>)"
+    assert str(ds) == res, str(ds)
+    with pytest.raises(pa.lib.ArrowInvalid):
+        next(ds.iter_batches(batch_format="pyarrow"))
+    df = next(ds.iter_batches(batch_format="pandas"))
+    assert df.to_dict().keys() == {0, 1}
 
 
 def test_write_datasource(ray_start_regular_shared):
@@ -692,6 +700,7 @@ def test_from_dask(ray_start_regular_shared):
 
 
 def test_to_dask(ray_start_regular_shared):
+    from ray.util.dask import ray_dask_get
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
@@ -704,6 +713,7 @@ def test_to_dask(ray_start_regular_shared):
 
 
 def test_to_tf(ray_start_regular_shared):
+    import tensorflow as tf
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -731,6 +741,7 @@ def test_to_tf(ray_start_regular_shared):
 
 
 def test_to_tf_feature_columns(ray_start_regular_shared):
+    import tensorflow as tf
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -759,6 +770,8 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
 
 
 def test_to_torch(ray_start_regular_shared):
+    import torch
+    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -787,6 +800,8 @@ def test_to_torch(ray_start_regular_shared):
 
 
 def test_to_torch_multiple_workers(ray_start_regular_shared):
+    import torch
+    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -815,6 +830,8 @@ def test_to_torch_multiple_workers(ray_start_regular_shared):
 
 
 def test_to_torch_feature_columns(ray_start_regular_shared):
+    import torch
+    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
