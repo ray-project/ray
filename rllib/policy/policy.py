@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
@@ -29,6 +30,33 @@ logger = logging.getLogger(__name__)
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# A policy spec used in the "config.multiagent.policies" specification dict
+# as values (keys are the policy IDs (str)). E.g.:
+# config:
+#   multiagent:
+#     policies: {
+#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+#       "pol2": PolicySpec(config={"lr": 0.001}),
+#     }
+PolicySpec = namedtuple(
+    "PolicySpec",
+    [
+        # If None, use the Trainer's default policy class stored under
+        # `Trainer._policy_class`.
+        "policy_class",
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "observation_space",
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "action_space",
+        # Overrides defined keys in the main Trainer config.
+        # If None, use {}.
+        "config",
+    ])
+# From 3.7 on, we could pass `defaults` into the above constructor.
+PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
 @DeveloperAPI

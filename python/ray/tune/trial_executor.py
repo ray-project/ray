@@ -171,6 +171,9 @@ class TrialExecutor:
         """A hook called after running one step of the trial event loop."""
         pass
 
+    def force_reconcilation_on_next_step_end(self):
+        pass
+
     def on_no_available_trials(self, trial_runner):
         if self._queue_trials:
             return
