@@ -607,7 +607,7 @@ def check_oversized_function(pickled, name, obj_type, worker):
         return
     elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
         warning_message = (
-            "The {} {} is very large {} bytes. "
+            "The {} {} is very large ({} bytes). "
             "Check that its definition is not capturing a large array or "
             "other object in scope.").format(obj_type, name, length)
         push_error_to_driver(
