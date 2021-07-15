@@ -16,7 +16,7 @@ import ray
 from ray.util.dask import ray_dask_get
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.block import Block
 import ray.experimental.data.tests.util as util
 
 
