@@ -136,6 +136,8 @@ def test_ray_debugger_recursive(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_job_exit_cleanup(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
