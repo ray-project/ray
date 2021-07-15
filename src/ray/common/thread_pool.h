@@ -12,13 +12,25 @@ namespace thread_pool {
 class CPUThreadPool {
  public:
   CPUThreadPool(size_t n) : pool_(n) {}
-  template <typename F>
-  auto post(F &&f) {
-    using R = decltype(f());
+  template <typename F,
+            typename R = typename std::result_of<F()>::type,
+            typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
+  boost::fibers::future<R> post(F &&f) {
     boost::fibers::promise<R> promise;
     auto future = promise.get_future();
     boost::asio::post(pool_,
                       [f = std::move(f), p = std::move(promise)] { p.set_value(f()); });
+    return future;
+  }
+
+  template <typename F,
+            typename R = typename std::result_of<F()>::type,
+            typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
+  boost::fibers::future<R> post(F &&f) {
+    boost::fibers::promise<R> promise;
+    auto future = promise.get_future();
+    boost::asio::post(pool_,
+                      [f = std::move(f), p = std::move(promise)] { f(); p.set_value(); });
     return future;
   }
   ~CPUThreadPool() { pool_.join(); }
