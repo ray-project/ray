@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 import ray
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
-    JSONDatasource, CSVDatasource, ReadTask
+    JSONDatasource, CSVDatasource, ReadTask, _S3FileSystemWrapper
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow
 from ray.experimental.data.impl.block import ObjectRef, SimpleBlock, Block, \
@@ -322,7 +322,11 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
+    import pyarrow as pa
+
     dataset = from_items(paths, parallelism=parallelism)
+    if isinstance(filesystem, pa.fs.S3FileSystem):
+        filesystem = _S3FileSystemWrapper(filesystem)
     return dataset.map(
         lambda path: _reader.read_file(
             path,
