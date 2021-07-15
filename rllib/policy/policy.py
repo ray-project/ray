@@ -338,9 +338,9 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
             actions_normalized (bool): Is the given `actions` already
-                normalized (between -1.0 and 1.0) or not? If not and
-                `normalize_actions=True`, we need to normalize the given
-                actions first, before calculating log likelihoods.
+                 normalized (between -1.0 and 1.0) or not? If not and
+                 `normalize_actions=True`, we need to normalize the given
+                 actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:
@@ -529,7 +529,8 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Note: The file format will depend on the deep learning framework used.
@@ -538,6 +539,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             export_dir (str): Local writable directory.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
 

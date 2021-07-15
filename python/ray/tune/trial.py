@@ -57,6 +57,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +71,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -298,6 +299,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -436,6 +438,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner

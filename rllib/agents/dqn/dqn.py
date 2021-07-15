@@ -111,12 +111,12 @@ DEFAULT_CONFIG = with_common_config({
     # If provided, will make sure that the ratio between ts inserted into and
     # sampled from the buffer matches the given value.
     # Example:
-    #   training_intensity=800.0
-    #   train_batch_size=32 rollout_fragment_length=4
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
     #   num_workers=1 (or 0) num_envs_per_worker=1
-    #   -> natural value = 32 / 4 = 8.0
-    #   -> will make sure that replay+train op will be executed 100x as
-    #      often as rollout+insert op (100 * 8.0 = 800.0).
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
     # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 

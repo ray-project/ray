@@ -14,6 +14,6 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    ray.init(address="auto", namespace="workflow")
     wf = workflow.run(foo.step(0), workflow_id="cluster_failure")
     assert ray.get(wf) == 20

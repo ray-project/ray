@@ -21,7 +21,7 @@ COPTS_WITHOUT_LOG = select({
     ],
 })
 
-COPTS = ["-DRAY_USE_SPDLOG"] + COPTS_WITHOUT_LOG
+COPTS = COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
     "//:msvc-cl": [
