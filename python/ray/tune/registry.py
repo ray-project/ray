@@ -2,7 +2,7 @@ import logging
 from types import FunctionType
 
 import ray
-import ray.cloudpickle as pickle
+import ray.vendor.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
 from ray.tune.error import TuneError

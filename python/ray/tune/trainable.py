@@ -12,7 +12,7 @@ from typing import Any, Dict, Union
 import uuid
 
 import ray
-import ray.cloudpickle as pickle
+import ray.vendor.cloudpickle as pickle
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,

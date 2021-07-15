@@ -3,8 +3,8 @@ from __future__ import absolute_import
 import os
 from pickle import PicklingError
 
-from ray.cloudpickle.cloudpickle import *  # noqa
-from ray.cloudpickle.cloudpickle_fast import CloudPickler, dumps, dump  # noqa
+from .cloudpickle import *  # noqa
+from .cloudpickle_fast import CloudPickler, dumps, dump  # noqa
 
 
 # Conform to the convention used by python serialization libraries, which
@@ -30,7 +30,7 @@ def dump_debug(obj, *args, **kwargs):
             inspect_serializability(obj)
             raise
         else:
-            msg = _warn_msg(obj, "ray.cloudpickle.dump", exc)
+            msg = _warn_msg(obj, "ray.vendor.cloudpickle.dump", exc)
             raise type(exc)(msg)
 
 
@@ -43,5 +43,5 @@ def dumps_debug(obj, *args, **kwargs):
             inspect_serializability(obj)
             raise
         else:
-            msg = _warn_msg(obj, "ray.cloudpickle.dumps", exc)
+            msg = _warn_msg(obj, "ray.vendor.cloudpickle.dumps", exc)
             raise type(exc)(msg)

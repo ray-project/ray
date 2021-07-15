@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Union, Optional
 
-import ray.cloudpickle as pickle
+import ray.vendor.cloudpickle as pickle
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv

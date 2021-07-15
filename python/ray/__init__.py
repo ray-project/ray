@@ -74,6 +74,12 @@ del _configure_system
 __commit__ = "{{RAY_COMMIT_SHA}}"
 __version__ = "2.0.0.dev0"
 
+# Vendored packages.
+# We have to set this before we impor the raylet.
+from ray.vendor import cloudpickle, colorama
+__all__ = ["cloudpickle", "colorama"]
+
+
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (  # noqa: E402
@@ -102,7 +108,7 @@ from ray import util  # noqa: E402
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
-__all__ = [
+__all__ += [
     "__version__",
     "_config",
     "get_runtime_context",
@@ -154,10 +160,6 @@ __all__ += [
 if "RAY_EXPERIMENTAL_DATA_API" in os.environ:
     from ray.experimental import data
     __all__.append(data)
-
-# Vendored packages
-from ray.vendor import cloudpickle, colorama
-__all__ += ["cloudpickle", "colorama"]
 
 
 # Remove modules from top-level ray

@@ -1,8 +1,8 @@
 """A utility for debugging serialization issues."""
 from typing import Any, Tuple, Set, Optional
 import inspect
-import ray.cloudpickle as cp
-import colorama
+from ray import cloudpickle as cp
+from ray import colorama
 from contextlib import contextmanager
 
 

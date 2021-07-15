@@ -685,7 +685,7 @@ class ActorClass:
             # doesn't have it.
             meta.last_export_session_and_job = (worker.current_session_and_job)
             # After serialize / deserialize modified class, the __module__
-            # of modified class will be ray.cloudpickle.cloudpickle.
+            # of modified class will be ray.vendor.cloudpickle.cloudpickle.
             # So, here pass actor_creation_function_descriptor to make
             # sure export actor class correct.
             worker.function_actor_manager.export_actor_class(

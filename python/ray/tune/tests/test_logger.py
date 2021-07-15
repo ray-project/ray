@@ -7,7 +7,7 @@ import unittest
 import tempfile
 import shutil
 import numpy as np
-from ray.cloudpickle import cloudpickle
+from ray.vendor.cloudpickle import cloudpickle
 
 from ray.tune.logger import CSVLoggerCallback, JsonLoggerCallback, \
     JsonLogger, CSVLogger, \

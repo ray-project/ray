@@ -512,7 +512,7 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
         file_name (str): Final name of file.
         tmp_file_name (str): Temporary name of file.
     """
-    import ray.cloudpickle as cloudpickle
+    import ray.vendor.cloudpickle as cloudpickle
     tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
@@ -542,7 +542,7 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     Returns:
         (dict) Deserialized state dict.
     """
-    import ray.cloudpickle as cloudpickle
+    import ray.vendor.cloudpickle as cloudpickle
     full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
     if not full_paths:
         return

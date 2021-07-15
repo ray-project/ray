@@ -7,7 +7,7 @@ import logging
 import shutil
 
 import pandas as pd
-import ray.cloudpickle as pickle
+import ray.vendor.cloudpickle as pickle
 import os
 
 import ray

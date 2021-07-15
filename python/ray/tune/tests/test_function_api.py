@@ -482,7 +482,7 @@ class FunctionApiTest(unittest.TestCase):
             tune.report(metric=len(data.data))
 
         trainable = tune.with_parameters(train, data=Data())
-        # ray.cloudpickle will crash for some reason
+        # ray.vendor.cloudpickle will crash for some reason
         import cloudpickle as cp
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024

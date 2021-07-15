@@ -19,7 +19,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 
 from ray._private.client_mode_hook import disable_client_hook
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 from ray.util.client.client_pickler import PickleStub
 from ray.util.client.server.server_stubs import ClientReferenceActor
 from ray.util.client.server.server_stubs import ClientReferenceFunction

@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 
-import ray.cloudpickle as pickle
+import ray.vendor.cloudpickle as pickle
 from ray.rllib.env.policy_client import PolicyClient, \
     _create_embedded_rollout_worker
 from ray.rllib.offline.input_reader import InputReader

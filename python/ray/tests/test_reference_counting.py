@@ -287,12 +287,12 @@ def test_out_of_band_serialized_object_ref(one_worker_100MiB):
         ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
     obj_ref = ray.put("hello")
     _check_refcounts({obj_ref: (1, 0)})
-    obj_ref_str = ray.cloudpickle.dumps(obj_ref)
+    obj_ref_str = ray.vendor.cloudpickle.dumps(obj_ref)
     _check_refcounts({obj_ref: (2, 0)})
     del obj_ref
     assert len(
         ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
-    assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
+    assert ray.get(ray.vendor.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
 def test_captured_object_ref(one_worker_100MiB):

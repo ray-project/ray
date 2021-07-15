@@ -5,7 +5,7 @@ import threading
 from urllib.parse import urljoin, urlparse
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray._private.utils import binary_to_hex, hex_to_binary

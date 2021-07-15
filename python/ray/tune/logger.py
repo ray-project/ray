@@ -7,7 +7,7 @@ import yaml
 
 from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, TextIO, Type
 
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 
 from ray.tune.callback import Callback
 from ray.tune.utils.util import SafeFallbackEncoder

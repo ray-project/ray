@@ -1304,7 +1304,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return dict(metric=len(self.data), done=True)
 
         trainable = tune.with_parameters(TestTrainable, data=Data())
-        # ray.cloudpickle will crash for some reason
+        # ray.vendor.cloudpickle will crash for some reason
         import cloudpickle as cp
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
@@ -1325,7 +1325,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         new_data = Data()
         ref = ray.put(new_data)
         trainable = tune.with_parameters(TestTrainable, data=ref)
-        # ray.cloudpickle will crash for some reason
+        # ray.vendor.cloudpickle will crash for some reason
         import cloudpickle as cp
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024

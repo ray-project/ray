@@ -310,7 +310,7 @@ def test_complex_serialization(ray_start_regular):
 
 def test_numpy_serialization(ray_start_regular):
     array = np.zeros(314)
-    from ray.cloudpickle import dumps
+    from ray.vendor.cloudpickle import dumps
     buffers = []
     inband = dumps(array, protocol=5, buffer_callback=buffers.append)
     assert len(inband) < array.nbytes
@@ -334,7 +334,7 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
 
 def test_inspect_serialization(enable_pickle_debug):
     import threading
-    from ray.cloudpickle import dumps_debug
+    from ray.vendor.cloudpickle import dumps_debug
 
     lock = threading.Lock()
 
@@ -550,7 +550,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads, dumps
+    from ray.vendor.cloudpickle import CloudPickler, loads, dumps
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())

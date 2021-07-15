@@ -14,7 +14,7 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray.cloudpickle.compat import pickle
+from ray.vendor.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc

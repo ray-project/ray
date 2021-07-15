@@ -2,7 +2,7 @@ from typing import Callable, Dict, Sequence, Union
 import json
 
 import ray
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 from collections import deque
 import copy
 import logging

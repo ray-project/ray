@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 import grpc
 
 from ray.job_config import JobConfig
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 # Use cloudpickle's version of pickle for UnpicklingError
-from ray.cloudpickle.compat import pickle
+from ray.vendor.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError

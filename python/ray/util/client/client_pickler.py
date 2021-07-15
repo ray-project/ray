@@ -29,7 +29,7 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.common import ClientActorHandle

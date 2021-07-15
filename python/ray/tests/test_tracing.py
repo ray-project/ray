@@ -194,12 +194,12 @@ def test_deserialization_works_without_opentelemetry(ray_start_regular):
     def f():
         return 30
 
-    fn_bytes = ray.cloudpickle.dumps(f)
+    fn_bytes = ray.vendor.cloudpickle.dumps(f)
     with patch.dict("sys.modules", opentelemetry=None):
         # Ensure that opentelemetry cannot be imported
         with pytest.raises(ModuleNotFoundError):
             import opentelemetry.trace  # noqa: F401
-        ray.cloudpickle.loads(fn_bytes)
+        ray.vendor.cloudpickle.loads(fn_bytes)
 
 
 if __name__ == "__main__":

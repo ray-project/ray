@@ -1,5 +1,5 @@
 import ray
-import ray.cloudpickle as pickle
+from ray import cloudpickle as pickle
 
 
 def register_serializer(cls, *, serializer, deserializer):

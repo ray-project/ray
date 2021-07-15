@@ -11,7 +11,7 @@ from pathlib import Path
 import shelve
 
 import ray
-import ray.cloudpickle as cloudpickle
+import ray.vendor.cloudpickle as cloudpickle
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID

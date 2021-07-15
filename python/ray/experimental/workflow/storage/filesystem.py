@@ -8,7 +8,7 @@ from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (
     Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
 
-import ray.cloudpickle
+import ray.vendor.cloudpickle
 
 # constants used in filesystem
 OBJECTS_DIR = "objects"
@@ -173,7 +173,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUT, "rb") as f:
-                return ray.cloudpickle.load(f)
+                return ray.vendor.cloudpickle.load(f)
         except Exception as e:
             raise DataLoadError from e
 
@@ -182,7 +182,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUT, "wb") as f:
-                ray.cloudpickle.dump(output, f)
+                ray.vendor.cloudpickle.dump(output, f)
         except Exception as e:
             raise DataSaveError from e
 
@@ -191,7 +191,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_FUNC_BODY, "rb") as f:
-                return ray.cloudpickle.load(f)
+                return ray.vendor.cloudpickle.load(f)
         except Exception as e:
             raise DataLoadError from e
 
@@ -200,7 +200,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_FUNC_BODY, "wb") as f:
-                ray.cloudpickle.dump(func_body, f)
+                ray.vendor.cloudpickle.dump(func_body, f)
         except Exception as e:
             raise DataSaveError from e
 
@@ -208,7 +208,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_ARGS, "rb") as f:
-                return ray.cloudpickle.load(f)
+                return ray.vendor.cloudpickle.load(f)
         except Exception as e:
             raise DataLoadError from e
 
@@ -217,7 +217,7 @@ class FilesystemStorageImpl(Storage):
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_ARGS, "wb") as f:
-                ray.cloudpickle.dump(args, f)
+                ray.vendor.cloudpickle.dump(args, f)
         except Exception as e:
             raise DataSaveError from e
 
@@ -225,7 +225,7 @@ class FilesystemStorageImpl(Storage):
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
         try:
             with _open_atomic(objects_dir / object_id, "rb") as f:
-                obj = ray.cloudpickle.load(f)
+                obj = ray.vendor.cloudpickle.load(f)
             return ray.put(obj)  # simulate an ObjectRef
         except Exception as e:
             raise DataLoadError from e
@@ -236,7 +236,7 @@ class FilesystemStorageImpl(Storage):
         try:
             obj = ray.get(obj_ref)
             with _open_atomic(objects_dir / obj_ref.hex(), "wb") as f:
-                ray.cloudpickle.dump(obj, f)
+                ray.vendor.cloudpickle.dump(obj, f)
         except Exception as e:
             raise DataSaveError from e
 

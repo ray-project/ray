@@ -2,7 +2,7 @@ import logging
 import threading
 import traceback
 
-import ray.cloudpickle as pickle
+from ray import cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray.gcs_utils import ErrorType

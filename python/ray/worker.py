@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Iterator
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 from ray import colorama
-import ray.cloudpickle as pickle
+from ray import cloudpickle as pickle
 import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
