@@ -1,4 +1,3 @@
-import sys
 from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
     TYPE_CHECKING
 

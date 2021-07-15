@@ -747,7 +747,9 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        write_tasks = datasource.prepare_write(self._blocks,
+                                               self._blocks.get_metadata(),
+                                               **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
 
         @ray.remote

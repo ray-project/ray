@@ -1,12 +1,11 @@
 import sys
-from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
-    TYPE_CHECKING
+from typing import Iterator, Generic, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef, T
+from ray.experimental.data.block import Block, T
 
 
 class BlockBuilder(Generic[T]):
