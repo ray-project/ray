@@ -570,7 +570,6 @@ class TrialRunner:
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
                 self._process_events(timeout=timeout)  # blocking
-                self._timer.measure("handle_events_process")
             else:
                 self.trial_executor.on_no_available_trials(self)
                 self._timer.measure("handle_events_no_process")
@@ -689,6 +688,7 @@ class TrialRunner:
     def _process_events(self, timeout: Optional[float] = None):
         with warn_if_slow("get_next_failed_trial"):
             failed_trial = self.trial_executor.get_next_failed_trial()
+        self._timer.measure("handle_events_process.failed_trial")
         if failed_trial:
             error_msg = (
                 "{} (IP: {}) detected as stale. This is likely because the "
@@ -699,6 +699,7 @@ class TrialRunner:
         else:
             trial, num_ready = self.trial_executor.get_next_available_trial(
                 timeout=timeout)  # blocking
+            self._timer.measure("handle_events_process.get_next")
 
             process_max = min(self._process_trials_per_iter, num_ready)
             for i in range(process_max):
@@ -707,6 +708,8 @@ class TrialRunner:
 
                 trial, _ = self.trial_executor.get_next_available_trial(
                     timeout=None)
+
+            self._timer.measure("handle_events_process.processed_all")
 
     def _process_next_available_trial(self, trial: Trial) -> bool:
         # TODO(ujvl): Consider combining get_next_available_trial and
@@ -722,6 +725,8 @@ class TrialRunner:
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)
+            self._timer.measure("handle_events_process.is_restoring")
+
         elif trial.is_saving:
             with warn_if_slow("process_trial_save") as _profile:
                 self._process_trial_save(trial)
@@ -744,10 +749,12 @@ class TrialRunner:
                                                 get_node_ip_address()):
                     if log_once("tune_head_worker_checkpoint"):
                         logger.warning(msg)
+            self._timer.measure("handle_events_process.is_saving")
 
         else:
             with warn_if_slow("process_trial"):
                 self._process_trial(trial)
+                self._timer.measure("handle_events_process.processed")
 
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
@@ -756,6 +763,10 @@ class TrialRunner:
                 trial.trial_id, None)
             if final_decision:
                 self._execute_action(trial, final_decision)
+            self._timer.measure("handle_events_process.decision")
+        else:
+            self._timer.measure("handle_events_process.no_decision")
+
 
         return True
 
@@ -777,6 +788,7 @@ class TrialRunner:
         """
         try:
             results = self.trial_executor.fetch_result(trial)
+            self._timer.measure("handle_events_process.fetch_result")
             with warn_if_slow(
                     "process_trial_results",
                     message="Processing trial results took {duration:.3f} s, "
@@ -804,6 +816,7 @@ class TrialRunner:
                         # If the decision is to stop the trial,
                         # ignore all results that came after that.
                         break
+                self._timer.measure("handle_events_process.processed_results")
         except Exception:
             error_msg = "Trial %s: Error processing event." % trial
             if self._fail_fast == TrialRunner.RAISE:
