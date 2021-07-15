@@ -8,9 +8,11 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 
 from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
 
+
 def get_all_ray_worker_processes():
     processes = [
-        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
+        p.info["cmdline"]
+        for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
     ]
 
     result = []
@@ -18,19 +20,19 @@ def get_all_ray_worker_processes():
         if p is not None and len(p) > 0 and "ray::" in p[0]:
             result.append(p)
     return result
-    
+
 
 def test_ray_shutdown(shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
     ray.init()
-    
+
     @ray.remote
     def f():
         import time
         time.sleep(10)
-    
+
     num_cpus = int(ray.available_resources()["CPU"])
-    tasks = [f.remote() for _ in range(num_cpus)]
+    tasks = [f.remote() for _ in range(num_cpus)]  # noqa
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) > 0)
 
     ray.shutdown()
@@ -83,9 +85,9 @@ def test_node_killed(ray_start_cluster):
     def f():
         import time
         time.sleep(100)
-    
+
     num_cpus = int(ray.available_resources()["CPU"])
-    tasks = [f.remote() for _ in range(num_cpus)]
+    tasks = [f.remote() for _ in range(num_cpus)] # noqa
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) > 0)
 
     for worker in workers:
