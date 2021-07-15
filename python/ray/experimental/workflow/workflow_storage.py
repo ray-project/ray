@@ -3,8 +3,8 @@ This module is higher-level abstraction of storage directly used by
 workflows.
 """
 
-from typing import Awaitable, Dict, List, Optional, Any, Callable, Tuple, Union
 import asyncio
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 
 import ray
@@ -12,6 +12,12 @@ from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
+
+
+# TODO: Get rid of this and use asyncio.run instead once we don't support py36
+def asyncio_run(coro):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(coro)
 
 
 @dataclass
@@ -61,7 +67,7 @@ class WorkflowStorage:
         Returns:
             Output of the workflow step.
         """
-        return asyncio.run(
+        return asyncio_run(
             self._storage.load_step_output(self._workflow_id, step_id))
 
     def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
@@ -97,7 +103,7 @@ class WorkflowStorage:
             tasks.append(
                 self._update_dynamic_output(outer_most_step_id,
                                             dynamic_output_id))
-        asyncio.run(*tasks)
+        asyncio_run(asyncio.gather(*tasks))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
@@ -108,7 +114,7 @@ class WorkflowStorage:
         Returns:
             A callable function.
         """
-        return asyncio.run(
+        return asyncio_run(
             self._storage.load_step_func_body(self._workflow_id, step_id))
 
     def load_step_args(
@@ -129,7 +135,7 @@ class WorkflowStorage:
         """
         with serialization_context.workflow_args_resolving_context(
                 workflows, object_refs):
-            return asyncio.run(
+            return asyncio_run(
                 self._storage.load_step_args(self._workflow_id, step_id))
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
@@ -141,7 +147,7 @@ class WorkflowStorage:
         Returns:
             The object ref.
         """
-        return asyncio.run(
+        return asyncio_run(
             self._storage.load_object_ref(self._workflow_id, object_id))
 
     async def _update_dynamic_output(self, outer_most_step_id: StepID,
@@ -176,7 +182,7 @@ class WorkflowStorage:
             await self._storage.save_step_output_metadata(
                 self._workflow_id, outer_most_step_id, metadata)
 
-    async def _locate_output_step_id(self, step_id: StepID):
+    async def _locate_output_step_id(self, step_id: StepID) -> str:
         metadata = await self._storage.load_step_output_metadata(
             self._workflow_id, step_id)
         return (metadata.get("dynamic_output_step_id")
@@ -190,7 +196,7 @@ class WorkflowStorage:
         """
         # empty StepID represents the workflow driver
         try:
-            return self._locate_output_step_id("")
+            return asyncio_run(self._locate_output_step_id(""))
         except Exception as e:
             raise ValueError("Fail to get entrypoint step ID from workflow"
                              f"[id={self._workflow_id}]") from e
@@ -206,10 +212,9 @@ class WorkflowStorage:
         Returns:
             The status of the step.
         """
-        return asyncio.run(self._inspect_step(step_id))
+        return asyncio_run(self._inspect_step(step_id))
 
-    async def _inspect_step(self,
-                            step_id: StepID) -> Awaitable[StepInspectResult]:
+    async def _inspect_step(self, step_id: StepID) -> StepInspectResult:
         field_list = await self._storage.get_step_status(
             self._workflow_id, step_id)
         # does this step contains output checkpoint file?
@@ -237,7 +242,7 @@ class WorkflowStorage:
         )
 
     async def _write_step_inputs(self, step_id: StepID,
-                                 inputs: WorkflowInputs) -> Awaitable[None]:
+                                 inputs: WorkflowInputs) -> None:
         """Save workflow inputs."""
         f = inputs.func_body
         metadata = {
@@ -255,7 +260,7 @@ class WorkflowStorage:
             self._storage.save_step_func_body(self._workflow_id, step_id, f),
             self._storage.save_step_args(self._workflow_id, step_id, args_obj)
         ]
-        asyncio.gather(*save_tasks)
+        await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
         """Save the DAG and inputs of the sub-workflow.
@@ -269,4 +274,4 @@ class WorkflowStorage:
             self._write_step_inputs(w.id, w.get_inputs())
             for w in workflow.iter_workflows_in_dag()
         ]
-        asyncio.run(*tasks)
+        asyncio_run(asyncio.gather(*tasks))

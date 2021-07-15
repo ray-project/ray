@@ -37,17 +37,25 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
 
         read_file = self._read_file
 
-        def read_files(read_paths: List[str]):
+        if isinstance(filesystem, pa.fs.S3FileSystem):
+            filesystem = _S3FileSystemWrapper(filesystem)
+
+        def read_files(
+                read_paths: List[str],
+                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
             logger.debug(f"Reading {len(read_paths)} files.")
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
             tables = []
             for read_path in read_paths:
-                with filesystem.open_input_file(read_path) as f:
+                with fs.open_input_file(read_path) as f:
                     tables.append(read_file(f, **reader_args))
             return ArrowBlock(pa.concat_tables(tables))
 
         read_tasks = [
             ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths),
+                lambda read_paths=read_paths: read_files(
+                    read_paths, filesystem),
                 BlockMetadata(
                     num_rows=None,
                     size_bytes=sum(file_sizes),
@@ -159,3 +167,22 @@ def _resolve_paths_and_filesystem(
         else:
             raise FileNotFoundError(path)
     return expanded_paths, file_infos, filesystem
+
+
+class _S3FileSystemWrapper:
+    def __init__(self, fs: "pyarrow.fs.S3FileSystem"):
+        self._fs = fs
+
+    def unwrap(self):
+        return self._fs
+
+    @classmethod
+    def _reconstruct(cls, fs_reconstruct, fs_args):
+        # Implicitly trigger S3 subsystem initialization by importing
+        # pyarrow.fs.
+        import pyarrow.fs  # noqa: F401
+
+        return cls(fs_reconstruct(*fs_args))
+
+    def __reduce__(self):
+        return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()

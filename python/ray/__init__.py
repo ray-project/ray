@@ -151,9 +151,10 @@ __all__ += [
     "PlacementGroupID",
 ]
 
-if "RAY_EXPERIMENTAL_DATA_API" in os.environ:
-    from ray.experimental import data
-    __all__.append(data)
+# Add an alias so we can point to the final location in docs.
+# TODO(ekl) remove this once datasets is out of alpha.
+from ray.experimental import data  # noqa
+__all__.append(data)
 
 
 # Remove modules from top-level ray
