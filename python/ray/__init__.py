@@ -75,7 +75,8 @@ __commit__ = "{{RAY_COMMIT_SHA}}"
 __version__ = "2.0.0.dev0"
 
 # Vendored packages.
-# We have to set this before we impor the raylet.
+# We have to set this before we import the raylet.
+# raylet depends on colorama
 from ray.vendor import cloudpickle, colorama
 __all__ = ["cloudpickle", "colorama"]
 
