@@ -434,7 +434,7 @@ Runtime Environments (Experimental)
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
-The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
 The runtime environment defines the dependencies required for your workload.
 
 You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
@@ -449,7 +449,8 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
 
 .. code-block:: python
 
-    ray.client("localhost:10001").env(runtime_env).connect()
+    # Using Ray Client
+    ray.init("ray://localhost:10001", runtime_env=runtime_env)
 
 ...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 

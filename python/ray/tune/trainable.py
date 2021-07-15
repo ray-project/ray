@@ -499,6 +499,8 @@ class Trainable:
             self, new_resources: Union[PlacementGroupFactory, Resources]):
         """Fires whenever Trainable resources are changed.
 
+        This method will be called before the checkpoint is loaded.
+
         Args:
             new_resources (PlacementGroupFactory|Resources):
                 Updated resources. Will be a PlacementGroupFactory if

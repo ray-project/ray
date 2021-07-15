@@ -4,7 +4,6 @@ import shutil
 import time
 
 from unittest.mock import patch
-import dask.dataframe as dd
 import math
 import numpy as np
 import pandas as pd
@@ -169,12 +168,43 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_arrow(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_arrow([
+        ray.put(pa.Table.from_pandas(df1)),
+        ray.put(pa.Table.from_pandas(df2))
+    ])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_arrow(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_get_blocks(ray_start_regular_shared):
+    blocks = ray.experimental.data.range(10).get_blocks()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(list(b.iter_rows()))
+    out = sorted(out)
+    assert out == list(range(10)), out
 
 
 def test_pandas_roundtrip(ray_start_regular_shared):
@@ -650,6 +680,7 @@ def test_split_hints(ray_start_regular_shared):
 
 
 def test_from_dask(ray_start_regular_shared):
+    import dask.dataframe as dd
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.experimental.data.from_dask(ddf)

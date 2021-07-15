@@ -16,6 +16,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
 
@@ -423,16 +424,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         n = 10
         register_env("multi_agent_cartpole",
                      lambda _: MultiAgentCartPole({"num_agents": n}))
-        single_env = gym.make("CartPole-v0")
 
         def gen_policy():
             config = {
                 "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
                 "n_step": random.choice([1, 2, 3, 4, 5]),
             }
-            obs_space = single_env.observation_space
-            act_space = single_env.action_space
-            return (None, obs_space, act_space, config)
+            return PolicySpec(config=config)
 
         pg = PGTrainer(
             env="multi_agent_cartpole",
