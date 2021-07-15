@@ -363,6 +363,7 @@ def test_system_config_when_connecting(ray_start_cluster):
 
     ray.get(obj_ref)
 
+
 def test_get_multiple(ray_start_regular_shared):
     object_refs = [ray.put(i) for i in range(10)]
     assert ray.get(object_refs) == list(range(10))
