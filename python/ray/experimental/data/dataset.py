@@ -31,35 +31,6 @@ from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
 
-try:
-    import torch  # noqa: F811
-    from torch.utils.data import IterableDataset
-except ImportError:
-    torch = None
-    IterableDataset = None
-
-if IterableDataset is not None:
-
-    class RayIterableDataset(IterableDataset):
-        def __init__(self, generator_func):
-            self.generator_func = generator_func
-
-        def __iter__(self):
-            it = self.generator_func()
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is None:
-                yield from it
-            else:
-                # Multiple workers are doing dataloading.
-                # Each worker has a copy of the data.
-                # Avoid duplicates.
-                import itertools
-                it = itertools.islice(it, worker_info.id, None,
-                                      worker_info.num_workers)
-                yield from it
-else:
-    RayIterableDataset = None
-
 T = TypeVar("T")
 U = TypeVar("U")
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
@@ -890,15 +861,16 @@ class Dataset(Generic[T]):
     def to_torch(self,
                  label_column: str,
                  feature_columns: Optional[List[str]] = None,
-                 label_column_dtype: Optional[torch.dtype] = None,
-                 feature_column_dtypes: Optional[List[torch.dtype]] = None,
-                 prefetch_blocks=0):
+                 label_column_dtype: Optional["torch.dtype"] = None,
+                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 prefetch_blocks: int = 0) -> \
+            "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
 
-        Return a TF Dataset over this dataset.
+        Return a Torch IterableDataset over this dataset.
 
         Each element in IterableDataset will be a list consisting of 2
         elements. The first item is a list of the feature tensors. The
@@ -923,19 +895,27 @@ class Dataset(Generic[T]):
                 to use for the feature columns. The len of this list must
                 be equal to the len of ``feature_columns``. If None,
                 then automatically infer the dtype.
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_blocks (int): The number of blocks to prefetch ahead of
+                the current block during the scan.
 
         Returns:
             A torch IterableDataset.
         """
-        if torch is None:
+        try:
+            import torch
+        except ImportError:
             raise ValueError("torch must be installed!")
+
+        from ray.experimental.data.impl.torch_iterable_dataset import \
+            RayIterableDataset
 
         if feature_columns and feature_column_dtypes:
             if len(feature_columns) != len(feature_column_dtypes):
-                raise ValueError("The lengths of `feature_columns` and "
-                                 "`feature_column_dtypes` do not match!")
+                raise ValueError("The lengths of `feature_columns` "
+                                 f"({len(feature_columns)}) and "
+                                 f"`feature_column_dtypes` ("
+                                 f"{len(feature_column_dtypes)}) do not "
+                                 "match!")
 
         def make_generator():
             for batch in self.iter_batches(
