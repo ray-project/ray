@@ -1,13 +1,36 @@
-def PublicAPI(obj):
+def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of Ray. You
     can expect these APIs to remain backwards compatible even across major Ray
     releases.
-    """
 
-    obj.__doc__ += "\nPublicAPI: This API is stable across Ray releases."
-    return obj
+    Args:
+        stability: Either "stable" for stable features or "beta" for APIs that
+            are intended to be public but still in beta.
+    """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return PublicAPI(stability="stable")(args[0])
+
+    if "stability" in kwargs:
+        stability = kwargs["stability"]
+        assert stability in ["stable", "beta"], stability
+    elif kwargs:
+        raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
+    else:
+        stability = "stable"
+
+    def wrap(obj):
+        if stability == "beta":
+            obj.__doc__ += (
+                "\nPublicAPI (beta): This API is in beta and may change "
+                "before becoming stable.")
+        else:
+            obj.__doc__ += (
+                "\nPublicAPI: This API is stable across Ray releases.")
+        return obj
+
+    return wrap
 
 
 def DeveloperAPI(obj):

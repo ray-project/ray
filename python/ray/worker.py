@@ -472,7 +472,7 @@ class Worker:
             pubsub_client.close()
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 @client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
