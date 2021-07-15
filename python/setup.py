@@ -59,14 +59,20 @@ class SetupType(Enum):
 
 
 class SetupSpec:
-    def __init__(self, type, name, description):
-        self.type = type
-        self.name = name
-        self.version = find_version("ray", "__init__.py")
-        self.description = description
-        self.files_to_include = list()
-        self.install_requires = list()
-        self.extras = {}
+    def __init__(self, type: SetupType, name: str, description: str):
+        self.type: SetupType = type
+        self.name: str = name
+        self.version: str = find_version("ray", "__init__.py")
+        self.description: str = description
+        self.files_to_include: list = []
+        self.install_requires: list = []
+        self.extras: dict = {}
+
+    def get_packages(self):
+        if self.type == SetupType.RAY:
+            return setuptools.find_packages()
+        else:
+            return []
 
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
@@ -499,8 +505,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
     ],
-    packages=setuptools.find_packages()
-    if setup_spec.type == SetupType.RAY else [],
+    packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
