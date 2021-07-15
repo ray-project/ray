@@ -16,7 +16,6 @@
 
 #include <fstream>
 #include <regex>
-
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -24,39 +23,41 @@ namespace {
 const size_t UINT64_size = sizeof(uint64_t);
 }
 
-/* static */ absl::optional<SpilledObject> SpilledObject::CreateSpilledObject(
+/* static */ boost::fibers::future<absl::optional<SpilledObject>> SpilledObject::CreateSpilledObject(
     const std::string &object_url, uint64_t chunk_size) {
-  if (chunk_size == 0) {
-    RAY_LOG(WARNING) << "chunk_size can't be 0.";
-    return absl::optional<SpilledObject>();
-  }
+  return ray::thread_pool::cpu_post([=]() {
+    if (chunk_size == 0) {
+      RAY_LOG(WARNING) << "chunk_size can't be 0.";
+      return absl::optional<SpilledObject>();
+    }
 
-  std::string file_path;
-  uint64_t object_offset = 0;
-  uint64_t object_size = 0;
+    std::string file_path;
+    uint64_t object_offset = 0;
+    uint64_t object_size = 0;
 
-  if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, object_size)) {
-    RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
-    return absl::optional<SpilledObject>();
-  }
+    if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, object_size)) {
+      RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
+      return absl::optional<SpilledObject>();
+    }
 
-  uint64_t data_offset = 0;
-  uint64_t data_size = 0;
-  uint64_t metadata_offset = 0;
-  uint64_t metadata_size = 0;
-  rpc::Address owner_address;
+    uint64_t data_offset = 0;
+    uint64_t data_size = 0;
+    uint64_t metadata_offset = 0;
+    uint64_t metadata_size = 0;
+    rpc::Address owner_address;
 
-  std::ifstream is(file_path, std::ios::binary);
-  if (!is ||
-      !SpilledObject::ParseObjectHeader(is, object_offset, data_offset, data_size,
-                                        metadata_offset, metadata_size, owner_address)) {
-    RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
-    return absl::optional<SpilledObject>();
-  }
+    std::ifstream is(file_path, std::ios::binary);
+    if (!is ||
+        !SpilledObject::ParseObjectHeader(is, object_offset, data_offset, data_size,
+                                          metadata_offset, metadata_size, owner_address)) {
+      RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
+      return absl::optional<SpilledObject>();
+    }
 
-  return absl::optional<SpilledObject>(SpilledObject(
-      std::move(file_path), object_size, data_offset, data_size, metadata_offset,
-      metadata_size, std::move(owner_address), chunk_size));
+    return absl::optional<SpilledObject>(SpilledObject(
+        std::move(file_path), object_size, data_offset, data_size, metadata_offset,
+        metadata_size, std::move(owner_address), chunk_size));
+  });
 }
 
 uint64_t SpilledObject::GetDataSize() const { return data_size_; }

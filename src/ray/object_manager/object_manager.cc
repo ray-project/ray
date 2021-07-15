@@ -66,13 +66,12 @@ ObjectManager::ObjectManager(
           /*add_object_callback=*/
           [this, add_object_callback =
                      std::move(add_object_callback)](const ObjectInfo &object_info) {
-            main_service_->post(
+            ray::thread_pool::io_post(
                 [this, object_info,
                  add_object_callback = std::move(add_object_callback)]() {
                   HandleObjectAdded(object_info);
                   add_object_callback(object_info);
-                },
-                "ObjectManager.ObjectAdded");
+                });
           },
           /*delete_object_callback=*/
           [this, delete_object_callback =
@@ -184,8 +183,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &node_id = pair.first;
-      main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
-                          "ObjectManager.ObjectAddedPush");
+      ray::thread_pool::io_post([this, object_id, node_id]() { Push(object_id, node_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -417,53 +415,42 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
                                        const std::string &spilled_url) {
   // SpilledObject::CreateSpilledObject does synchronous IO; schedule it off
   // main thread.
-  rpc_service_.post(
-      [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size]() {
-        auto optional_spilled_object =
-            SpilledObject::CreateSpilledObject(spilled_url, chunk_size);
-        if (!optional_spilled_object.has_value()) {
-          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
-                         << ". It may have been evicted.";
-          return;
-        }
+  auto chunk_size = config_.object_chunk_size;
+  auto optional_spilled_object =
+      SpilledObject::CreateSpilledObject(spilled_url, chunk_size).get();
+  if (!optional_spilled_object.has_value()) {
+    RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
+                   << ". It may have been evicted.";
+    return;
+  }
 
-        auto spilled_object =
-            std::make_shared<SpilledObject>(std::move(optional_spilled_object.value()));
+  auto spilled_object =
+      std::make_shared<SpilledObject>(std::move(optional_spilled_object.value()));
 
-        uint64_t total_data_size =
-            spilled_object->GetDataSize() + spilled_object->GetMetadataSize();
-        uint64_t metadata_size = spilled_object->GetMetadataSize();
-        uint64_t num_chunks = spilled_object->GetNumChunks();
-        rpc::Address owner_address = spilled_object->GetOwnerAddress();
+  uint64_t total_data_size =
+      spilled_object->GetDataSize() + spilled_object->GetMetadataSize();
+  uint64_t metadata_size = spilled_object->GetMetadataSize();
+  uint64_t num_chunks = spilled_object->GetNumChunks();
+  rpc::Address owner_address = spilled_object->GetOwnerAddress();
 
-        auto spilled_object_chunk_reader = [object_id, spilled_object](
-                                               uint64_t chunk_index,
-                                               rpc::PushRequest &push_request) -> Status {
-          auto optional_chunk = spilled_object->GetChunk(chunk_index);
-          if (!optional_chunk.has_value()) {
-            RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
-                           << " failed. "
-                           << " It may have been evicted.";
-            return Status::IOError("Failed to read spilled object");
-          }
-          push_request.set_data(std::move(optional_chunk.value()));
-          return Status::OK();
-        };
+  auto spilled_object_chunk_reader = [object_id, spilled_object](
+      uint64_t chunk_index,
+      rpc::PushRequest &push_request) -> Status {
+    auto optional_chunk = spilled_object->GetChunk(chunk_index);
+    if (!optional_chunk.has_value()) {
+      RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
+                     << " failed. "
+                     << " It may have been evicted.";
+      return Status::IOError("Failed to read spilled object");
+    }
+    push_request.set_data(std::move(optional_chunk.value()));
+    return Status::OK();
+  };
 
-        // Schedule PushObjectInternal back to main_service as PushObjectInternal access
-        // thread unsafe datastructure.
-        main_service_->post(
-            [this, object_id, node_id, total_data_size, metadata_size, num_chunks,
-             owner_address = std::move(owner_address),
-             spilled_object_chunk_reader = std::move(spilled_object_chunk_reader)]() {
-              PushObjectInternal(object_id, node_id, total_data_size, metadata_size,
-                                 num_chunks, std::move(owner_address),
-                                 std::move(spilled_object_chunk_reader),
-                                 [](uint64_t) { /* do nothing to release chunk */ });
-            },
-            "ObjectManager.PushLocalSpilledObjectInternal");
-      },
-      "ObjectManager.CreateSpilledObject");
+  PushObjectInternal(object_id, node_id, total_data_size, metadata_size,
+                     num_chunks, std::move(owner_address),
+                     std::move(spilled_object_chunk_reader),
+                     [](uint64_t) { /* do nothing to release chunk */ });
 }
 
 void ObjectManager::PushObjectInternal(
@@ -745,7 +732,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-Status ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply) {
+void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
 
@@ -770,7 +758,7 @@ Status ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply
   double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
   HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
-  return Status::OK();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,

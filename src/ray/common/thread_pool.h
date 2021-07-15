@@ -16,10 +16,10 @@ class CPUThreadPool {
             typename R = typename std::result_of<F()>::type,
             typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
   boost::fibers::future<R> post(F &&f) {
-    boost::fibers::promise<R> promise;
-    auto future = promise.get_future();
+    auto p = std::make_unique<boost::fibers::promise<R>>().release();
+    auto future = p->get_future();
     boost::asio::post(pool_,
-                      [f = std::move(f), p = std::move(promise)] { p.set_value(f()); });
+                      [f = std::move(f), p = p] { p->set_value(f()); delete p;});
     return future;
   }
 
@@ -27,10 +27,10 @@ class CPUThreadPool {
             typename R = typename std::result_of<F()>::type,
             typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
   boost::fibers::future<R> post(F &&f) {
-    boost::fibers::promise<R> promise;
-    auto future = promise.get_future();
+    auto p = std::make_unique<boost::fibers::promise<R>>().release();
+    auto future = p->get_future();
     boost::asio::post(pool_,
-                      [f = std::move(f), p = std::move(promise)] { f(); p.set_value(); });
+                      [f = std::move(f), p = p] { f(); p->set_value(); delete p;});
     return future;
   }
   ~CPUThreadPool() { pool_.join(); }

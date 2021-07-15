@@ -125,7 +125,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
   /// \param send_reply_callback Callback of the request
-  Status HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply) override;
+  void HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle pull request from remote object manager
   ///
