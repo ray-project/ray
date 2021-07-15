@@ -247,7 +247,7 @@ evenly_distribute_cpus_gpus
 .. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus
 
 evenly_distribute_cpus_gpus_distributed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus_distributed
 
