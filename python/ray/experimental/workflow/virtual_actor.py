@@ -239,12 +239,13 @@ class VirtualActorClass(VirtualActorClassBase):
     @classmethod
     def _from_class(cls, base_class: type) -> "VirtualActorClass":
         """Construct the virtual actor class from a base class."""
+        # TODO(suquark): we may use more complex name for private functions
+        # to avoid collision with user-defined functions.
         for attribute in [
                 "create",
                 "_create",
                 "option",
-                "get",
-                "_get",
+                "_construct",
                 "_from_class",
         ]:
             if hasattr(base_class, attribute):
@@ -292,12 +293,6 @@ class VirtualActorClass(VirtualActorClassBase):
             storage=None,
             readonly=False)
 
-    # TODO(suquark): remove get()
-    def get(self, actor_id: str, storage: Storage):
-        """Get an existing virtual actor by inheriting its state."""
-        return self._construct(
-            actor_id=actor_id, storage=storage, readonly=False)
-
     # TODO(suquark): support num_cpu etc in options
     def options(self,
                 actor_id: str,
@@ -329,10 +324,6 @@ class VirtualActorClass(VirtualActorClassBase):
                     actor_id=actor_id,
                     storage=storage,
                     readonly=readonly)
-
-            def get(self):
-                return actor_cls._construct(
-                    actor_id=actor_id, storage=storage, readonly=readonly)
 
         return ActorOptionWrapper()
 
@@ -379,9 +370,9 @@ class VirtualActor:
         init_step._step_id = self._metadata.cls.__init__.__name__
         ref = run(
             init_step, storage=self._storage, workflow_id=self.workflow_id)
-        actor = get_or_create_management_actor()
+        workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
-        ray.get(actor.init_actor.remote(self._actor_id, [ref]))
+        ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
 
     @property
     def actor_id(self) -> str:

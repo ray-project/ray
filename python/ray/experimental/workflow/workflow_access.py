@@ -196,6 +196,10 @@ class WorkflowManagementActor:
 
 def get_or_create_management_actor() -> "ActorHandle":
     """Get or create WorkflowManagementActor"""
+    # TODO(suquark): We should not get the actor everytime. We also need to
+    # resume the actor if it failed. Using a global variable to cache the
+    # actor seems not enough to resume the actor, because there is no
+    # aliveness detection for an actor.
     try:
         actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
