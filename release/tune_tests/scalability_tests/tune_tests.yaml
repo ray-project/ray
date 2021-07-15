@@ -90,3 +90,6 @@
     timeout: 1500
     prepare: python wait_cluster.py 24 600
     script: python workloads/test_koch.py
+
+  artifacts:
+    tune_timer.csv: /tmp/tune_timer.csv
