@@ -262,6 +262,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
+  std::string value;
+  Status status = gcs_client_->InternalKV().Get(key, value);
+  return status.ok() ? std::make_unique<std::string>(value) : nullptr;
+}
+
 std::string GlobalStateAccessor::GetSystemConfig() {
   std::promise<std::string> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(

@@ -18,8 +18,12 @@
 #include <cstdlib>
 #include <iostream>
 
+#include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
+
+using namespace testing;
 
 namespace ray {
 
@@ -54,6 +58,51 @@ TEST(PrintLogTest, LogTestWithoutInit) {
   // Without RayLog::StartRayLog, this should also work.
   PrintLog();
 }
+
+#if GTEST_HAS_STREAM_REDIRECTION
+using testing::internal::CaptureStderr;
+using testing::internal::GetCapturedStderr;
+
+TEST(PrintLogTest, TestRayLogEveryN) {
+  CaptureStderr();
+  for (int i = 0; i < 10; i++) {
+    RAY_LOG_EVERY_N(INFO, 3) << "this is a test log";
+  }
+  std::string output = GetCapturedStderr();
+  for (int i = 0; i < 10; i++) {
+    std::string expected_str = absl::StrFormat("[%d] this is a test log", i);
+    if (i % 3 == 0) {
+      EXPECT_THAT(output, HasSubstr(expected_str));
+    } else {
+      EXPECT_THAT(output, Not(HasSubstr(expected_str)));
+    }
+  }
+}
+
+TEST(PrintLogTest, TestRayLogEveryMs) {
+  CaptureStderr();
+  const std::string kLogStr = "this is a test log";
+  auto start_time = std::chrono::steady_clock::now().time_since_epoch();
+  size_t num_iterations = 0;
+  while (std::chrono::steady_clock::now().time_since_epoch() - start_time <
+         std::chrono::milliseconds(100)) {
+    num_iterations++;
+    RAY_LOG_EVERY_MS(INFO, 10) << kLogStr;
+  }
+  std::string output = GetCapturedStderr();
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_LT(occurrences, num_iterations);
+  EXPECT_GT(occurrences, 5);
+  EXPECT_LT(occurrences, 15);
+}
+
+#endif /* GTEST_HAS_STREAM_REDIRECTION */
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
