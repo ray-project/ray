@@ -30,7 +30,6 @@ def Deprecated(obj):
     Deprecated APIs may be removed in future releases of Ray.
     """
 
-    obj.__doc__ += (
-        "\nDEPRECATED: This API is deprecated and may be "
-        "removed in future Ray releases.")
+    obj.__doc__ += ("\nDEPRECATED: This API is deprecated and may be "
+                    "removed in future Ray releases.")
     return obj

@@ -1413,6 +1413,7 @@ def _changeproctitle(title, next_title):
         if _mode() is not LOCAL_MODE:
             setproctitle.setproctitle(next_title)
 
+
 @DeveloperAPI
 def show_in_dashboard(message, key="", dtype="text"):
     """Display message in dashboard.
