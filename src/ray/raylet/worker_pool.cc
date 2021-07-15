@@ -718,9 +718,12 @@ void WorkerPool::TryKillingIdleWorkers() {
   for (const auto &idle_pair : idle_of_all_languages_) {
     const auto &idle_worker = idle_pair.first;
     const auto &job_id = idle_worker->GetAssignedJobId();
-    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) &&
-        !finished_jobs_.count(job_id)) {
-      break;
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        break;
+      }
     }
 
     if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
@@ -768,11 +771,14 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     RAY_CHECK(running_size >= workers_in_the_same_process.size());
     if (running_size - workers_in_the_same_process.size() <
-            static_cast<size_t>(num_workers_soft_limit_) &&
-        !finished_jobs_.count(job_id)) {
+        static_cast<size_t>(num_workers_soft_limit_)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
       // expect may slow the job.
-      return;
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        return;
+      }
     }
 
     for (const auto &worker : workers_in_the_same_process) {
