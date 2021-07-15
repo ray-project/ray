@@ -1260,6 +1260,10 @@ def connect(node,
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
 
+    # Make sure breakpoint() in the user's code will
+    # always invoke the Ray debugger.
+    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
