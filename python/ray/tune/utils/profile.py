@@ -20,7 +20,8 @@ class TimeProfiler:
     def measure(self, key: str):
         now = time.perf_counter()
         taken = now - self._start
-        self._current_times[key] = taken
+
+        self._current_times[key] = self._current_times.get(key, 0.) + taken
         self._start = now
 
     def stop(self):

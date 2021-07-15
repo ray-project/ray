@@ -754,7 +754,7 @@ class TrialRunner:
         else:
             with warn_if_slow("process_trial"):
                 self._process_trial(trial)
-                self._timer.measure("handle_events_process.processed")
+            self._timer.measure("handle_events_process.processed")
 
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
@@ -766,7 +766,6 @@ class TrialRunner:
             self._timer.measure("handle_events_process.decision")
         else:
             self._timer.measure("handle_events_process.no_decision")
-
 
         return True
 
