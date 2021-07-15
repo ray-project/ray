@@ -31,6 +31,35 @@ from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
 
+try:
+    import torch  # noqa: F811
+    from torch.utils.data import IterableDataset
+except ImportError:
+    torch = None
+    IterableDataset = None
+
+if IterableDataset is not None:
+
+    class RayIterableDataset(IterableDataset):
+        def __init__(self, generator_func):
+            self.generator_func = generator_func
+
+        def __iter__(self):
+            it = self.generator_func()
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info is None:
+                yield from it
+            else:
+                # Multiple workers are doing dataloading.
+                # Each worker has a copy of the data.
+                # Avoid duplicates.
+                import itertools
+                it = itertools.islice(it, worker_info.id, None,
+                                      worker_info.num_workers)
+                yield from it
+else:
+    RayIterableDataset = None
+
 T = TypeVar("T")
 U = TypeVar("U")
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
@@ -858,51 +887,86 @@ class Dataset(Generic[T]):
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 
-    def to_torch(self, label_column, feature_columns=None,
-                 feature_column_dtypes=None,
-                 label_column_dtype=None, prefetch_blocks=0) \
-        -> \
-        "torch.utils.data.IterableDataset":
-        """Return a Torch data iterator over this dataset.
+    def to_torch(self,
+                 label_column: str,
+                 feature_columns: Optional[List[str]] = None,
+                 label_column_dtype: Optional[torch.dtype] = None,
+                 feature_column_dtypes: Optional[List[torch.dtype]] = None,
+                 prefetch_blocks=0):
+        """Return a Torch IterableDataset over this dataset.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple Torch workers consuming the data.
+
+        Return a TF Dataset over this dataset.
+
+        Each element in IterableDataset will be a list consisting of 2
+        elements. The first item is a list of the feature tensors. The
+        second item is the label tensor. Each tensor will be of shape (N,
+        1), where N is the ``batch_size`` used by the DataLoader.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
 
+        Args:
+            label_column (str): The name of the column used as the label
+                (second element of the output list).
+            feature_columns (Optional[List[str]]): The names of the columns
+                to use as the features. If None, then use all columns
+                except the label columns as the features.
+            label_column_dtype (Optional[torch.dtype]): The torch dtype to
+                use for the label column. If None, then automatically infer
+                the dtype.
+            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
+                to use for the feature columns. The len of this list must
+                be equal to the len of ``feature_columns``. If None,
+                then automatically infer the dtype.
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
         Returns:
             A torch IterableDataset.
         """
-        try:
-            import torch
-        except ImportError:
+        if torch is None:
             raise ValueError("torch must be installed!")
 
-        assert len(feature_column_dtypes)
+        if feature_columns and feature_column_dtypes:
+            if len(feature_columns) != len(feature_column_dtypes):
+                raise ValueError("The lengths of `feature_columns` and "
+                                 "`feature_column_dtypes` do not match!")
 
-        def convert_to_tensor()
+        def make_generator():
+            for batch in self.iter_batches(
+                    prefetch_blocks=prefetch_blocks, batch_size=2):
+                label_vals = batch.pop(label_column).values
+                label_tensor = torch.as_tensor(
+                    label_vals, dtype=label_column_dtype)
+                label_tensor = label_tensor.view(-1, 1)
 
-        def generator():
-            for row in self.iter_rows(prefetch_blocks=prefetch_blocks):
-                target_col = row.pop(label_column)
-                feature_tensors = []
-                for col in feature_columns:
-                    column = row[col]
-                    column_tensor = torch.as_tensor(column).view(-1, 1)
-                    feature_tensors.append(column_tensor)
+                feature_tensor = []
+                if feature_columns:
+                    batch = batch[feature_columns]
 
-                label_tensor = torch.as_tensor(target_col).view(-1, 1)
+                if feature_column_dtypes:
+                    dtypes = feature_column_dtypes
+                else:
+                    dtypes = [None] * len(batch.columns)
 
-                yield (feature_tensors, label_tensor)
+                for col, dtype in zip(batch.columns, dtypes):
+                    col_vals = batch[col].values
+                    t = torch.as_tensor(col_vals, dtype=dtype)
+                    t = t.view(-1, 1)
+                    feature_tensor.append(t)
 
-        class BatchIterableDataset(torch.utils.data.IterableDataset):
-            def __init__(self):
-                pass
+                num_rows = batch.shape[0]
+                for i in range(num_rows):
+                    features = [tensor[i] for tensor in feature_tensor]
+                    label = label_tensor[i]
+                    yield (features, label)
 
-            def __iter__(self):
-                pass
-
-
+        return RayIterableDataset(make_generator)
 
     def to_tf(self,
               label_column: str,
