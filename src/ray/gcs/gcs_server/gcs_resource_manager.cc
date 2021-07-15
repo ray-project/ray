@@ -410,10 +410,10 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   absl::MutexLock guard(&resource_buffer_mutex_);
   rpc::ResourceUsageBatchData batch;
   GetResourceUsageBatchForBroadcast_Locked(batch);
-  if (batch->ByteSizeLong() > 0) {
+  if (batch.ByteSizeLong() > 0) {
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
-    stats::OutboundHeartbeatSizeKB.Record(batch->ByteSizeLong() / 1024.0);
+                                       batch.SerializeAsString(), nullptr));
+    stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
   }
 }
 
