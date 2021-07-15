@@ -867,11 +867,6 @@ class Dataset(Generic[T]):
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
-        Note that you probably want to call ``.split()`` on this dataset if
-        there are to be multiple Torch workers consuming the data.
-
-        Return a Torch IterableDataset over this dataset.
-
         Each element in IterableDataset will be a list consisting of 2
         elements. The first item is a list of the feature tensors. The
         second item is the label tensor. Each tensor will be of shape (N,

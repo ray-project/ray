@@ -1,6 +1,7 @@
 import torch  # noqa: F811
 from torch.utils.data import IterableDataset
 
+
 class RayIterableDataset(IterableDataset):
     def __init__(self, generator_func):
         self.generator_func = generator_func
