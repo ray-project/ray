@@ -162,7 +162,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             logger.debug("Waiting for placement group to start.")
             ray.get(pg.ready(), timeout=self._timeout_s)
             logger.debug("Placement group has started.")
-            self.placement_group = pg
+            self._worker_placement_group = pg
 
     def _init_dist_workers(self, num_workers):
         """Create `num_workers` remote workers."""
@@ -172,6 +172,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             num_gpus=int(self._use_gpu))(DistributedTorchRunner)
 
         # Get placement group
+        self._create_placement_group(num_workers)
         pg = self._worker_placement_group or "default"
 
         # Start workers
