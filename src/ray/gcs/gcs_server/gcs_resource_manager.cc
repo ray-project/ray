@@ -395,17 +395,21 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
   }
 }
 
-void GcsResourceManager::SendBatchedResourceUsage() {
-  absl::MutexLock guard(&resource_buffer_mutex_);
-  auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
+    rpc::ResourceUsageBatchData &buffer) {
   while (!resources_buffer_.empty() &&
-         batch->ByteSizeLong() <
+         buffer.ByteSizeLong() <
              RayConfig::instance().resource_broadcast_batch_size_bytes()) {
     auto element = std::begin(resources_buffer_);
-    batch->add_batch()->Swap(&element->second);
+    buffer.add_batch()->Swap(&element->second);
     resources_buffer_.erase(element);
   }
+}
 
+void GcsResourceManager::SendBatchedResourceUsage() {
+  absl::MutexLock guard(&resource_buffer_mutex_);
+  rpc::ResourceUsageBatchData batch;
+  GetResourceUsageBatchForBroadcast_Locked(batch);
   if (batch->ByteSizeLong() > 0) {
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));

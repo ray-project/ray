@@ -453,4 +453,4 @@ RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
 RAY_CONFIG(string_type, custom_unit_instance_resources, "")
 
 // Maximum size of the batch size when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1204 * 8);
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
