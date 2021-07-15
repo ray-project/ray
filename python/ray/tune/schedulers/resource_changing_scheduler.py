@@ -27,7 +27,7 @@ class _DistributeResources:
                  ) -> Union[None, PlacementGroupFactory]:
         # Get base trial resources as defined in
         # ``tune.run(resources_per_trial)``
-        base_trial_resource = scheduler._base_trial_resources
+        base_trial_resource = scheduler.base_trial_resources
 
         if not isinstance(base_trial_resource, PlacementGroupFactory):
             raise ValueError("evenly_distribute_cpus_gpus only supports"
@@ -298,6 +298,11 @@ class ResourceChangingScheduler(TrialScheduler):
     @property
     def metric(self):
         return self._base_scheduler._metric
+
+    @property
+    def base_trial_resources(
+            self) -> Optional[Union[Resources, PlacementGroupFactory]]:
+        return self._base_trial_resources
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
