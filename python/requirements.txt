@@ -72,6 +72,7 @@ pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
+pytest-lazy-fixture
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow
