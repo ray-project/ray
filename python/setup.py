@@ -105,9 +105,9 @@ ray_files += [
 # in this directory
 extras = {
     "default": [
-        "colorful",
-        "py-spy >= 0.2.0",
-        "gpustat"
+        "colorful",  # noqa
+        "py-spy >= 0.2.0",  # noqa
+        "gpustat"  # noqa
     ],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
