@@ -1,7 +1,8 @@
 from typing import TypeVar, Iterable, Any, Union
 
 import ray
-from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
