@@ -125,7 +125,9 @@ class BaseEnv:
                         make_env,
                         num_envs,
                         multiagent=False,
-                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                        existing_envs=[env],
+                    )
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
@@ -138,21 +140,6 @@ class BaseEnv:
                     env = _VectorEnvToBaseEnv(env)
         assert isinstance(env, BaseEnv), env
         return env
-
-    @PublicAPI
-    @classmethod
-    def as_remote(cls,
-                  num_cpus: int = None,
-                  num_gpus: int = None,
-                  memory: int = None,
-                  object_store_memory: int = None,
-                  resources: dict = None) -> type:
-        return ray.remote(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            object_store_memory=object_store_memory,
-            resources=resources)(cls)
 
     @PublicAPI
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,

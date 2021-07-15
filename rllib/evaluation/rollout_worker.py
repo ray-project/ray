@@ -1400,7 +1400,14 @@ def _validate_and_canonicalize(
             raise ValueError(
                 "MultiAgentEnv must have observation_space defined if run "
                 "in a single-agent configuration.")
-        if env is not None:
+        # Env is a ray.remote: Get spaces via its (automatically added)
+        # `_get_spaces()` method.
+        if isinstance(env, ray.actor.ActorHandle):
+            spaces = ray.get(env._get_spaces.remote())
+            return {DEFAULT_POLICY_ID: (policy, spaces[0], spaces[1], {})}
+        # Normal env (gym.Env or MultiAgentEnv): These should have the
+        # `observation_space` and `action_space` properties.
+        elif env is not None:
             return {
                 DEFAULT_POLICY_ID: (policy, env.observation_space,
                                     env.action_space, {})
@@ -1456,7 +1463,10 @@ def _validate_env(env: Any) -> EnvType:
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
 
-    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle]
+    allowed_types = [
+        gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
+        ray.actor.ActorHandle
+    ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
         raise ValueError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "
