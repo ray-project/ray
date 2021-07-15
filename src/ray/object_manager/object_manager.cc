@@ -746,32 +746,31 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 
 /// Implementation of ObjectManagerServiceHandler
 Status ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
+
+  // Serialize.
+  uint64_t chunk_index = request.chunk_index();
+  uint64_t metadata_size = request.metadata_size();
+  uint64_t data_size = request.data_size();
+  const rpc::Address &owner_address = request.owner_address();
+  const std::string &data = request.data();
+
+  double start_time = absl::GetCurrentTimeNanos() / 1e9;
+  bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
+                                    metadata_size, chunk_index, data);
+  num_chunks_received_total_++;
+  if (!success) {
+    num_chunks_received_total_failed_++;
+    RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index
+                  << " of object " << object_id << ": overall "
+                  << num_chunks_received_total_failed_ << "/"
+                  << num_chunks_received_total_ << " failed";
+  }
+  double end_time = absl::GetCurrentTimeNanos() / 1e9;
+
+  HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
   return Status::OK();
-  // ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  // NodeID node_id = NodeID::FromBinary(request.node_id());
-
-  // // Serialize.
-  // uint64_t chunk_index = request.chunk_index();
-  // uint64_t metadata_size = request.metadata_size();
-  // uint64_t data_size = request.data_size();
-  // const rpc::Address &owner_address = request.owner_address();
-  // const std::string &data = request.data();
-
-  // double start_time = absl::GetCurrentTimeNanos() / 1e9;
-  // bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
-  //                                   metadata_size, chunk_index, data);
-  // num_chunks_received_total_++;
-  // if (!success) {
-  //   num_chunks_received_total_failed_++;
-  //   RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index
-  //                 << " of object " << object_id << ": overall "
-  //                 << num_chunks_received_total_failed_ << "/"
-  //                 << num_chunks_received_total_ << " failed";
-  // }
-  // double end_time = absl::GetCurrentTimeNanos() / 1e9;
-
-  // HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
-  // send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,

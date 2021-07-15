@@ -1,5 +1,6 @@
 #pragma once
 #include <type_traits>
+#include <memory>
 #include <boost/asio.hpp>
 #include <boost/fiber/all.hpp>
 #include "ray/common/asio/instrumented_io_context.h"
@@ -37,14 +38,16 @@ class IOThreadPool {
             typename R = typename std::result_of<F()>::type,
             typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
   boost::fibers::future<R> post(F &&f) {
-    boost::fibers::promise<R> promise;
-    auto future = promise.get_future();
-    io_service_->post([f = std::move(f), p = std::move(promise)]() {
-      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, &p] () mutable {
-        p.set_value(f());
+    auto p = std::make_unique<boost::fibers::promise<R>>().release();
+    auto future = p->get_future();
+    auto wrapper = [f = std::move(f), p] () {
+      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, p] () mutable {
+        p->set_value(f());
       });
       _.join();
-    });
+      delete p;
+    };
+    io_service_->post(std::move(wrapper));
     return future;
   }
 
@@ -52,15 +55,17 @@ class IOThreadPool {
             typename R = typename std::result_of<F()>::type,
             typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
   boost::fibers::future<R> post(F &&f) {
-    boost::fibers::promise<R> promise;
-    auto future = promise.get_future();
-    io_service_->post([f = std::move(f), p = std::move(promise)]() {
-      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, &p] () mutable {
+    auto p = std::make_unique<boost::fibers::promise<R>>().release();
+    auto future = p->get_future();
+    auto wrapper = [f = std::move(f), p] () {
+      boost::fibers::fiber _(boost::fibers::launch::dispatch, [&f, p] () mutable {
         f();
-        p.set_value();
+        p->set_value();
       });
       _.join();
-    });
+      delete p;
+    };
+    io_service_->post(std::move(wrapper));
     return future;
   }
 

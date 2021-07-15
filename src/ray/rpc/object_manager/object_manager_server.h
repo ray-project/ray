@@ -25,7 +25,7 @@ namespace rpc {
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
   FIBER_RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
+  FIBER_RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
@@ -43,8 +43,8 @@ class ObjectManagerServiceHandler {
   //                         SendReplyCallback send_reply_callback) = 0;
   virtual Status HandlePush(const PushRequest &request, PushReply *reply) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePull(const PullRequest &request, PullReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
+  virtual Status HandlePull(const PullRequest &request, PullReply *reply)) = 0;
+
   /// Handle a `FreeObjects` request
   virtual void HandleFreeObjects(const FreeObjectsRequest &request,
                                  FreeObjectsReply *reply,
