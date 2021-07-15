@@ -12,25 +12,28 @@ if TYPE_CHECKING:
     import dask
     import pyspark
     import ray.util.sgd
+    import torch
+    import tensorflow as tf
 
 import collections
 import itertools
 import numpy as np
 
 import ray
+from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
+from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
-    BlockMetadata
+from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
 
 T = TypeVar("T")
 U = TypeVar("U")
-BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,9 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def map(self, fn: Callable[[T], U], compute="tasks",
+    def map(self,
+            fn: Callable[[T], U],
+            compute: Optional[str] = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
@@ -75,8 +80,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -94,7 +99,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Callable[[BatchType], BatchType],
                     batch_size: int = None,
-                    compute: str = "tasks",
+                    compute: Optional[str] = None,
                     batch_format: str = "pandas",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
@@ -126,12 +131,12 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch.
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool. When using
-                actors, state can be preserved across function invocations
-                in Python global variables. This can be useful for one-time
-                setups, e.g., initializing a model once and re-using it across
-                many function applications.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool. When
+                using actors, state can be preserved across function
+                invocations in Python global variables. This can be useful for
+                one-time setups, e.g., initializing a model once and re-using
+                it across many function applications.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
@@ -157,7 +162,7 @@ class Dataset(Generic[T]):
                 if batch_format == "pandas":
                     view = view.to_pandas()
                 elif batch_format == "pyarrow":
-                    view = view._table
+                    view = view.to_arrow_table()
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -185,7 +190,7 @@ class Dataset(Generic[T]):
 
     def flat_map(self,
                  fn: Callable[[T], Iterable[U]],
-                 compute="tasks",
+                 compute: Optional[str] = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
@@ -199,8 +204,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -218,7 +223,7 @@ class Dataset(Generic[T]):
 
     def filter(self,
                fn: Callable[[T], bool],
-               compute="tasks",
+               compute: Optional[str] = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
@@ -232,8 +237,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The predicate function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -576,7 +581,8 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The Python type or Arrow schema of the records.
+            The Python type or Arrow schema of the records, or None if the
+            schema is not known.
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
@@ -584,7 +590,7 @@ class Dataset(Generic[T]):
         for m in metadata:
             if m.schema:
                 return m.schema
-        raise ValueError("Could not get the schema for this dataset.")
+        return None
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -602,12 +608,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The in-memory size of the dataset in bytes, or an error if the
+            The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
         metadata = self._blocks.get_metadata()
         if not metadata or metadata[0].size_bytes is None:
-            raise ValueError("Could not estimate the size of this dataset.")
+            return None
         return sum(m.size_bytes for m in metadata)
 
     def input_files(self) -> List[str]:
@@ -616,18 +622,15 @@ class Dataset(Generic[T]):
         Time complexity: O(num input files)
 
         Returns:
-            The list of input files used to create the dataset.
+            The list of input files used to create the dataset, or an empty
+            list if the input files is not known.
         """
         metadata = self._blocks.get_metadata()
         files = set()
         for m in metadata:
             for f in m.input_files:
                 files.add(f)
-        if files:
-            return list(files)
-        else:
-            raise ValueError(
-                "Could not retrieve the input files of this dataset.")
+        return list(files)
 
     def write_parquet(self,
                       path: str,
@@ -654,8 +657,9 @@ class Dataset(Generic[T]):
         def parquet_write(write_path, block):
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            with pq.ParquetWriter(write_path, block._table.schema) as writer:
-                writer.write_table(block._table)
+            table = block.to_arrow_table()
+            with pq.ParquetWriter(write_path, table.schema) as writer:
+                writer.write_table(table)
 
         refs = [
             parquet_write.remote(
@@ -743,7 +747,9 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        write_tasks = datasource.prepare_write(self._blocks,
+                                               self._blocks.get_metadata(),
+                                               **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
 
         @ray.remote
@@ -777,16 +783,16 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-
-        for ref in self._blocks:
-            block = ray.get(ref)
-            for row in block.iter_rows():
+        for batch in self.iter_batches(
+                prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+            for row in batch.iter_rows():
                 yield row
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "pandas") -> Iterator[BatchType]:
+                     batch_format: str = "pandas",
+                     drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -799,32 +805,82 @@ class Dataset(Generic[T]):
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
-            batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
-                the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: The format in which to return each batch.
+                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
+                select ``pyarrow.Table``. Default is "pandas".
+            drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
             A list of iterators over record batches.
         """
 
-        raise NotImplementedError  # P1
+        def sliding_window(iterable: Iterable, n: int):
+            """Creates an iterator consisting of n-width sliding windows over
+            iterable. The sliding windows are constructed lazily such that an
+            element on the base iterator (iterable) isn't consumed until the
+            first sliding window containing that element is reached.
 
-    def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
-        """Return a dataset that can be used for Torch distributed training.
+            Args:
+                iterable: The iterable on which the sliding window will be
+                    created.
+                n: The width of the sliding window.
+
+            Returns:
+                An iterator of n-width windows over iterable.
+            """
+            iters = itertools.tee(iter(iterable), n)
+            for i in range(1, n):
+                for it in iters[i:]:
+                    next(it, None)
+            return zip(*iters)
+
+        def format_batch(batch: Block, format: str) -> BatchType:
+            if batch_format == "pandas":
+                return batch.to_pandas()
+            elif batch_format == "pyarrow":
+                return batch._table
+            elif batch_format == "_blocks":
+                return batch
+            else:
+                raise ValueError(
+                    f"The given batch format: {batch_format} "
+                    f"is invalid. Supported batch type: {BatchType}")
+
+        batcher = Batcher(batch_size=batch_size)
+        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
+            block_window = list(block_window)
+            ray.wait(block_window, num_returns=1, fetch_local=False)
+            block = ray.get(block_window[0])
+            batcher.add(block)
+            while batcher.has_batch():
+                yield format_batch(batcher.next_batch(), batch_format)
+
+        if batcher.has_any() and not drop_last:
+            yield format_batch(batcher.next_batch(), batch_format)
+
+    def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
+        """Return a Torch data iterator over this dataset.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
 
         Returns:
-            A TorchMLDataset.
+            A torch IterableDataset.
         """
         raise NotImplementedError  # P1
 
-    def to_tf(self, **todo) -> "ray.util.sgd.tf.TFMLDataset":
-        """Return a dataset that can be used for TF distributed training.
+    def to_tf(self, **todo) -> "tf.data.Dataset":
+        """Return a TF data iterator over this dataset.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple TensorFlow workers consuming the data.
 
         Time complexity: O(1)
 
         Returns:
-            A TFMLDataset.
+            A tf.data.Dataset.
         """
         raise NotImplementedError  # P1
 
@@ -855,7 +911,7 @@ class Dataset(Generic[T]):
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
                     "ray.util.dask).")
-            return block._table.to_pandas()
+            return block.to_pandas()
 
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
@@ -895,7 +951,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def block_to_df(block: ArrowBlock):
-            return block._table.to_pandas()
+            return block.to_pandas()
 
         return [block_to_df.remote(block) for block in self._blocks]
 
@@ -910,11 +966,10 @@ class Dataset(Generic[T]):
         raise NotImplementedError  # P2
 
     def __repr__(self) -> str:
-        try:
-            schema = self.schema()
-        except ValueError:
-            schema = "Unknown schema"
-        if hasattr(schema, "names"):
+        schema = self.schema()
+        if schema is None:
+            schema_str = "Unknown schema"
+        elif hasattr(schema, "names"):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):

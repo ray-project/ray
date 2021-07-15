@@ -769,6 +769,8 @@ By default, ``tune.run`` will continue executing until all trials have terminate
 
 This is useful when you are trying to setup a large hyperparameter experiment.
 
+.. _tune-env-vars:
+
 Environment variables
 ---------------------
 Some of Ray Tune's behavior can be configured using environment variables.

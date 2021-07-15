@@ -6,7 +6,6 @@ from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction
-from ray.experimental.workflow.workflow_access import flatten_workflow_output
 from ray.experimental.workflow.step_executor import execute_workflow
 
 
@@ -125,8 +124,7 @@ def resume_workflow_job(workflow_id: str,
         try:
             workflow_context.init_workflow_step_context(
                 workflow_id, store.storage_url)
-            obj_ref = execute_workflow(r)
-            return flatten_workflow_output(workflow_id, obj_ref)
+            return execute_workflow(r)
         finally:
             workflow_context.set_workflow_step_context(None)
 

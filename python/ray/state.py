@@ -48,7 +48,7 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
                 ray.client().connect()
                 # Retry connect!
                 return self._check_connected()
@@ -772,6 +772,13 @@ class GlobalState:
         """
         self._check_connected()
         return json.loads(self.global_state_accessor.get_system_config())
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        """Get the node to connect for a Ray driver."""
+        self._check_connected()
+        node_info_str = (self.global_state_accessor.
+                         get_node_to_connect_for_driver(node_ip_address))
+        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
 
 
 state = GlobalState()

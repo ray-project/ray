@@ -441,9 +441,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
                                                rpc::PushRequest &push_request) -> Status {
           auto optional_chunk = spilled_object->GetChunk(chunk_index);
           if (!optional_chunk.has_value()) {
-            RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
-                           << " failed. "
-                           << " It may have been evicted.";
+            RAY_LOG(DEBUG) << "Read chunk " << chunk_index << " of spilled object "
+                           << object_id << " failed. It may have already been deleted.";
             return Status::IOError("Failed to read spilled object");
           }
           push_request.set_data(std::move(optional_chunk.value()));

@@ -1,7 +1,7 @@
-from typing import TypeVar, Iterable, Any
+from typing import TypeVar, Iterable, Any, Union
 
 import ray
-from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata, ObjectRef
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
@@ -9,13 +9,13 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-class ComputePool:
+class ComputeStrategy:
     def apply(self, fn: Any,
               blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
         raise NotImplementedError
 
 
-class TaskPool(ComputePool):
+class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
@@ -44,7 +44,7 @@ class TaskPool(ComputePool):
         return BlockList(list(new_blocks), list(new_metadata))
 
 
-class ActorPool(ComputePool):
+class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
 
@@ -113,10 +113,12 @@ class ActorPool(ComputePool):
         return BlockList(blocks_out, new_metadata)
 
 
-def get_compute(compute_spec: str) -> ComputePool:
-    if compute_spec == "tasks":
+def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
+    if not compute_spec or compute_spec == "tasks":
         return TaskPool()
     elif compute_spec == "actors":
         return ActorPool()
+    elif isinstance(compute_spec, ComputeStrategy):
+        return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`]")
