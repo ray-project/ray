@@ -38,9 +38,8 @@ class ImageModel:
     def __init__(self):
         self.model = resnet50(pretrained=True).eval().half().cuda()
 
-    def __call__(self, request):
-        print("handling request")
-        input_tensor = torch.from_numpy(request.data).half().cuda()
+    def __call__(self, input_tensor_np):
+        input_tensor = torch.from_numpy(input_tensor_np).half().cuda()
         with torch.no_grad():
             output_tensor = self.model(input_tensor)
             result = torch.argmax(output_tensor, dim=1).cpu()
@@ -53,10 +52,11 @@ import ray
 import boto3
 import json
 import pyarrow.fs
+import requests
 import time
 import os
 from tqdm import tqdm
-
+import numpy as np
 
 
 def read_file(path: str, ):
@@ -64,68 +64,115 @@ def read_file(path: str, ):
     return s3fs.open_input_stream(path).readall()
 
 
-# @ray.remote
-def get_urls(bucket, path, max_files=100):
+def get_paths(bucket, path, max_files=100 * 1000):
+    if os.path.exists("./cache.txt"):
+        return list(map(
+            lambda line: line.strip().split(","),
+            open("cache.txt", "r").readlines()
+        ))
+
     s3 = boto3.resource("s3")
     s3_objects = s3.Bucket(bucket).objects.filter(
         Prefix=path).limit(max_files).all()
 
-    # s3_client = boto3.client("s3")
-    # materialized = [
-    #     s3_client.generate_presigned_url(
-    #         "get_object",
-    #         Params={"Bucket": obj.bucket_name, "Key": obj.key},
-    #         ExpiresIn=3600,
-    #     )
-    #     for obj in s3_objects
-    # ]
-    # return [obj.key for obj in s3_objects]
-    return [f"{obj.bucket_name}/{obj.key}" for obj in tqdm(s3_objects)]
+    materialized = [(obj.bucket_name, obj.key) for obj in tqdm(s3_objects)]
+    with open("cache.txt", "w") as f:
+        for bucket_name, key in materialized:
+            print(f"{bucket_name},{key}", file=f)
+
+
+
+    return materialized
+
+
+download_initialized = False
+s3_client = None
+http_session = None
+def download(path):
+    global download_initialized, s3_client, http_session
+    if download_initialized is False:
+        s3_client = boto3.client("s3")
+        http_session = requests.Session()
+        download_initialized = True
+
+    bucket, key = path
+
+    # NOTE: generating a presigned url is theoretically more realistic but
+    # involves setting up AWS credentials.
+    # url = s3_client.generate_presigned_url(
+    #     "get_object",
+    #     Params={"Bucket": bucket, "Key": key},
+    #     ExpiresIn=3600
+    # )
+
+    url = f"https://{bucket}.s3.us-west-2.amazonaws.com/{key}"
+
+    # Retry download if it fails.
+    for _ in range(3):
+        result = http_session.get(url)
+        if result.status_code == 200:
+            break
+        print(f"Failed to download {url} with error: {result.content}. Retrying.")
+
+    return result.content
 
 
 def preprocess(batch):
+    # TODO: This needs to work in terms of pyarrow/pandas batches
     preprocessor = Preprocessor()
     return preprocessor(batch)
 
 
 def infer(batch):
+    # TODO: This needs to work in terms of pyarrow/pandas batches
     model_fn = ImageModel()
-    return model_fn(batch)
+    ndarr_obj = batch.values
+    input_tensor_np = np.array([img.numpy() for img in ndarr_obj.reshape(-1)])
+    return list(model_fn(input_tensor_np))
 
 
-# ray.client().connect()
 ray.init()
 
-# s3_paths = ray.get(get_urls.remote("anyscale-data", "imagenet/train", max_files=100000))
-s3_paths = get_urls("anyscale-data", "imagenet/train")
+s3_paths = get_paths("anyscale-data", "imagenet/train")
 print("Got s3 objects")
 
-parallelism = max(len(s3_paths) // 256, 200)
+BATCH_SIZE = 256
+parallelism = len(s3_paths) // BATCH_SIZE
+parallelism = max(2, parallelism)
 
 start_time = time.time()
 
-# TODO (Alex): The py arrow s3 fs can't be serialized so we can't use read_binary_files.
-image_ds = ray.experimental.data.from_items(
-    s3_paths, parallelism=parallelism).map(read_file)
+downloaded = ray.experimental.data \
+                             .from_items(s3_paths, parallelism=parallelism) \
+                             .map(download) \
+                             .map(preprocess) \
+                             .map_batches(infer, num_gpus=0.5)
 
-processed = image_ds.map(preprocess)
-inferred = processed.map(infer, num_gpus=1)
 
-result = inferred.map(lambda prediction: None)
-list(result.iter_rows())
+# Collection step for timing
+list(downloaded.map_batches(lambda x: []).iter_rows())
 
 end_time = time.time()
 
 total = end_time - start_time
-
+print("total time", total)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "inference_time": 1,
-        "success": 1
-    }
+    results = {"inference_time": 1, "success": 1}
     json.dump(results, out_file)
+
+
+
+# TODO (Alex): The py arrow s3 fs can't be serialized so we can't use read_binary_files.
+# image_ds = ray.experimental.data.from_items(
+#     s3_paths, parallelism=parallelism).map(read_file)
+
+# processed = image_ds.map(preprocess)
+# inferred = processed.map(infer, num_gpus=1)
+
+# result = inferred.map(lambda prediction: None)
+# list(result.iter_rows())
 
 
 # s3fs, _ = pyarrow.fs.FileSystem.from_uri("s3://anyscale-data")
