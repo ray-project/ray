@@ -69,10 +69,10 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Store an object in the object store and assign the owner to actor
+   * Store an object in the object store and assign the owner to actor.
    *
    * @param obj The Java object to be stored.
-   * @param actor The actor to assign ownership
+   * @param actor The actor to assign ownership.
    * @return A ObjectRef instance that represents the in-store object.
    */
   public static <T> ObjectRef<T> put(T obj, BaseActorHandle actor) {
