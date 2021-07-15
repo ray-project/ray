@@ -104,7 +104,11 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful", "py-spy >= 0.2.0"],
+    "default": [
+        "colorful",
+        "py-spy >= 0.2.0",
+        "gpustat"
+    ],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
@@ -141,7 +145,6 @@ install_requires = [
     "colorama",
     "dataclasses; python_version < '3.7'",
     "filelock",
-    "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
