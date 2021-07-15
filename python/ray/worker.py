@@ -583,7 +583,7 @@ def init(
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _temp_dir=None,
+        _temp_dir=os.environ.get("TMPDIR"),
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None,
