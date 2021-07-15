@@ -104,7 +104,10 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful", "py-spy >= 0.2.0"],
+    "default": [
+        "colorful",  # noqa
+        "py-spy >= 0.2.0",  # noqa
+    ],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
