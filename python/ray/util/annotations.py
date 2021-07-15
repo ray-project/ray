@@ -2,7 +2,8 @@ def PublicAPI(obj):
     """Annotation for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of Ray. You
-    can expect these APIs to remain stable even across major Ray releases.
+    can expect these APIs to remain backwards compatible even across major Ray
+    releases.
     """
 
     obj.__doc__ += "\nPublicAPI: This API is stable across Ray releases."
