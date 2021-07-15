@@ -372,6 +372,26 @@ TYPED_TEST(ObjectReaderTest, GetChunk) {
     }
   }
 }
+
+TEST(StringAllocationTest, TestNoCopyWhenStringMoved) {
+  // Since protobuf allways allocate string on heap,
+  // move assign a string field doesn't copy the data.
+  std::string s(1000, '\0');
+  auto allocation_address = s.c_str();
+  rpc::Address address;
+  address.set_raylet_id(std::move(s));
+  EXPECT_EQ(allocation_address, address.raylet_id().c_str());
+}
+
+TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
+  // Construct a string field by pointer and length
+  // always copy the data.
+  char arr[1000];
+  auto allocation_address = &arr[0];
+  rpc::Address address;
+  address.set_raylet_id(allocation_address, 1000);
+  EXPECT_NE(allocation_address, address.raylet_id().c_str());
+}
 }  // namespace ray
 
 int main(int argc, char **argv) {
