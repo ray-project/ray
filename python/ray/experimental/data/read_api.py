@@ -13,13 +13,13 @@ if TYPE_CHECKING:
     import pyspark
 
 import ray
+from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow, \
     DelegatingArrowBlockBuilder
-from ray.experimental.data.impl.block import ObjectRef, Block, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
 

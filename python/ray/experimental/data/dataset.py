@@ -20,13 +20,13 @@ import itertools
 import numpy as np
 
 import ray
+from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
-    BlockMetadata
+from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
     DelegatingArrowBlockBuilder, ArrowBlock)
@@ -747,7 +747,9 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        write_tasks = datasource.prepare_write(self._blocks,
+                                               self._blocks.get_metadata(),
+                                               **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
 
         @ray.remote
