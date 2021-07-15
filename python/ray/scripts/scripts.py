@@ -183,7 +183,8 @@ def continue_debug_session(live_jobs: Set[str]):
                 data = ray.experimental.internal_kv._internal_kv_get(key)
                 if data:
                     session = json.loads(data)
-                    if "exit_debugger" in session or data["job_id"] not in live_jobs:
+                    if ("exit_debugger" in session
+                            or data["job_id"] not in live_jobs):
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
