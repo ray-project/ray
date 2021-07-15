@@ -936,13 +936,22 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P1
 
+    def to_spark(self) -> "pyspark.sql.DataFrame":
+        """Convert this dataset into a Spark dataframe.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A Spark dataframe created from this dataset.
+        """
+        raise NotImplementedError  # P2
+
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider implementing a custom writeable datasource
-        and using ``.write_datasource()``.
+        underlying data, consider using ``.get_blocks()`` instead.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -961,8 +970,7 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider implementing a custom writeable datasource
-        and using ``.write_datasource()``.
+        underlying data, consider using ``.get_blocks()`` instead.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -976,15 +984,17 @@ class Dataset(Generic[T]):
 
         return [block_to_df.remote(block) for block in self._blocks]
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
-        """Convert this dataset into a Spark dataframe.
+    def get_blocks(self) -> List[ObjectRef["Block"]]:
+        """Get a list of references to the underlying blocks of this dataset.
 
-        Time complexity: O(dataset size / parallelism)
+        This function can be used for zero-copy access to the data.
+
+        Time complexity: O(1)
 
         Returns:
-            A Spark dataframe created from this dataset.
+            A list of references to this dataset's blocks.
         """
-        raise NotImplementedError  # P2
+        return list(self._blocks)
 
     def __repr__(self) -> str:
         schema = self.schema()

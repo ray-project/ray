@@ -4,7 +4,6 @@ import shutil
 import time
 
 from unittest.mock import patch
-import dask.dataframe as dd
 import math
 import numpy as np
 import pandas as pd
@@ -195,6 +194,16 @@ def test_to_arrow(ray_start_regular_shared):
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_get_blocks(ray_start_regular_shared):
+    blocks = ray.experimental.data.range(10).get_blocks()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(list(b.iter_rows()))
+    out = sorted(out)
+    assert out == list(range(10)), out
 
 
 def test_pandas_roundtrip(ray_start_regular_shared):
@@ -670,6 +679,7 @@ def test_split_hints(ray_start_regular_shared):
 
 
 def test_from_dask(ray_start_regular_shared):
+    import dask.dataframe as dd
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.experimental.data.from_dask(ddf)
