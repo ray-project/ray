@@ -159,6 +159,18 @@ class RuntimeContext(object):
         """
         return self.worker.runtime_env
 
+    @property
+    def current_actor(self):
+        """Get the current actor handle of this actor itsself.
+
+        Returns:
+            The handle of current actor.
+        """
+        assert self.actor_id is not None
+        worker = self.worker
+        worker.check_connected()
+        return worker.core_worker.get_actor_handle(self.actor_id)
+
 
 _runtime_context = None
 
