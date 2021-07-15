@@ -107,7 +107,7 @@ extras = {
     "default": [
         "colorful",  # noqa
         "py-spy >= 0.2.0",  # noqa
-        "jsonschema",   # noqa
+        "jsonschema",  # noqa
     ],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
