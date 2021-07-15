@@ -1188,7 +1188,7 @@ class Trainer(Trainable):
                 local worker).
         """
 
-        def fn(worker):
+        def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(

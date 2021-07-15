@@ -38,6 +38,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -498,7 +499,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
-        self.policy_map: Dict[PolicyID, Policy] = None
+        self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
         # Set Python random, numpy, env, and torch/tf seeds.
@@ -541,10 +542,9 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
-        self.policy_map, self.preprocessors = \
-            self._build_policy_map(
-                policy_dict, policy_config,
-                session_creator=tf_session_creator, seed=seed)
+        self._build_policy_map(
+            policy_dict, policy_config,
+            session_creator=tf_session_creator, seed=seed)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -575,14 +575,14 @@ class RolloutWorker(ParallelIteratorWorker):
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent and self.env is not None:
-            if not ((isinstance(self.env, MultiAgentEnv)
-                     or isinstance(self.env, ExternalMultiAgentEnv))
-                    or isinstance(self.env, BaseEnv)):
+            if not isinstance(self.env, (BaseEnv,
+                                         ExternalMultiAgentEnv,
+                                         MultiAgentEnv,
+                                         ray.actor.ActorHandle)):
                 raise ValueError(
-                    "Have multiple policies {}, but the env ".format(
-                        self.policy_map) +
-                    "{} is not a subclass of BaseEnv, MultiAgentEnv or "
-                    "ExternalMultiAgentEnv?".format(self.env))
+                    f"Have multiple policies {self.policy_map}, but the "
+                    f"env {self.env} is not a subclass of BaseEnv, "
+                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!")
 
         self.filters: Dict[PolicyID, Filter] = {
             policy_id: get_filter(self.observation_filter,
@@ -1065,14 +1065,12 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        add_map, add_prep = self._build_policy_map(
+        self._build_policy_map(
             policy_dict,
             self.policy_config,
             seed=self.policy_config.get("seed"))
-        new_policy = add_map[policy_id]
+        new_policy = self.policy_map[policy_id]
 
-        self.policy_map.update(add_map)
-        self.preprocessors.update(add_prep)
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape)
 
@@ -1293,13 +1291,18 @@ class RolloutWorker(ParallelIteratorWorker):
 
         ma_config = policy_config.get("multiagent", {})
 
-        policy_map = PolicyMap(
+        self.policy_map = self.policy_map or PolicyMap(
+            worker_index=self.worker_index,
+            num_workers=self.num_workers,
             capacity=ma_config.get("policy_map_capacity"),
             path=ma_config.get("policy_map_cache"),
+            policy_config=policy_config,
+            session_creator=session_creator,
+            seed=seed,
         )
+        self.preprocessors = self.preprocessors or {}
 
-        preprocessors = {}
-        for name, (cls, obs_space, act_space,
+        for name, (orig_cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf or {})
@@ -1308,66 +1311,23 @@ class RolloutWorker(ParallelIteratorWorker):
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
-                preprocessors[name] = preprocessor
+                self.preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
-                preprocessors[name] = NoPreprocessor(obs_space)
+                self.preprocessors[name] = NoPreprocessor(obs_space)
 
             if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            # Tf.
-            framework = policy_config.get("framework", "tf")
-            if framework in ["tf2", "tf", "tfe"]:
-                if not tf1:
-                    raise ImportError("Could not import tensorflow!")
-                if framework in ["tf2", "tfe"]:
-                    assert tf1.executing_eagerly()
-                    if hasattr(cls, "as_eager"):
-                        cls = cls.as_eager()
-                        if policy_config.get("eager_tracing"):
-                            cls = cls.with_tracing()
-                    elif not issubclass(cls, TFPolicy):
-                        pass  # could be some other type of policy
-                    else:
-                        raise ValueError("This policy does not support eager "
-                                         "execution: {}".format(cls))
-                scope = name + (("_wk" + str(self.worker_index))
-                                if self.worker_index else "")
 
-                with tf1.variable_scope(scope):
-                    # For tf static graph, build every policy in its own graph
-                    # and create a new session for it.
-                    if framework == "tf":
-                        with tf1.Graph().as_default():
-                            if session_creator:
-                                sess = session_creator()
-                            else:
-                                sess = tf1.Session(
-                                    config=tf1.ConfigProto(
-                                        gpu_options=tf1.GPUOptions(
-                                            allow_growth=True)))
-                            with sess.as_default():
-                                # Set graph-level seed.
-                                if seed is not None:
-                                    tf1.set_random_seed(seed)
-
-                                policy_map[name] = cls(obs_space, act_space,
-                                                       merged_conf)
-                    # For tf-eager: no graph, no session.
-                    else:
-                        policy_map[name] = cls(obs_space, act_space,
-                                               merged_conf)
-            # Non-tf: No graph, no session.
-            else:
-                policy_map[name] = cls(obs_space, act_space, merged_conf)
+            self.policy_map.create_policy(
+                name, orig_cls, obs_space, act_space, conf, merged_conf)
 
         if self.worker_index == 0:
-            logger.info("Built policy map: {}".format(policy_map))
-            logger.info("Built preprocessor map: {}".format(preprocessors))
-        return policy_map, preprocessors
+            logger.info(f"Built policy map: {self.policy_map}")
+            logger.info(f"Built preprocessor map: {self.preprocessors}")
 
     def setup_torch_data_parallel(self, url: str, world_rank: int,
                                   world_size: int, backend: str) -> None:

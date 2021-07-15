@@ -536,7 +536,6 @@ class Policy(metaclass=ABCMeta):
             # Spaces and config of this policy.
             "observation_space": self.observation_space,
             "action_space": self.action_space,
-            "config": self.config,
             # All the policy's weights.
             "weights": self.get_weights(),
             # The current global timestep.
