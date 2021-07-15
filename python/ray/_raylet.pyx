@@ -1229,23 +1229,6 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
 
-    def set_object_store_client_options(self, client_name,
-                                        int64_t limit_bytes):
-        try:
-            logger.debug("Setting plasma memory limit to {} for {}".format(
-                limit_bytes, client_name))
-            check_status(CCoreWorkerProcess.GetCoreWorker().SetClientOptions(
-                client_name.encode("ascii"), limit_bytes))
-        except RayError as e:
-            self.dump_object_store_memory_usage()
-            raise memory_monitor.RayOutOfMemoryError(
-                "Failed to set object_store_memory={} for {}. The "
-                "plasma store may have insufficient memory remaining "
-                "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    limit_bytes, client_name, e))
-
     def dump_object_store_memory_usage(self):
         message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
         logger.warning("Local object store memory usage:\n{}\n".format(
@@ -1582,6 +1565,28 @@ cdef class CoreWorker:
         check_status(named_actor_handle_pair.second)
 
         return self.make_actor_handle(named_actor_handle_pair.first)
+
+    def get_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+
+    def list_named_actors(self, c_bool all_namespaces):
+        """Returns (namespace, name) for named actors in the system.
+
+        If all_namespaces is True, returns all actors in all namespaces,
+        else returns only the actors in the current namespace.
+        """
+        cdef:
+            pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
+
+        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+            all_namespaces)
+        check_status(result_pair.second)
+        return [
+            (namespace.decode("utf-8"),
+             name.decode("utf-8")) for namespace, name in result_pair.first]
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:

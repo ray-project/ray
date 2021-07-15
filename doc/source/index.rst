@@ -124,22 +124,23 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     .. code-block:: shell
 
       pip install -e python --verbose
-      bazel build //cpp/example:example
+      cd cpp/example/
+      bazel build //:example
 
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
 
     .. code-block:: shell
 
       ray stop
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so
+      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so
 
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
 
     .. code-block:: shell
 
       ray stop
-      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so --ray-address=127.0.0.1:6379
+      ray start --head
+      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so --ray-address=127.0.0.1:6379
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
@@ -278,6 +279,18 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Data Processing
+
+   data/dataset.rst
+   data/package-ref.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -314,20 +327,9 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_dataset.rst
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Data Processing
-
-   modin/index.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   raydp.rst
 
 .. toctree::
    :hidden:
@@ -336,7 +338,6 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   iter.rst
    xgboost-ray.rst
    ray-collective.rst
 

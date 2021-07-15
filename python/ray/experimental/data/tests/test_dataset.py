@@ -1,17 +1,22 @@
 import os
+import random
 import shutil
+import time
 
 from unittest.mock import patch
-import dask.dataframe as dd
+import math
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import tensorflow as tf
 import ray
 
 from ray.util.dask import ray_dask_get
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
+from ray.experimental.data.block import Block
 import ray.experimental.data.tests.util as util
 
 
@@ -48,10 +53,8 @@ def test_write_datasource(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.experimental.data.range(0)
     assert ds.count() == 0
-    with pytest.raises(ValueError):
-        ds.size_bytes()
-    with pytest.raises(ValueError):
-        ds.schema()
+    assert ds.size_bytes() is None
+    assert ds.schema() is None
 
     ds = ray.experimental.data.range(1)
     ds = ds.filter(lambda x: x > 1)
@@ -165,12 +168,43 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_arrow(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_arrow([
+        ray.put(pa.Table.from_pandas(df1)),
+        ray.put(pa.Table.from_pandas(df2))
+    ])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_arrow(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_get_blocks(ray_start_regular_shared):
+    blocks = ray.experimental.data.range(10).get_blocks()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(list(b.iter_rows()))
+    out = sorted(out)
+    assert out == list(range(10)), out
 
 
 def test_pandas_roundtrip(ray_start_regular_shared):
@@ -308,6 +342,155 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item
 
 
+def test_iter_batches_basic(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
+    df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
+    dfs = [df1, df2, df3, df4]
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2),
+         ray.put(df3), ray.put(df4)])
+
+    # Default.
+    for batch, df in zip(ds.iter_batches(), dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
+
+    # pyarrow.Table format.
+    for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
+        assert isinstance(batch, pa.Table)
+        assert batch.equals(pa.Table.from_pandas(df))
+
+    # blocks format.
+    for batch, df in zip(ds.iter_batches(batch_format="_blocks"), dfs):
+        assert isinstance(batch, Block)
+        assert batch.to_pandas().equals(df)
+
+    # Batch size.
+    batch_size = 2
+    batches = list(ds.iter_batches(batch_size=batch_size))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Batch size larger than block.
+    batch_size = 4
+    batches = list(ds.iter_batches(batch_size=batch_size))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Batch size drop partial.
+    batch_size = 5
+    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=True))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == (len(df1) + len(df2) + len(df3) + len(df4)) //
+            batch_size)
+    assert pd.concat(
+        batches, ignore_index=True).equals(
+            pd.concat(dfs, ignore_index=True)[:10])
+
+    # Batch size don't drop partial.
+    batch_size = 5
+    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=False))
+    assert all(len(batch) == batch_size for batch in batches[:-1])
+    assert (len(batches[-1]) == (len(df1) + len(df2) + len(df3) + len(df4)) %
+            batch_size)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Prefetch.
+    for batch, df in zip(ds.iter_batches(prefetch_blocks=1), dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
+
+
+def test_iter_batches_grid(ray_start_regular_shared):
+    # Tests slicing, batch combining, and partial batch dropping logic over
+    # a grid of dataset, batching, and dropping configurations.
+    # Grid: num_blocks x num_rows_block_1 x ... x num_rows_block_N x
+    #       batch_size x drop_last
+    seed = int(time.time())
+    print(f"Seeding RNG for test_iter_batches_grid with: {seed}")
+    random.seed(seed)
+    max_num_blocks = 20
+    max_num_rows_per_block = 20
+    num_blocks_samples = 3
+    block_sizes_samples = 3
+    batch_size_samples = 3
+
+    for num_blocks in np.random.randint(
+            1, max_num_blocks + 1, size=num_blocks_samples):
+        block_sizes_list = [
+            np.random.randint(1, max_num_rows_per_block + 1, size=num_blocks)
+            for _ in range(block_sizes_samples)
+        ]
+        for block_sizes in block_sizes_list:
+            # Create the dataset with the given block sizes.
+            dfs = []
+            running_size = 0
+            for block_size in block_sizes:
+                dfs.append(
+                    pd.DataFrame({
+                        "value": list(
+                            range(running_size, running_size + block_size))
+                    }))
+                running_size += block_size
+            num_rows = running_size
+            ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
+            for batch_size in np.random.randint(
+                    1, num_rows + 1, size=batch_size_samples):
+                for drop_last in (False, True):
+                    batches = list(
+                        ds.iter_batches(
+                            batch_size=batch_size, drop_last=drop_last))
+                    if num_rows % batch_size == 0 or not drop_last:
+                        # Number of batches should be equal to
+                        # num_rows / batch_size,  rounded up.
+                        assert len(batches) == math.ceil(num_rows / batch_size)
+                        # Concatenated batches should equal the DataFrame
+                        # representation of the entire dataset.
+                        assert pd.concat(
+                            batches, ignore_index=True).equals(
+                                pd.concat(
+                                    ray.get(ds.to_pandas()),
+                                    ignore_index=True))
+                    else:
+                        # Number of batches should be equal to
+                        # num_rows / batch_size, rounded down.
+                        assert len(batches) == num_rows // batch_size
+                        # Concatenated batches should equal the DataFrame
+                        # representation of the dataset with the partial batch
+                        # remainder sliced off.
+                        assert pd.concat(
+                            batches, ignore_index=True).equals(
+                                pd.concat(
+                                    ray.get(ds.to_pandas()), ignore_index=True)
+                                [:batch_size * (num_rows // batch_size)])
+                    if num_rows % batch_size == 0 or drop_last:
+                        assert all(
+                            len(batch) == batch_size for batch in batches)
+                    else:
+                        assert all(
+                            len(batch) == batch_size for batch in batches[:-1])
+                        assert len(batches[-1]) == num_rows % batch_size
+
+
+def test_lazy_loading_iter_batches_exponential_rampup(
+        ray_start_regular_shared):
+    ds = ray.experimental.data.range(32, parallelism=8)
+    expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
+    for _, expected in zip(ds.iter_batches(), expected_num_blocks):
+        assert len(ds._blocks._blocks) == expected
+
+
 def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.experimental.data.range(5)
@@ -321,7 +504,6 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.experimental.data.read_parquet(str(tmp_path))
     ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
-    print(ds_list)
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -498,6 +680,7 @@ def test_split_hints(ray_start_regular_shared):
 
 
 def test_from_dask(ray_start_regular_shared):
+    import dask.dataframe as dd
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.experimental.data.from_dask(ddf)
@@ -517,6 +700,61 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute())
 
 
+def test_to_tf(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    tfd = ds.to_tf(
+        "label",
+        output_signature=(tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(
+            np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
+
+
+def test_to_tf_feature_columns(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    tfd = ds.to_tf(
+        "label",
+        feature_columns=["one"],
+        output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(
+            np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
+
+
 def test_json_read(ray_start_regular_shared, tmp_path):
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -526,8 +764,8 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     assert df1.equals(ray.get(ds.to_pandas())[0])
     # Test metadata ops.
     assert ds.count() == 3
-    assert "two" in str(ds.schema())
-    assert "two" in str(ds)
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -536,6 +774,9 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        ray.get(block).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -632,8 +873,8 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert "two" in str(ds.schema())
-    assert "two" in str(ds)
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -643,6 +884,9 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     df = pd.concat([df1, df2])
     assert df.equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        ray.get(block).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})

@@ -530,7 +530,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
+                actor is still alive. Names may not contain '/'.
             lifetime: Either `None`, which defaults to the actor will fate
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
@@ -606,8 +606,10 @@ class ActorClass:
             if not isinstance(name, str):
                 raise TypeError(
                     f"name must be None or a string, got: '{type(name)}'.")
-            if name == "":
+            elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
+            elif "/" in name:
+                raise ValueError("Actor name may not contain '/'.")
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -831,10 +833,11 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        worker = ray.worker.global_worker
-        if worker.connected and hasattr(worker, "core_worker"):
-            worker.core_worker.remove_actor_handle_reference(
-                self._ray_actor_id)
+        if ray.worker:
+            worker = ray.worker.global_worker
+            if worker.connected and hasattr(worker, "core_worker"):
+                worker.core_worker.remove_actor_handle_reference(
+                    self._ray_actor_id)
 
     def _actor_method_call(self,
                            method_name,
