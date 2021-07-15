@@ -608,8 +608,9 @@ def check_oversized_function(pickled, name, obj_type, worker):
     elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
         warning_message = (
             "The {} {} is very large ({} bytes). "
-            "Check that its definition is not capturing a large array or "
-            "other object in scope.").format(obj_type, name, length)
+            "Check that its definition is not implicitly capturing a large "
+            "array or other object in scope. Tip: use ray.put() to put large "
+            "objects in the Ray object store.").format(obj_type, name, length)
         push_error_to_driver(
             worker,
             ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
@@ -618,8 +619,9 @@ def check_oversized_function(pickled, name, obj_type, worker):
     else:
         error = (
             "The {} {} is too large ({} > FUNCTION_SIZE_ERROR_THRESHOLD={}) "
-            "bytes. Check that its definition is not capturing a large array "
-            "or other object in scope.").format(
+            "bytes. Check that its definition is not implicitly capturing a "
+            "large array or other object in scope. Tip: use ray.put() to "
+            "put large objects in the Ray object store.").format(
                 obj_type, name, length,
                 ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD)
         raise ValueError(error)
