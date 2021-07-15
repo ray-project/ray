@@ -129,6 +129,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 request.key)
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
+    def ListNamedActors(self, request, context=None
+                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        with disable_client_hook():
+            actors = ray.util.list_named_actors(
+                all_namespaces=request.all_namespaces)
+
+        return ray_client_pb2.ClientListNamedActorsResponse(
+            actors_json=json.dumps(actors))
+
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
@@ -700,7 +709,8 @@ def main():
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
-        server = serve_proxier(hostport, args.redis_address)
+        server = serve_proxier(
+            hostport, args.redis_address, redis_password=args.redis_password)
     else:
         server = serve(hostport, ray_connect_handler)
 

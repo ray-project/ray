@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.block import Block
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 

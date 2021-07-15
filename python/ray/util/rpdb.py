@@ -11,6 +11,7 @@ import re
 import select
 import socket
 import sys
+import time
 import uuid
 from pdb import Pdb
 import setproctitle
@@ -97,7 +98,11 @@ class RemotePdb(Pdb):
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
-            self, completekey="tab", stdin=self.handle, stdout=self.handle)
+            self,
+            completekey="tab",
+            stdin=self.handle,
+            stdout=self.handle,
+            skip=["ray.*"])
         self.backup = []
         if self._patch_stdstreams:
             for name in (
@@ -207,7 +212,8 @@ def connect_ray_pdb(host=None,
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,
-        "traceback": "\n".join(traceback.format_exception(*sys.exc_info()))
+        "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
+        "timestamp": time.time(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)

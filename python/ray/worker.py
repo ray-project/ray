@@ -1260,6 +1260,10 @@ def connect(node,
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
 
+    # Make sure breakpoint() in the user's code will
+    # always invoke the Ray debugger.
+    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1664,8 +1668,7 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    handle = worker.core_worker.get_named_actor_handle(name)
-    return handle
+    return worker.core_worker.get_named_actor_handle(name)
 
 
 @client_mode_hook
