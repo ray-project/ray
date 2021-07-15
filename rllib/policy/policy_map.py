@@ -2,7 +2,7 @@ from collections import deque
 import gym
 import os
 import pickle
-from typing import Callable, Optional, Type
+from typing import Callable, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -10,6 +10,9 @@ from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import PartialTrainerConfigDict, \
     PolicyID, TrainerConfigDict
 from ray.tune.utils.util import merge_dicts
+
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
 
 tf1, tf, tfv = try_import_tf()
 
@@ -22,15 +25,16 @@ class PolicyMap(dict):
     policies to a Trainer for league-based setups w/o running out of memory.
     """
 
-    def __init__(self,
-                 worker_index: int,
-                 num_workers: int,
-                 capacity: Optional[int] = None,
-                 path: Optional[str] = None,
-                 policy_config: Optional[TrainerConfigDict] = None,
-                 session_creator: Optional[Callable[[], "tf1.Session"]] = None,
-                 seed: Optional[int] = None,
-                 ):
+    def __init__(
+            self,
+            worker_index: int,
+            num_workers: int,
+            capacity: Optional[int] = None,
+            path: Optional[str] = None,
+            policy_config: Optional[TrainerConfigDict] = None,
+            session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            seed: Optional[int] = None,
+    ):
         """Initializes a PolicyMap instance.
 
         Args:
@@ -65,26 +69,26 @@ class PolicyMap(dict):
         self.policy_orig_cls = {}
         self.policy_config_override = {}
 
-    def create_policy(self,
-                      policy_id: PolicyID,
-                      policy_cls: Type["Policy"],
-                      observation_space: gym.Space,
-                      action_space: gym.Space,
+    def create_policy(self, policy_id: PolicyID, policy_cls: Type["Policy"],
+                      observation_space: gym.Space, action_space: gym.Space,
                       config_override: PartialTrainerConfigDict,
                       merged_config: TrainerConfigDict) -> None:
         """Creates a new policy and stores it to the cache.
 
         Args:
-            policy_id (PolicyID): The policy ID. This is the key under which the 
-                created policy will be stored in this map.
-            policy_cls (Type[Policy]): The (original) policy class to use. This
-                may still be altered in case tf-eager (and tracing) is used. 
-            observation_space (gym.Space): The observation space of the policy.
+            policy_id (PolicyID): The policy ID. This is the key under which
+                the created policy will be stored in this map.
+            policy_cls (Type[Policy]): The (original) policy class to use.
+                This may still be altered in case tf-eager (and tracing)
+                is used.
+            observation_space (gym.Space): The observation space of the
+                policy.
             action_space (gym.Space): The action space of the policy.
-            config_override (PartialTrainerConfigDict): The config override dict
-                for this policy. This is the partial dict provided by the user.
-            merged_config (TrainerConfigDict): The entire config (merged default
-                config + `config_override`).
+            config_override (PartialTrainerConfigDict): The config override
+                dict for this policy. This is the partial dict provided by
+                the user.
+            merged_config (TrainerConfigDict): The entire config (merged
+                default config + `config_override`).
         """
         framework = merged_config.get("framework", "tf")
         class_ = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
@@ -111,9 +115,8 @@ class PolicyMap(dict):
                             if self.seed is not None:
                                 tf1.set_random_seed(self.seed)
 
-                            self[policy_id] = class_(observation_space,
-                                                     action_space,
-                                                     merged_config)
+                            self[policy_id] = class_(
+                                observation_space, action_space, merged_config)
                 # For tf-eager: no graph, no session.
                 else:
                     self[policy_id] = \
@@ -121,8 +124,8 @@ class PolicyMap(dict):
         # Non-tf: No graph, no session.
         else:
             class_ = policy_cls
-            self[policy_id] = class_(
-                observation_space, action_space, merged_config)
+            self[policy_id] = class_(observation_space, action_space,
+                                     merged_config)
 
         # Experimental: Store orig classes and config overrides such that
         # the map will be able to reproduce on-the-fly added policies
@@ -242,8 +245,6 @@ class PolicyMap(dict):
         policy = self.cache[delkey]
         # Get its state for writing to disk.
         policy_state = policy.get_state()
-        # Add class of Policy to state.
-        #policy_state["_cls"] = policy.__class__
         # Closes policy's tf session, if any.
         self._close_session(policy)
         # Remove from memory.
@@ -264,8 +265,8 @@ class PolicyMap(dict):
             policy_state = pickle.load(f)
 
         # Get class and config override.
-        merged_conf = merge_dicts(
-            self.policy_config, self.policy_config_override[policy_id])
+        merged_conf = merge_dicts(self.policy_config,
+                                  self.policy_config_override[policy_id])
 
         # Create policy object (from its spec: cls, obs-space, act-space,
         # config).

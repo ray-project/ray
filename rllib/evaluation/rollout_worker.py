@@ -38,7 +38,6 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -543,8 +542,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 tf1.set_random_seed(seed)
 
         self._build_policy_map(
-            policy_dict, policy_config,
-            session_creator=tf_session_creator, seed=seed)
+            policy_dict,
+            policy_config,
+            session_creator=tf_session_creator,
+            seed=seed)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -575,10 +576,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent and self.env is not None:
-            if not isinstance(self.env, (BaseEnv,
-                                         ExternalMultiAgentEnv,
-                                         MultiAgentEnv,
-                                         ray.actor.ActorHandle)):
+            if not isinstance(self.env,
+                              (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv,
+                               ray.actor.ActorHandle)):
                 raise ValueError(
                     f"Have multiple policies {self.policy_map}, but the "
                     f"env {self.env} is not a subclass of BaseEnv, "
@@ -1322,8 +1322,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
 
-            self.policy_map.create_policy(
-                name, orig_cls, obs_space, act_space, conf, merged_conf)
+            self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
+                                          conf, merged_conf)
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
