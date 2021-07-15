@@ -64,6 +64,7 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_output.py",
+    "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
