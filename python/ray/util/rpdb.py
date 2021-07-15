@@ -165,8 +165,11 @@ class RemotePdb(Pdb):
         # Tell the next task to drop into the debugger.
         ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
+        data = json.dumps({
+            "job_id": ray.get_runtime_context().job_id.hex(),
+        })
         _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         "")
+                         data)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
