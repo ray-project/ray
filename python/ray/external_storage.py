@@ -133,15 +133,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             # 24 bytes to store owner address, metadata, and buffer lengths.
             assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
                 == len(payload)
-            # TODO (yic): Considering add retry here to avoid transient issue
-            try:
-                written_bytes = f.write(payload)
-                url_with_offset = create_url_with_offset(
-                    url=url, offset=offset, size=written_bytes)
-                keys.append(url_with_offset.encode())
-                offset = f.tell()
-            except IOError:
-                return keys
+            written_bytes = f.write(payload)
+            url_with_offset = create_url_with_offset(
+                url=url, offset=offset, size=written_bytes)
+            keys.append(url_with_offset.encode())
+            offset = f.tell()
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len,

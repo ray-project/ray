@@ -2428,6 +2428,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/pettingzoo_env",
+    main = "examples/pettingzoo_env.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/pettingzoo_env.py"],
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",
@@ -2568,6 +2576,30 @@ py_test(
     size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
+)
+
+py_test(
+    name = "examples/export/cartpole_dqn_export",
+    main = "examples/export/cartpole_dqn_export.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/cartpole_dqn_export.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_tf",
+    main = "examples/export/onnx_tf.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/onnx_tf.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_torch",
+    main = "examples/export/onnx_torch.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/export/onnx_torch.py"],
 )
 
 py_test(
