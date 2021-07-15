@@ -20,7 +20,8 @@ import itertools
 import numpy as np
 
 import ray
-from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute

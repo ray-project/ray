@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     import pyspark
 
 import ray
-from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask
