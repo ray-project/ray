@@ -14,6 +14,122 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
+class _DistributeResources:
+    """Generic functionality for resource allocation functions"""
+
+    def __init__(self, add_bundles: bool = False):
+        """If add_bundles is True, create new bundles from free resources.
+        Otherwise, spread them among base_trial_resource bundles."""
+        self.add_bundles = add_bundles
+
+    def __call__(self, trial_runner: "trial_runner.TrialRunner", trial: Trial,
+                 result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
+                 ) -> Union[None, PlacementGroupFactory]:
+        # Get base trial resources as defined in
+        # ``tune.run(resources_per_trial)``
+        base_trial_resource = scheduler._base_trial_resources
+
+        if not isinstance(base_trial_resource, PlacementGroupFactory):
+            raise ValueError("evenly_distribute_cpus_gpus only supports"
+                             " PlacementGroupFactories.")
+
+        # Don't bother if this is just the first iteration
+        if result["training_iteration"] < 1:
+            return None
+
+        # default values if resources_per_trial is unspecified
+        if base_trial_resource is None:
+            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+
+        # Assume that the number of CPUs and GPUs can't go below
+        # what was specified in tune.run
+        min_cpu = base_trial_resource.required_resources.get("CPU", 0)
+        min_gpu = base_trial_resource.required_resources.get("GPU", 0)
+
+        min_cpu_bundle = base_trial_resource._bundles[0].get("CPU", 0)
+        min_gpu_bundle = base_trial_resource._bundles[0].get("GPU", 0)
+
+        # Get the number of CPUs and GPUs avaialble in total (not just free)
+        total_available_cpus = (
+            trial_runner.trial_executor._avail_resources.cpu)
+        total_available_gpus = (
+            trial_runner.trial_executor._avail_resources.gpu)
+
+        # Set upper limits for resources based on number of live trials
+        # to ensure that the trial cannot get more resources that it's
+        # possible to run
+        num_running_trials = len(trial_runner.get_live_trials())
+        if min_cpu == 0:
+            upper_cpu_limit = 0
+        else:
+            upper_cpu_limit = math.ceil(
+                total_available_cpus / num_running_trials)
+            # Round to nearest bundle minimum
+            # eg. 8 CPUs between 3 trials with min 2 CPUs per bundle
+            #   -> 4, 2, 2
+            if self.add_bundles:
+                upper_cpu_limit = math.ceil(
+                    upper_cpu_limit / min_cpu_bundle) * min_cpu_bundle
+            upper_cpu_limit = max(min_cpu, upper_cpu_limit)
+
+        if min_gpu == 0:
+            upper_gpu_limit = 0
+        else:
+            upper_gpu_limit = math.ceil(
+                total_available_gpus / num_running_trials)
+            # Ensure we don't go below per-bundle minimum
+            if self.add_bundles:
+                upper_gpu_limit = math.ceil(
+                    upper_gpu_limit / min_cpu_bundle) * min_gpu_bundle
+            upper_gpu_limit = max(min_gpu, upper_gpu_limit)
+
+        # Function to check how many CPUs and GPUs a trial is using currently
+        def get_used_cpus_and_gpus(t: Trial):
+            return (t.placement_group_factory.required_resources.get("CPU", 0),
+                    t.placement_group_factory.required_resources.get("GPU", 0))
+
+        # Check how many CPUs and GPUs are currently being used by this trial
+        trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+
+        # Check how many CPUs and GPUs are currently being used by live trials
+        used_cpus_and_gpus = [
+            get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
+        ]
+        used_cpus, used_gpus = zip(*used_cpus_and_gpus)
+        used_cpus = sum(used_cpus)
+        used_gpus = sum(used_gpus)
+
+        # Calculate how many free CPUs and GPUs there are
+        free_cpus = total_available_cpus - used_cpus
+        free_gpus = total_available_gpus - used_gpus
+
+        # Add free CPUs and GPUs enforcing upper and lower limits
+        new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus,
+                                           min_cpu))
+        new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus,
+                                           min_gpu))
+
+        # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
+
+        # If self.add_bundles, make new bundles out of the resources
+        if self.add_bundles:
+            if min_cpu_bundle and min_gpu_bundle:
+                multiplier = min(new_cpu // min_cpu_bundle,
+                                 new_gpu // min_cpu_bundle)
+            elif min_gpu_bundle:
+                multiplier = new_gpu // min_cpu_bundle
+            else:
+                multiplier = new_cpu // min_cpu_bundle
+            new_bundles = [{
+                "CPU": min_cpu_bundle,
+                "GPU": min_gpu_bundle
+            }] * int(multiplier)
+        # Otherwise, just put them all in one bundle
+        else:
+            new_bundles = [{"CPU": new_cpu, "GPU": new_gpu}]
+        return PlacementGroupFactory(new_bundles)
+
+
 def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
                                 trial: Trial, result: Dict[str, Any],
                                 scheduler: "ResourceChangingScheduler"
@@ -46,73 +162,44 @@ def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
             the function.
     """
 
-    # Get base trial resources as defined in
-    # ``tune.run(resources_per_trial)``
-    base_trial_resource = scheduler._base_trial_resources
+    return _DistributeResources(add_bundles=False)(trial_runner, trial, result,
+                                                   scheduler)
 
-    if not isinstance(base_trial_resource, PlacementGroupFactory):
-        raise ValueError("evenly_distribute_cpus_gpus only supports"
-                         " PlacementGroupFactories.")
 
-    # Don't bother if this is just the first iteration
-    if result["training_iteration"] < 1:
-        return None
+def evenly_distribute_cpus_gpus_distributed(
+        trial_runner: "trial_runner.TrialRunner", trial: Trial,
+        result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
+) -> Union[None, PlacementGroupFactory]:
+    """This is a basic resource allocating function.
 
-    # default values if resources_per_trial is unspecified
-    if base_trial_resource is None:
-        base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+    The function naively balances free resources (CPUs and GPUs) between
+    trials, giving them all equal priority, ensuring that all resources
+    are always being used. The free resources will be placed in new bundles.
+    This function assumes that all bundles are equal (there is no "head"
+    bundle).
 
-    # Assume that the number of CPUs and GPUs can't go below
-    # what was specified in tune.run
-    min_cpu = base_trial_resource.required_resources.get("CPU", 0)
-    min_gpu = base_trial_resource.required_resources.get("GPU", 0)
+    If for some reason a trial ends up with
+    more resources than there are free ones, it will adjust downwards.
+    It will also ensure that trial as at least as many resources as
+    it started with (``base_trial_resource``).
 
-    # Get the number of CPUs and GPUs avaialble in total (not just free)
-    total_available_cpus = (trial_runner.trial_executor._avail_resources.cpu)
-    total_available_gpus = (trial_runner.trial_executor._avail_resources.gpu)
+    This function returns a new ``PlacementGroupFactory`` with updated
+    resource requirements, or None. If the returned
+    ``PlacementGroupFactory`` is equal by value to the one the
+    trial has currently, the scheduler will skip the update process
+    internally (same with None).
 
-    # Set upper limits for resources based on number of live trials
-    # to ensure that the trial cannot get more resources that it's
-    # possible to run
-    num_running_trials = len(trial_runner.get_live_trials())
-    if min_cpu == 0:
-        upper_cpu_limit = 0
-    else:
-        upper_cpu_limit = math.ceil(total_available_cpus / num_running_trials)
-        upper_cpu_limit = max(min_cpu, upper_cpu_limit)
+    Args:
+        trial_runner (TrialRunner): Trial runner for this Tune run.
+            Can be used to obtain information about other trials.
+        trial (Trial): The trial to allocate new resources to.
+        result (Dict[str, Any]): The latest results of trial.
+        scheduler (ResourceChangingScheduler): The scheduler calling
+            the function.
+    """
 
-    if min_gpu == 0:
-        upper_gpu_limit = 0
-    else:
-        upper_gpu_limit = math.ceil(total_available_gpus / num_running_trials)
-        upper_gpu_limit = max(min_gpu, upper_gpu_limit)
-
-    # Function to check how many CPUs and GPUs a trial is using currently
-    def get_used_cpus_and_gpus(t: Trial):
-        return (t.placement_group_factory.required_resources.get("CPU", 0),
-                t.placement_group_factory.required_resources.get("GPU", 0))
-
-    # Check how many CPUs and GPUs are currently being used by this trial
-    trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
-
-    # Check how many CPUs and GPUs are currently being used by live trials
-    used_cpus_and_gpus = [
-        get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
-    ]
-    used_cpus, used_gpus = zip(*used_cpus_and_gpus)
-    used_cpus = sum(used_cpus)
-    used_gpus = sum(used_gpus)
-
-    # Calculate how many free CPUs and GPUs there are
-    free_cpus = total_available_cpus - used_cpus
-    free_gpus = total_available_gpus - used_gpus
-
-    # Add free CPUs and GPUs enforcing upper and lower limits
-    new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus, min_cpu))
-    new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus, min_gpu))
-
-    # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
-    return PlacementGroupFactory([{"CPU": new_cpu, "GPU": new_gpu}])
+    return _DistributeResources(add_bundles=True)(trial_runner, trial, result,
+                                                  scheduler)
 
 
 class ResourceChangingScheduler(TrialScheduler):
