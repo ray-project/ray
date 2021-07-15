@@ -23,9 +23,9 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
@@ -969,7 +969,7 @@ class Trainer(Trainable):
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             unsquash_actions (bool): Should actions be unsquashed according to
-                the env's/Policy's action space?
+                 the env's/Policy's action space?
             clip_actions (bool): Should actions be clipped according to the
                 env's/Policy's action space?
 
@@ -1239,12 +1239,15 @@ class Trainer(Trainable):
     @DeveloperAPI
     def export_policy_model(self,
                             export_dir: str,
-                            policy_id: PolicyID = DEFAULT_POLICY_ID):
+                            policy_id: PolicyID = DEFAULT_POLICY_ID,
+                            onnx: Optional[int] = None):
         """Export policy model with given policy_id to local directory.
 
         Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1252,7 +1255,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_model("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_model(export_dir, policy_id)
+        self.workers.local_worker().export_policy_model(
+            export_dir, policy_id, onnx)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -1362,6 +1366,44 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
+        # Loop through all policy definitions in multi-agent policies.
+        multiagent_config = config["multiagent"]
+        policies = multiagent_config.get("policies")
+        if not policies:
+            policies = {DEFAULT_POLICY_ID}
+        if isinstance(policies, set):
+            policies = multiagent_config["policies"] = {
+                pid: PolicySpec()
+                for pid in policies
+            }
+        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
+
+        for pid, policy_spec in policies.copy().items():
+            # Policy IDs must be strings.
+            if not isinstance(pid, str):
+                raise ValueError("Policy keys must be strs, got {}".format(
+                    type(pid)))
+
+            # Convert to PolicySpec if plain list/tuple.
+            if not isinstance(policy_spec, PolicySpec):
+                # Values must be lists/tuples of len 4.
+                if not isinstance(policy_spec, (list, tuple)) or \
+                        len(policy_spec) != 4:
+                    raise ValueError(
+                        "Policy specs must be tuples/lists of "
+                        "(cls or None, obs_space, action_space, config), "
+                        f"got {policy_spec}")
+                policies[pid] = PolicySpec(*policy_spec)
+
+            # Config is None -> Set to {}.
+            if policies[pid].config is None:
+                policies[pid] = policies[pid]._replace(config={})
+            # Config not a dict.
+            elif not isinstance(policies[pid].config, dict):
+                raise ValueError(
+                    f"Multiagent policy config for {pid} must be a dict, "
+                    f"but got {type(policies[pid].config)}!")
+
         framework = config.get("framework")
         # Multi-GPU setting: Must use TFMultiGPU if tf.
         if config.get("num_gpus", 0) > 1:
@@ -1381,7 +1423,7 @@ class Trainer(Trainable):
                 config["simple_optimizer"] = True
             # TF + Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies).
-            elif len(config["multiagent"]["policies"]) > 0:
+            elif is_multiagent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)
@@ -1505,6 +1547,11 @@ class Trainer(Trainable):
             path = os.path.join(export_dir, ExportFormat.MODEL)
             self.export_policy_model(path)
             exported[ExportFormat.MODEL] = path
+        if ExportFormat.ONNX in export_formats:
+            path = os.path.join(export_dir, ExportFormat.ONNX)
+            self.export_policy_model(
+                path, onnx=int(os.getenv("ONNX_OPSET", "11")))
+            exported[ExportFormat.ONNX] = path
         return exported
 
     def import_model(self, import_file: str):

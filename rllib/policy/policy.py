@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
@@ -29,6 +30,33 @@ logger = logging.getLogger(__name__)
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# A policy spec used in the "config.multiagent.policies" specification dict
+# as values (keys are the policy IDs (str)). E.g.:
+# config:
+#   multiagent:
+#     policies: {
+#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+#       "pol2": PolicySpec(config={"lr": 0.001}),
+#     }
+PolicySpec = namedtuple(
+    "PolicySpec",
+    [
+        # If None, use the Trainer's default policy class stored under
+        # `Trainer._policy_class`.
+        "policy_class",
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "observation_space",
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "action_space",
+        # Overrides defined keys in the main Trainer config.
+        # If None, use {}.
+        "config",
+    ])
+# From 3.7 on, we could pass `defaults` into the above constructor.
+PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
 @DeveloperAPI
@@ -338,9 +366,9 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
             actions_normalized (bool): Is the given `actions` already
-                normalized (between -1.0 and 1.0) or not? If not and
-                `normalize_actions=True`, we need to normalize the given
-                actions first, before calculating log likelihoods.
+                 normalized (between -1.0 and 1.0) or not? If not and
+                 `normalize_actions=True`, we need to normalize the given
+                 actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:
@@ -529,7 +557,8 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Note: The file format will depend on the deep learning framework used.
@@ -538,6 +567,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             export_dir (str): Local writable directory.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
 

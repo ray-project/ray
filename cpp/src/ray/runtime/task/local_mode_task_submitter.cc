@@ -39,7 +39,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id);
+    builder.SetActorCreationTaskSpec(invocation.actor_id, "");
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);

@@ -124,11 +124,13 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config = dqn.DEFAULT_CONFIG.copy()
         # Soft-Q for DQN.
         config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
+        config["seed"] = 42
         do_test_log_likelihood(dqn.DQNTrainer, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
         config = pg.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
@@ -142,12 +144,14 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
         config = pg.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         prev_a = np.array(0)
         do_test_log_likelihood(pg.PGTrainer, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
         config = ppo.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
@@ -155,12 +159,15 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
+        config = ppo.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         prev_a = np.array(0)
-        do_test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, prev_a)
+        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["policy_model"]["fcnet_hiddens"] = [10]
         config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
@@ -190,6 +197,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["policy_model"]["fcnet_hiddens"] = [10]
         config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
