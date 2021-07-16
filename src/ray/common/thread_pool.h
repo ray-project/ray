@@ -9,30 +9,42 @@
 namespace ray {
 namespace thread_pool {
 
+namespace {
+
+template <typename F,
+          typename R = typename std::result_of<F()>::type,
+          typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
+void _run_job(F&& f, boost::fibers::promise<R>* p) {
+  p->set_value(f());
+}
+
+template <typename F,
+          typename R = typename std::result_of<F()>::type,
+          typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
+void _run_job(F&& f, boost::fibers::promise<R>* p) {
+  f();
+  p->set_value();
+}
+
+}
+
+
+
 class CPUThreadPool {
  public:
   CPUThreadPool(size_t n) : pool_(n) {}
-  template <typename F,
-            typename R = typename std::result_of<F()>::type,
-            typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
-  boost::fibers::future<R> post(F &&f) {
-    auto p = std::make_unique<boost::fibers::promise<R>>().release();
+  template <typename F>
+  auto post(F &&f) {
+    auto p = std::make_unique<boost::fibers::promise<decltype(f())>>().release();
     auto future = p->get_future();
     boost::asio::post(pool_,
-                      [f = std::move(f), p = p] { p->set_value(f()); delete p;});
+                      [f = std::move(f), p = p] {
+                        _run_job(std::move(f), p);
+                        delete p;
+                      });
     return future;
   }
 
-  template <typename F,
-            typename R = typename std::result_of<F()>::type,
-            typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
-  boost::fibers::future<R> post(F &&f) {
-    auto p = std::make_unique<boost::fibers::promise<R>>().release();
-    auto future = p->get_future();
-    boost::asio::post(pool_,
-                      [f = std::move(f), p = p] { f(); p->set_value(); delete p;});
-    return future;
-  }
   ~CPUThreadPool() { pool_.join(); }
 
  private:
@@ -48,7 +60,16 @@ class IOThreadPool {
 
   template <typename F>
   auto post(F &&f) {
-    return boost::fibers::future<decltype(f())>(boost::fibers::async(f));
+    auto p = std::make_unique<boost::fibers::promise<decltype(f())>>().release();
+    auto future = p->get_future();
+    io_service_->post([f = std::move(f), p] {
+      boost::fibers::fiber co([f = std::move(f), p]() {
+        _run_job(std::move(f), p);
+        delete p;
+      });
+      co.join();
+    });
+    return future;
   }
 
   instrumented_io_context &GetIOService() { return *io_service_; }

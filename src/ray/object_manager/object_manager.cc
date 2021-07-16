@@ -76,13 +76,12 @@ ObjectManager::ObjectManager(
           /*delete_object_callback=*/
           [this, delete_object_callback =
                      std::move(delete_object_callback)](const ObjectID &object_id) {
-            main_service_->post(
+            ray::thread_pool::io_post(
                 [this, object_id,
                  delete_object_callback = std::move(delete_object_callback)]() {
                   HandleObjectDeleted(object_id);
                   delete_object_callback(object_id);
-                },
-                "ObjectManager.ObjectDeleted");
+                });
           }),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
