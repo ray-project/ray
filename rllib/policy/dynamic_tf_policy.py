@@ -721,7 +721,7 @@ class TFMultiGPUTowerStack:
         if policy is None:
             deprecation_warning(
                 old="TFMultiGPUTowerStack(...)",
-                new="TFMultiGPUTowerStack(policy=...)",
+                new="TFMultiGPUTowerStack(policy=[Policy])",
                 error=False,
             )
             self.policy = None
@@ -733,7 +733,7 @@ class TFMultiGPUTowerStack:
             self.policy = policy
             self.optimizer = self.policy._optimizer
             self.devices = self.policy.devices
-            self.max_per_device_batch_size = 99999
+            self.max_per_device_batch_size = max_per_device_batch_size or 99999
             input_placeholders = list(
                 self.policy._loss_input_dict_no_rnn.values())
             rnn_inputs = []
@@ -742,7 +742,7 @@ class TFMultiGPUTowerStack:
             grad_norm_clipping = self.policy.config.get("grad_clip")
             self.build_graph = self.policy.copy
 
-        assert len(self.devices) > 0 or all("gpu" in d for d in self.devices)
+        assert len(self.devices) > 1 or "gpu" in self.devices[0]
         self.loss_inputs = input_placeholders + rnn_inputs
 
         shared_ops = tf1.get_collection(
