@@ -1,12 +1,17 @@
-from typing import List, Tuple, Union, Any, Dict, Callable, Optional
+from typing import (List, Tuple, Union, Any, Dict, Callable, Optional,
+                    TYPE_CHECKING)
 
 import ray
 from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import (
-    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
+from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow import workflow_storage
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.storage import Storage
+    from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
+                                                  WorkflowInputTuple)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -122,28 +127,31 @@ def execute_workflow(workflow: Workflow,
     return workflow.execute(outer_most_step_id)
 
 
-def commit_step(ret: Union[Workflow, Any],
+def commit_step(workflow_id: str,
+                step_id: "StepID",
+                storage: "Storage",
+                ret: Union[Workflow, Any],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
 
     Args:
-        The returned object of the workflow step.
+        workflow_id: The ID of the workflow
+        ret: The returned object of the workflow step.
         outer_most_step_id: The ID of the outer most workflow. None if it
             does not exists. See "step_executor.execute_workflow" for detailed
             explanation.
     """
-    store = workflow_storage.WorkflowStorage()
+    store = workflow_storage.WorkflowStorage(workflow_id, storage)
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
-    step_id = workflow_context.get_current_step_id()
     store.save_step_output(step_id, ret, outer_most_step_id)
 
 
 @ray.remote
 def _workflow_step_executor(
         func: Callable, context: workflow_context.WorkflowStepContext,
-        step_id: StepID, step_inputs: StepInputTupleToResolve,
-        outer_most_step_id: StepID) -> Any:
+        step_id: "StepID", step_inputs: "StepInputTupleToResolve",
+        outer_most_step_id: "StepID") -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -166,16 +174,21 @@ def _workflow_step_executor(
     # Running the actual step function
     ret = func(*args, **kwargs)
     # Save workflow output
-    commit_step(ret, outer_most_step_id)
+    store = workflow_storage.WorkflowStorage()
+    if isinstance(ret, Workflow):
+        store.save_subworkflow(ret)
+    step_id = workflow_context.get_current_step_id()
+    store.save_step_output(step_id, ret, outer_most_step_id)
     if isinstance(ret, Workflow):
         # execute sub-workflow
         return execute_workflow(ret, outer_most_step_id)
     return ret
 
 
-def execute_workflow_step(step_func: Callable, step_id: StepID,
-                          step_inputs: WorkflowInputTuple,
-                          outer_most_step_id: StepID) -> WorkflowOutputType:
+def execute_workflow_step(
+        step_func: Callable, step_id: "StepID",
+        step_inputs: "WorkflowInputTuple",
+        outer_most_step_id: "StepID") -> "WorkflowOutputType":
     return _workflow_step_executor.remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
         step_inputs, outer_most_step_id)
