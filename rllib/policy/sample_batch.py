@@ -93,11 +93,15 @@ class SampleBatch(dict):
 
         lengths = []
         copy_ = {k: v for k, v in self.items()}
+        batch_size = 0
         for k, v in copy_.items():
             assert isinstance(k, str), self
             len_ = len(v) if isinstance(
                 v,
                 (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
+            # Observation data is always in the buffer dict.
+            if k == SampleBatch.OBS:
+                batch_size = len_
             lengths.append(len_)
             if isinstance(v, list):
                 if len(v) == 0 or not isinstance(v[0], dict):
@@ -118,7 +122,7 @@ class SampleBatch(dict):
                 len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = lengths[0]
+            self.count = batch_size
 
     @PublicAPI
     def __len__(self):
