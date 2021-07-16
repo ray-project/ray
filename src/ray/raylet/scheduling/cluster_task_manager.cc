@@ -205,8 +205,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 

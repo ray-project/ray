@@ -8,6 +8,7 @@
 #include <cassert>
 
 #include "../config_internal.h"
+#include "../util/function_helper.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
@@ -36,6 +37,11 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
     RAY_LOG(INFO) << "Native ray runtime started.";
+    if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
+      // Load functions from code search path.
+      FunctionHelper::GetInstance().LoadFunctionsFromPaths(
+          ConfigInternal::Instance().code_search_path);
+    }
   }
   RAY_CHECK(runtime);
   abstract_ray_runtime_ = runtime;
@@ -114,7 +120,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
   return ray_args;
 }
 
-InvocationSpec BuildInvocationSpec1(TaskType task_type, std::string lib_name,
+InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const RemoteFunctionHolder &remote_function_holder,
                                     std::vector<ray::api::TaskArg> &args,
                                     const ActorID &actor) {
@@ -122,7 +128,6 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type, std::string lib_name,
   invocation_spec.task_type = task_type;
   invocation_spec.task_id =
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
-  invocation_spec.lib_name = lib_name;
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
   invocation_spec.args = TransformArgs(args);
@@ -132,8 +137,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type, std::string lib_name,
 std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
                                      std::vector<ray::api::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
-      TaskType::NORMAL_TASK, ConfigInternal::Instance().dynamic_library_path,
-      remote_function_holder, args, ActorID::Nil());
+      TaskType::NORMAL_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec).Binary();
 }
 
@@ -141,8 +145,7 @@ std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
     std::vector<ray::api::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
-      TaskType::ACTOR_CREATION_TASK, ConfigInternal::Instance().dynamic_library_path,
-      remote_function_holder, args, ActorID::Nil());
+      TaskType::ACTOR_CREATION_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec).Binary();
 }
 
@@ -150,8 +153,7 @@ std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
     std::vector<ray::api::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
-      TaskType::ACTOR_TASK, ConfigInternal::Instance().dynamic_library_path,
-      remote_function_holder, args, ActorID::FromBinary(actor));
+      TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
   return task_submitter_->SubmitActorTask(invocation_spec).Binary();
 }
 

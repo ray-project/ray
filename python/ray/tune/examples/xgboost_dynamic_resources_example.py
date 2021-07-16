@@ -24,6 +24,7 @@ class BreastCancerTrainable(Trainable):
     def setup(self, config):
         self.config = config
         self.nthread = config.pop("nthread", 1)
+        self.new_nthread = None
         self.model: xgb.Booster = None
         # Load dataset
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -62,6 +63,9 @@ class BreastCancerTrainable(Trainable):
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
+        if self.new_nthread:
+            self.nthread = self.new_nthread
+            self.new_nthread = None
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -74,10 +78,11 @@ class BreastCancerTrainable(Trainable):
 
     def update_resources(
             self, new_resources: Union[PlacementGroupFactory, Resources]):
+        # this is called before `load_checkpoint`
         if isinstance(new_resources, PlacementGroupFactory):
-            self.nthread = new_resources.head_cpus
+            self.new_nthread = new_resources.head_cpus
         else:
-            self.nthread = new_resources.cpu
+            self.new_nthread = new_resources.cpu
 
 
 def get_best_model_checkpoint(analysis):
@@ -112,8 +117,7 @@ def tune_xgboost():
 
     def example_resources_allocation_function(
             trial_runner: "trial_runner.TrialRunner", trial: Trial,
-            result: Dict[str, Any],
-            base_trial_resource: Union[PlacementGroupFactory, Resources]
+            result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
     ) -> Union[None, PlacementGroupFactory, Resources]:
         """This is a basic example of a resource allocating function.
 
@@ -133,10 +137,13 @@ def tune_xgboost():
                 Can be used to obtain information about other trials.
             trial (Trial): The trial to allocate new resources to.
             result (Dict[str, Any]): The latest results of trial.
-            base_trial_resource (Union[PlacementGroupFactory, Resources]):
-                Base trial resources as defined in
-                ``tune.run(resources_per_trial)``
+            scheduler (ResourceChangingScheduler): The scheduler calling
+                the function.
         """
+
+        # Get base trial resources as defined in
+        # ``tune.run(resources_per_trial)``
+        base_trial_resource = scheduler._base_trial_resources
 
         # Don't bother if this is just the first iteration
         if result["training_iteration"] < 1:
