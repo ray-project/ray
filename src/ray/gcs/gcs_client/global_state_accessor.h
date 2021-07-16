@@ -162,11 +162,18 @@ class GlobalStateAccessor {
   /// Get information of a placement group from GCS Service by name.
   ///
   /// \param placement_group_name The name of placement group to look up in the GCS
-  /// Service. \return Placement group info. To support multi-language, we serialize each
+  /// Service.
+  /// \return Placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace);
+
+  /// Get value of the key from GCS Service.
+  ///
+  /// \param key key to get.
+  /// \return Value of the key.
+  std::unique_ptr<std::string> GetInternalKV(const std::string &key);
 
   /// Get the serialized system config from GCS.
   ///

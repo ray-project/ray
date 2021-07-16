@@ -177,6 +177,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID CallerId() const;
 
+  const std::string GetSerializedActorHandle() const;
+
   const rpc::Address &CallerAddress() const;
 
   WorkerID CallerWorkerId() const;

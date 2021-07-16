@@ -84,8 +84,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
-    "ray/autoscaler/_private/azure/azure-vm-template.json",
-    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/_private/_azure/azure-vm-template.json",
+    "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
@@ -104,7 +104,11 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "default": ["colorful"],
+    "default": [
+        "colorful",  # noqa
+        "py-spy >= 0.2.0",  # noqa
+        "jsonschema",  # noqa
+    ],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
     "k8s": ["kubernetes"],
@@ -143,12 +147,10 @@ install_requires = [
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
-    "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16; python_version < '3.9'",
     "numpy >= 1.19.3; python_version >= '3.9'",
     "protobuf >= 3.15.3",
-    "py-spy >= 0.2.0",
     "pydantic >= 1.8",
     "pyyaml",
     "requests",

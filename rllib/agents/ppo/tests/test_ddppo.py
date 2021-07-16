@@ -2,8 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
 
