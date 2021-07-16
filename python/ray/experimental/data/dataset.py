@@ -27,6 +27,7 @@ from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
+from ray.experimental.data.impl.sort import sort_impl
 from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import (
@@ -56,7 +57,6 @@ class Dataset(Generic[T]):
     Dataset supports parallel transformations such as .map(), .map_batches(),
     and simple repartition, but currently not aggregations and joins.
     """
-
     def __init__(self, blocks: BlockList[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
@@ -86,7 +86,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-
         def transform(block: Block[T]) -> Block[U]:
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -210,7 +209,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-
         def transform(block: Block[T]) -> Block[U]:
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -243,7 +241,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-
         def transform(block: Block[T]) -> Block[T]:
             builder = block.builder()
             for row in block.iter_rows():
@@ -276,7 +273,8 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def split(self, n: int,
+    def split(self,
+              n: int,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -317,8 +315,8 @@ class Dataset(Generic[T]):
         if locality_hints is None:
             return [
                 Dataset(
-                    BlockList(
-                        list(blocks), [metadata_mapping[b] for b in blocks]))
+                    BlockList(list(blocks),
+                              [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
             ]
 
@@ -354,8 +352,9 @@ class Dataset(Generic[T]):
                     num_blocks_by_actor[actor] += 1
             return num_blocks_by_actor
 
-        def build_block_refs_by_node_id(blocks: List[ObjectRef[Block]]
-                                        ) -> Dict[str, List[ObjectRef[Block]]]:
+        def build_block_refs_by_node_id(
+            blocks: List[ObjectRef[Block]]
+        ) -> Dict[str, List[ObjectRef[Block]]]:
             """Build the reverse index from node_id to block_refs. For
             simplicity, if the block is stored on multiple nodes we
             only pick the first one.
@@ -363,8 +362,8 @@ class Dataset(Generic[T]):
             block_ref_locations = ray.experimental.get_object_locations(blocks)
             block_refs_by_node_id = collections.defaultdict(list)
             for block_ref in blocks:
-                node_ids = block_ref_locations.get(block_ref, {}).get(
-                    "node_ids", [])
+                node_ids = block_ref_locations.get(block_ref,
+                                                   {}).get("node_ids", [])
                 node_id = node_ids[0] if node_ids else None
                 block_refs_by_node_id[node_id].append(block_ref)
             return block_refs_by_node_id
@@ -374,8 +373,8 @@ class Dataset(Generic[T]):
             """
             actors_state = ray.state.actors()
             return {
-                actor: actors_state.get(actor._actor_id.hex(), {}).get(
-                    "Address", {}).get("NodeID")
+                actor: actors_state.get(actor._actor_id.hex(),
+                                        {}).get("Address", {}).get("NodeID")
                 for actor in actors
             }
 
@@ -422,7 +421,7 @@ class Dataset(Generic[T]):
         ]
 
     def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]],
+             key: Union[None, str, List[str], Callable[[T], Any]] = None,
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key columns or key function.
 
@@ -452,7 +451,7 @@ class Dataset(Generic[T]):
         Returns:
             The sorted dataset.
         """
-        raise NotImplementedError  # P2
+        return Dataset(sort_impl(self._blocks, key, descending))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -468,7 +467,6 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-
         @ray.remote
         def get_num_rows(block: Block[T]) -> int:
             return block.num_rows()
@@ -478,11 +476,10 @@ class Dataset(Generic[T]):
                      count: int) -> (Block[T], BlockMetadata):
             logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count, copy=True)
-            new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
-                schema=meta.schema,
-                input_files=meta.input_files)
+            new_meta = BlockMetadata(num_rows=new_block.num_rows(),
+                                     size_bytes=new_block.size_bytes(),
+                                     schema=meta.schema,
+                                     input_files=meta.input_files)
             return new_block, new_meta
 
         count = 0
@@ -566,7 +563,6 @@ class Dataset(Generic[T]):
         Returns:
             The sum of the records in the dataset.
         """
-
         @ray.remote
         def agg(block: Block[T]) -> int:
             return sum(block.iter_rows())
@@ -633,10 +629,10 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(self,
-                      path: str,
-                      filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                      ) -> None:
+    def write_parquet(
+            self,
+            path: str,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -686,7 +682,6 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to..
         """
-
         @ray.remote
         def json_write(write_path: str, block: ArrowBlock):
             logger.debug(
@@ -694,8 +689,8 @@ class Dataset(Generic[T]):
             block.to_pandas().to_json(write_path, orient="records")
 
         refs = [
-            json_write.remote(
-                os.path.join(path, f"data{block_idx}.json"), block)
+            json_write.remote(os.path.join(path, f"data{block_idx}.json"),
+                              block)
             for block_idx, block in enumerate(self._blocks)
         ]
 
@@ -717,17 +712,17 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to..
         """
-
         @ray.remote
         def csv_write(write_path: str, block: ArrowBlock):
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_csv(
-                write_path, mode="a", header=True, index=False)
+            block.to_pandas().to_csv(write_path,
+                                     mode="a",
+                                     header=True,
+                                     index=False)
 
         refs = [
-            csv_write.remote(
-                os.path.join(path, f"data{block_idx}.csv"), block)
+            csv_write.remote(os.path.join(path, f"data{block_idx}.csv"), block)
             for block_idx, block in enumerate(self._blocks)
         ]
 
@@ -784,8 +779,8 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-        for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+        for batch in self.iter_batches(prefetch_blocks=prefetch_blocks,
+                                       batch_format="_blocks"):
             for row in batch.iter_rows():
                 yield row
 
@@ -814,7 +809,6 @@ class Dataset(Generic[T]):
         Returns:
             A list of iterators over record batches.
         """
-
         def sliding_window(iterable: Iterable, n: int):
             """Creates an iterator consisting of n-width sliding windows over
             iterable. The sliding windows are constructed lazily such that an
@@ -988,10 +982,9 @@ class Dataset(Generic[T]):
             raise ValueError("tensorflow must be installed!")
 
         def make_generator():
-            for batch in self.iter_batches(
-                    prefetch_blocks=prefetch_blocks,
-                    batch_size=batch_size,
-                    batch_format="pandas"):
+            for batch in self.iter_batches(prefetch_blocks=prefetch_blocks,
+                                           batch_size=batch_size,
+                                           batch_format="pandas"):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
@@ -1076,7 +1069,6 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Pandas dataframes created from this dataset.
         """
-
         @ray.remote
         def block_to_df(block: ArrowBlock):
             return block.to_pandas()
@@ -1095,7 +1087,6 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-
         @ray.remote
         def block_to_df(block: ArrowBlock):
             return block.to_arrow_table()
