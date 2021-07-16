@@ -53,7 +53,6 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6 --no-streaming
 
-# Test non streaming shuffle in a single node with a large number of partition.
 - name: dask_on_ray_10gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
@@ -63,7 +62,6 @@
     timeout: 7200
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
-# Test non streaming shuffle in a single node with a large number of partition.
 - name: dask_on_ray_100gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
@@ -284,3 +282,12 @@
       --max-concurrent-epochs 2
       --data-dir s3://core-nightly-test/shuffle-data/
       --no-stats
+
+- name: dask_on_ray_1tb_sort
+  cluster:
+    app_config: dask_on_ray/dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+  run:
+    timeout: 14400
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket s3://core-nightly-test/shuffle-data/
