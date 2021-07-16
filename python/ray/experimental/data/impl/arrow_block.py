@@ -6,7 +6,8 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.experimental.data.impl.block import Block, BlockBuilder, \
+from ray.experimental.data.block import Block
+from ray.experimental.data.impl.block_builder import BlockBuilder, \
     SimpleBlockBuilder
 
 if TYPE_CHECKING:

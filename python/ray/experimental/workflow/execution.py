@@ -5,16 +5,15 @@ from typing import Union, Optional
 import ray
 
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow import recovery
 from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import (
     Storage, create_storage, get_global_storage, set_global_storage)
+from ray.experimental.workflow.workflow_access import (
+    MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
+    get_or_create_management_actor)
 
 logger = logging.getLogger(__name__)
-
-# TODO(suquark): Raise an error when calling run() on an existing workflow.
-# Maybe we can also add a run_or_resume() call.
 
 
 def run(entry_workflow: Workflow,
@@ -36,17 +35,16 @@ def run(entry_workflow: Workflow,
     try:
         workflow_context.init_workflow_step_context(workflow_id, storage_url)
         commit_step(entry_workflow)
-        # TODO(suquark): Move this to a detached named actor,
-        # so the workflow shares fate with the actor.
-        # The current plan is resuming the workflow on the detached named
-        # actor. This is extremely simple to implement, but I am not sure
-        # of its performance.
-        output = recovery.resume_workflow_job(workflow_id,
-                                              get_global_storage())
-        logger.info(f"Workflow job {workflow_id} started.")
+        actor = get_or_create_management_actor()
+        # NOTE: It is important to 'ray.get' the returned output. This
+        # ensures caller of 'run()' holds the reference to the workflow
+        # result. Otherwise if the actor removes the reference of the
+        # workflow output, the caller may fail to resolve the result.
+        output = ray.get(actor.run_or_resume.remote(workflow_id, storage_url))
+        direct_output = flatten_workflow_output(workflow_id, output)
     finally:
         workflow_context.set_workflow_step_context(None)
-    return output
+    return direct_output
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
@@ -66,6 +64,28 @@ def resume(workflow_id: str,
         raise TypeError("'storage' should be None, str, or Storage type.")
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
-    output = recovery.resume_workflow_job(workflow_id, store)
+    actor = get_or_create_management_actor()
+    # NOTE: It is important to 'ray.get' the returned output. This
+    # ensures caller of 'run()' holds the reference to the workflow
+    # result. Otherwise if the actor removes the reference of the
+    # workflow output, the caller may fail to resolve the result.
+    output = ray.get(
+        actor.run_or_resume.remote(workflow_id, store.storage_url))
+    direct_output = flatten_workflow_output(workflow_id, output)
     logger.info(f"Workflow job {workflow_id} resumed.")
-    return output
+    return direct_output
+
+
+def get_output(workflow_id: str) -> ray.ObjectRef:
+    """Get the output of a running workflow.
+    See "api.get_output()" for details.
+    """
+    try:
+        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError as e:
+        raise ValueError(
+            "Failed to connect to the workflow management "
+            "actor. The workflow could have already failed. You can use "
+            "workflow.resume() to resume the workflow.") from e
+    output = ray.get(actor.get_output.remote(workflow_id))
+    return flatten_workflow_output(workflow_id, output)

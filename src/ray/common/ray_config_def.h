@@ -441,3 +441,16 @@ RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
                    getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 10)
+
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
+RAY_CONFIG(string_type, custom_unit_instance_resources, "")
+
+// Maximum size of the batch size when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);

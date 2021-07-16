@@ -150,7 +150,8 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id, int64_t max_restarts = 0, int64_t max_task_retries = 0,
+      const ActorID &actor_id, const std::string &serialized_actor_handle,
+      int64_t max_restarts = 0, int64_t max_task_retries = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
       bool is_asyncio = false, const std::string &extension_data = "") {
@@ -167,6 +168,7 @@ class TaskSpecBuilder {
     actor_creation_spec->set_name(name);
     actor_creation_spec->set_is_asyncio(is_asyncio);
     actor_creation_spec->set_extension_data(extension_data);
+    actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
     return *this;
   }
 

@@ -1,8 +1,10 @@
 import time
 
+import pytest
+
 import ray
 from ray.experimental import workflow
-from ray.experimental.workflow.workflow_access import flatten_workflow_output
+from ray.experimental.workflow import workflow_access
 
 
 @workflow.step
@@ -77,7 +79,7 @@ def blocking():
 
 
 def test_basic_workflows():
-    ray.init()
+    ray.init(namespace="workflow")
 
     output = workflow.run(simple_sequential.step())
     assert ray.get(output) == "[source1][append1][append2]"
@@ -98,7 +100,7 @@ def test_basic_workflows():
 
 
 def test_async_execution():
-    ray.init()
+    ray.init(namespace="workflow")
 
     start = time.time()
     output = workflow.run(blocking.step())
@@ -116,9 +118,39 @@ def deep_nested(x):
     return deep_nested.remote(x + 1)
 
 
+def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
+    while isinstance(output, ray.ObjectRef):
+        output = ray.get(output)
+    return output
+
+
 def test_workflow_output_resolving():
-    ray.init()
+    ray.init(namespace="workflow")
+    # deep nested workflow
     nested_ref = deep_nested.remote(30)
-    ref = flatten_workflow_output("fake_workflow_id", nested_ref)
+    original_func = workflow_access._resolve_workflow_output
+    # replace the original function with a new function that does not
+    # involving named actor
+    workflow_access._resolve_workflow_output = _resolve_workflow_output
+    try:
+        ref = workflow_access.flatten_workflow_output("fake_workflow_id",
+                                                      nested_ref)
+    finally:
+        # restore the function
+        workflow_access._resolve_workflow_output = original_func
     assert ray.get(ref) == 42
+    ray.shutdown()
+
+
+def test_run_or_resume_during_running():
+    ray.init(namespace="workflow")
+    output = workflow.run(
+        simple_sequential.step(), workflow_id="running_workflow")
+
+    with pytest.raises(ValueError):
+        workflow.run(simple_sequential.step(), workflow_id="running_workflow")
+    with pytest.raises(ValueError):
+        workflow.resume(workflow_id="running_workflow")
+
+    assert ray.get(output) == "[source1][append1][append2]"
     ray.shutdown()

@@ -26,7 +26,10 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     "displayName": "Ray Autoscaler Service Account ({})".format(VERSION),
 }
 DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
-                                 "roles/compute.admin")
+                                 "roles/compute.admin",
+                                 "roles/iam.serviceAccountUser")
+# NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
+# with ServiceAccounts.
 
 MAX_POLLS = 12
 POLL_INTERVAL = 5
@@ -478,7 +481,6 @@ def _add_iam_policy_binding(service_account, roles, crm):
         resource=project_id, body={}).execute()
 
     already_configured = True
-
     for role in roles:
         role_exists = False
         for binding in policy["bindings"]:
