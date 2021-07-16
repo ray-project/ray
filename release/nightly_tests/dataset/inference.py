@@ -108,10 +108,9 @@ parallelism = len(s3_paths) // BATCH_SIZE
 parallelism = max(2, parallelism)
 
 while ray.cluster_resources().get("GPU", 0) != 2:
-    print("Waiting for GPUs {}/2".format(
-        ray.cluster_resources().get("GPU", 0)))
+    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get("GPU",
+                                                                     0)))
     time.sleep(5)
-
 
 start_time = time.time()
 
@@ -140,8 +139,5 @@ print("total time", total)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "inference_time": 1,
-        "success": 1
-    }
+    results = {"inference_time": 1, "success": 1}
     json.dump(results, out_file)
