@@ -41,4 +41,4 @@ def bytes_to_records(n_bytes: ByteCount) -> RecordCount:
 
 
 def merge_part_ids(reducer_id: PartId, mapper_id: PartId) -> PartId:
-    return reducer_id * 10000 + mapper_id
+    return reducer_id * 1_000_000 + mapper_id

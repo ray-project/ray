@@ -46,25 +46,25 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--num_reducers",
-        default=32,
+        default=64,
         type=int,
         help="number of reduce actors",
     )
     parser.add_argument(
-        "--merger_concurrency",
-        default=16,
+        "--merge_concurrency",
+        default=8,
         type=int,
         help="number of merge tasks per node",
     )
     parser.add_argument(
-        "--num_merged_mappers",
-        default=64,
+        "--merge_factor",
+        default=32,
         type=int,
-        help="number of merged mapper blocks per reducer",
+        help="number of mapper results to buffer before merging",
     )
     parser.add_argument(
         "--reducer_chunk_size",
-        default=50 * 1000 * 1024,
+        default=100 * 1024 * 1024,
         type=ByteCount,
         help="number of bytes to read in memory from each mapper block",
     )
@@ -104,9 +104,9 @@ def get_args(*args, **kwargs):
     args = parser.parse_args(*args, **kwargs)
     # Derive additional arguments.
     args.input_part_size = ByteCount(args.total_data_size / args.num_mappers)
-    assert args.num_mappers % args.num_merged_mappers == 0, (
-        args.num_mappers, args.num_merged_mappers)
-    args.merge_factor = int(args.num_mappers / args.num_merged_mappers)
+    assert args.num_mappers % args.merge_factor == 0, (args.num_mappers,
+                                                       args.merge_factor)
+    args.num_merged_mappers = int(args.num_mappers / args.merge_factor)
     args.mount_points = _get_mount_points()
     # If no tasks are specified, run all tasks.
     args_dict = vars(args)
@@ -257,8 +257,9 @@ def _merge_impl(args: Args,
 
 @ray.remote
 @tracing_utils.timeit("merge")
-def merge_mapper_blocks(args: Args, part_id: PartId,
+def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
+    part_id = constants.merge_part_ids(reducer_id, mapper_id)
     pinfo = _part_info(args, part_id, kind="temp")
     blocks = ray.get(list(blocks))
     M = len(blocks)
@@ -268,7 +269,8 @@ def merge_mapper_blocks(args: Args, part_id: PartId,
             return None
         return blocks[i]
 
-    return _merge_impl(args, M, pinfo, get_block)
+    _merge_impl(args, M, pinfo, get_block)
+    return reducer_id, pinfo
 
 
 @ray.remote
@@ -301,7 +303,7 @@ def final_merge(args: Args, reducer_id: PartId,
         if d < D - 1:  # prefetch the next block chunk
             block_chunks[i] = _load_block_chunk.options(**opt).remote(
                 args, merged_blocks[i], d + 1)
-        return ray.get(ret)
+        return np.copy(ray.get(ret))
 
     pinfo = _part_info(args, reducer_id, "output")
     return _merge_impl(args, M, pinfo, get_block, args.skip_output)
@@ -327,8 +329,10 @@ def sort_main(args: Args):
     mapper_results = None
     merge_results = []
     merge_count = 0
-    merge_concurrency = args.merger_concurrency * args.num_reducers
+    merge_concurrency = args.merge_concurrency * args.num_reducers
 
+    # TODO: use placement groups to map tasks for one reducer onto
+    # the same node. The current impl is not correct.
     def submit_merge_tasks():
         nonlocal merge_count
         if mapper_results is None:
@@ -337,9 +341,8 @@ def sort_main(args: Args):
             ray.wait(merge_results,
                      num_returns=merge_count - merge_concurrency)
         merge_results.extend([
-            merge_mapper_blocks.remote(
-                args, constants.merge_part_ids(r, merge_count),
-                *mapper_results[:, r].tolist())
+            merge_mapper_blocks.remote(args, r, merge_count,
+                                       *mapper_results[:, r].tolist())
             for r in range(args.num_reducers)
         ])
         merge_count += args.num_reducers
@@ -359,14 +362,15 @@ def sort_main(args: Args):
     mapper_results = None
 
     merge_results = ray.get(merge_results)
-    merge_results.sort(key=lambda p: p.node)
+    key = lambda tup: (tup[0], tup[1].node)
     reducer_inputs = [
-        (k, list(g))
-        for k, g in itertools.groupby(merge_results, key=lambda p: p.node)
+        (k, [p for _, p in g])
+        for k, g in itertools.groupby(sorted(merge_results, key=key), key=key)
     ]
+    print(reducer_inputs)
     reducer_results = [
         final_merge.options(**_node_res(node)).remote(args, r, parts)
-        for r, (node, parts) in enumerate(reducer_inputs)
+        for (r, node), parts in reducer_inputs
     ]
     reducer_results = ray.get(reducer_results)
 
