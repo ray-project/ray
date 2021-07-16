@@ -23,7 +23,7 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
 .. note::
    We always ensure that the latest Dask versions are compatible with Ray nightly.
-  The table below shows the latest Dask versions that are tested with Ray versions.
+   The table below shows the latest Dask versions that are tested with Ray versions.
 
   .. list-table:: Latest Dask versions for each Ray version.
      :header-rows: 1
