@@ -138,7 +138,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
       ray stop
       ray start --head
-      ./bazel-bin/example --ray-address=127.0.0.1:6379
+      RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
