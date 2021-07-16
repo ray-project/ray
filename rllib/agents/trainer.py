@@ -689,7 +689,7 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = Trainer.merge_trainer_configs(self._default_config,
+        self.config = self.merge_trainer_configs(self._default_config,
                                                     config)
 
         # Check and resolve DL framework settings.
