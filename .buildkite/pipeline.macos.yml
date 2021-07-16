@@ -19,6 +19,12 @@ prelude_commands: &prelude_commands |-
   . ./ci/travis/ci.sh build
   ./ci/travis/install-dependencies.sh
 
+epilogue_commands: &epilogue_commands |-
+  # Cleanup runtime environment to save storage
+  rm -rf /tmp/ray
+  # Cleanup local caches (this shouldn't clean up global disk cache)
+  bazel clean
+
 steps:
 - label: ":mac: :apple: Ray C++ and Libraries"
   <<: *common
@@ -27,6 +33,7 @@ steps:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
+    - *epilogue_commands
 
 - label: ":mac: :apple: Small and Large"
   <<: *common
@@ -37,6 +44,7 @@ steps:
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
       --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
+    - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
@@ -45,6 +53,7 @@ steps:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
       python/ray/tests/...
+    - *epilogue_commands
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
@@ -53,6 +62,7 @@ steps:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
+    - *epilogue_commands
 
 - label: ":mac: :apple: :snowflake: Flaky"
   <<: *common
@@ -67,6 +77,7 @@ steps:
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/... python/ray/serve/...
+    - *epilogue_commands
 
     # The follow is running in Travis for now.
     # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...

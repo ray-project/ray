@@ -1613,6 +1613,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             worker_context_.GetCurrentTaskID(), next_task_index);
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
+
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
@@ -1743,6 +1744,17 @@ Status CoreWorker::CreatePlacementGroup(
     PlacementGroupID *return_placement_group_id) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
+  const auto &bundles = placement_group_creation_options.bundles;
+  for (const auto &bundle : bundles) {
+    for (const auto &resource : bundle) {
+      if (resource.first == kBundle_ResourceLabel) {
+        std::ostringstream stream;
+        stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
+               << "allowed to be used in placement groupd ";
+        return Status::Invalid(stream.str());
+      }
+    }
+  }
   const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(

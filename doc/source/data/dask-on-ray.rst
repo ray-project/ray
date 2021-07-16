@@ -22,7 +22,18 @@ specify any callable as the scheduler that you would like Dask to use to execute
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
 .. note::
-  As of Ray 1.4.1, Dask versions 2021.6.1 or lower are supported.
+   We always ensure that the latest Dask versions are compatible with Ray nightly.
+   The table below shows the latest Dask versions that are tested with Ray versions.
+
+  .. list-table:: Latest Dask versions for each Ray version.
+     :header-rows: 1
+
+     * - Ray Version
+       - Dask Version
+     * - ``1.4.1``
+       - ``2021.6.1``
+     * - ``1.4.0``
+       - ``2021.5.0``
 
 Scheduler
 ---------
@@ -34,7 +45,7 @@ any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
     :language: python
 
 .. note::
@@ -99,7 +110,7 @@ aggregations): those downstream computations will be faster since that base coll
 computation was kicked off early and referenced by all downstream computations, often
 via shared memory.
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_persist_example.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_persist_example.py
     :language: python
 
 
@@ -112,7 +123,7 @@ Dask on Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
     :language: python
 
 Callbacks

@@ -7,10 +7,15 @@ import ray
 
 from ray.experimental.workflow import execution
 from ray.experimental.workflow.step_function import WorkflowStepFunction
+from ray.experimental.workflow import virtual_actor
+# avoid collision with arguments
+from ray.experimental.workflow import storage as storage_base
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.storage import Storage
     from ray.experimental.workflow.common import Workflow
+    from ray.experimental.workflow.virtual_actor import (VirtualActorClass,
+                                                         VirtualActor)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,60 @@ def step(func: types.FunctionType) -> WorkflowStepFunction:
         raise TypeError(
             "The @workflow.step decorator can only wrap a function.")
     return WorkflowStepFunction(func)
+
+
+def actor(cls: type) -> "VirtualActorClass":
+    """A decorator used for creating a virtual actor based on a class.
+    The class that is based on must have the "__getstate__" and
+     "__setstate__" method.
+
+    Examples:
+        >>> @workflow.actor
+        ... class Counter:
+        ... def __init__(self, x: int):
+        ...     self.x = x
+        ...
+        ... def get(self):
+        ...     return self.x
+        ...
+        ... def incr(self):
+        ...     self.x += 1
+        ...     return self.x
+        ...
+        ... def __getstate__(self):
+        ...     return self.x
+        ...
+        ... def __setstate__(self, state):
+        ...     self.x = state
+        ...
+        ... # Create and run a virtual actor.
+        ... counter = Counter.create(1)
+        ... assert ray.get(counter.run(incr)) == 2
+
+    Args:
+        cls: The class that the virtual actor is based on.
+    """
+    return virtual_actor.decorate_actor(cls)
+
+
+def get_actor(actor_id: str,
+              storage: "Optional[Union[str, Storage]]" = None,
+              readonly=False) -> "VirtualActor":
+    """Get an virtual actor.
+
+    Args:
+        actor_id: The ID of the actor.
+        storage: The storage of the actor.
+        readonly: Turn the actor into readonly actor or not.
+
+    Returns:
+        A virtual actor.
+    """
+    if storage is None:
+        storage = storage_base.get_global_storage()
+    elif isinstance(storage, str):
+        storage = storage_base.create_storage(storage)
+    return virtual_actor.get_actor(actor_id, storage, readonly)
 
 
 def run(entry_workflow: "Workflow",
@@ -137,4 +196,4 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-__all__ = ("step", "run", "get_output")
+__all__ = ("step", "actor", "run", "resume", "get_output")

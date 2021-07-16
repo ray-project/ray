@@ -28,7 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
-import ray._private.runtime_env as runtime_env
+import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -578,6 +578,8 @@ def init(
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
         namespace=None,
+        runtime_env=None,
+        internal_config=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -590,7 +592,8 @@ def init(
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None,
-        _tracing_startup_hook=None):
+        _tracing_startup_hook=None,
+        **kwargs):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -625,6 +628,10 @@ def init(
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
+            Addresses can be prefixed with a protocol to connect using Ray
+            Client. For example, passing in the address
+            "ray://123.45.67.89:50005" will connect to the cluster at the
+            given address using the Ray client.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -661,6 +668,13 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
+        namespace (str): Namespace to use
+        runtime_env (dict): The runtime environment to use
+        internal_config (dict): Dictionary mapping names of a unstable
+            parameters to values, e.g. {"redis_password": "1234"}. This is
+            only used for initializing a local client (ray.init(local://...)).
+            Values in this dictionary will be used to configure the local
+            cluster. Parameter names should exclude the underscore prefix.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -690,12 +704,59 @@ def init(
             and the API is subject to change.
 
     Returns:
-        Address information about the started processes.
+        If the provided address included a protocol (e.g. "ray://1.2.3.4")
+        then a ClientContext is returned with information such as settings,
+        server versions for ray and python, and the dashboard_url.
+        Otherwise, returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # If available, use RAY_ADDRESS to override if the address was left
+    # unspecified, or set to "auto" in the call to init
+    address_env_var = os.environ.get(
+        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var:
+        if address is None or address == "auto":
+            address = address_env_var
+            logger.info(
+                f"Using address {address_env_var} set in the environment "
+                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
+
+    if address is not None and "://" in address:
+        # Address specified a protocol, use ray client
+        builder = ray.client(address)
+
+        # Forward any keyword arguments that were changed from their default
+        # values to the builder
+        init_sig = inspect.signature(init)
+        passed_kwargs = {}
+        for argument_name, param_obj in init_sig.parameters.items():
+            if argument_name in {"kwargs", "address"}:
+                # kwargs and address are handled separately
+                continue
+            default_value = param_obj.default
+            passed_value = locals()[argument_name]
+            if passed_value != default_value:
+                # passed value is different than default, pass to the client
+                # builder
+                passed_kwargs[argument_name] = passed_value
+        passed_kwargs.update(kwargs)
+        builder._init_args(**passed_kwargs)
+        return builder.connect()
+
+    if kwargs:
+        # User passed in extra keyword arguments but isn't connecting through
+        # ray client. Raise an error, since most likely a typo in keyword
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
+
+    if internal_config is not None:
+        # Should only be used with local client
+        raise RuntimeError("`internal_config` should only be used with "
+                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
@@ -722,11 +783,11 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    address_env_var = os.environ.get(
-        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
+    if runtime_env:
+        if job_config is None:
+            job_config = ray.job_config.JobConfig()
+        job_config.set_runtime_env(runtime_env)
+
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -855,7 +916,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env.rewrite_runtime_env_uris(job_config)
+        runtime_env_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1285,14 +1346,14 @@ def connect(node,
     # environment here. If it's ray client, the environmen will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        runtime_env.upload_runtime_env_package_if_needed(job_config)
+        runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
         uris = os.environ.get("RAY_PACKAGING_URI")
         uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
-        working_dir = runtime_env.ensure_runtime_env_setup(uris)
+        working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
 

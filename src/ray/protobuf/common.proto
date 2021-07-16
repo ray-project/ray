@@ -73,9 +73,8 @@ message PythonFunctionDescriptor {
 
 /// Function descriptor for C/C++.
 message CppFunctionDescriptor {
-  /// Dynamic library name which contains the remote function.
-  string lib_name = 1;
-  string function_name = 4;
+  /// Remote function name.
+  string function_name = 1;
 }
 
 // A union wrapper for various function descriptor types.
