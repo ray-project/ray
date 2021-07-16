@@ -46,18 +46,6 @@ def slugify(value: str, allow_unicode=False) -> str:
     return re.sub(r"[-\s]+", "-", value)
 
 
-def actor_id_to_workflow_id(actor_id: str) -> str:
-    """Get the workflow ID from actor ID.
-
-    Args:
-        actor_id: The ID of a virtual actor.
-
-    Returns:
-        Workflow ID.
-    """
-    return "__actor__." + actor_id
-
-
 class Workflow:
     def __init__(self, original_function: Callable,
                  step_execution_function: StepExecutionFunction,

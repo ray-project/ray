@@ -9,7 +9,7 @@ import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
 from ray._private import signature
-from ray.experimental.workflow.common import slugify, actor_id_to_workflow_id
+from ray.experimental.workflow.common import slugify
 from ray.experimental.workflow.storage import Storage, get_global_storage
 from ray.experimental.workflow.workflow_storage import WorkflowStorage
 from ray.experimental.workflow.recovery import get_latest_output
@@ -32,10 +32,9 @@ class VirtualActorNotInitializedError(Exception):
 @ray.remote
 def _readonly_method_executor(actor_id: str, storage: Storage, cls: type,
                               method_name: str, flattened_args: List):
-    workflow_id = actor_id_to_workflow_id(actor_id)
     instance = cls.__new__(cls)
     try:
-        state = get_latest_output(workflow_id, storage)
+        state = get_latest_output(actor_id, storage)
     except Exception as e:
         raise VirtualActorNotInitializedError(
             f"Virtual actor '{actor_id}' has not been initialized. "
@@ -360,7 +359,7 @@ class VirtualActor:
             setattr(self, method_name, method)
 
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
-        workflow_storage = WorkflowStorage(self.workflow_id, self._storage)
+        workflow_storage = WorkflowStorage(self._actor_id, self._storage)
         workflow_storage.save_actor_class_body(self._metadata.cls)
         # TODO(suquark): This is just a temporary solution.
         # A virtual actor writer should take place of this solution later.
@@ -368,8 +367,7 @@ class VirtualActor:
         arg_list = self._metadata.flatten_args("__init__", args, kwargs)
         init_step = _virtual_actor_init.step(self._metadata.cls, arg_list)
         init_step._step_id = self._metadata.cls.__init__.__name__
-        ref = run(
-            init_step, storage=self._storage, workflow_id=self.workflow_id)
+        ref = run(init_step, storage=self._storage, workflow_id=self._actor_id)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
@@ -378,11 +376,6 @@ class VirtualActor:
     def actor_id(self) -> str:
         """The actor ID of the virtual actor."""
         return self._actor_id
-
-    @property
-    def workflow_id(self) -> str:
-        """The workflow ID associated with the actor."""
-        return actor_id_to_workflow_id(self._actor_id)
 
     @property
     def readonly(self) -> bool:
@@ -433,7 +426,7 @@ def get_actor(actor_id: str, storage: Storage, readonly) -> VirtualActor:
     Returns:
         A virtual actor.
     """
-    ws = WorkflowStorage(actor_id_to_workflow_id(actor_id), storage)
+    ws = WorkflowStorage(actor_id, storage)
     cls = ws.load_actor_class_body()
     v_cls = VirtualActorClass._from_class(cls)
     return v_cls._construct(actor_id, storage, readonly=readonly)
