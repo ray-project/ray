@@ -1,4 +1,5 @@
 import logging
+import types
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 
@@ -24,7 +25,8 @@ from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.batcher import Batcher
-from ray.experimental.data.impl.compute import get_compute
+from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
+    CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.block_builder import SimpleBlock
@@ -34,6 +36,8 @@ from ray.experimental.data.impl.arrow_block import (
 
 T = TypeVar("T")
 U = TypeVar("U")
+
+# An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
 
 logger = logging.getLogger(__name__)
@@ -62,7 +66,7 @@ class Dataset(Generic[T]):
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,
-            fn: Callable[[T], U],
+            fn: Union[CallableClass, Callable[[T], U]],
             compute: Optional[str] = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
@@ -77,17 +81,34 @@ class Dataset(Generic[T]):
             >>> # Transform Arrow records.
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
 
+            >>> # Define a callable class that persists state across
+            >>> # function invocations for efficiency.
+            >>> class CachedModel:
+            ...    def __init__(self):
+            ...        self.model = init_model()
+            ...    def __call__(self, batch):
+            ...        return self.model(batch)
+
+            >>> # Apply the transform in parallel on GPUs. Since
+            >>> # compute="actors", the transform will be applied on an
+            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map(CachedModel, compute="actors", num_gpus=1)
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record.
+            fn: The function to apply to each record, or a class type
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            assert isinstance(fn, types.FunctionType), fn
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 builder.add(fn(row))
@@ -98,7 +119,7 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def map_batches(self,
-                    fn: Callable[[BatchType], BatchType],
+                    fn: Union[CallableClass, Callable[[BatchType], BatchType]],
                     batch_size: int = None,
                     compute: Optional[str] = None,
                     batch_format: str = "pandas",
@@ -111,33 +132,30 @@ class Dataset(Generic[T]):
             >>> # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
 
-            >>> # Define a batch transform function that persists state across
-            >>> # function invocations for efficiency with compute="actors".
-            >>> def batch_infer_fn(batch):
-            ...    global model
-            ...    if model is None:
-            ...        model = init_model()
-            ...    return model(batch)
+            >>> # Define a callable class that persists state across
+            >>> # function invocations for efficiency.
+            >>> class CachedModel:
+            ...    def __init__(self):
+            ...        self.model = init_model()
+            ...    def __call__(self, item):
+            ...        return self.model(item)
 
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute="actors", the transform will be applied on an
             >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
-            ...    batch_infer_fn,
+            ...    CachedModel,
             ...    batch_size=256, compute="actors", num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record batch.
+            fn: The function to apply to each record batch, or a class type
+                that can be instantiated to create such a callable.
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool. When
-                using actors, state can be preserved across function
-                invocations in Python global variables. This can be useful for
-                one-time setups, e.g., initializing a model once and re-using
-                it across many function applications.
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
@@ -148,7 +166,10 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         import pandas as pd
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            assert isinstance(fn, types.FunctionType), fn
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
@@ -190,7 +211,7 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
-                 fn: Callable[[T], Iterable[U]],
+                 fn: Union[CallableClass, Callable[[T], Iterable[U]]],
                  compute: Optional[str] = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
@@ -204,14 +225,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record.
+            fn: The function to apply to each record, or a class type
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            assert isinstance(fn, types.FunctionType), fn
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -223,7 +248,7 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def filter(self,
-               fn: Callable[[T], bool],
+               fn: Union[CallableClass, Callable[[T], bool]],
                compute: Optional[str] = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
@@ -237,14 +262,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The predicate function to apply to each record.
+            fn: The predicate to apply to each record, or a class type
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[T]:
+            assert isinstance(fn, types.FunctionType), fn
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
