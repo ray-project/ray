@@ -311,15 +311,16 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             expected = open(paths[i], "rb").read()
             assert expected == item
 
+
 def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.experimental.data.read_binary_files([
-        "s3://anyscale-data/small-files/0.dat"
-    ])
+    ds = ray.experimental.data.read_binary_files(
+        ["s3://anyscale-data/small-files/0.dat"])
     item = ds.take(1).pop()
     expected = requests.get(
         "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
     ).content
     assert item == expected
+
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
