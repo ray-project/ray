@@ -1,3 +1,5 @@
+.. _datasets:
+
 Datasets: Distributed Arrow on Ray
 ==================================
 
