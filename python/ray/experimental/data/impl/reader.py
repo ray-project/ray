@@ -54,7 +54,7 @@ def s3_downloader(path: str) -> bytes:
     #     Params={"Bucket": bucket, "Key": key},
     #     ExpiresIn=3600
     # )
-    url = f"https://s3.amazonaws.com/{bucket}/{key}"
+    url = f"https://{bucket}.s3.amazonaws.com/{key}"
 
     # Retry download if it fails.
     for _ in range(3):

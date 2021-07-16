@@ -62,7 +62,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-def get_paths(bucket, path, max_files=100 * 1000):
+def get_paths(bucket, path, max_files=10):
     if os.path.exists("./cache.txt"):
         return list(map(
             lambda line: line.strip().split(","),
