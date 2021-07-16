@@ -269,12 +269,21 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="set to use the Trainable (class) API instead of functional one")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        default=False,
+        help="set to run both functional and Trainable APIs")
     args, _ = parser.parse_known_args()
 
     if args.server_address:
         ray.util.connect(args.server_address)
     else:
         ray.init(num_cpus=8)
+
+    if args.test:
+        analysis = tune_xgboost(True)
+        best_bst = get_best_model_checkpoint(analysis)
 
     analysis = tune_xgboost(args.trainable)
 

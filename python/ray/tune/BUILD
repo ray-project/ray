@@ -830,16 +830,8 @@ py_test(
     size = "medium",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
-)
-
-py_test(
-    name = "xgboost_dynamic_resources_example_trainable",
-    size = "medium",
-    srcs = ["examples/xgboost_dynamic_resources_example.py"],
-    deps = [":tune_lib"],
     tags = ["exclusive", "example"],
-    args = ["--trainable"]
+    args = ["--test"]
 )
 
 py_test(
