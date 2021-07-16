@@ -1,4 +1,3 @@
-import re
 from typing import Any, Union, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -32,6 +31,8 @@ def read_file(path: str,
 download_initialized = False
 s3_client = None
 http_session = None
+
+
 def s3_downloader(path: str) -> bytes:
     # S3 specific dependencies should only be imported if we're downloading a
     # file from s3.
@@ -61,6 +62,8 @@ def s3_downloader(path: str) -> bytes:
         result = http_session.get(url)
         if result.status_code == 200:
             break
-        print(f"Failed to download {url} with error: {result.content}. Retrying.")
+        print(
+            f"Failed to download {url} with error: {result.content}. Retrying."
+        )
 
     return result.content

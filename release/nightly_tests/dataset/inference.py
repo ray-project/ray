@@ -64,10 +64,9 @@ import numpy as np
 
 def get_paths(bucket, path, max_files=10):
     if os.path.exists("./cache.txt"):
-        return list(map(
-            lambda line: line.strip().split(","),
-            open("cache.txt", "r").readlines()
-        ))
+        return list(
+            map(lambda line: line.strip().split(","),
+                open("cache.txt", "r").readlines()))
 
     s3 = boto3.resource("s3")
     s3_objects = s3.Bucket(bucket).objects.filter(
@@ -84,6 +83,8 @@ def get_paths(bucket, path, max_files=10):
 download_initialized = False
 s3_client = None
 http_session = None
+
+
 def download(path):
     global download_initialized, s3_client, http_session
     if download_initialized is False:
@@ -108,7 +109,9 @@ def download(path):
         result = http_session.get(url)
         if result.status_code == 200:
             break
-        print(f"Failed to download {url} with error: {result.content}. Retrying.")
+        print(
+            f"Failed to download {url} with error: {result.content}. Retrying."
+        )
 
     return result.content
 
@@ -118,8 +121,11 @@ def preprocess(batch):
     preprocessor = Preprocessor()
     return preprocessor(batch)
 
+
 infer_initialized = False
 model_fn = None
+
+
 def infer(batch):
     # TODO: This needs to work in terms of pyarrow/pandas batches
     global infer_initialized, model_fn
@@ -166,12 +172,7 @@ print("Infer time", infer_time)
 
 print("total time", total)
 
-
-
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "inference_time": 1,
-        "success": 1}
+    results = {"inference_time": 1, "success": 1}
     json.dump(results, out_file)
-
