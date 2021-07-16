@@ -13,6 +13,7 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+
 @DeveloperAPI
 class Metric:
     """The parent class of custom metrics.

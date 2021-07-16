@@ -1,6 +1,3 @@
-import functools
-
-
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
