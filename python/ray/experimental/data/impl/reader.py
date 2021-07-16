@@ -1,10 +1,11 @@
 import logging
-from typing import Any, Union, Optional, Tuple, TYPE_CHECKING
+from typing import Any, List, Union, Optional, Tuple, TYPE_CHECKING
+import urllib
 
 from ray.experimental.data.datasource import _S3FileSystemWrapper
 
 if TYPE_CHECKING:
-    import pyarrow  # noqa: F401
+    import pyarrow
 
 logger = logging.getLogger(__name__)
 
@@ -19,58 +20,78 @@ def read_file(path: str,
     Returns The contents of the file. If `include_paths` is True, a tuple of
       the path and the contents of the file.
     """
+    parsed = urllib.parse.urlparse(path)
+
     if filesystem:
         if isinstance(filesystem, _S3FileSystemWrapper):
             filesystem = filesystem.unwrap()
         contents = filesystem.open_input_stream(path).readall()
     else:
-        if path.startswith("s3://"):
-            contents = s3_downloader(path)
+        if parsed.scheme == "s3":
+            contents = download_single_s3_file(parsed.netloc, parsed.path.strip("/"))
         else:
             contents = open(path, "rb").read()
 
     if include_paths:
-        return path, contents
+        return (path, contents)
     else:
         return contents
 
 
+def list_objects(path: str) -> List[str]:
+    # S3 specific dependencies should only be imported if we're downloading a
+    # file from s3.
+
+    parsed = urllib.parse.urlparse(path)
+    if parsed.scheme != "s3":
+        # TODO (Alex): Implement this after porting it to the datasource.
+        raise NotImplemented(
+            "Binary files can only be enumerated for S3 buckets.")
+
+    import boto3
+    path = parsed.path.strip("/")
+
+    split = path.split("/", 1)
+    bucket = split[0]
+    key = split[1] if len(split) > 1 else ""
+
+    s3 = boto3.resource("s3")
+    s3_objects = s3.Bucket(bucket).objects.filter(
+        Prefix=key).all()
+    paths = [f"s3://{obj.bucket_name}/{obj.key}" for obj in s3_objects]
+    return paths
+
+
 download_initialized = False
-s3_client = None
 http_session = None
 
 
-def s3_downloader(path: str) -> bytes:
-    # S3 specific dependencies should only be imported if we're downloading a
-    # file from s3.
-    import boto3
+def download_single_s3_file(bucket: str, key: str) -> bytes:
     import requests
-
-    global download_initialized, s3_client, http_session
+    global download_initialized, http_session
     if download_initialized is False:
-        s3_client = boto3.client("s3")
         http_session = requests.Session()
         download_initialized = True
 
-    without_prefix = path[len("s3://"):]
-    bucket, key = without_prefix.split("/", 1)
-
-    # TODO (Alex): We should consider generating a presigned url once we port
-    # this to the file system abstraction.
-    # url = s3_client.generate_presigned_url(
-    #     "get_object",
-    #     Params={"Bucket": bucket, "Key": key},
-    #     ExpiresIn=3600
-    # )
+    # split = path.split("/", 1)
+    # bucket = split[0]
+    # key = split[1] if len(split) > 1 else ""
     url = f"https://{bucket}.s3.amazonaws.com/{key}"
 
     # Retry download if it fails.
+    success = False
     for _ in range(3):
         result = http_session.get(url)
         if result.status_code == 200:
+            success = True
             break
         logger.warning(
             f"Failed to download {url} with error: {result.content}. Retrying."
+        )
+
+    if not success:
+        raise ValueError(
+            f"({result.status_code}) {url} is not a valid s3 url. {result.content}"
         )
 
     return result.content

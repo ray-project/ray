@@ -59,25 +59,14 @@ import numpy as np
 
 
 def get_paths(bucket, path, max_files=100 * 1000):
-    if os.path.exists("./cache.txt"):
-        return list(
-            map(lambda line: line.strip().split(","),
-                open("cache.txt", "r").readlines()))
-
     s3 = boto3.resource("s3")
     s3_objects = s3.Bucket(bucket).objects.filter(
         Prefix=path).limit(max_files).all()
-
     materialized = [(obj.bucket_name, obj.key) for obj in tqdm(s3_objects)]
-    with open("cache.txt", "w") as f:
-        for bucket_name, key in materialized:
-            print(f"{bucket_name},{key}", file=f)
-
     return materialized
 
 
 def preprocess(batch):
-    # TODO: This needs to work in terms of pyarrow/pandas batches
     preprocessor = Preprocessor()
     return preprocessor(batch)
 
@@ -87,7 +76,6 @@ model_fn = None
 
 
 def infer(batch):
-    # TODO: This needs to work in terms of pyarrow/pandas batches
     global infer_initialized, model_fn
     if not infer_initialized:
         infer_initialized = True
@@ -103,19 +91,16 @@ print("Getting s3 objects")
 s3_paths = get_paths("anyscale-data", "imagenet/train")
 s3_paths = [f"s3://{bucket}/{key}" for bucket, key in s3_paths]
 
-BATCH_SIZE = 256
-parallelism = len(s3_paths) // BATCH_SIZE
-parallelism = max(2, parallelism)
-
 while ray.cluster_resources().get("GPU", 0) != 2:
     print("Waiting for GPUs {}/2".format(ray.cluster_resources().get("GPU",
-                                                                     0)))
+                                                                     400)))
     time.sleep(5)
 
 start_time = time.time()
 
 print("Downloading...")
 ds = ray.experimental.data.read_binary_files(s3_paths, parallelism=parallelism)
+ds = ds.limit(100 * 1000)
 
 end_download_time = time.time()
 print("Preprocessing...")
@@ -129,13 +114,13 @@ end_time = time.time()
 download_time = end_download_time - start_time
 preprocess_time = end_preprocess_time - end_download_time
 infer_time = end_time - end_preprocess_time
-total = end_time - start_time
+total_time = end_time - start_time
 
 print("Download time", download_time)
 print("Preprocess time", preprocess_time)
 print("Infer time", infer_time)
 
-print("total time", total)
+print("total time", total_time)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -144,5 +129,5 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "preprocess_time": preprocess_time,
         "inference_time": infer_time,
         "total_time": total_time,
-        "success": 1}
+    }
     json.dump(results, out_file)
