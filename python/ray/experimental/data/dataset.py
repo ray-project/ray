@@ -108,7 +108,6 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
-            assert isinstance(fn, types.FunctionType), fn
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 builder.add(fn(row))
@@ -169,7 +168,6 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
-            assert isinstance(fn, types.FunctionType), fn
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
@@ -236,7 +234,6 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
-            assert isinstance(fn, types.FunctionType), fn
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -273,7 +270,6 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[T]:
-            assert isinstance(fn, types.FunctionType), fn
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
