@@ -3,8 +3,6 @@
 
 #include <ray/api.h>
 
-using namespace ::ray::api;
-
 /// a class of user code
 class Counter {
  public:

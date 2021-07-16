@@ -19,6 +19,7 @@ class RayConfig {
 
   // An array of directories or dynamic library files that specify the search path for
   // user code. This parameter is not used when the application runs in local mode.
+  // Only searching the top level under a directory.
   std::vector<std::string> code_search_path;
 
   /* The following are unstable parameters and their use is discouraged. */

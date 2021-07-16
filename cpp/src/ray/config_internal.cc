@@ -10,10 +10,11 @@ DEFINE_string(ray_redis_password, "",
               "Prevents external clients without the password from connecting to Redis "
               "if provided.");
 
-DEFINE_string(ray_code_search_path, "",
-              "A list of directories or files of dynamic libraries that specify the "
-              "search path for user code. Libraries under these paths will be loaded "
-              "by 'dlopen'.");
+DEFINE_string(
+    ray_code_search_path, "",
+    "A list of directories or files of dynamic libraries that specify the "
+    "search path for user code. Only searching the top level under a directory. "
+    "':' is used as the separator.");
 
 DEFINE_string(ray_job_id, "", "Assigned job id.");
 
@@ -95,7 +96,7 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
       // Convert all the paths to absolute path to support configuring relative paths in
       // driver.
       std::vector<std::string> absolute_path;
-      for (auto path : code_search_path) {
+      for (const auto &path : code_search_path) {
         absolute_path.emplace_back(boost::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;

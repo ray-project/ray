@@ -53,9 +53,11 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   } catch (std::exception &e) {
     RAY_LOG(WARNING) << "Get execute function failed, lib_path: " << lib_path
                      << ", failed reason: " << e.what();
+    lib->unload();
   } catch (...) {
     RAY_LOG(WARNING) << "Get execute function failed, lib_path: " << lib_path
                      << ", unknown failed reason.";
+    lib->unload();
   }
   return;
 }
@@ -106,7 +108,7 @@ void FindDynamicLibrary(boost::filesystem::path path,
   }
 }
 
-void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> paths) {
+void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> &paths) {
   std::list<boost::filesystem::path> dynamic_libraries;
   // Lookup dynamic libraries from paths.
   for (auto path : paths) {

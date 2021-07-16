@@ -19,12 +19,15 @@ using EntryFuntion = std::function<msgpack::sbuffer(
 class FunctionHelper {
  public:
   static FunctionHelper &GetInstance() {
-    static FunctionHelper functionHelper;
-    return functionHelper;
+    // We use `new` here because we don't want to destruct this instance forever.
+    // If we do destruct, the shared libraries will be unloaded. And Maybe the unloading
+    // will bring some errors which hard to debug.
+    static auto *instance = new FunctionHelper();
+    return *instance;
   }
 
   void LoadDll(const boost::filesystem::path &lib_path);
-  void LoadFunctionsFromPaths(const std::vector<std::string> paths);
+  void LoadFunctionsFromPaths(const std::vector<std::string> &paths);
   const EntryFuntion &GetExecutableFunctions(const std::string &function_name);
   const EntryFuntion &GetExecutableMemberFunctions(const std::string &function_name);
 

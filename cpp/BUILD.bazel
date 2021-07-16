@@ -124,14 +124,12 @@ genrule(
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
-    tags = ["no-cache"],
     visibility = ["//visibility:public"],
 )
 
 # test
 cc_test(
     name = "api_test",
-    testonly = True,
     srcs = glob([
         "src/ray/test/*.cc",
     ]),
@@ -146,7 +144,6 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
-    testonly = True,
     srcs = glob([
         "src/ray/test/cluster/*.cc",
         "src/ray/test/cluster/*.h",
