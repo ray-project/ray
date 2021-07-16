@@ -1096,7 +1096,4 @@ def test_sort_simple(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-sv", __file__, "-k", "test_sort"]))
-
-# ray.init()
-# test_sort_simple(None)
+    sys.exit(pytest.main(["-v", __file__]))
