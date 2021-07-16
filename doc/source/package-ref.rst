@@ -217,6 +217,8 @@ Debugging APIs
 
 .. autofunction:: ray.util.inspect_serializability
 
+.. _ray-cli:
+
 The Ray Command Line API
 ------------------------
 
