@@ -76,42 +76,6 @@ def get_paths(bucket, path, max_files=100 * 1000):
     return materialized
 
 
-download_initialized = False
-s3_client = None
-http_session = None
-
-
-def download(path):
-    global download_initialized, s3_client, http_session
-    if download_initialized is False:
-        s3_client = boto3.client("s3")
-        http_session = requests.Session()
-        download_initialized = True
-
-    bucket, key = path
-
-    # NOTE: generating a presigned url is theoretically more realistic but
-    # involves setting up AWS credentials.
-    # url = s3_client.generate_presigned_url(
-    #     "get_object",
-    #     Params={"Bucket": bucket, "Key": key},
-    #     ExpiresIn=3600
-    # )
-
-    url = f"https://{bucket}.s3.us-west-2.amazonaws.com/{key}"
-
-    # Retry download if it fails.
-    for _ in range(3):
-        result = http_session.get(url)
-        if result.status_code == 200:
-            break
-        print(
-            f"Failed to download {url} with error: {result.content}. Retrying."
-        )
-
-    return result.content
-
-
 def preprocess(batch):
     # TODO: This needs to work in terms of pyarrow/pandas batches
     preprocessor = Preprocessor()
@@ -143,6 +107,12 @@ BATCH_SIZE = 256
 parallelism = len(s3_paths) // BATCH_SIZE
 parallelism = max(2, parallelism)
 
+while ray.cluster_resources().get("GPU", 0) != 2:
+    print("Waiting for GPUs {}/2".format(
+        ray.cluster_resources().get("GPU", 0)))
+    time.sleep(5)
+
+
 start_time = time.time()
 
 print("Downloading...")
@@ -170,5 +140,8 @@ print("total time", total)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {"inference_time": 1, "success": 1}
+    results = {
+        "inference_time": 1,
+        "success": 1
+    }
     json.dump(results, out_file)
