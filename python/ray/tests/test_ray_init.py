@@ -9,6 +9,7 @@ import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.fixture
@@ -91,6 +92,18 @@ def test_shutdown_and_reset_global_worker(shutdown_only):
 
     a = A.remote()
     ray.get(a.f.remote())
+
+
+def test_tmpdir_env_var(shutdown_only):
+    result = run_string_as_driver(
+        """
+import ray
+context = ray.init()
+assert context["session_dir"].startswith("/tmp/qqq/"), context
+print("passed")
+""",
+        env={"TMPDIR": "/tmp/qqq"})
+    assert "passed" in result, result
 
 
 def test_ports_assignment(ray_start_cluster):
