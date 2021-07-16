@@ -859,18 +859,86 @@ class Dataset(Generic[T]):
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 
-    def to_torch(self, **todo) -> "torch.utils.data.IterableDataset":
-        """Return a Torch data iterator over this dataset.
+    def to_torch(self,
+                 label_column: str,
+                 feature_columns: Optional[List[str]] = None,
+                 label_column_dtype: Optional["torch.dtype"] = None,
+                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 prefetch_blocks: int = 0) -> \
+            "torch.utils.data.IterableDataset":
+        """Return a Torch IterableDataset over this dataset.
+
+        Each element in IterableDataset will be a list consisting of 2
+        elements. The first item is a list of the feature tensors. The
+        second item is the label tensor. Each tensor will be of shape (N,
+        1), where N is the ``batch_size`` used by the DataLoader.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
 
+        Args:
+            label_column (str): The name of the column used as the label
+                (second element of the output list).
+            feature_columns (Optional[List[str]]): The names of the columns
+                to use as the features. If None, then use all columns
+                except the label columns as the features.
+            label_column_dtype (Optional[torch.dtype]): The torch dtype to
+                use for the label column. If None, then automatically infer
+                the dtype.
+            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
+                to use for the feature columns. The len of this list must
+                be equal to the len of ``feature_columns``. If None,
+                then automatically infer the dtype.
+            prefetch_blocks (int): The number of blocks to prefetch ahead of
+                the current block during the scan.
+
         Returns:
             A torch IterableDataset.
         """
-        raise NotImplementedError  # P1
+        import torch
+
+        from ray.experimental.data.impl.torch_iterable_dataset import \
+            TorchIterableDataset
+
+        if feature_columns and feature_column_dtypes:
+            if len(feature_columns) != len(feature_column_dtypes):
+                raise ValueError("The lengths of `feature_columns` "
+                                 f"({len(feature_columns)}) and "
+                                 f"`feature_column_dtypes` ("
+                                 f"{len(feature_column_dtypes)}) do not "
+                                 "match!")
+
+        def make_generator():
+            for batch in self.iter_batches(prefetch_blocks=prefetch_blocks):
+                label_vals = batch.pop(label_column).values
+                label_tensor = torch.as_tensor(
+                    label_vals, dtype=label_column_dtype)
+                label_tensor = label_tensor.view(-1, 1)
+
+                feature_tensor = []
+                if feature_columns:
+                    batch = batch[feature_columns]
+
+                if feature_column_dtypes:
+                    dtypes = feature_column_dtypes
+                else:
+                    dtypes = [None] * len(batch.columns)
+
+                for col, dtype in zip(batch.columns, dtypes):
+                    col_vals = batch[col].values
+                    t = torch.as_tensor(col_vals, dtype=dtype)
+                    t = t.view(-1, 1)
+                    feature_tensor.append(t)
+
+                num_rows = batch.shape[0]
+                for i in range(num_rows):
+                    features = [tensor[i] for tensor in feature_tensor]
+                    label = label_tensor[i]
+                    yield (features, label)
+
+        return TorchIterableDataset(make_generator)
 
     def to_tf(self,
               label_column: str,
@@ -1050,7 +1118,7 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif hasattr(schema, "names"):
+        elif schema and not isinstance(schema, type):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):

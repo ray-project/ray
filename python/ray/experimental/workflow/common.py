@@ -29,7 +29,7 @@ class WorkflowInputs:
     workflows: List[str]
 
 
-def slugify(value: str, allow_unicode=False):
+def slugify(value: str, allow_unicode=False) -> str:
     """Adopted from
     https://github.com/django/django/blob/master/django/utils/text.py
     Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
@@ -44,6 +44,18 @@ def slugify(value: str, allow_unicode=False):
             "ascii", "ignore").decode("ascii")
     value = re.sub(r"[^\w.\-]", "", value).strip()
     return re.sub(r"[-\s]+", "-", value)
+
+
+def actor_id_to_workflow_id(actor_id: str) -> str:
+    """Get the workflow ID from actor ID.
+
+    Args:
+        actor_id: The ID of a virtual actor.
+
+    Returns:
+        Workflow ID.
+    """
+    return "__actor__." + actor_id
 
 
 class Workflow:

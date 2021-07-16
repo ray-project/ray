@@ -85,10 +85,10 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
+        matches = glob.glob(f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
                             f"{minor_version_number}*-manylinux*")
         assert len(matches) == 1, (
-            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
+            f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
             f"{minor_version_number}*-manylinux*' instead of 1")
         return os.path.basename(matches[0])
     else:
@@ -129,6 +129,9 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
             if image_name in ["ray", "ray-deps", "ray-worker-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
+                # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
+                # can be found.
+                build_args["FIND_LINKS_PATH"] = ".whl"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
