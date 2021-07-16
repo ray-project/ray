@@ -1,4 +1,3 @@
-from os import name
 import ray
 from ray import serve
 
@@ -13,14 +12,17 @@ from torchvision.models import resnet50
 
 class Preprocessor:
     def __init__(self):
-        self.torch_transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        self.torch_transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
 
     def __call__(self, img_bytes):
         try:
@@ -55,8 +57,7 @@ import numpy as np
 
 def get_paths(bucket, path, max_files=100 * 1000):
     s3 = boto3.resource("s3")
-    s3_objects = s3.Bucket(bucket).objects.filter(
-        Prefix=path).limit(max_files).all()
+    s3_objects = s3.Bucket(bucket).objects.filter(Prefix=path).limit(max_files).all()
     materialized = [(obj.bucket_name, obj.key) for obj in tqdm(s3_objects)]
     return materialized
 
@@ -83,15 +84,15 @@ def infer(batch):
 ray.init()
 
 while ray.cluster_resources().get("GPU", 0) != 2:
-    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get(
-        "GPU", 400)))
+    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get("GPU", 400)))
     time.sleep(5)
 
 start_time = time.time()
 
 print("Downloading...")
 ds = ray.experimental.data.read_binary_files(
-    "s3://anyscale-data/small-images/", parallelism=400)
+    "s3://anyscale-data/small-images/", parallelism=400
+)
 ds = ds.limit(100 * 1000)
 
 end_download_time = time.time()
