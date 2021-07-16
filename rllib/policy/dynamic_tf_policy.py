@@ -215,7 +215,7 @@ class DynamicTFPolicy(TFPolicy):
         # Setup standard placeholders.
         if existing_inputs is not None:
             timestep = existing_inputs["timestep"]
-            explore = None  #existing_inputs["is_exploring"]
+            explore = None
             self._input_dict, self._dummy_batch = \
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
@@ -242,7 +242,12 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict["is_training"] = self._get_is_training_placeholder()
 
-        sampled_action = sampled_action_logp = dist_inputs = self._state_out = None
+        # Multi-GPU towers do not need any action computing/exploration
+        # graphs.
+        sampled_action = None
+        sampled_action_logp = None
+        dist_inputs = None
+        self._state_out = None
         if not existing_inputs:
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
@@ -303,11 +308,13 @@ class DynamicTFPolicy(TFPolicy):
                 # Pass through model. E.g., PG, PPO.
                 else:
                     if isinstance(self.model, tf.keras.Model):
-                        dist_inputs, self._state_out, self._extra_action_fetches =\
+                        dist_inputs, self._state_out, \
+                            self._extra_action_fetches = \
                             self.model(self._input_dict)
                     else:
                         dist_inputs, self._state_out = self.model(
-                            self._input_dict, self._state_inputs, self._seq_lens)
+                            self._input_dict, self._state_inputs,
+                            self._seq_lens)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
@@ -361,10 +368,14 @@ class DynamicTFPolicy(TFPolicy):
             # Create MultiGPUTowerStacks, if we have at least one actual
             # GPU or >1 CPUs (fake GPUs).
             if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
+                # Per-GPU graph copies created here must share vars with the
+                # policy. Therefore, `reuse` is set to tf1.AUTO_REUSE because
+                # Adam nodes are created after all of the device copies are
+                # created.
                 with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
                     self.multi_gpu_tower_stacks = [
-                        TFMultiGPUTowerStack(policy=self)
-                        for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
+                        TFMultiGPUTowerStack(policy=self) for i in range(
+                            self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
 
     @override(TFPolicy)
@@ -460,7 +471,7 @@ class DynamicTFPolicy(TFPolicy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_loaded_batch(self, offset = 0, buffer_index: int = 0):
+    def learn_on_loaded_batch(self, offset=0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
@@ -668,53 +679,6 @@ class DynamicTFPolicy(TFPolicy):
             self._update_ops = self.model.update_ops()
         return loss
 
-    #def _create_tower(self, device, device_input_placeholders, num_data_in):
-    #    """Creates a "tower" on given device by making a copy of self.
-
-    #    Creates tf vars from given placeholders on `device` and feeds these vars
-    #    into the copy (the tower).
-
-    #    Args:
-    #        device (tf.device): The tf device to be used (a GPU).
-    #        device_input_placeholders (List[tf1.placeholder]): A list of
-    #            placeholders (on CPU) to be used as inputs for the
-    #            to-be-generated tf variables on `device`.
-    #        num_data_in (int):
-    #    """
-    #    assert num_data_in <= len(device_input_placeholders)
-    #    with tf.device(device):
-    #        with tf1.name_scope(TOWER_SCOPE_NAME):
-    #            device_input_batches = []
-    #            device_input_slices = []
-    #            for i, ph in enumerate(device_input_placeholders):
-    #                current_batch = tf1.Variable(
-    #                    ph,
-    #                    trainable=False,
-    #                    validate_shape=False,
-    #                    collections=[])
-    #                device_input_batches.append(current_batch)
-    #                if i < num_data_in:
-    #                    scale = self._max_seq_len
-    #                    granularity = self._max_seq_len
-    #                else:
-    #                    scale = self._max_seq_len
-    #                    granularity = 1
-    #                current_slice = tf.slice(
-    #                    current_batch,
-    #                    ([self._batch_index // scale * granularity] +
-    #                     [0] * len(ph.shape[1:])),
-    #                    ([self._per_device_batch_size // scale * granularity] +
-    #                     [-1] * len(ph.shape[1:])))
-    #                current_slice.set_shape(ph.shape)
-    #                device_input_slices.append(current_slice)
-    #            graph_obj = self.copy(device_input_slices)
-    #            device_grads = graph_obj.gradients(self._optimizer,
-    #                                               graph_obj._loss)
-    #        return Tower(
-    #            tf.group(
-    #                *[batch.initializer for batch in device_input_batches]),
-    #            device_grads, graph_obj)
-
 
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
@@ -735,18 +699,19 @@ class TFMultiGPUTowerStack:
     https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
     """
 
-    def __init__(self,
-                 # Deprecated.
-                 optimizer=None,
-                 devices=None,
-                 input_placeholders=None,
-                 rnn_inputs=None,
-                 max_per_device_batch_size=None,
-                 build_graph=None,
-                 grad_norm_clipping=None,
-                 # Use only `policy` argument from here on.
-                 policy=None,
-                 ):
+    def __init__(
+            self,
+            # Deprecated.
+            optimizer=None,
+            devices=None,
+            input_placeholders=None,
+            rnn_inputs=None,
+            max_per_device_batch_size=None,
+            build_graph=None,
+            grad_norm_clipping=None,
+            # Use only `policy` argument from here on.
+            policy=None,
+    ):
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
@@ -769,12 +734,11 @@ class TFMultiGPUTowerStack:
             self.optimizer = self.policy._optimizer
             self.devices = self.policy.devices
             self.max_per_device_batch_size = 99999
-            input_placeholders = [
-                v for v in self.policy._loss_input_dict_no_rnn.values()
-            ]
-            rnn_inputs = \
-                self.policy._state_inputs + \
-                ([self.policy._seq_lens] if self.policy._seq_lens else [])
+            input_placeholders = list(
+                self.policy._loss_input_dict_no_rnn.values())
+            rnn_inputs = []
+            if self.policy._state_inputs:
+                rnn_inputs = self.policy._state_inputs + [self.policy._seq_lens]
             grad_norm_clipping = self.policy.config.get("grad_clip")
             self.build_graph = self.policy.copy
 
@@ -850,7 +814,6 @@ class TFMultiGPUTowerStack:
         Returns:
             The number of tuples loaded per device.
         """
-        #TODO: what if we only have CPUs?
         if log_once("load_data"):
             logger.info(
                 "Training on concatenated sample batches:\n\n{}\n".format(
@@ -977,8 +940,8 @@ class TFMultiGPUTowerStack:
     def get_device_losses(self):
         return [t.loss_graph for t in self._towers]
 
-    def _setup_device(self, tower_i, device,
-                      device_input_placeholders, num_data_in):
+    def _setup_device(self, tower_i, device, device_input_placeholders,
+                      num_data_in):
         assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
             with tf1.name_scope(TOWER_SCOPE_NAME + f"_{tower_i}"):
@@ -1072,4 +1035,3 @@ def average_gradients(tower_grads):
         average_grads.append(grad_and_var)
 
     return average_grads
-

@@ -28,7 +28,7 @@ class MultiGPULearnerThread(LearnerThread):
             self,
             local_worker: RolloutWorker,
             num_gpus: int = 1,
-            lr=None,  # deprecated 
+            lr=None,  # deprecated.
             train_batch_size: int = 500,
             num_multi_gpu_tower_stacks: int = 1,
             minibatch_buffer_size: int = 1,
@@ -45,8 +45,8 @@ class MultiGPULearnerThread(LearnerThread):
             num_gpus (int): Number of GPUs to use for data-parallel SGD.
             train_batch_size (int): Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
-            num_multi_gpu_tower_stacks (int): Number of buffers to load data into
-                in parallel on one device. Each buffer is of size of
+            num_multi_gpu_tower_stacks (int): Number of buffers to parallelly
+                load data into on one device. Each buffer is of size of
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
             minibatch_buffer_size (int): Max number of train batches to store
@@ -62,56 +62,20 @@ class MultiGPULearnerThread(LearnerThread):
                                num_sgd_iter, learner_queue_size,
                                learner_queue_timeout)
         self.train_batch_size = train_batch_size
-        if not num_gpus:
-            self.devices = ["/cpu:0"]
-        elif _fake_gpus:
-            self.devices = [
-                "/cpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-            ]
-        else:
-            self.devices = [
-                "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
-            ]
-        logger.info("MultiGPULearnerThread devices {}".format(self.devices))
-        assert self.train_batch_size % len(self.devices) == 0
-        assert self.train_batch_size >= len(self.devices), "batch too small"
+
+        # TODO: (sven) Allow multi-GPU to work for multi-agent as well.
+        self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
+
+        logger.info("MultiGPULearnerThread devices {}".format(
+            self.policy.devices))
+        assert self.train_batch_size % len(self.policy.devices) == 0
+        assert self.train_batch_size >= len(self.policy.devices),\
+            "batch too small"
 
         if set(self.local_worker.policy_map.keys()) != {DEFAULT_POLICY_ID}:
             raise NotImplementedError("Multi-gpu mode for multi-agent")
 
-        self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
-
-        # TODO: Move into DynamicTFPolicy.
-        # per-GPU graph copies created below must share vars with the policy
-        # reuse is set to AUTO_REUSE because Adam nodes are created after
-        # all of the device copies are created.
-        self.tower_stack_indices = \
-            [i for i in range(num_multi_gpu_tower_stacks)]
-        #with self.local_worker.tf_sess.graph.as_default():
-        #    with self.local_worker.tf_sess.as_default():
-        #        with tf1.variable_scope(
-        #                DEFAULT_POLICY_ID, reuse=tf1.AUTO_REUSE):
-        #            if self.policy._state_inputs:
-        #                rnn_inputs = self.policy._state_inputs + [
-        #                    self.policy._seq_lens
-        #                ]
-        #            else:
-        #                rnn_inputs = []
-        #            adam = tf1.train.AdamOptimizer(self.lr)
-        #            for _ in range(num_multi_gpu_tower_stacks):
-        #                self.par_opt.append(
-        #                    LocalSyncParallelOptimizer(
-        #                        adam,
-        #                        self.devices,
-        #                        list(
-        #                            self.policy._loss_input_dict_no_rnn.values(
-        #                            )),
-        #                        rnn_inputs,
-        #                        999999,  # it will get rounded down
-        #                        self.policy.copy))
-        #
-        #        self.sess = self.local_worker.tf_sess
-        #        self.sess.run(tf1.global_variables_initializer())
+        self.tower_stack_indices = list(range(num_multi_gpu_tower_stacks))
 
         self.idle_tower_stacks = queue.Queue()
         self.ready_tower_stacks = queue.Queue()
@@ -173,15 +137,6 @@ class _MultiGPULoaderThread(threading.Thread):
         buffer_idx = s.idle_tower_stacks.get()
 
         with self.load_timer:
-            #tuples = policy._get_loss_inputs_dict(batch, shuffle=False)
-            #data_keys = list(policy._loss_input_dict_no_rnn.values())
-            #if policy._state_inputs:
-            #    state_keys = policy._state_inputs + [policy._seq_lens]
-            #else:
-            #    state_keys = []
-            #TODO: implement this in policy (move the above 6 lines into dyn. tf policy!)
             policy.load_batch_into_buffer(batch=batch, buffer_index=buffer_idx)
-            #, [tuples[k] for k in data_keys],
-            #          [tuples[k] for k in state_keys])
 
         s.ready_tower_stacks.put(buffer_idx)

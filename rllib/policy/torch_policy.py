@@ -121,8 +121,8 @@ class TorchPolicy(Policy):
         worker_idx = worker.worker_index if worker else 0
 
         # Create multi-GPU model towers, if necessary.
-        # - The central main model will be stored under self.model, residing on
-        #   self.device.
+        # - The central main model will be stored under self.model, residing
+        #   on self.device.
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
@@ -131,7 +131,8 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
         #   parallelization will be done.
-        # TODO: (sven) implement data pre-loading and n loader buffers for torch.
+        # TODO: (sven) implement data pre-loading and n loader buffers for
+        #  torch.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
             logger.info("TorchPolicy (worker={}) running on {}.".format(

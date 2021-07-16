@@ -156,9 +156,10 @@ class OverrideDefaultResourceRequest:
 def make_learner_thread(local_worker, config):
     if not config["simple_optimizer"]:
         logger.info(
-            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
-                config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
-        if config["num_multi_gpu_tower_stacks"] < config["minibatch_buffer_size"]:
+            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
+            format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
+        if config["num_multi_gpu_tower_stacks"] < \
+                config["minibatch_buffer_size"]:
             raise ValueError(
                 "In multi-GPU mode you must have at least as many "
                 "parallel multi-GPU towers as minibatch buffers: "
@@ -205,7 +206,8 @@ def get_policy_class(config):
 def validate_config(config):
     if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
         deprecation_warning(
-            "num_data_loader_buffers", "num_multi_gpu_tower_stacks",
+            "num_data_loader_buffers",
+            "num_multi_gpu_tower_stacks",
             error=False)
         config["num_multi_gpu_tower_stacks"] = \
             config["num_data_loader_buffers"]

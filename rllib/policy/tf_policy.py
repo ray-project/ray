@@ -149,12 +149,12 @@ class TFPolicy(Policy):
             else config["num_gpus_per_worker"]
         if tfv == 2:
             if config["_fake_gpus"] or num_gpus == 0 or \
-                not tf.config.list_physical_devices("GPU"):
+                    not tf.config.list_physical_devices("GPU"):
                 logger.info("TFPolicy (worker={}) running on {}.".format(
                     worker_idx
                     if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
                     if config["_fake_gpus"] else "CPU"))
-                self.devices = [f"/cpu:0" for i in range(num_gpus or 1)]
+                self.devices = ["/cpu:0" for i in range(num_gpus or 1)]
             else:
                 logger.info(
                     "TFPolicy (worker={}) running on {} GPU(s).".format(
@@ -164,8 +164,8 @@ class TFPolicy(Policy):
                     f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
                 ]
         else:
-            raise NotImplementedError  #TODO: fix problem of
-            #tf.config.list_physical_devices("GPU") for tf1
+            raise NotImplementedError  # TODO: fix problem of
+            # tf.config.list_physical_devices("GPU") for tf1
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
@@ -203,10 +203,7 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        #if len(self._state_inputs) != len(self._state_outputs):
-        #    raise ValueError(
-        #        "Number of state input and output tensors must match, got: "
-        #        "{} vs {}".format(self._state_inputs, self._state_outputs))
+
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")

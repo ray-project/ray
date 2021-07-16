@@ -9,7 +9,7 @@ from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay, \
     SimpleReplayBuffer, MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     ConcatBatches, SelectExperiences, StandardizeFields
-from ray.rllib.execution.train_ops import TrainOneStep, TrainOneStepMultiGPU, \
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
     ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork
 
 __all__ = [
@@ -37,6 +37,6 @@ __all__ = [
     "StandardizeFields",
     "StoreToReplayBuffer",
     "TrainOneStep",
-    "TrainOneStepMultiGPU",
+    "MultiGPUTrainOneStep",
     "UpdateTargetNetwork",
 ]
