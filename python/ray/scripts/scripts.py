@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Set
 
 import click
 import copy
@@ -166,7 +166,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port,
                 from None
 
 
-def continue_debug_session():
+def continue_debug_session(live_jobs: Set[str]):
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -177,19 +177,27 @@ def continue_debug_session():
 
     for active_session in active_sessions:
         if active_session.startswith(b"RAY_PDB_CONTINUE"):
+            # Check to see that the relevant job is still alive.
+            data = ray.experimental.internal_kv._internal_kv_get(
+                active_session)
+            if json.loads(data)["job_id"] not in live_jobs:
+                ray.experimental.internal_kv._internal_kv_del(active_session)
+                continue
+
             print("Continuing pdb session in different process...")
             key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
             while True:
                 data = ray.experimental.internal_kv._internal_kv_get(key)
                 if data:
                     session = json.loads(data)
-                    if "exit_debugger" in session:
+                    if ("exit_debugger" in session
+                            or session["job_id"] not in live_jobs):
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session()
+                    continue_debug_session(live_jobs)
                     return
                 time.sleep(1.0)
 
@@ -217,7 +225,12 @@ def debug(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
-        continue_debug_session()
+        # Used to filter out and clean up entries from dead jobs.
+        live_jobs = {
+            job["JobID"]
+            for job in ray.state.jobs() if not job["IsDead"]
+        }
+        continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
@@ -226,7 +239,11 @@ def debug(address):
         for active_session in active_sessions:
             data = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(active_session))
-            sessions_data.append(data)
+            # Check that the relevant job is alive, else clean up the entry.
+            if data["job_id"] in live_jobs:
+                sessions_data.append(data)
+            else:
+                ray.experimental.internal_kv._internal_kv_del(active_session)
         sessions_data = sorted(
             sessions_data, key=lambda data: data["timestamp"], reverse=True)
         table = [["index", "timestamp", "Ray task", "filename:lineno"]]
