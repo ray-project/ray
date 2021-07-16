@@ -1118,7 +1118,7 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif hasattr(schema, "names"):
+        elif schema and not isinstance(schema, type):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
