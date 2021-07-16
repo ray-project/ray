@@ -1,5 +1,7 @@
 from typing import Any, Union, Optional, Tuple, TYPE_CHECKING
 
+from ray.experimental.data.datasource import _S3FileSystemWrapper
+
 if TYPE_CHECKING:
     import pyarrow  # noqa: F401
 
@@ -15,6 +17,8 @@ def read_file(path: str,
       the path and the contents of the file.
     """
     if filesystem:
+        if isinstance(filesystem, _S3FileSystemWrapper):
+            filesystem = filesystem.unwrap()
         contents = filesystem.open_input_stream(path).readall()
     else:
         if path.startswith("s3://"):

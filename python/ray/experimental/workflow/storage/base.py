@@ -39,8 +39,8 @@ class Storage(metaclass=abc.ABCMeta):
     """
 
     @abstractmethod
-    def load_step_input_metadata(self, workflow_id: str,
-                                 step_id: StepID) -> Dict[str, Any]:
+    async def load_step_input_metadata(self, workflow_id: str,
+                                       step_id: StepID) -> Dict[str, Any]:
         """Load the input metadata of a step.
 
         Args:
@@ -55,8 +55,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
-                                 metadata: Dict[str, Any]) -> None:
+    async def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
+                                       metadata: Dict[str, Any]) -> None:
         """Save the input metadata of a step.
 
         Args:
@@ -69,8 +69,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def load_step_output_metadata(self, workflow_id: str,
-                                  step_id: StepID) -> Dict[str, Any]:
+    async def load_step_output_metadata(self, workflow_id: str,
+                                        step_id: StepID) -> Dict[str, Any]:
         """Load the output metadata of a step.
 
         Args:
@@ -85,8 +85,9 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_step_output_metadata(self, workflow_id: str, step_id: StepID,
-                                  metadata: Dict[str, Any]) -> None:
+    async def save_step_output_metadata(self, workflow_id: str,
+                                        step_id: StepID,
+                                        metadata: Dict[str, Any]) -> None:
         """Save the output metadata of a step.
 
         Args:
@@ -99,7 +100,7 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
+    async def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
         Args:
@@ -114,8 +115,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_step_output(self, workflow_id: str, step_id: StepID,
-                         output: Any) -> None:
+    async def save_step_output(self, workflow_id: str, step_id: StepID,
+                               output: Any) -> None:
         """Save the output of a workflow step.
 
         Args:
@@ -127,8 +128,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def load_step_func_body(self, workflow_id: str,
-                            step_id: StepID) -> Callable:
+    async def load_step_func_body(self, workflow_id: str,
+                                  step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
 
         Args:
@@ -143,8 +144,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_step_func_body(self, workflow_id: str, step_id: StepID,
-                            func_body: Callable) -> None:
+    async def save_step_func_body(self, workflow_id: str, step_id: StepID,
+                                  func_body: Callable) -> None:
         """Save the function body of the workflow step.
 
         Args:
@@ -157,7 +158,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def load_step_args(self, workflow_id: str, step_id: StepID) -> ArgsType:
+    async def load_step_args(self, workflow_id: str,
+                             step_id: StepID) -> ArgsType:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
@@ -174,8 +176,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_step_args(self, workflow_id: str, step_id: StepID,
-                       args: ArgsType) -> None:
+    async def save_step_args(self, workflow_id: str, step_id: StepID,
+                             args: ArgsType) -> None:
         """Save the function body of the workflow step.
 
         Args:
@@ -188,8 +190,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def load_object_ref(self, workflow_id: str,
-                        object_id: str) -> ray.ObjectRef:
+    async def load_object_ref(self, workflow_id: str,
+                              object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
 
         Args:
@@ -204,8 +206,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def save_object_ref(self, workflow_id: str,
-                        obj_ref: ray.ObjectRef) -> None:
+    async def save_object_ref(self, workflow_id: str,
+                              obj_ref: ray.ObjectRef) -> None:
         """Save the input object ref.
 
         Args:
@@ -217,7 +219,8 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def get_step_status(self, workflow_id: str, step_id: StepID) -> StepStatus:
+    async def get_step_status(self, workflow_id: str,
+                              step_id: StepID) -> StepStatus:
         """Check the status of a step in the storage.
 
         Args:
@@ -232,3 +235,30 @@ class Storage(metaclass=abc.ABCMeta):
     @abstractmethod
     def storage_url(self) -> str:
         """Get the URL of the storage."""
+
+    @abstractmethod
+    async def load_actor_class_body(self, workflow_id: str) -> type:
+        """Load the class body of the virtual actor.
+
+        Args:
+            workflow_id: ID of the workflow job.
+
+        Raises:
+            DataLoadError: if we fail to load the class body.
+        """
+
+    @abstractmethod
+    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
+        """Save the class body of the virtual actor.
+
+        Args:
+            workflow_id: ID of the workflow job.
+            cls: The class body used by the virtual actor.
+
+        Raises:
+            DataSaveError: if we fail to save the class body.
+        """
+
+    @abstractmethod
+    def __reduce__(self):
+        """Reduce the storage to a serializable object."""

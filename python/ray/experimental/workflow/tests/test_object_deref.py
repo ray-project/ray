@@ -69,7 +69,7 @@ def receive_data(data: np.ndarray):
 
 # TODO(suquark): Support ObjectRef checkpointing.
 def test_objectref_inputs_exception():
-    ray.init()
+    ray.init(namespace="workflow")
 
     with pytest.raises(ValueError):
         output = workflow.run(receive_data.step(ray.put([42])))
@@ -79,7 +79,7 @@ def test_objectref_inputs_exception():
 
 @pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
 def test_objectref_inputs():
-    ray.init()
+    ray.init(namespace="workflow")
 
     output = workflow.run(
         deref_check.step(
@@ -92,7 +92,7 @@ def test_objectref_inputs():
 
 
 def test_object_deref():
-    ray.init()
+    ray.init(namespace="workflow")
 
     x = empty_list.step()
     output = workflow.run(deref_shared.step(x, x))
