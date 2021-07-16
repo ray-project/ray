@@ -20,13 +20,12 @@ def read_file(path: str,
     Returns The contents of the file. If `include_paths` is True, a tuple of
       the path and the contents of the file.
     """
-    parsed = urllib.parse.urlparse(path)
-
     if filesystem:
         if isinstance(filesystem, _S3FileSystemWrapper):
             filesystem = filesystem.unwrap()
         contents = filesystem.open_input_stream(path).readall()
     else:
+        parsed = urllib.parse.urlparse(path)
         if parsed.scheme == "s3":
             contents = download_single_s3_file(parsed.netloc,
                                                parsed.path.strip("/"))
@@ -34,7 +33,7 @@ def read_file(path: str,
             contents = open(path, "rb").read()
 
     if include_paths:
-        return (path, contents)
+        return path, contents
     else:
         return contents
 
@@ -69,27 +68,21 @@ http_session = None
 def download_single_s3_file(bucket: str, key: str) -> bytes:
     import requests
     global download_initialized, http_session
-    if download_initialized is False:
+    if not download_initialized:
         http_session = requests.Session()
         download_initialized = True
 
-    # split = path.split("/", 1)
-    # bucket = split[0]
-    # key = split[1] if len(split) > 1 else ""
     url = f"https://{bucket}.s3.amazonaws.com/{key}"
 
     # Retry download if it fails.
-    success = False
     for _ in range(3):
         result = http_session.get(url)
         if result.status_code == 200:
-            success = True
             break
         logger.warning(
             f"Failed to download {url} with error: {result.content}. Retrying."
         )
-
-    if not success:
+    else:
         raise ValueError(
             f"({result.status_code}) {url} is not a valid s3 url. "
             f"{result.content}")

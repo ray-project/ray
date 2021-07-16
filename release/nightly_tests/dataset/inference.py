@@ -87,10 +87,6 @@ def infer(batch):
 
 ray.init()
 
-print("Getting s3 objects")
-s3_paths = get_paths("anyscale-data", "imagenet/train")
-s3_paths = [f"s3://{bucket}/{key}" for bucket, key in s3_paths]
-
 while ray.cluster_resources().get("GPU", 0) != 2:
     print("Waiting for GPUs {}/2".format(ray.cluster_resources().get(
         "GPU", 400)))
@@ -99,7 +95,8 @@ while ray.cluster_resources().get("GPU", 0) != 2:
 start_time = time.time()
 
 print("Downloading...")
-ds = ray.experimental.data.read_binary_files(s3_paths, parallelism=parallelism)
+ds = ray.experimental.data.read_binary_files(
+    "s3://anyscale-data/imagenet/train", parallelism=400)
 ds = ds.limit(100 * 1000)
 
 end_download_time = time.time()
