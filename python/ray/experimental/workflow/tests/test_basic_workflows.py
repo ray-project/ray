@@ -79,6 +79,19 @@ def blocking():
     return 314
 
 
+@workflow.step
+def mul(a, b):
+    return a * b
+
+
+@workflow.step
+def factorial(n):
+    if n == 1:
+        return 1
+    else:
+        return mul.step(n, factorial.step(n - 1))
+
+
 @pytest.mark.parametrize(
     "ray_start_regular_shared", [{
         "namespace": "workflow"
@@ -98,6 +111,9 @@ def test_basic_workflows(ray_start_regular_shared):
 
     output = workflow.run(fork_join.step())
     assert ray.get(output) == "join([source1][append1], [source1][append2])"
+
+    outputs = workflow.run(factorial.step(10))
+    assert ray.get(outputs) == 3628800
 
 
 @pytest.mark.parametrize(

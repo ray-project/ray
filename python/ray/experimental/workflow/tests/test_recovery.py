@@ -1,5 +1,7 @@
 import subprocess
 import time
+
+from ray.tests.conftest import *  # noqa
 import pytest
 
 import ray
@@ -57,8 +59,11 @@ def simple(x):
     return z
 
 
-def test_recovery_simple():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_recovery_simple(ray_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
@@ -72,11 +77,13 @@ def test_recovery_simple():
     # resume from workflow output checkpoint
     output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"
-    ray.shutdown()
 
 
-def test_recovery_complex():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_recovery_complex(ray_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
@@ -92,14 +99,15 @@ def test_recovery_complex():
     output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
     assert ray.get(output) == r
-    ray.shutdown()
 
 
-def test_recovery_non_exists_workflow():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_recovery_non_exists_workflow(ray_start_regular):
     with pytest.raises(RayTaskError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
-    ray.shutdown()
 
 
 driver_script = """
@@ -146,12 +154,14 @@ def recursive_chain(x):
         return 100
 
 
-def test_shortcut():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_shortcut(ray_start_regular):
     output = workflow.run(recursive_chain.step(0), workflow_id="shortcut")
     assert ray.get(output) == 100
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.WorkflowStorage("shortcut")
     step_id = store.get_entrypoint_step_id()
     assert store.inspect_step(step_id).output_object_valid
-    ray.shutdown()
