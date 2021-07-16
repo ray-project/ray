@@ -1050,16 +1050,11 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     assert np.array_equal(df.values, combined_iterations)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (
-            lazy_fixture("s3_fs"),
-            lazy_fixture("s3_path"),
-            lazy_fixture("s3_server"))
-    ])
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
 def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     if endpoint_url is None:
         storage_options = {}
@@ -1137,17 +1132,23 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     file_path1 = os.path.join(path1, "data0.json")
     df1.to_json(
-        file_path1, orient="records", lines=True,
+        file_path1,
+        orient="records",
+        lines=True,
         storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     file_path2 = os.path.join(path2, "data1.json")
     df2.to_json(
-        file_path2, orient="records", lines=True,
+        file_path2,
+        orient="records",
+        lines=True,
         storage_options=storage_options)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.json")
     df3.to_json(
-        file_path3, orient="records", lines=True,
+        file_path3,
+        orient="records",
+        lines=True,
         storage_options=storage_options)
     ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3])
@@ -1219,10 +1220,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(dir_path)
-    else:
-        fs.delete_dir(_unwrap_protocol(dir_path))
+    shutil.rmtree(dir_path)
 
 
 def test_json_write(ray_start_regular_shared, tmp_path):
@@ -1287,16 +1285,11 @@ def test_json_roundtrip(ray_start_regular_shared, tmp_path):
     shutil.rmtree(path)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (
-            lazy_fixture("s3_fs"),
-            lazy_fixture("s3_path"),
-            lazy_fixture("s3_server"))
-    ])
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
 def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     if endpoint_url is None:
         storage_options = {}
@@ -1318,8 +1311,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.experimental.data.read_csv(
-            [path1, path2], parallelism=2, filesystem=fs)
+    ds = ray.data.read_csv(
+        [path1, path2], parallelism=2, filesystem=fs)
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     df = pd.concat([df1, df2])
     assert df.equals(dsdf)

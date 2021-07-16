@@ -31,8 +31,7 @@ def s3_path(data_dir):
 
 @pytest.fixture(scope="function")
 def s3_fs(aws_credentials, s3_server, s3_path):
-    fs = pa.fs.S3FileSystem(
-        region="us-west-2", endpoint_override=s3_server)
+    fs = pa.fs.S3FileSystem(region="us-west-2", endpoint_override=s3_server)
     if s3_path.startswith("s3://"):
         s3_path = s3_path[len("s3://"):]
     fs.create_dir(s3_path)
