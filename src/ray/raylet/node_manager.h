@@ -520,9 +520,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  Status HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                            rpc::PinObjectIDsReply *reply) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,

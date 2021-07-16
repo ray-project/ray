@@ -2127,9 +2127,8 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   return true;
 }
 
-void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                                     rpc::PinObjectIDsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+Status NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                                       rpc::PinObjectIDsReply *reply) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
   const auto &owner_address = request.owner_address();
@@ -2142,13 +2141,12 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
         << "Failed to get objects that should have been in the object store. These "
            "objects may have been evicted while there are still references in scope.";
     // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-    return;
+    return Status::Invalid("Failed to get objects.");
   }
   local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(owner_address, object_ids);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  return Status::OK();
 }
 
 void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,

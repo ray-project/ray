@@ -31,7 +31,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
+  FIBER_RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)     \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
@@ -97,9 +97,8 @@ class NodeManagerServiceHandler {
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
-                                  PinObjectIDsReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
+  virtual Status HandlePinObjectIDs(const PinObjectIDsRequest &request,
+                                    PinObjectIDsReply *reply) = 0;
 
   virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
                                   GetNodeStatsReply *reply,
