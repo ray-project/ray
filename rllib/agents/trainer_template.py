@@ -112,13 +112,13 @@ def build_trainer(
             distributed execution workflow.
         allow_unknown_configs (bool): Whether to allow unknown top-level config
             keys.
-        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys with
-            value=dict, for which new sub-keys are allowed to be added to the
-            value dict. Appends to Trainer class defaults.
+        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+            with value=dict, for which new sub-keys are allowed to be added to
+            the value dict. Appends to Trainer class defaults.
         override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
             level keys with value=dict, for which we always override the entire
-            value (dict), iff the "type" key in that value dict changes. Appends
-            to Trainer class defaults.
+            value (dict), iff the "type" key in that value dict changes.
+            Appends to Trainer class defaults.
 
     Returns:
         Type[Trainer]: A Trainer sub-class configured by the specified args.
