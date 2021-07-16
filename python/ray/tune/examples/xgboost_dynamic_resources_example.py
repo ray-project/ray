@@ -145,7 +145,7 @@ class BreastCancerTrainable(Trainable):
             self.new_nthread = new_resources.cpu
 
 
-def tune_xgboost(trainable):
+def tune_xgboost(trainable=True):
     search_space = {
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
