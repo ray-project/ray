@@ -201,7 +201,7 @@ Process WorkerPool::StartWorkerProcess(
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
-  if (language == Language::JAVA) {
+  if (language == Language::JAVA || language == Language::CPP) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -212,7 +212,13 @@ Process WorkerPool::StartWorkerProcess(
         code_search_path_str += path;
       }
       if (!code_search_path_str.empty()) {
-        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        if (language == Language::JAVA) {
+          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        } else if (language == Language::CPP) {
+          code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
+        } else {
+          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
+        }
         options.push_back(code_search_path_str);
       }
     }

@@ -20,11 +20,8 @@ namespace raylet {
 
 class MockWorker : public WorkerInterface {
  public:
-  MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0)
-      : worker_id_(worker_id),
-        port_(port),
-        is_detached_actor_(false),
-        runtime_env_hash_(runtime_env_hash) {}
+  MockWorker(WorkerID worker_id, int port)
+      : worker_id_(worker_id), port_(port), is_detached_actor_(false) {}
 
   WorkerID WorkerId() const { return worker_id_; }
 
@@ -109,7 +106,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return JobID::Nil();
   }
-  int GetRuntimeEnvHash() const { return runtime_env_hash_; }
+  int GetRuntimeEnvHash() const { return 0; }
   void AssignActorId(const ActorID &actor_id) { RAY_CHECK(false) << "Method unused"; }
   const ActorID &GetActorId() const {
     RAY_CHECK(false) << "Method unused";
@@ -197,7 +194,6 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   Task task_;
-  int runtime_env_hash_;
 };
 
 }  // namespace raylet
