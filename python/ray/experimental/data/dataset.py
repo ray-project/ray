@@ -1,5 +1,4 @@
 import logging
-import types
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 
