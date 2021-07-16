@@ -92,7 +92,6 @@ def download_single_s3_file(bucket: str, key: str) -> bytes:
     if not success:
         raise ValueError(
             f"({result.status_code}) {url} is not a valid s3 url. "
-            f"{result.content}"
-        )
+            f"{result.content}")
 
     return result.content
