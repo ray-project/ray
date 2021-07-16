@@ -1,10 +1,9 @@
-import os
 import subprocess
-import sys
 import time
 import pytest
 
 import ray
+from ray.test_utils import run_string_as_driver_nonblocking
 from ray.exceptions import RaySystemError, RayTaskError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
@@ -103,12 +102,33 @@ def test_recovery_non_exists_workflow():
     ray.shutdown()
 
 
+driver_script = """
+import time
+import ray
+from ray.experimental import workflow
+
+
+@workflow.step
+def foo(x):
+    print("Executing", x)
+    time.sleep(1)
+    if x < 20:
+        return foo.step(x + 1)
+    else:
+        return 20
+
+
+if __name__ == "__main__":
+    ray.init(address="auto", namespace="workflow")
+    wf = workflow.run(foo.step(0), workflow_id="cluster_failure")
+    assert ray.get(wf) == 20
+"""
+
+
 def test_recovery_cluster_failure():
     subprocess.run(["ray start --head"], shell=True)
     time.sleep(1)
-    script = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "workflows_to_fail.py")
-    proc = subprocess.Popen([sys.executable, script])
+    proc = run_string_as_driver_nonblocking(driver_script)
     time.sleep(10)
     subprocess.run(["ray stop"], shell=True)
     proc.kill()
