@@ -134,12 +134,16 @@ def build_trainer(
 
         def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
+
+        @override(base)
+        def setup(self, config: PartialTrainerConfigDict):
             if allow_unknown_subkeys is not None:
                 self._allow_unknown_subkeys += allow_unknown_subkeys
             self._allow_unknown_configs = allow_unknown_configs
             if override_all_subkeys_if_type_changes is not None:
                 self._override_all_subkeys_if_type_changes += \
                     override_all_subkeys_if_type_changes
+            super().setup(config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
