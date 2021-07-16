@@ -88,8 +88,8 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     if (redis_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
       if (ray_address_env) {
-        RAY_LOG(INFO) << "Initialize Ray cluster address to \"" << ray_address_env
-                      << "\" from environment variable \"RAY_ADDRESS\".";
+        RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
+                       << "\" from environment variable \"RAY_ADDRESS\".";
         SetRedisAddress(ray_address_env);
       }
     }
