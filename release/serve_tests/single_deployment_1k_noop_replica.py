@@ -142,9 +142,8 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         )
         setup_local_single_node_cluster(num_nodes)
     else:
-        print(
-            f"\n\nSetting up anyscale ray cluster with {num_nodes} nodes ....\n\n"
-        )
+        print(f"\n\nSetting up anyscale ray cluster with {num_nodes} "
+              f"nodes ....\n\n")
         setup_anyscale_cluster()
 
     print(f"\n\nDeploying with {num_replicas} target replicas ....\n\n")
