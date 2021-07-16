@@ -607,7 +607,7 @@ def check_oversized_function(pickled, name, obj_type, worker):
         return
     elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
         warning_message = (
-            "The {} {} is very large ({}MiB). "
+            "The {} {} is very large ({} MiB). "
             "Check that its definition is not implicitly capturing a large "
             "array or other object in scope. Tip: use ray.put() to put large "
             "objects in the Ray object store.").format(obj_type, name,
@@ -619,8 +619,8 @@ def check_oversized_function(pickled, name, obj_type, worker):
             job_id=worker.current_job_id)
     else:
         error = (
-            "The {} {} is too large ({}MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
-            "MiB). Check that its definition is not implicitly capturing a "
+            "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
+            " MiB). Check that its definition is not implicitly capturing a "
             "large array or other object in scope. Tip: use ray.put() to "
             "put large objects in the Ray object store.").format(
                 obj_type, name, length // (1024 * 1024),
