@@ -73,6 +73,9 @@ CORE_NIGHTLY_TESTS = {
         "single_node",
         "object_store",
     ],
+    "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
+        "inference",
+    ]
 }
 
 NIGHTLY_TESTS = {

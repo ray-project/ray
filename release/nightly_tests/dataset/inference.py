@@ -1,6 +1,3 @@
-# TODO (Alex): Split these into separate files once runtime envs work. The
-# releaser doesn't push files to worker nodes.
-################ model.py ###########################3
 from os import name
 import ray
 from ray import serve
@@ -45,8 +42,6 @@ class ImageModel:
             result = torch.argmax(output_tensor, dim=1).cpu()
         return result.numpy()
 
-
-################# inference.py #######################
 
 import ray
 import boto3
@@ -96,7 +91,7 @@ start_time = time.time()
 
 print("Downloading...")
 ds = ray.experimental.data.read_binary_files(
-    "s3://anyscale-data/imagenet/train", parallelism=400)
+    "s3://anyscale-data/small-images/", parallelism=400)
 ds = ds.limit(100 * 1000)
 
 end_download_time = time.time()
