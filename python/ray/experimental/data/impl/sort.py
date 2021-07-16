@@ -1,13 +1,10 @@
-from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
-    Dict, Optional, Tuple, Union, TYPE_CHECKING
+from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
 import ray
-from ray.experimental.data.block import Block, BlockMetadata
-from ray.experimental.data.impl.arrow_block import ArrowBlock
-from ray.experimental.data.impl.block_builder import SimpleBlock, SimpleBlockBuilder
+from ray.experimental.data.block import Block
+from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
-from ray.experimental.data.impl.compute import ComputeStrategy, get_compute
 
 T = TypeVar("T")
 
@@ -77,8 +74,7 @@ def merge_simple_blocks(blocks: List[Block[T]], key=SortKeyT) -> Block[T]:
     return ret_block, ret_block.get_metadata(None)
 
 
-def sort_impl(blocks: BlockList[T],
-              key: SortKeyT,
+def sort_impl(blocks: BlockList[T], key: SortKeyT,
               descending: bool = False) -> BlockList[T]:
     num_mappers = len(blocks)
     num_reducers = num_mappers
