@@ -92,8 +92,8 @@ s3_paths = get_paths("anyscale-data", "imagenet/train")
 s3_paths = [f"s3://{bucket}/{key}" for bucket, key in s3_paths]
 
 while ray.cluster_resources().get("GPU", 0) != 2:
-    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get("GPU",
-                                                                     400)))
+    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get(
+        "GPU", 400)))
     time.sleep(5)
 
 start_time = time.time()

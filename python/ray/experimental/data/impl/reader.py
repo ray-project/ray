@@ -28,7 +28,8 @@ def read_file(path: str,
         contents = filesystem.open_input_stream(path).readall()
     else:
         if parsed.scheme == "s3":
-            contents = download_single_s3_file(parsed.netloc, parsed.path.strip("/"))
+            contents = download_single_s3_file(parsed.netloc,
+                                               parsed.path.strip("/"))
         else:
             contents = open(path, "rb").read()
 
@@ -45,7 +46,7 @@ def list_objects(path: str) -> List[str]:
     parsed = urllib.parse.urlparse(path)
     if parsed.scheme != "s3":
         # TODO (Alex): Implement this after porting it to the datasource.
-        raise NotImplemented(
+        raise NotImplementedError(
             "Binary files can only be enumerated for S3 buckets.")
 
     import boto3
@@ -56,8 +57,7 @@ def list_objects(path: str) -> List[str]:
     key = split[1] if len(split) > 1 else ""
 
     s3 = boto3.resource("s3")
-    s3_objects = s3.Bucket(bucket).objects.filter(
-        Prefix=key).all()
+    s3_objects = s3.Bucket(bucket).objects.filter(Prefix=key).all()
     paths = [f"s3://{obj.bucket_name}/{obj.key}" for obj in s3_objects]
     return paths
 
@@ -91,7 +91,8 @@ def download_single_s3_file(bucket: str, key: str) -> bytes:
 
     if not success:
         raise ValueError(
-            f"({result.status_code}) {url} is not a valid s3 url. {result.content}"
+            f"({result.status_code}) {url} is not a valid s3 url. "
+            f"{result.content}"
         )
 
     return result.content

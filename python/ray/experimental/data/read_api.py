@@ -324,7 +324,6 @@ def read_binary_files(
     if isinstance(paths, str):
         paths = _reader.list_objects(paths)
 
-
     dataset = from_items(paths, parallelism=parallelism)
     if isinstance(filesystem, pa.fs.S3FileSystem):
         filesystem = _S3FileSystemWrapper(filesystem)
