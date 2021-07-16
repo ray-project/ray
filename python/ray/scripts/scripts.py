@@ -426,7 +426,7 @@ def debug(address):
     "--temp-dir",
     hidden=True,
     default=None,
-    help="manually specify the root temporary dir of the Ray process")
+    help="Deprecated: use the TMPDIR env var instead.")
 @click.option(
     "--system-config",
     default=None,
