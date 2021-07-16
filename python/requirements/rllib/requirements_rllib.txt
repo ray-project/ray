@@ -23,6 +23,8 @@ mlagents==0.26.0
 mlagents_envs==0.26.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.8.2
+pymunk
+supersuit
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.

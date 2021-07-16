@@ -147,22 +147,6 @@ class PlasmaClient {
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
 
-  /// Deprecated variant of Get() that doesn't automatically release buffers
-  /// when they get out of scope.
-  ///
-  /// \param object_ids The IDs of the objects to get.
-  /// \param num_objects The number of object IDs to get.
-  /// \param timeout_ms The amount of time in milliseconds to wait before this
-  ///        request times out. If this value is -1, then no timeout is set.
-  /// \param object_buffers An array where the results will be stored.
-  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
-  /// \return The return status.
-  ///
-  /// The caller is responsible for releasing any retrieved objects, but it
-  /// should not release objects that were not retrieved.
-  Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer *object_buffers, bool is_from_worker);
-
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
   /// After this call, the buffer returned by Get() is no longer valid.

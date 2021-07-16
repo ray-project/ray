@@ -45,7 +45,7 @@ any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
     :language: python
 
 .. note::
@@ -110,7 +110,7 @@ aggregations): those downstream computations will be faster since that base coll
 computation was kicked off early and referenced by all downstream computations, often
 via shared memory.
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_persist_example.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_persist_example.py
     :language: python
 
 
@@ -123,7 +123,7 @@ Dask on Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
-.. literalinclude:: ../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
     :language: python
 
 Callbacks
