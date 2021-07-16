@@ -623,9 +623,15 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 }
 
 void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
-  auto &object = store_info_.objects[object_id];
+  auto object = GetObjectTableEntry(&store_info_, object_id);
+  if (object == nullptr) {
+    RAY_LOG(WARNING) << object_id << " has already been deleted.";
+    return;
+  }
   auto buff_size = object->data_size + object->metadata_size;
   if (object->device_num == 0) {
+    RAY_LOG(DEBUG) << "Erasing object: " << object_id << ", address: " << object->pointer
+                   << ", size:" << buff_size;
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
   if (object->state == ObjectState::PLASMA_CREATED) {
