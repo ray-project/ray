@@ -139,5 +139,10 @@ print("total time", total)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {"inference_time": 1, "success": 1}
+    results = {
+        "download_time": download_time,
+        "preprocess_time": preprocess_time,
+        "inference_time": infer_time,
+        "total_time": total_time,
+        "success": 1}
     json.dump(results, out_file)

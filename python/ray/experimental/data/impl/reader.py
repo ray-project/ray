@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def read_file(path: str,
               include_paths: bool = False,
               filesystem: Optional["pyarrow.fs.FileSystem"] = None
