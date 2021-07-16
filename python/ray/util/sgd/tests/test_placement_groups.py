@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import ray
 import torch.nn as nn
