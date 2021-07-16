@@ -23,7 +23,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", invocation.remote_function_holder.function_name);
+      invocation.remote_function_holder.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
