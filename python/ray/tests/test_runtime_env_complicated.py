@@ -4,6 +4,7 @@ import pytest
 import sys
 import unittest
 import yaml
+import time
 
 import subprocess
 
@@ -12,7 +13,8 @@ import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray._private.runtime_env import RuntimeEnvDict
 from ray.job_config import JobConfig
-from ray.test_utils import run_string_as_driver
+from ray.test_utils import (run_string_as_driver,
+                            run_string_as_driver_nonblocking)
 
 
 @pytest.fixture(scope="session")
@@ -26,16 +28,20 @@ def conda_envs():
     current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
     assert current_conda_env is not None
 
+    def delete_env(env_name):
+        subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
+
     # Cloning the env twice may take minutes, so parallelize with Ray.
     @ray.remote
     def create_tf_env(tf_version: str):
-
+        env_name = f"tf-{tf_version}"
+        delete_env(env_name)
         subprocess.run([
-            "conda", "create", "-n", f"tf-{tf_version}", "--clone",
-            current_conda_env, "-y"
+            "conda", "create", "-n", env_name, "--clone", current_conda_env,
+            "-y"
         ])
         commands = [
-            init_cmd, f"conda activate tf-{tf_version}",
+            init_cmd, f"conda activate {env_name}",
             f"python -m pip install tensorflow=={tf_version}",
             "conda deactivate"
         ]
@@ -50,12 +56,9 @@ def conda_envs():
 
     ray.init()
 
-    @ray.remote
-    def remove_tf_env(tf_version: str):
-        subprocess.run(
-            ["conda", "remove", "-n", f"tf-{tf_version}", "--all", "-y"])
+    for tf_version in tf_versions:
+        delete_env(env_name=f"tf-{tf_version}")
 
-    ray.get([remove_tf_env.remote(version) for version in tf_versions])
     subprocess.run([f"{init_cmd} && conda deactivate"], shell=True)
     ray.shutdown()
 
@@ -78,6 +81,7 @@ context.disconnect()
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on MacOS.")
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 24001 --port 0"],
@@ -113,6 +117,7 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on MacOS.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
@@ -132,6 +137,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on MacOS.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
@@ -152,6 +158,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on MacOS.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
@@ -182,6 +189,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on MacOS.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
@@ -239,12 +247,8 @@ def test_get_conda_env_dir(tmp_path):
 
 
 """
-Note(architkulkarni): For runtime_env tests that involve conda or pip installs,
-"opentelemetry-api==1.0.0rc1" and "opentelemetry-sdk==1.0.0rc1" must be
-included as dependencies, because they are installed in the CI's conda env but
-are not included in the Ray dependencies, so they cause an unpickling issue.
-
-Also, these tests only run on Buildkite in a special job that runs
+Note(architkulkarni):
+These tests only run on Buildkite in a special job that runs
 after the wheel is built, because the tests pass in the wheel as a dependency
 in the runtime env.  Buildkite only supports Linux for now.
 """
@@ -260,14 +264,9 @@ def test_conda_create_task(shutdown_only):
     ray.init()
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
 
@@ -295,14 +294,9 @@ def test_conda_create_job_config(shutdown_only):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
@@ -374,14 +368,9 @@ def test_conda_create_ray_client(call_ray_start):
 
     runtime_env = {
         "conda": {
-            "dependencies": [
-                "pip", {
-                    "pip": [
-                        "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                        "opentelemetry-sdk==1.0.0rc1"
-                    ]
-                }
-            ]
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
         }
     }
 
@@ -410,7 +399,7 @@ def test_conda_create_ray_client(call_ray_start):
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_task(shutdown_only, pip_as_str, tmp_path):
-    """Tests pip installs in the runtime env specified in the job config."""
+    """Tests pip installs in the runtime env specified in f.options()."""
 
     ray.init()
     if pip_as_str:
@@ -419,18 +408,35 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_pip_ray_serve(shutdown_only):
+    """Tests that ray[serve] can be included as a pip dependency."""
+    ray.init()
+    runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
 
     @ray.remote
     def f():
@@ -461,18 +467,11 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         p = d / "requirements.txt"
         requirements_txt = """
         pip-install-test==0.5
-        opentelemetry-api==1.0.0rc1
-        opentelemetry-sdk==1.0.0rc1
         """
         p.write_text(requirements_txt)
         runtime_env = {"pip": str(p)}
     else:
-        runtime_env = {
-            "pip": [
-                "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                "opentelemetry-sdk==1.0.0rc1"
-            ]
-        }
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
 
     ray.init(job_config=JobConfig(runtime_env=runtime_env))
 
@@ -488,24 +487,22 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
-def test_conda_input_filepath(tmp_path):
-    conda_dict = {
-        "dependencies": [
-            "pip", {
-                "pip": [
-                    "pip-install-test==0.5", "opentelemetry-api==1.0.0rc1",
-                    "opentelemetry-sdk==1.0.0rc1"
-                ]
-            }
-        ]
-    }
+@pytest.mark.parametrize("use_working_dir", [True, False])
+def test_conda_input_filepath(use_working_dir, tmp_path):
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
     d = tmp_path / "pip_requirements"
     d.mkdir()
     p = d / "environment.yml"
 
     p.write_text(yaml.dump(conda_dict))
 
-    runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
+    if use_working_dir:
+        runtime_env_dict = RuntimeEnvDict({
+            "working_dir": str(d),
+            "conda": "environment.yml"
+        })
+    else:
+        runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
 
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
@@ -544,6 +541,153 @@ def test_experimental_package_github(shutdown_only):
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"
     assert ray.get(pkg.my_func.remote()) == "hello world"
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_client_working_dir_filepath(call_ray_start, tmp_path):
+    """Test that pip and conda relative filepaths work with working_dir."""
+
+    working_dir = tmp_path / "requirements"
+    working_dir.mkdir()
+
+    pip_file = working_dir / "requirements.txt"
+    requirements_txt = """
+    pip-install-test==0.5
+    """
+    pip_file.write_text(requirements_txt)
+    runtime_env_pip = {
+        "working_dir": str(working_dir),
+        "pip": "requirements.txt"
+    }
+
+    conda_file = working_dir / "environment.yml"
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+    conda_str = yaml.dump(conda_dict)
+    conda_file.write_text(conda_str)
+    runtime_env_conda = {
+        "working_dir": str(working_dir),
+        "conda": "environment.yml"
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with ray.client("localhost:24001").connect():
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+
+    for runtime_env in [runtime_env_pip, runtime_env_conda]:
+        with ray.client("localhost:24001").env(runtime_env).connect():
+            with pytest.raises(ModuleNotFoundError):
+                # Ensure pip-install-test is not installed on the test machine
+                import pip_install_test  # noqa
+            assert ray.get(f.remote())
+
+
+install_env_script = """
+import ray
+import time
+job_config = ray.job_config.JobConfig(runtime_env={env})
+ray.init(address="auto", job_config=job_config)
+@ray.remote
+def f():
+    return "hello"
+f.remote()
+# Give the env 5 seconds to begin installing in a new worker.
+time.sleep(5)
+"""
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_env_installation_nonblocking(shutdown_only):
+    """Test fix for https://github.com/ray-project/ray/issues/16226."""
+    env1 = {"pip": ["pip-install-test==0.5"]}
+    job_config = ray.job_config.JobConfig(runtime_env=env1)
+
+    ray.init(job_config=job_config)
+
+    @ray.remote
+    def f():
+        return "hello"
+
+    # Warm up a worker because it takes time to start.
+    ray.get(f.remote())
+
+    def assert_tasks_finish_quickly(total_sleep_s=0.1):
+        """Call f every 0.01 seconds for total time total_sleep_s."""
+        gap_s = 0.01
+        for i in range(int(total_sleep_s / gap_s)):
+            start = time.time()
+            ray.get(f.remote())
+            # Env installation takes around 10 to 60 seconds.  If we fail the
+            # below assert, we can be pretty sure an env installation blocked
+            # the task.
+            assert time.time() - start < 1.0
+            time.sleep(gap_s)
+
+    assert_tasks_finish_quickly()
+
+    env2 = {"pip": ["pip-install-test==0.5", "requests"]}
+    f.options(runtime_env=env2).remote()
+    # Check that installing env2 above does not block tasks using env1.
+    assert_tasks_finish_quickly()
+
+    proc = run_string_as_driver_nonblocking(
+        install_env_script.format(env=env1))
+    # Check that installing env1 in a new worker in the script above does not
+    # block other tasks that use env1.
+    assert_tasks_finish_quickly(total_sleep_s=5)
+    proc.kill()
+    proc.wait()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_simultaneous_install(shutdown_only):
+    """Test that two envs can be installed without affecting each other."""
+    ray.init()
+
+    @ray.remote
+    class TensorflowWorker:
+        def __init__(self):
+            import tensorflow as tf
+            self.version = tf.__version__
+
+        def get_version(self):
+            return self.version
+
+    # Before we used a global lock on conda installs, these two envs would be
+    # installed concurrently, leading to errors:
+    # https://github.com/ray-project/ray/issues/17086
+    # Now we use a global lock, so the envs are installed sequentially.
+    tf1 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.4.2"]
+    }).remote()
+    tf2 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.5.0"]
+    }).remote()
+
+    assert ray.get(tf1.get_version.remote()) == "2.4.2"
+    assert ray.get(tf2.get_version.remote()) == "2.5.0"
 
 
 if __name__ == "__main__":

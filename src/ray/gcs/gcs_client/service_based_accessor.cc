@@ -127,6 +127,20 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(
+    const ItemCallback<JobID> &callback) {
+  RAY_LOG(DEBUG) << "Getting next job id";
+  rpc::GetNextJobIDRequest request;
+  client_impl_->GetGcsRpcClient().GetNextJobID(
+      request, [callback](const Status &status, const rpc::GetNextJobIDReply &reply) {
+        RAY_CHECK_OK(status);
+        auto job_id = JobID::FromInt(reply.job_id());
+        callback(job_id);
+        RAY_LOG(DEBUG) << "Finished getting next job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -182,6 +196,21 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncListNamedActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+  RAY_LOG(DEBUG) << "Listing actors";
+  rpc::ListNamedActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
+  request.set_ray_namespace(ray_namespace);
+  client_impl_->GetGcsRpcClient().ListNamedActors(
+      request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
+        callback(VectorFromProtobuf(reply.named_actors_list()));
+        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       });
   return Status::OK();
 }

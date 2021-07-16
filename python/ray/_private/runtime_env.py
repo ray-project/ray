@@ -43,14 +43,10 @@ class RuntimeEnvDict:
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
         pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.  If a relative
-            path is specified and working_dir is specified, the path is
-            interpreted relative to working_dir.
+            containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
-            environment.yaml file. If a relative path is specified and
-            working_dir is specified, the path is interpreted relative to
-            working_dir.
+            environment.yaml file.
             The Ray dependency will be automatically injected into the conda
             env to ensure compatibility with the cluster Ray. The conda name
             may be mangled automatically to avoid conflicts between runtime
@@ -63,12 +59,15 @@ class RuntimeEnvDict:
             Examples:
                 {"channels": ["defaults"], "dependencies": ["codecov"]}
                 "pytorch_p36"   # Found on DLAMIs
-        docker (dict): Require a given (Docker) container image. The Ray
-            dependency will be automatically installed into the docker image
-            to ensure compatibility with the cluster Ray. The `run_options`
-            dict spec is here: https://docs.docker.com/engine/reference/run/
+        container (dict): Require a given (Docker) container image,
+            The Ray worker process will run in a container with this image.
+            The `worker_path` is the default_worker.py path.
+            The `run_options` list spec is here:
+            https://docs.docker.com/engine/reference/run/
             Examples:
-                {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
+                {"image": "anyscale/ray-ml:nightly-py38-cpu",
+                 "worker_path": "/root/python/ray/workers/default_worker.py",
+                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
         env_vars (dict): Environment variables to set.
             Examples:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
@@ -77,12 +76,15 @@ class RuntimeEnvDict:
     def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
-        # unspecified.  However, if all values are None this is set to {}.
+        # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
-            working_dir = Path(self._dict["working_dir"])
+            if not isinstance(self._dict["working_dir"], str):
+                raise TypeError("`working_dir` must be a string. Type "
+                                f"{type(self._dict['working_dir'])} received.")
+            working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
             working_dir = None
@@ -103,7 +105,8 @@ class RuntimeEnvDict:
                         raise ValueError(
                             f"Can't find conda YAML file {yaml_file}")
                     try:
-                        self._dict["conda"] = yaml.load(yaml_file.read_text())
+                        self._dict["conda"] = yaml.safe_load(
+                            yaml_file.read_text())
                     except Exception as e:
                         raise ValueError(
                             f"Invalid conda file {yaml_file} with error {e}")
@@ -123,11 +126,14 @@ class RuntimeEnvDict:
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if "conda" in runtime_env_json:
+            if ("conda" in runtime_env_json
+                    and runtime_env_json["conda"] is not None):
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
-                    "runtime_env cannot both be specified.  To use "
-                    "pip with conda, please only set the 'conda' "
+                    "runtime_env cannot both be specified.\n"
+                    f"specified pip field: {runtime_env_json['pip']}\n"
+                    f"specified conda field: {runtime_env_json['conda']}\n"
+                    "To use pip with conda, please only set the 'conda' "
                     "field, and specify your pip dependencies "
                     "within the conda YAML config dict: see "
                     "https://conda.io/projects/conda/en/latest/"
@@ -153,6 +159,9 @@ class RuntimeEnvDict:
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
 
+        if "container" in runtime_env_json:
+            self._dict["container"] = runtime_env_json["container"]
+
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
             env_vars = runtime_env_json["env_vars"]
@@ -163,12 +172,15 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        if self._dict.get("working_dir"):
+        # Used by Ray's experimental package loading feature.
+        # TODO(architkulkarni): This should be unified with existing fields
+        if "_packaging_uri" in runtime_env_json:
+            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
             if self._dict["env_vars"] is None:
                 self._dict["env_vars"] = {}
             # TODO(ekl): env vars is probably not the right long term impl.
             self._dict["env_vars"].update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
@@ -178,6 +190,13 @@ class RuntimeEnvDict:
         else:
             if self._dict.get("pip") or self._dict.get("conda"):
                 self._dict["_ray_commit"] = ray.__commit__
+
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if "_skip_inject_ray" in runtime_env_json:
+            self._dict["_skip_inject_ray"] = runtime_env_json[
+                "_skip_inject_ray"]
 
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
@@ -197,6 +216,9 @@ class RuntimeEnvDict:
         # workers by, so we need the serialization to be independent of the
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
+
+    def set_uris(self, uris):
+        self._dict["uris"] = uris
 
 
 class Protocol(Enum):
@@ -512,9 +534,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env["uris"] = [
-            Protocol.GCS.value + "://" + pkg_name
-        ]
+        job_config.set_runtime_env_uris(
+            [Protocol.GCS.value + "://" + pkg_name])
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

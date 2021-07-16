@@ -110,10 +110,15 @@ class TorchTrainer:
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
-        use_fp16 (bool): Enables mixed precision training via apex if apex
-            is installed. This is automatically done after the model and
-            optimizers are constructed and will work for multi-model training.
-            Please see https://github.com/NVIDIA/apex for more details.
+        use_fp16 (bool|string): Enables mixed precision training.
+            If set to True, will first try to use native mixed
+            precision training backend, and if it's unavailable, the Apex
+            backed, if installed. Apex backend must be installed separately
+            and can be forced over the native backend by setting `use_fp16`
+            to "apex". Torch documentation recommends the usage of the native
+            backend. Mixed precision training is automatically done after
+            the model and optimizers are constructed and will work for
+            multi-model training. Defaults to False.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -407,8 +412,9 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
-            dataset (Dataset): Optional dataset to train with. If specified,
-                the dataloader passed in via data_creator will be ignored.
+            dataset (sgd.Dataset): Optional dataset to train with. If
+                specified, the dataloader passed in via data_creator will be
+                ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.

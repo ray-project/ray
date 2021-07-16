@@ -154,28 +154,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
   void HandleNodeRemoved(const NodeID &node_id) override;
-
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
-
-  ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
-                                const ObjectInfo &object_info) override;
-
-  ray::Status ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
-                                  const ObjectInfo &object_info) override;
-
-  void RecordMetrics(uint64_t duration_ms) override;
-
-  std::string DebugString() const override;
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
@@ -200,6 +179,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// the current_object_locations is empty, then this means that the object
     /// does not exist on any nodes due to eviction or the object never getting created.
     bool subscribed;
+    /// The address of the owner.
+    rpc::Address owner_address;
   };
 
   /// Reference to the event loop.

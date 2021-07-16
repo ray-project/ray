@@ -14,8 +14,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -289,10 +291,7 @@ class TFPolicy(Policy):
 
         if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches.update({
-                "model": self.model.metrics() if isinstance(
-                    self.model, ModelV2) else self.model.custom_stats()
-            })
+            self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._loss = loss
 
@@ -401,8 +400,10 @@ class TFPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
 
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
@@ -413,6 +414,11 @@ class TFPolicy(Policy):
             explore=False, tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
+
+        # Normalize actions if necessary.
+        if actions_normalized is False and self.config["normalize_actions"]:
+            actions = normalize_action(actions, self.action_space_struct)
+
         # Feed actions (for which we want logp values) into graph.
         builder.add_feed_dict({self._action_input: actions})
         # Feed observations.
@@ -478,8 +484,13 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
+    def get_exploration_state(self) -> Dict[str, TensorType]:
+        return self.exploration.get_state(sess=self.get_session())
+
+    # TODO: (sven) Deprecate this method.
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.exploration.get_info(sess=self.get_session())
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @override(Policy)
     @DeveloperAPI
@@ -500,39 +511,87 @@ class TFPolicy(Policy):
                 len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self._sess.run(self._optimizer_variables.variables)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state(self.get_session())
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             self._optimizer_variables.set_weights(optimizer_vars)
-        # Then the Policy's (NN) weights.
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(
+                state=state["_exploration_state"], sess=self.get_session())
+
+        # Set the Policy's (NN) weights.
         super().set_state(state)
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Export tensorflow graph to export_dir for serving."""
-        with self._sess.graph.as_default():
-            builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
-            signature_def_map = self._build_signature_def()
-            builder.add_meta_graph_and_variables(
-                self._sess, [tf1.saved_model.tag_constants.SERVING],
-                signature_def_map=signature_def_map,
-                saver=tf1.summary.FileWriter(export_dir).add_graph(
-                    graph=self._sess.graph))
-            builder.save()
 
+        if onnx:
+            try:
+                import tf2onnx
+            except ImportError as e:
+                raise RuntimeError(
+                    "Converting a TensorFlow model to ONNX requires "
+                    "`tf2onnx` to be installed. Install with "
+                    "`pip install tf2onnx`.") from e
+
+            with self._sess.graph.as_default():
+                signature_def_map = self._build_signature_def()
+
+                sd = signature_def_map[tf1.saved_model.signature_constants.
+                                       DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+                inputs = [v.name for k, v in sd.inputs.items()]
+                outputs = [v.name for k, v in sd.outputs.items()]
+
+                from tf2onnx import tf_loader
+                frozen_graph_def = tf_loader.freeze_session(
+                    self._sess, input_names=inputs, output_names=outputs)
+
+            with tf.compat.v1.Session(graph=tf.Graph()) as session:
+                tf.import_graph_def(frozen_graph_def, name="")
+
+                g = tf2onnx.tfonnx.process_tf_graph(
+                    session.graph,
+                    input_names=inputs,
+                    output_names=outputs,
+                    inputs_as_nchw=inputs)
+
+                model_proto = g.make_model("onnx_model")
+                tf2onnx.utils.save_onnx_model(
+                    export_dir,
+                    "saved_model",
+                    feed_dict={},
+                    model_proto=model_proto)
+        else:
+            with self._sess.graph.as_default():
+                signature_def_map = self._build_signature_def()
+                builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
+                builder.add_meta_graph_and_variables(
+                    self._sess, [tf1.saved_model.tag_constants.SERVING],
+                    signature_def_map=signature_def_map,
+                    saver=tf1.summary.FileWriter(export_dir).add_graph(
+                        graph=self._sess.graph))
+                builder.save()
+
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
+        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:

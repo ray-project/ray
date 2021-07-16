@@ -1,12 +1,15 @@
 import os
 import importlib
+import json
 import logging
 from dataclasses import dataclass
-from urllib.parse import urlparse
 import sys
+
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                               RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
+                               RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
 
@@ -63,13 +66,14 @@ class ClientBuilder:
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self._job_config = JobConfig()
+        self._fill_defaults_from_env()
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
         Set an environment for the session.
         Args:
             env (Dict[st, Any]): A runtime environment to use for this
-            connection. See ``runtime_env.py`` for what values are
+            connection. See :ref:`runtime-environments` for what values are
             accepted in this dict.
         """
         self._job_config.set_runtime_env(env)
@@ -105,21 +109,95 @@ class ClientBuilder:
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
 
+    def _fill_defaults_from_env(self):
+        # Check environment variables for default values
+        namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
+        if namespace_env_var and self._job_config.ray_namespace is None:
+            self.namespace(namespace_env_var)
+
+        runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+        if runtime_env_var and self._job_config.runtime_env is None:
+            self.env(json.loads(runtime_env_var))
+
+    def _init_args(self, **kwargs) -> "ClientBuilder":
+        """
+        When a client builder is constructed through ray.init, for example
+        `ray.init(ray://..., namespace=...)`, all of the
+        arguments passed into ray.init are passed again into this method.
+        Custom client builders can override this method to do their own
+        handling/validation of arguments.
+        """
+        # Use namespace and runtime_env from ray.init call
+        if kwargs.get("namespace") is not None:
+            self.namespace(kwargs["namespace"])
+            del kwargs["namespace"]
+        if kwargs.get("runtime_env") is not None:
+            self.env(kwargs["runtime_env"])
+            del kwargs["runtime_env"]
+        if not kwargs:
+            return self
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(
+            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+
 
 class _LocalClientBuilder(ClientBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._init_args_dict = {}
+        self._internal_config = {}
+
+    def _init_args(self, **kwargs) -> "ClientBuilder":
+        for argument in kwargs:
+            if argument.startswith("_"):
+                raise RuntimeError(
+                    f"Unexpected keyword argument: {argument}. Unstable "
+                    "parameters using the local client should be passed "
+                    "through the `internal_config` dict, e.g. ray.init"
+                    "(local://..., internal_config={{argument: value}}")
+        if kwargs.get("job_config") is not None:
+            self._job_config = kwargs.pop("job_config")
+        if kwargs.get("namespace") is not None:
+            self.namespace(kwargs.pop("namespace"))
+        if kwargs.get("runtime_env") is not None:
+            self.env(kwargs.pop("runtime_env"))
+        self._internal_config = kwargs.pop("internal_config", {})
+
+        # Prefix internal_config names with underscores
+        arg_names = list(self._internal_config)
+        for name in arg_names:
+            if name.startswith("_"):
+                stripped_name = name.lstrip("_")
+                raise RuntimeError(
+                    f"Found internal_config argument "
+                    f"`{name}`. Arguments passed in internal_config should "
+                    "not include the underscore prefix. Use "
+                    f"`{stripped_name}` instead.")
+            self._internal_config["_" + name] = self._internal_config[name]
+            del self._internal_config[name]
+
+        self._fill_defaults_from_env()
+        self._init_args_dict = kwargs
+        return self
+
     def connect(self) -> ClientContext:
         """
-        Begin a connection to the address passed in via ray.client(...).
+        Begin a connection to the address passed in via ray.client(...) or
+        ray.init("local://...")
         """
         connection_dict = ray.init(
-            address=self.address, job_config=self._job_config)
+            address=self.address,
+            job_config=self._job_config,
+            **self._init_args_dict,
+            **self._internal_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(
                 sys.version_info[0], sys.version_info[1], sys.version_info[2]),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=None)
+            protocol_version=None,
+            _num_clients=1)
 
 
 def _split_address(address: str) -> Tuple[str, str]:
@@ -128,9 +206,10 @@ def _split_address(address: str) -> Tuple[str, str]:
     """
     if "://" not in address:
         address = "ray://" + address
-    url_object = urlparse(address)
-    module_string = url_object.scheme
-    inner_address = address.replace(module_string + "://", "", 1)
+    # NOTE: We use a custom splitting function instead of urllib because
+    # PEP allows "underscores" in a module names, while URL schemes do not
+    # allow them.
+    module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
 
 
@@ -144,14 +223,22 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
                                         "ray_current_cluster")
             with open(cluster_file, "r") as f:
-                address = f.read()
-                print(address)
+                address = f.read().strip()
         except FileNotFoundError:
             # `address` won't be set and we'll create a new cluster.
             pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
-    module = importlib.import_module(module_string)
+    if module_string == "local":
+        return _LocalClientBuilder(inner_address or None)
+    try:
+        module = importlib.import_module(module_string)
+    except Exception:
+        raise RuntimeError(
+            f"Module: {module_string} does not exist.\n"
+            f"This module was parsed from Address: {address}") from None
+    assert "ClientBuilder" in dir(module), (f"Module: {module_string} does "
+                                            "not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 
@@ -166,11 +253,11 @@ def client(address: Optional[str] = None) -> ClientBuilder:
         * ``"module://inner_address"``: load module.ClientBuilder & pass
             inner_address
     """
-    override_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if override_address:
+    env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if env_address and address is None:
         logger.debug(
-            f"Using address ({override_address}) instead of "
-            f"({address}) because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set")
-        address = override_address
+            f"Using address ({env_address}) instead of auto-detection "
+            f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
+        address = env_address
 
     return _get_builder_from_address(address)

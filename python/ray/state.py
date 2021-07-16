@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 import logging
+import os
 
 import ray
 
@@ -47,6 +48,10 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+                ray.client().connect()
+                # Retry connect!
+                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -276,6 +281,16 @@ class GlobalState:
             results.append(job_info)
 
         return results
+
+    def next_job_id(self):
+        """Get next job id from GCS.
+
+        Returns:
+            Next job id in the cluster.
+        """
+        self._check_connected()
+
+        return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
     def profile_table(self):
         self._check_connected()
@@ -519,6 +534,11 @@ class GlobalState:
 
                 all_events.append(new_event)
 
+        if not all_events:
+            logger.warning(
+                "No profiling events found. Ray profiling must be enabled "
+                "by setting RAY_PROFILING=1.")
+
         if filename is not None:
             with open(filename, "w") as outfile:
                 json.dump(all_events, outfile)
@@ -747,6 +767,19 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        """Get the node to connect for a Ray driver."""
+        self._check_connected()
+        node_info_str = (self.global_state_accessor.
+                         get_node_to_connect_for_driver(node_ip_address))
+        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -764,6 +797,15 @@ def jobs():
         - "StopTime" (UNIX timestamp of the stop time of this job, if any)
     """
     return state.job_table()
+
+
+def next_job_id():
+    """Get next job id from GCS.
+
+    Returns:
+        Next job id in integer representation in the cluster.
+    """
+    return state.next_job_id()
 
 
 @client_mode_hook
@@ -829,22 +871,12 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
-
-    Args:
-        object_ref: An object ref to fetch information about. If this is None,
-            then the entire object table is fetched.
-
-    Returns:
-        Information from the object table.
-    """
-    return state.object_table(object_ref=object_ref)
-
-
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
+
+    Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
+    variable prior to starting Ray.
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

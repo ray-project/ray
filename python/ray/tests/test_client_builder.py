@@ -1,6 +1,8 @@
+import os
 import pytest
 import subprocess
 import sys
+from unittest.mock import patch, Mock
 
 import ray
 import ray.util.client.server.server as ray_client_server
@@ -24,6 +26,9 @@ def test_split_address(address):
     specified_other_module = f"module://{address}"
     assert client_builder._split_address(specified_other_module) == ("module",
                                                                      address)
+    non_url_compliant_module = f"module_test://{address}"
+    assert client_builder._split_address(non_url_compliant_module) == (
+        "module_test", address)
 
 
 @pytest.mark.parametrize(
@@ -39,6 +44,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_namespace():
     """
     Most of the "checks" in this test case rely on the fact that
@@ -103,6 +109,7 @@ def test_connect_to_cluster(ray_start_regular_shared):
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_local_clusters():
     """
     This tests the various behaviors of connecting to local clusters:
@@ -181,7 +188,44 @@ assert len(ray._private.services.find_redis_address()) == 1
     subprocess.check_output("ray stop --force", shell=True)
 
 
-def test_disconnect(call_ray_stop_only):
+def test_non_existent_modules():
+    exception = None
+    try:
+        ray.client("badmodule://address")
+    except RuntimeError as e:
+        exception = e
+
+    assert exception is not None, "Bad Module did not raise RuntimeException"
+    assert "does not exist" in str(exception)
+
+
+def test_module_lacks_client_builder():
+    mock_importlib = Mock()
+
+    def mock_import_module(module_string):
+        if module_string == "ray":
+            return ray
+        else:
+            # Mock() does not have a `ClientBuilder` in its scope
+            return Mock()
+
+    mock_importlib.import_module = mock_import_module
+    with patch("ray.client_builder.importlib", mock_importlib):
+        assert isinstance(ray.client(""), ray.ClientBuilder)
+        assert isinstance(ray.client("ray://"), ray.ClientBuilder)
+        exception = None
+        try:
+            ray.client("othermodule://")
+        except AssertionError as e:
+            exception = e
+        assert exception is not None, ("Module without ClientBuilder did not "
+                                       "raise AssertionError")
+        assert "does not have ClientBuilder" in str(exception)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
+def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True)
     with ray.client("localhost:25555").namespace("n1").connect():
@@ -210,6 +254,34 @@ def test_disconnect(call_ray_stop_only):
     ctx.disconnect()
     # Check idempotency
     ctx.disconnect()
-
     with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
+def test_address_resolution(call_ray_stop_only):
+    subprocess.check_output(
+        "ray start --head --ray-client-server-port=50055", shell=True)
+
+    with ray.client("localhost:50055").connect():
+        assert ray.util.client.ray.is_connected()
+
+    try:
+        os.environ["RAY_ADDRESS"] = "local"
+        with ray.client("localhost:50055").connect():
+            # client(...) takes precedence of RAY_ADDRESS=local
+            assert ray.util.client.ray.is_connected()
+
+        with pytest.raises(Exception):
+            # This tries to call `ray.init(address="local") which
+            # breaks.`
+            ray.client(None).connect()
+
+    finally:
+        if os.environ.get("RAY_ADDRESS"):
+            del os.environ["RAY_ADDRESS"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

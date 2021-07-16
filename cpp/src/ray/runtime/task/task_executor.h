@@ -19,6 +19,13 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       msgpack::sbuffer *actor_ptr);
 
 BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
+
+FunctionManager &GetFunctionManager();
+BOOST_DLL_ALIAS(internal::GetFunctionManager, GetFunctionManager);
+
+std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
+GetRemoteFunctions();
+BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
 namespace api {

@@ -43,8 +43,8 @@ struct Mocker {
                               Language::PYTHON, empty_descriptor, job_id, TaskID::Nil(),
                               0, TaskID::Nil(), owner_address, 1, resource, resource,
                               std::make_pair(PlacementGroupID::Nil(), -1), true, "");
-    builder.SetActorCreationTaskSpec(actor_id, max_restarts, /*max_task_retries=*/0, {},
-                                     1, detached, name);
+    builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts, /*max_task_retries=*/0,
+                                     {}, 1, detached, name);
     return builder.Build();
   }
 
@@ -138,7 +138,7 @@ struct Mocker {
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
-    job_table_data->set_timestamp(std::time(nullptr));
+    job_table_data->set_timestamp(current_sys_time_ms());
     job_table_data->set_driver_ip_address("127.0.0.1");
     job_table_data->set_driver_pid(5667L);
     return job_table_data;

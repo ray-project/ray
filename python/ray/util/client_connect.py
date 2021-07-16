@@ -1,6 +1,6 @@
 from ray.util.client import ray
 from ray.job_config import JobConfig
-from ray._private.client_mode_hook import _enable_client_hook
+from ray._private.client_mode_hook import _set_client_hook_status
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
 from typing import List, Tuple, Dict, Any
@@ -20,7 +20,7 @@ def connect(conn_str: str,
                            "accident?")
     # Enable the same hooks that RAY_CLIENT_MODE does, as
     # calling ray.util.connect() is specifically for using client mode.
-    _enable_client_hook(True)
+    _set_client_hook_status(True)
     _explicitly_enable_client_mode()
 
     # TODO(barakmich): https://github.com/ray-project/ray/issues/13274

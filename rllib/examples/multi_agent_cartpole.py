@@ -10,7 +10,6 @@ execution, set the TF_TIMELINE_DIR environment variable.
 """
 
 import argparse
-import gym
 import os
 import random
 
@@ -21,6 +20,7 @@ from ray.rllib.examples.models.shared_weights_model import \
     SharedWeightsModel1, SharedWeightsModel2, TF2SharedWeightsModel, \
     TorchSharedWeightsModel
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -73,11 +73,6 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("model1", mod1)
     ModelCatalog.register_custom_model("model2", mod2)
 
-    # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v0")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
-
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
         config = {
@@ -86,7 +81,7 @@ if __name__ == "__main__":
             },
             "gamma": random.choice([0.95, 0.99]),
         }
-        return (None, obs_space, act_space, config)
+        return PolicySpec(config=config)
 
     # Setup PPO with an ensemble of `num_policies` different policies.
     policies = {
@@ -95,7 +90,7 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         pol_id = random.choice(policy_ids)
         return pol_id
 

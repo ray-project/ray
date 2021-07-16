@@ -12,6 +12,10 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
+        external_addresses (str): The address of external Redis server to
+            connect to, in format of "ip1:port1,ip2:port2,...".  If this
+            address is provided, then ray won't start Redis instances in the
+            head node but use external Redis server(s) instead.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -72,6 +76,8 @@ class RayParams:
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
+        runtime_env_setup_hook (str): The module path to a Python function that
+            will be imported and run to set up the runtime env in agent.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -112,6 +118,7 @@ class RayParams:
     """
 
     def __init__(self,
+                 external_addresses=None,
                  redis_address=None,
                  num_cpus=None,
                  num_gpus=None,
@@ -141,6 +148,8 @@ class RayParams:
                  worker_path=None,
                  setup_worker_path=None,
                  worker_setup_hook=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
+                 runtime_env_setup_hook=ray_constants.
+                 DEFAULT_RUNTIME_ENV_SETUP_HOOK,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
@@ -161,6 +170,7 @@ class RayParams:
                  no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
+        self.external_addresses = external_addresses
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -189,6 +199,7 @@ class RayParams:
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
         self.worker_setup_hook = worker_setup_hook
+        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host

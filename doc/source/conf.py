@@ -17,6 +17,7 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 from datetime import datetime
@@ -96,10 +97,19 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
-sys.modules["xgboost"] = ChildClassMock()
-sys.modules["xgboost.core"] = ChildClassMock()
-sys.modules["xgboost.callback"] = ChildClassMock()
-sys.modules["xgboost_ray"] = ChildClassMock()
+
+
+def import_or_mock(module):
+    try:
+        # Same as `import module`
+        __import__(module, globals(), locals(), [], 0)
+    except ImportError:
+        sys.modules[module] = ChildClassMock()
+
+
+xgb_modules = ["xgboost", "xgboost.core", "xgboost.callback", "xgboost_ray"]
+for xgb_mod in xgb_modules:
+    import_or_mock(xgb_mod)
 
 
 class SimpleClass(object):

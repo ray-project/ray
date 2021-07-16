@@ -8,6 +8,9 @@
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
+    
+.. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
+    :target: https://twitter.com/raydistributed
 
 |
 
@@ -206,8 +209,8 @@ Ray Serve Quick Start
 - Framework Agnostic: Use the same toolkit to serve everything from deep
   learning models built with frameworks like PyTorch or Tensorflow & Keras
   to Scikit-Learn models or arbitrary business logic.
-- Python First: Configure your model serving with pure Python code - no more
-  YAMLs or JSON configs.
+- Python First: Configure your model serving declaratively in pure Python,
+  without needing YAMLs or JSON configs.
 - Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
   increase the throughput of your model.
 - Composition Native: Allow you to create "model pipelines" by composing multiple

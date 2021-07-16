@@ -28,7 +28,6 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
           result = PackError("unknown actor task: " + func_name);
           break;
         }
-
         result = (*func_ptr)(actor_ptr, args_buffer);
       } else {
         auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
@@ -36,7 +35,6 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
           result = PackError("unknown function: " + func_name);
           break;
         }
-
         result = (*func_ptr)(args_buffer);
       }
     } catch (const std::exception &ex) {
@@ -45,6 +43,15 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
   } while (0);
 
   return result;
+}
+
+auto &init_func_manager = FunctionManager::Instance();
+
+FunctionManager &GetFunctionManager() { return init_func_manager; }
+
+std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
+GetRemoteFunctions() {
+  return init_func_manager.GetRemoteFunctions();
 }
 }  // namespace internal
 
@@ -63,18 +70,24 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 };
 
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
-    const std::string &lib_name, const std::string &func_name,
-    const std::vector<msgpack::sbuffer> &args_buffer, msgpack::sbuffer *actor_ptr) {
-  auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-  if (entry_func == nullptr) {
-    return std::make_pair(ray::Status::NotFound(lib_name + " not found"), nullptr);
+    const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
+    msgpack::sbuffer *actor_ptr) {
+  try {
+    EntryFuntion entry_function;
+    if (actor_ptr == nullptr) {
+      entry_function = FunctionHelper::GetInstance().GetExecutableFunctions(func_name);
+    } else {
+      entry_function =
+          FunctionHelper::GetInstance().GetExecutableMemberFunctions(func_name);
+    }
+    RAY_LOG(DEBUG) << "Get executable function " << func_name << " ok.";
+    auto result = entry_function(func_name, args_buffer, actor_ptr);
+    RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
+    return std::make_pair(ray::Status::OK(),
+                          std::make_shared<msgpack::sbuffer>(std::move(result)));
+  } catch (ray::api::RayException &e) {
+    return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   }
-
-  RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
-  auto result = entry_func(func_name, args_buffer, actor_ptr);
-  RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
-  return std::make_pair(ray::Status::OK(),
-                        std::make_shared<msgpack::sbuffer>(std::move(result)));
 }
 
 Status TaskExecutor::ExecuteTask(
@@ -91,7 +104,6 @@ Status TaskExecutor::ExecuteTask(
   RAY_CHECK(function_descriptor->Type() ==
             ray::FunctionDescriptorType::kCppFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
-  std::string lib_name = typed_descriptor->LibName();
   std::string func_name = typed_descriptor->FunctionName();
 
   Status status{};
@@ -103,16 +115,14 @@ Status TaskExecutor::ExecuteTask(
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
-    std::tie(status, data) =
-        GetExecuteResult(lib_name, func_name, ray_args_buffer, nullptr);
+    std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == ray::TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
-        GetExecuteResult(lib_name, func_name, ray_args_buffer, current_actor_.get());
+        GetExecuteResult(func_name, ray_args_buffer, current_actor_.get());
   } else {  // NORMAL_TASK
-    std::tie(status, data) =
-        GetExecuteResult(lib_name, func_name, ray_args_buffer, nullptr);
+    std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
   }
 
   if (!status.ok()) {

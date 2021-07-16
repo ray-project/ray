@@ -1,3 +1,4 @@
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
+# Replaced with the current commit when building the wheels.
+__commit__ = "{{RAY_COMMIT_SHA}}"
+__version__ = "2.0.0.dev0"
+
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (  # noqa: E402
@@ -96,10 +101,6 @@ from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
-
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "2.0.0.dev0"
 
 __all__ = [
     "__version__",
@@ -150,6 +151,11 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+# Add an alias so we can point to the final location in docs.
+# TODO(ekl) remove this once datasets is out of alpha.
+from ray.experimental import data  # noqa
+__all__.append(data)
+
 
 # Remove modules from top-level ray
 def _ray_user_setup_function():
@@ -161,12 +167,15 @@ def _ray_user_setup_function():
             m = __import__(module_name, globals(), locals(), [fn_name])
             getattr(m, fn_name)()
         except Exception as e:
-            logger.exception(
+            # We still need to allow ray to be imported, even there is
+            # something in the setup function.
+            logger.warning(
                 f"Failed to run user setup function: {user_setup_fn}. "
                 f"Error message {e}")
 
 
 _ray_user_setup_function()
 
+del os
 del logging
 del _ray_user_setup_function
