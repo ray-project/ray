@@ -487,8 +487,9 @@ def with_common_config(
         TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
             plus `extra_config`.
     """
-    return Trainer.merge_trainer_configs(
-        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
+    return Trainer.merge_trainer_configs(COMMON_CONFIG,
+                                         extra_config,
+                                         _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -555,8 +556,8 @@ class Trainer(Trainable):
                                               timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
-            logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            logdir = tempfile.mkdtemp(prefix=logdir_prefix,
+                                      dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
@@ -681,16 +682,15 @@ class Trainer(Trainable):
                     lambda env_context: from_config(env, env_context)
             # Try gym/PyBullet/Vizdoom.
             else:
-                self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=env)
+                self.env_creator = functools.partial(gym_env_creator,
+                                                     env_descriptor=env)
         else:
             self.env_creator = lambda env_config: None
 
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = self.merge_trainer_configs(self._default_config,
-                                                    config)
+        self.config = self.merge_trainer_configs(self._default_config, config)
 
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
@@ -742,8 +742,8 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(
-                    evaluation_config, trainer_obj_or_none=self)
+                self._validate_config(evaluation_config,
+                                      trainer_obj_or_none=self)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -785,11 +785,11 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(
-            self, *, env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
+    def _make_workers(self, *, env_creator: Callable[[EnvContext], EnvType],
+                      validate_env: Optional[Callable[[EnvType, EnvContext],
+                                                      None]],
+                      policy_class: Type[Policy], config: TrainerConfigDict,
+                      num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -810,13 +810,12 @@ class Trainer(Trainable):
         Returns:
             WorkerSet: The created WorkerSet.
         """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            logdir=self.logdir)
+        return WorkerSet(env_creator=env_creator,
+                         validate_env=validate_env,
+                         policy_class=policy_class,
+                         trainer_config=config,
+                         num_workers=num_workers,
+                         logdir=self.logdir)
 
     @DeveloperAPI
     def _init(self, config: TrainerConfigDict,
@@ -827,8 +826,9 @@ class Trainer(Trainable):
     # TODO: (sven) Deprecate in favor of Trainer.evaluate().
     @DeveloperAPI
     def _evaluate(self) -> dict:
-        deprecation_warning(
-            "Trainer._evaluate", "Trainer.evaluate", error=False)
+        deprecation_warning("Trainer._evaluate",
+                            "Trainer.evaluate",
+                            error=False)
         return self.evaluate()
 
     @PublicAPI
@@ -920,10 +920,10 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _sync_weights_to_workers(
-            self,
-            *,
-            worker_set: Optional[WorkerSet] = None,
-            workers: Optional[List[RolloutWorker]] = None,
+        self,
+        *,
+        worker_set: Optional[WorkerSet] = None,
+        workers: Optional[List[RolloutWorker]] = None,
     ) -> None:
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
@@ -934,17 +934,17 @@ class Trainer(Trainable):
 
     @PublicAPI
     def compute_single_action(
-            self,
-            observation: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: float = None,
-            info: EnvInfoDict = None,
-            policy_id: PolicyID = DEFAULT_POLICY_ID,
-            full_fetch: bool = False,
-            explore: bool = None,
-            unsquash_actions: Optional[bool] = None,
-            clip_actions: Optional[bool] = None,
+        self,
+        observation: TensorStructType,
+        state: List[TensorStructType] = None,
+        prev_action: TensorStructType = None,
+        prev_reward: float = None,
+        info: EnvInfoDict = None,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        full_fetch: bool = False,
+        explore: bool = None,
+        unsquash_actions: Optional[bool] = None,
+        clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
         """Computes an action for the specified policy on the local Worker.
 
@@ -1010,17 +1010,17 @@ class Trainer(Trainable):
 
     @PublicAPI
     def compute_actions(
-            self,
-            observations: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: TensorStructType = None,
-            info=None,
-            policy_id=DEFAULT_POLICY_ID,
-            full_fetch=False,
-            explore=None,
-            normalize_actions=None,
-            clip_actions=None,
+        self,
+        observations: TensorStructType,
+        state: List[TensorStructType] = None,
+        prev_action: TensorStructType = None,
+        prev_reward: TensorStructType = None,
+        info=None,
+        policy_id=DEFAULT_POLICY_ID,
+        full_fetch=False,
+        explore=None,
+        normalize_actions=None,
+        clip_actions=None,
     ):
         """Computes an action for the specified policy on the local Worker.
 
@@ -1143,16 +1143,16 @@ class Trainer(Trainable):
 
     @PublicAPI
     def add_policy(
-            self,
-            policy_id: PolicyID,
-            policy_cls: Type[Policy],
-            *,
-            observation_space: Optional[gym.spaces.Space] = None,
-            action_space: Optional[gym.spaces.Space] = None,
-            config: Optional[PartialTrainerConfigDict] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
-                                                 PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+        self,
+        policy_id: PolicyID,
+        policy_cls: Type[Policy],
+        *,
+        observation_space: Optional[gym.spaces.Space] = None,
+        action_space: Optional[gym.spaces.Space] = None,
+        config: Optional[PartialTrainerConfigDict] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
+                                             PolicyID]] = None,
+        policies_to_train: Optional[List[PolicyID]] = None,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
@@ -1180,7 +1180,6 @@ class Trainer(Trainable):
             Policy: The newly added policy (the copy that got added to the
                 local worker).
         """
-
         def fn(worker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
@@ -1204,11 +1203,11 @@ class Trainer(Trainable):
 
     @PublicAPI
     def remove_policy(
-            self,
-            policy_id: PolicyID = DEFAULT_POLICY_ID,
-            *,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+        self,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        *,
+        policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+        policies_to_train: Optional[List[PolicyID]] = None,
     ) -> None:
         """Removes a new policy from this Trainer.
 
@@ -1224,7 +1223,6 @@ class Trainer(Trainable):
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
         """
-
         def fn(worker):
             worker.remove_policy(
                 policy_id=policy_id,
@@ -1318,11 +1316,12 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls,
-                              config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict,
-                              _allow_unknown_configs: Optional[bool] = None
-                              ) -> TrainerConfigDict:
+    def merge_trainer_configs(
+            cls,
+            config1: TrainerConfigDict,
+            config2: PartialTrainerConfigDict,
+            _allow_unknown_configs: Optional[bool] = None
+    ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]
@@ -1549,8 +1548,8 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         if ExportFormat.ONNX in export_formats:
             path = os.path.join(export_dir, ExportFormat.ONNX)
-            self.export_policy_model(
-                path, onnx=int(os.getenv("ONNX_OPSET", "11")))
+            self.export_policy_model(path,
+                                     onnx=int(os.getenv("ONNX_OPSET", "11")))
             exported[ExportFormat.ONNX] = path
         return exported
 
