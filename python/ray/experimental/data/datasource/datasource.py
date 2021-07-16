@@ -1,14 +1,14 @@
 import builtins
-from typing import Any, Generic, List, Callable, Union, TypeVar
+from typing import Any, Generic, List, Callable, Union
 
 import numpy as np
 
 import ray
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata, T
+from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
-from ray.experimental.data.impl.block import Block, SimpleBlock
-from ray.experimental.data.impl.block_list import BlockList, BlockMetadata
 
-T = TypeVar("T")
 WriteResult = Any
 
 
@@ -18,7 +18,7 @@ class Datasource(Generic[T]):
     To read a datasource into a dataset, use ``ray.data.read_datasource()``.
     To write to a writable datasource, use ``Dataset.write_datasource()``.
 
-    See ``RangeDatasource`` and ``DummyOutputDatasource`` below for examples
+    See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
     """
 
@@ -37,13 +37,15 @@ class Datasource(Generic[T]):
         """
         raise NotImplementedError
 
-    def prepare_write(self, blocks: BlockList,
+    def prepare_write(self, blocks: List[ObjectRef[Block[T]]],
+                      metadata: List[BlockMetadata],
                       **write_args) -> List["WriteTask[T]"]:
         """Return the list of tasks needed to perform a write.
 
         Args:
-            blocks: List of data block references and block metadata. It is
-                recommended that one write task be generated per block.
+            blocks: List of data block references. It is recommended that one
+                write task be generated per block.
+            metadata: List of block metadata.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
@@ -200,7 +202,8 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_ok = 0
         self.num_failed = 0
 
-    def prepare_write(self, blocks: BlockList,
+    def prepare_write(self, blocks: List[ObjectRef[Block[T]]],
+                      metadata: List[BlockMetadata],
                       **write_args) -> List["WriteTask[T]"]:
         tasks = []
         for b in blocks:

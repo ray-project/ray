@@ -41,12 +41,12 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
   updater_runner_.reset();
-  raylet_client_.reset();
   updater_io_service_.stop();
   if (updater_thread_->joinable()) {
     updater_thread_->join();
   }
   updater_thread_.reset();
+  raylet_client_.reset();
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {

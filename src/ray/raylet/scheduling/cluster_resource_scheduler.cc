@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+#include <boost/algorithm/string.hpp>
+
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/scheduling_policy.h"
@@ -32,6 +34,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
+  InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
@@ -46,9 +49,35 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
+  InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
   get_used_object_store_memory_ = get_used_object_store_memory;
+}
+
+void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
+  std::string predefined_unit_instance_resources =
+      RayConfig::instance().predefined_unit_instance_resources();
+  if (!predefined_unit_instance_resources.empty()) {
+    std::vector<std::string> results;
+    boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
+    for (std::string &result : results) {
+      PredefinedResources resource = ResourceStringToEnum(result);
+      RAY_CHECK(resource < PredefinedResources_MAX)
+          << "Failed to parse predefined resource";
+      predefined_unit_instance_resources_.emplace(resource);
+    }
+  }
+  std::string custom_unit_instance_resources =
+      RayConfig::instance().custom_unit_instance_resources();
+  if (!custom_unit_instance_resources.empty()) {
+    std::vector<std::string> results;
+    boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
+    for (std::string &result : results) {
+      int64_t resource_id = string_to_int_map_.Insert(result);
+      custom_unit_instance_resources_.emplace(resource_id);
+    }
+  }
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -169,7 +198,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
   int violations = 0;
-
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] >
@@ -602,10 +630,11 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (node_resources.predefined_resources[i].total > 0) {
-      InitResourceInstances(
-          node_resources.predefined_resources[i].total,
-          (UnitInstanceResources.find(i) != UnitInstanceResources.end()),
-          &local_resources_.predefined_resources[i]);
+      // when we enable cpushare, the CPU will not be treat as unit_instance.
+      bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
+                              predefined_unit_instance_resources_.end();
+      InitResourceInstances(node_resources.predefined_resources[i].total,
+                            is_unit_instance, &local_resources_.predefined_resources[i]);
     }
   }
 
@@ -616,8 +645,10 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
   for (auto it = node_resources.custom_resources.begin();
        it != node_resources.custom_resources.end(); ++it) {
     if (it->second.total > 0) {
+      bool is_unit_instance = custom_unit_instance_resources_.find(it->first) !=
+                              custom_unit_instance_resources_.end();
       ResourceInstanceCapacities instance_list;
-      InitResourceInstances(it->second.total, false, &instance_list);
+      InitResourceInstances(it->second.total, is_unit_instance, &instance_list);
       local_resources_.custom_resources.emplace(it->first, instance_list);
     }
   }
@@ -740,7 +771,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
-
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] > 0) {
