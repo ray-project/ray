@@ -307,11 +307,19 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for providers
-    # other than AWS and Kubernetes will fail (the schema error will ask the
-    # user to manually fill the resources) as we currently support autofilling
-    # resources for AWS and Kubernetes only.
-    validate_config(config)
+    try:
+        # NOTE: if `resources` field is missing, validate_config for providers
+        # other than AWS and Kubernetes will fail (the schema error will ask
+        # the user to manually fill the resources) as we currently support
+        # autofilling resources for AWS and Kubernetes only.
+        validate_config(config)
+    except (ModuleNotFoundError, ImportError) as e:
+        cli_logger.abort(
+            "Not all Ray autoscaler dependencies were found. "
+            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+            "only be usable via `pip install 'ray[default]'`. Please "
+            "update your install command.",
+            exc=e)
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:

@@ -1,10 +1,10 @@
 from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
-import gym
 
 if TYPE_CHECKING:
     from ray.rllib.utils import try_import_tf, try_import_torch
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
+    from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
 
@@ -42,8 +42,7 @@ AgentID = Any
 PolicyID = str
 
 # Type of the config["multiagent"]["policies"] dict for multi-agent training.
-MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[Union[
-    type, None], gym.Space, gym.Space, PartialTrainerConfigDict]]
+MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
 # Represents an environment id. These could be:
 # - An int index for a sub-env within a vectorized env.

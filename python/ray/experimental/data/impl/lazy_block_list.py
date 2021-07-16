@@ -1,6 +1,7 @@
 from typing import Callable, List
 
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef, T
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata, T
 from ray.experimental.data.impl.block_list import BlockList
 
 

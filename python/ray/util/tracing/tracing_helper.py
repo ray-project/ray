@@ -311,6 +311,9 @@ def _inject_tracing_into_function(function):
     Use the provided trace context from kwargs.
     """
     # Add _ray_trace_ctx to function signature
+    if not is_tracing_enabled():
+        return function
+
     setattr(
         function, "__signature__",
         add_param_to_signature(
@@ -325,10 +328,6 @@ def _inject_tracing_into_function(function):
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
             **kwargs: Any,
     ) -> Any:
-        # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled():
-            return function(*args, **kwargs)
-
         tracer = _opentelemetry.trace.get_tracer(__name__)
 
         assert _ray_trace_ctx is not None, (
