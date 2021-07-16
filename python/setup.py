@@ -148,7 +148,11 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
-        "default": ["colorful"],
+        "default": [
+            "colorful",  # noqa
+            "py-spy >= 0.2.0",  # noqa
+            "jsonschema",  # noqa
+        ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
         "k8s": ["kubernetes"],
@@ -190,12 +194,10 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         "gpustat",
         "grpcio >= 1.28.1",
-        "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
-        "py-spy >= 0.2.0",
         "pydantic >= 1.8",
         "pyyaml",
         "requests",
