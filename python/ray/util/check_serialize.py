@@ -2,8 +2,11 @@
 from typing import Any, Tuple, Set, Optional
 import inspect
 import ray.cloudpickle as cp
-import colorama
 from contextlib import contextmanager
+
+# Import ray first to use the bundled colorama
+import ray  # noqa: F401
+import colorama
 
 
 @contextmanager

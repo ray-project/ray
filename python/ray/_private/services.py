@@ -17,11 +17,11 @@ import sys
 import time
 from typing import Optional
 
-import colorama
 import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+import colorama
 import redis
 
 resource = None

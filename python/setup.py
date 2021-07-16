@@ -190,7 +190,6 @@ if setup_spec.type == SetupType.RAY:
         "aioredis",
         "attrs",
         "click >= 7.0",
-        "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "gpustat",
@@ -328,7 +327,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.2.2"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
