@@ -6,9 +6,7 @@ import logging
 import time
 from typing import Any, Dict, List
 
-import boto3
 import botocore
-from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
@@ -18,7 +16,8 @@ from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, \
 from ray.autoscaler._private.aws.config import bootstrap_aws
 from ray.autoscaler._private.log_timer import LogTimer
 
-from ray.autoscaler._private.aws.utils import boto_exception_handler
+from ray.autoscaler._private.aws.utils import boto_exception_handler, \
+    resource_cache, client_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.ray_constants as ray_constants
 
@@ -47,10 +46,8 @@ def from_aws_format(tags):
 
 def make_ec2_client(region, max_retries, aws_credentials=None):
     """Make client, retrying requests up to `max_retries`."""
-    config = Config(retries={"max_attempts": max_retries})
     aws_credentials = aws_credentials or {}
-    return boto3.resource(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    return resource_cache("ec2", region, max_retries, **aws_credentials)
 
 
 def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
@@ -70,10 +67,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
     """
     final_instance_types = []
-    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = aws_credentials or {}
-    ec2 = boto3.client(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    ec2 = client_cache("ec2", region, BOTO_MAX_RETRIES, **aws_credentials)
     instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:

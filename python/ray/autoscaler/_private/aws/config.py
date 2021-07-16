@@ -9,15 +9,13 @@ from typing import Any, Dict, List, Optional
 import logging
 
 import boto3
-from botocore.config import Config
 import botocore
 
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 from ray.autoscaler._private.util import check_legacy_fields
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
-    handle_boto_error
+    handle_boto_error, resource_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
@@ -472,7 +470,8 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
     Errors if the provided security groups belong to multiple VPCs.
     Errors if no security group with any of the provided ids is identified.
     """
-    sg_ids = list(set(sg_ids))
+    # sort security group IDs to support deterministic unit test stubbing
+    sg_ids = sorted(set(sg_ids))
 
     ec2 = _resource("ec2", config)
     filters = [{"Name": "group-id", "Values": sg_ids}]
@@ -818,15 +817,4 @@ def _client(name, config):
 def _resource(name, config):
     region = config["provider"]["region"]
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return _resource_cache(name, region, **aws_credentials)
-
-
-@lru_cache()
-def _resource_cache(name, region, **kwargs):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.resource(
-        name,
-        region,
-        config=boto_config,
-        **kwargs,
-    )
+    return resource_cache(name, region, **aws_credentials)
