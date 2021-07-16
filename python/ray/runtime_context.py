@@ -1,10 +1,12 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class RuntimeContext(object):
     """A class used for getting runtime context."""
 
@@ -14,8 +16,6 @@ class RuntimeContext(object):
 
     def get(self):
         """Get a dictionary of the current context.
-
-
 
         Returns:
             dict: Dictionary of the current context.

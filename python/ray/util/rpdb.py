@@ -19,6 +19,7 @@ import traceback
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
+from ray.util.annotations import DeveloperAPI
 
 PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
@@ -223,6 +224,7 @@ def connect_ray_pdb(host=None,
     return rdb
 
 
+@DeveloperAPI
 def set_trace(breakpoint_uuid=None):
     """Interrupt the flow of the program and drop into the Ray debugger.
 
