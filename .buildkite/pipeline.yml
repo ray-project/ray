@@ -375,11 +375,11 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
 
-- label: ":potable_water: Workflow & Dataset tests"
+- label: ":potable_water: Workflow & Dataset tests (Python 3.7)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/... python/ray/data/...
 
 - label: ":book: Doc tests and examples"
