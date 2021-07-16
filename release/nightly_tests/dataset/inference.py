@@ -1,3 +1,6 @@
+# flake8: noqa
+# TODO (Alex): Split these into separate files once runtime envs work. The
+# releaser doesn't push files to worker nodes.
 ################ model.py ###########################3
 from os import name
 import ray
@@ -59,11 +62,6 @@ from tqdm import tqdm
 import numpy as np
 
 
-def read_file(path: str, ):
-    s3fs, _ = pyarrow.fs.FileSystem.from_uri("s3://anyscale-data")
-    return s3fs.open_input_stream(path).readall()
-
-
 def get_paths(bucket, path, max_files=100 * 1000):
     if os.path.exists("./cache.txt"):
         return list(map(
@@ -79,8 +77,6 @@ def get_paths(bucket, path, max_files=100 * 1000):
     with open("cache.txt", "w") as f:
         for bucket_name, key in materialized:
             print(f"{bucket_name},{key}", file=f)
-
-
 
     return materialized
 
@@ -122,10 +118,14 @@ def preprocess(batch):
     preprocessor = Preprocessor()
     return preprocessor(batch)
 
-
+infer_initialized = False
+model_fn = None
 def infer(batch):
     # TODO: This needs to work in terms of pyarrow/pandas batches
-    model_fn = ImageModel()
+    global infer_initialized, model_fn
+    if not infer_initialized:
+        infer_initialized = True
+        model_fn = ImageModel()
     ndarr_obj = batch.values
     input_tensor_np = np.array([img.numpy() for img in ndarr_obj.reshape(-1)])
     return list(model_fn(input_tensor_np))
@@ -133,8 +133,9 @@ def infer(batch):
 
 ray.init()
 
+print("Getting s3 objects")
 s3_paths = get_paths("anyscale-data", "imagenet/train")
-print("Got s3 objects")
+s3_paths = [f"s3://{bucket}/{key}" for bucket, key in s3_paths]
 
 BATCH_SIZE = 256
 parallelism = len(s3_paths) // BATCH_SIZE
@@ -142,38 +143,35 @@ parallelism = max(2, parallelism)
 
 start_time = time.time()
 
-downloaded = ray.experimental.data \
-                             .from_items(s3_paths, parallelism=parallelism) \
-                             .map(download) \
-                             .map(preprocess) \
-                             .map_batches(infer, num_gpus=0.5)
+print("Downloading...")
+ds = ray.experimental.data.read_binary_files(s3_paths, parallelism=parallelism)
 
-
-# Collection step for timing
-list(downloaded.map_batches(lambda x: []).iter_rows())
+end_download_time = time.time()
+print("Preprocessing...")
+ds = ds.map(preprocess)
+end_preprocess_time = time.time()
+print("Inferring...")
+ds = ds.map_batches(infer, num_gpus=0.25)
 
 end_time = time.time()
 
+download_time = end_download_time - start_time
+preprocess_time = end_preprocess_time - end_download_time
+infer_time = end_time - end_preprocess_time
 total = end_time - start_time
+
+print("Download time", download_time)
+print("Preprocess time", preprocess_time)
+print("Infer time", infer_time)
+
 print("total time", total)
+
+
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {"inference_time": 1, "success": 1}
+    results = {
+        "inference_time": 1,
+        "success": 1}
     json.dump(results, out_file)
 
-
-
-# TODO (Alex): The py arrow s3 fs can't be serialized so we can't use read_binary_files.
-# image_ds = ray.experimental.data.from_items(
-#     s3_paths, parallelism=parallelism).map(read_file)
-
-# processed = image_ds.map(preprocess)
-# inferred = processed.map(infer, num_gpus=1)
-
-# result = inferred.map(lambda prediction: None)
-# list(result.iter_rows())
-
-
-# s3fs, _ = pyarrow.fs.FileSystem.from_uri("s3://anyscale-data")
-# image_ds = ray.experimental.data.read_binary_files(s3_paths, filesystem=s3fs)
