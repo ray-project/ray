@@ -1,8 +1,8 @@
 #pragma once
-#include <type_traits>
-#include <memory>
 #include <boost/asio.hpp>
 #include <boost/fiber/all.hpp>
+#include <memory>
+#include <type_traits>
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio_round_robin.h"
 
@@ -11,24 +11,20 @@ namespace thread_pool {
 
 namespace {
 
-template <typename F,
-          typename R = typename std::result_of<F()>::type,
+template <typename F, typename R = typename std::result_of<F()>::type,
           typename std::enable_if<!std::is_same<R, void>::value, int>::type = 0>
-void _run_job(F&& f, boost::fibers::promise<R>* p) {
+void _run_job(F &&f, boost::fibers::promise<R> *p) {
   p->set_value(f());
 }
 
-template <typename F,
-          typename R = typename std::result_of<F()>::type,
+template <typename F, typename R = typename std::result_of<F()>::type,
           typename std::enable_if<std::is_same<R, void>::value, int>::type = 0>
-void _run_job(F&& f, boost::fibers::promise<R>* p) {
+void _run_job(F &&f, boost::fibers::promise<R> *p) {
   f();
   p->set_value();
 }
 
-}
-
-
+}  // namespace
 
 class CPUThreadPool {
  public:
@@ -37,11 +33,10 @@ class CPUThreadPool {
   auto post(F &&f) {
     auto p = std::make_unique<boost::fibers::promise<decltype(f())>>().release();
     auto future = p->get_future();
-    boost::asio::post(pool_,
-                      [f = std::move(f), p = p] {
-                        _run_job(std::move(f), p);
-                        delete p;
-                      });
+    boost::asio::post(pool_, [f = std::move(f), p = p] {
+      _run_job(std::move(f), p);
+      delete p;
+    });
     return future;
   }
 
@@ -74,9 +69,7 @@ class IOThreadPool {
 
   instrumented_io_context &GetIOService() { return *io_service_; }
 
-  bool stopped() {
-    return io_service_->stopped();
-  }
+  bool stopped() { return io_service_->stopped(); }
 
  private:
   std::shared_ptr<instrumented_io_context> io_service_;

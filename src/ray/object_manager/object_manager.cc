@@ -182,7 +182,8 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &node_id = pair.first;
-      ray::thread_pool::io_post([this, object_id, node_id]() { Push(object_id, node_id); });
+      ray::thread_pool::io_post(
+          [this, object_id, node_id]() { Push(object_id, node_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -433,8 +434,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
   rpc::Address owner_address = spilled_object->GetOwnerAddress();
 
   auto spilled_object_chunk_reader = [object_id, spilled_object](
-      uint64_t chunk_index,
-      rpc::PushRequest &push_request) -> Status {
+                                         uint64_t chunk_index,
+                                         rpc::PushRequest &push_request) -> Status {
     auto optional_chunk = spilled_object->GetChunk(chunk_index);
     if (!optional_chunk.has_value()) {
       RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
@@ -446,9 +447,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
     return Status::OK();
   };
 
-  PushObjectInternal(object_id, node_id, total_data_size, metadata_size,
-                     num_chunks, std::move(owner_address),
-                     std::move(spilled_object_chunk_reader),
+  PushObjectInternal(object_id, node_id, total_data_size, metadata_size, num_chunks,
+                     std::move(owner_address), std::move(spilled_object_chunk_reader),
                      [](uint64_t) { /* do nothing to release chunk */ });
 }
 

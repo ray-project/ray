@@ -23,8 +23,8 @@ namespace {
 const size_t UINT64_size = sizeof(uint64_t);
 }
 
-/* static */ boost::fibers::future<absl::optional<SpilledObject>> SpilledObject::CreateSpilledObject(
-    const std::string &object_url, uint64_t chunk_size) {
+/* static */ boost::fibers::future<absl::optional<SpilledObject>>
+SpilledObject::CreateSpilledObject(const std::string &object_url, uint64_t chunk_size) {
   return ray::thread_pool::cpu_post([=]() {
     if (chunk_size == 0) {
       RAY_LOG(WARNING) << "chunk_size can't be 0.";
@@ -35,7 +35,8 @@ const size_t UINT64_size = sizeof(uint64_t);
     uint64_t object_offset = 0;
     uint64_t object_size = 0;
 
-    if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset, object_size)) {
+    if (!SpilledObject::ParseObjectURL(object_url, file_path, object_offset,
+                                       object_size)) {
       RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
       return absl::optional<SpilledObject>();
     }
@@ -47,10 +48,11 @@ const size_t UINT64_size = sizeof(uint64_t);
     rpc::Address owner_address;
 
     std::ifstream is(file_path, std::ios::binary);
-    if (!is ||
-        !SpilledObject::ParseObjectHeader(is, object_offset, data_offset, data_size,
-                                          metadata_offset, metadata_size, owner_address)) {
-      RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
+    if (!is || !SpilledObject::ParseObjectHeader(is, object_offset, data_offset,
+                                                 data_size, metadata_offset,
+                                                 metadata_size, owner_address)) {
+      RAY_LOG(WARNING) << "Failed to parse object header for spilled object "
+                       << object_url;
       return absl::optional<SpilledObject>();
     }
 

@@ -33,8 +33,8 @@ class SpilledObject {
   ///
   /// \param object_url the object url in the form of {path}?offset={offset}&size={size}
   /// \param chunk_size the size of chunk for read.
-  static boost::fibers::future<absl::optional<SpilledObject>> CreateSpilledObject(const std::string &object_url,
-                                                                                  uint64_t chunk_size);
+  static boost::fibers::future<absl::optional<SpilledObject>> CreateSpilledObject(
+      const std::string &object_url, uint64_t chunk_size);
 
   /// Return the size of data (exclusing metadata).
   uint64_t GetDataSize() const;

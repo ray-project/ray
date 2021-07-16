@@ -42,17 +42,17 @@ namespace rpc {
                               rpc::METHOD##Reply *reply,           \
                               rpc::SendReplyCallback send_reply_callback) = 0;
 
-#define FIBER_RPC_SERVICE_HANDLER(SERVICE, HANDLER)                     \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(            \
+#define FIBER_RPC_SERVICE_HANDLER(SERVICE, HANDLER)                               \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                      \
       new FiberServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request, \
-      HANDLER##Reply>(                                                  \
-          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
-          &SERVICE##Handler::Handle##HANDLER, cq, main_service_,        \
-          #SERVICE ".grpc_server." #HANDLER));                          \
+                                     HANDLER##Reply>(                             \
+          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_,   \
+          &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                  \
+          #SERVICE ".grpc_server." #HANDLER));                                    \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 // Define a void RPC client method.
-#define FIBER_DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)           \
+#define FIBER_DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)        \
   virtual Status Handle##METHOD(const rpc::METHOD##Request &request, \
                                 rpc::METHOD##Reply *reply) = 0;
 
