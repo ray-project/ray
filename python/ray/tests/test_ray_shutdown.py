@@ -1,5 +1,6 @@
 import sys
 import time
+import platform
 
 import pytest
 import ray
@@ -22,6 +23,8 @@ def get_all_ray_worker_processes():
     return result
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Hang on Windows.")
 def test_ray_shutdown(shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
     ray.init()
@@ -40,6 +43,8 @@ def test_ray_shutdown(shutdown_only):
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Hang on Windows.")
 def test_driver_dead(shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """
@@ -68,6 +73,8 @@ tasks = [f.remote() for _ in range(num_cpus)]
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Hang on Windows.")
 def test_node_killed(ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
     cluster = ray_start_cluster
@@ -96,6 +103,8 @@ def test_node_killed(ray_start_cluster):
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Hang on Windows.")
 def test_head_node_down(ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
     cluster = ray_start_cluster
