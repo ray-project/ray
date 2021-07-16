@@ -91,8 +91,8 @@ class TrainOneStep:
         return batch, info
 
 
-class TrainTFMultiGPU:
-    """TF Multi-GPU version of TrainOneStep.
+class TrainOneStepMultiGPU:
+    """Multi-GPU version of TrainOneStep.
 
     This should be used with the .for_each() operator. A tuple of the input
     and learner stats will be returned.
@@ -259,6 +259,10 @@ class TrainTFMultiGPU:
                 policy._optimizer, self.devices,
                 list(policy._loss_input_dict_no_rnn.values()), rnn_inputs,
                 self.per_device_batch_size, policy.copy))
+
+
+# Backward compatibility.
+TrainTFMultiGPU = TrainOneStepMultiGPU
 
 
 def all_tower_reduce(path, *tower_data):

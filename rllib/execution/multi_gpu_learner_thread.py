@@ -8,7 +8,6 @@ from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
-from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
@@ -28,8 +27,9 @@ class MultiGPULearnerThread(LearnerThread):
     def __init__(self,
                  local_worker: RolloutWorker,
                  num_gpus: int = 1,
+                 lr=None,  # deprecated 
                  train_batch_size: int = 500,
-                 num_data_loader_buffers: int = 1,
+                 num_multi_gpu_tower_stacks: int = 1,
                  minibatch_buffer_size: int = 1,
                  num_sgd_iter: int = 1,
                  learner_queue_size: int = 16,
@@ -44,7 +44,7 @@ class MultiGPULearnerThread(LearnerThread):
             num_gpus (int): Number of GPUs to use for data-parallel SGD.
             train_batch_size (int): Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
-            num_data_loader_buffers (int): Number of buffers to load data into
+            num_multi_gpu_tower_stacks (int): Number of buffers to load data into
                 in parallel on one device. Each buffer is of size of
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
@@ -85,7 +85,7 @@ class MultiGPULearnerThread(LearnerThread):
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.data_loader_buffer_indices = \
-            [i for i in range(num_data_loader_buffers)]
+            [i for i in range(num_multi_gpu_tower_stacks)]
         #with self.local_worker.tf_sess.graph.as_default():
         #    with self.local_worker.tf_sess.as_default():
         #        with tf1.variable_scope(
@@ -97,7 +97,7 @@ class MultiGPULearnerThread(LearnerThread):
         #            else:
         #                rnn_inputs = []
         #            adam = tf1.train.AdamOptimizer(self.lr)
-        #            for _ in range(num_data_loader_buffers):
+        #            for _ in range(num_multi_gpu_tower_stacks):
         #                self.par_opt.append(
         #                    LocalSyncParallelOptimizer(
         #                        adam,
@@ -141,13 +141,15 @@ class MultiGPULearnerThread(LearnerThread):
         if released:
             self.idle_data_loader_buffers.put(data_loader_buffer_idx)
 
-        #??policy.num_tuples_loaded
-        self.outqueue.put((self.policy.num_tuples_loaded, self.stats))
+        self.outqueue.put((self.policy.data_loader_buffers[data_loader_buffer_idx].
+                           num_tuples_loaded, self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
 class _MultiGPULoaderThread(threading.Thread):
-    def __init__(self, multi_gpu_learner_thread: MultiGPULearnerThread, share_stats: bool):
+    def __init__(self,
+                 multi_gpu_learner_thread: MultiGPULearnerThread,
+                 share_stats: bool):
         threading.Thread.__init__(self)
         self.multi_gpu_learner_thread = multi_gpu_learner_thread
         self.daemon = True
