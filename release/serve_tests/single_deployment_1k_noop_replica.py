@@ -47,7 +47,12 @@ DEFAULT_NUM_CONNECTIONS = int(
     DEFAULT_NUM_REPLICA * DEFAULT_MAX_BATCH_SIZE * 0.75)
 
 
-def setup_cluster(num_nodes):
+def setup_local_single_node_cluster(num_nodes):
+    """Setup ray cluster locally via ray.init() and Cluster()
+
+    Each actor is simulated in local process on single node,
+    thus smaller scale by default.
+    """
     cluster = Cluster()
     for i in range(num_nodes):
         cluster.add_node(
@@ -61,6 +66,15 @@ def setup_cluster(num_nodes):
             dashboard_host="0.0.0.0",
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0")
+    serve.start()
+
+def setup_anyscale_cluster():
+    """Setup ray cluster at anyscale via ray.client()
+
+    Note this is by default large scale and should be kicked off
+    less frequently.
+    """
+    ray.client().env({}).connect()
     serve.start()
 
 
@@ -116,11 +130,18 @@ def shutdown_cluster():
 @click.option("--num-trials", type=int, default=DEFAULT_NUM_TRIALS)
 @click.option("--trial-length", type=str, default=DEFAULT_TRAIL_LENGTH)
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
+@click.option("--run-locally", type=bool, default=True)
 def main(num_replicas: Optional[int], num_trials: Optional[int],
-         trial_length: Optional[str], max_batch_size: Optional[int]):
+         trial_length: Optional[str], max_batch_size: Optional[int], 
+         run_locally: Optional[bool]):
     num_nodes = int(math.ceil(DEFAULT_NUM_REPLICA / NUM_CPU_PER_NODE))
-    print(f"\n\nSetting up ray cluster with {num_nodes} nodes ....\n\n")
-    setup_cluster(num_nodes)
+    if run_locally:
+        print(f"\n\nSetting up local ray cluster with {num_nodes} nodes ....\n\n")
+        setup_local_single_node_cluster(num_nodes)
+    else:
+        print(f"\n\nSetting up anyscale ray cluster with {num_nodes} nodes ....\n\n")
+        setup_anyscale_cluster()
+    
 
     print(f"\n\nDeploying with {num_replicas} target replicas ....\n\n")
     deploy_replicas(num_replicas, max_batch_size)
