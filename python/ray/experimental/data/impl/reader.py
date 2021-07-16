@@ -1,8 +1,10 @@
+import logging
 from typing import Any, Union, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow  # noqa: F401
 
+logger = logging.getLogger(__name__)
 
 def read_file(path: str,
               include_paths: bool = False,
@@ -62,7 +64,7 @@ def s3_downloader(path: str) -> bytes:
         result = http_session.get(url)
         if result.status_code == 200:
             break
-        print(
+        logger.warning(
             f"Failed to download {url} with error: {result.content}. Retrying."
         )
 
