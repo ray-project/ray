@@ -1,7 +1,7 @@
 from typing import Any, Union, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import pyarrow  # flake8: noqa
+    import pyarrow  # noqa: F401
 
 
 def read_file(path: str,
