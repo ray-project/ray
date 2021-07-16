@@ -144,6 +144,10 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
+        if filesystem is not None:
+            # If we provide a filesystem, _resolve_filesystem_and_path will not
+            # slice off the protocol from the provided URI/path when resolved.
+            path = _unwrap_protocol(path)
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
         if filesystem is None:
@@ -167,6 +171,23 @@ def _resolve_paths_and_filesystem(
         else:
             raise FileNotFoundError(path)
     return expanded_paths, file_infos, filesystem
+
+
+S3_PROTOCOL = "s3://"
+S3A_PROTOCOL = "s3a://"
+S3N_PROTOCOL = "s3n://"
+PROTOCOLS = [S3_PROTOCOL, S3A_PROTOCOL, S3N_PROTOCOL]
+
+
+def _unwrap_protocol(path):
+    """
+    Slice off any protocol prefixes on path.
+    """
+    for protocol in PROTOCOLS:
+        if path.startswith(protocol):
+            path = path[len(protocol):]
+            break
+    return path
 
 
 class _S3FileSystemWrapper:
