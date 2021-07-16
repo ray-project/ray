@@ -1886,9 +1886,13 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
             " and '--generate-bazel-project-template-to'.")
     cli_logger.configure(log_style, log_color, verbose)
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    cpp_templete_dir = os.path.join(raydir, "cpp/example")
-    include_dir = os.path.join(raydir, "cpp/include")
-    lib_dir = os.path.join(raydir, "cpp/lib")
+    cpp_dir = os.path.join(raydir, "cpp")
+    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    include_dir = os.path.join(cpp_dir, "include")
+    lib_dir = os.path.join(cpp_dir, "lib")
+    if not os.path.isdir(cpp_dir):
+        raise ValueError(
+            "Please install ray with C++ API by \"pip install ray[cpp]\".")
     if show_library_path:
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
