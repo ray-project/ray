@@ -630,7 +630,8 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   }
   auto buff_size = object->data_size + object->metadata_size;
   if (object->device_num == 0) {
-    RAY_LOG(DEBUG) << "Erasing object: " << object_id << ", address: " << object->pointer
+    RAY_LOG(DEBUG) << "Erasing object: " << object_id
+                   << ", address: " << static_cast<void *>(object->pointer)
                    << ", size:" << buff_size;
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
