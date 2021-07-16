@@ -3,11 +3,19 @@ from ray import serve
 
 from io import BytesIO
 from PIL import Image
-import requests
 
 import torch
 from torchvision import transforms
 from torchvision.models import resnet50
+
+import ray
+import boto3
+import json
+import requests
+import time
+import os
+from tqdm import tqdm
+import numpy as np
 
 
 class Preprocessor:
@@ -43,16 +51,6 @@ class ImageModel:
             output_tensor = self.model(input_tensor)
             result = torch.argmax(output_tensor, dim=1).cpu()
         return result.numpy()
-
-
-import ray
-import boto3
-import json
-import requests
-import time
-import os
-from tqdm import tqdm
-import numpy as np
 
 
 def get_paths(bucket, path, max_files=100 * 1000):
