@@ -1526,7 +1526,11 @@ def put(value, *, _owner=None):
 
     Args:
         value: The Python object to be stored.
-        _owner: The `ActorHandle` or serialized address of object's owner.
+        _owner: The actor that should own this object. This allows creating
+            objects with lifetimes decoupled from that of the creating process.
+            Note that the owner actor must be passed a reference to the object
+            prior to the object creator exiting, otherwise the reference will
+            still be lost.
 
     Returns:
         The object ref assigned to this value.
@@ -1536,8 +1540,6 @@ def put(value, *, _owner=None):
 
     if _owner is None:
         serialize_owner_address = None
-    elif isinstance(_owner, bytes):
-        serialize_owner_address = _owner
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray.state.state.global_state_accessor` is not None
         ray.state.state._check_connected()
@@ -1549,8 +1551,8 @@ def put(value, *, _owner=None):
                 f"{_owner} is not alive, it's worker_id is empty!")
         serialize_owner_address = owner_address.SerializeToString()
     else:
-        raise TypeError(f"Expect an serialized owner address(bytes) or an "
-                        f"`ray.actor.ActorHandle`, but got: {type(_owner)}")
+        raise TypeError(
+            f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
     with profiling.profile("ray.put"):
         try:

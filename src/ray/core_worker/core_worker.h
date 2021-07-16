@@ -547,7 +547,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::shared_ptr<rpc::Address> owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -574,7 +574,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// defaults to this worker.
   /// \return Status.
   Status SealOwned(const ObjectID &object_id, bool pin_object,
-                   const std::shared_ptr<rpc::Address> owner_address = nullptr);
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -585,7 +585,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
   Status SealExisting(const ObjectID &object_id, bool pin_object,
-                      const std::shared_ptr<rpc::Address> owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.

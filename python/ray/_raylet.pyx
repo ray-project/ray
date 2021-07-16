@@ -32,6 +32,7 @@ from libcpp.memory cimport (
     dynamic_pointer_cast,
     make_shared,
     shared_ptr,
+    make_unique,
     unique_ptr,
 )
 from libcpp.string cimport string as c_string
@@ -1013,20 +1014,20 @@ cdef class CoreWorker:
                             c_bool created_by_worker,
                             owner_address=None):
         cdef:
-            shared_ptr[CAddress] c_owner_address
+            unique_ptr[CAddress] c_owner_address
 
-        c_owner_address = self._convert_python_address(owner_address)
+        c_owner_address = move(self._convert_python_address(owner_address))
 
         if object_ref is None:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
-                             c_owner_address))
+                             move(c_owner_address)))
         else:
             c_object_id[0] = object_ref.native()
             if owner_address is None:
-                c_owner_address = make_shared[CAddress]()
+                c_owner_address = make_unique[CAddress]()
                 dereference(
                     c_owner_address
                 ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
@@ -1042,7 +1043,7 @@ cdef class CoreWorker:
         # and deal with it here.
         return data.get() == NULL
 
-    cdef shared_ptr[CAddress] _convert_python_address(self, address=None):
+    cdef unique_ptr[CAddress] _convert_python_address(self, address=None):
         """ convert python address to `CAddress`, If not provided,
         return nullptr.
 
@@ -1050,12 +1051,12 @@ cdef class CoreWorker:
             address: worker address.
         """
         cdef:
-            shared_ptr[CAddress] c_address
+            unique_ptr[CAddress] c_address
 
         if address is not None:
-            c_address = make_shared[CAddress]()
+            c_address = make_unique[CAddress]()
             dereference(c_address).ParseFromString(address)
-        return c_address
+        return move(c_address)
 
     def put_file_like_object(
             self, metadata, data_size, file_like, ObjectRef object_ref,
@@ -1078,7 +1079,7 @@ cdef class CoreWorker:
             int64_t put_threshold
             c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
-            shared_ptr[CAddress] c_owner_address
+            unique_ptr[CAddress] c_owner_address
         # TODO(suquark): This method does not support put objects to
         # in memory store currently.
         metadata_buf = string_to_buffer(metadata)
@@ -1095,7 +1096,7 @@ cdef class CoreWorker:
         while index < data_size:
             bytes_read = file_like.readinto(view[index:])
             index += bytes_read
-        c_owner_address = self._convert_python_address(owner_address)
+        c_owner_address = move(self._convert_python_address(owner_address))
         with nogil:
             # Using custom object refs is not supported because we
             # can't track their lifecycle, so we don't pin the object
@@ -1103,7 +1104,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
-                            owner_address=c_owner_address))
+                            owner_address=move(c_owner_address)))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -1116,7 +1117,7 @@ cdef class CoreWorker:
             int64_t put_threshold
             c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
-            shared_ptr[CAddress] c_owner_address
+            unique_ptr[CAddress] c_owner_address
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -1143,15 +1144,15 @@ cdef class CoreWorker:
                         CRayObject(data, metadata, c_object_id_vector),
                         c_object_id_vector, c_object_id))
             else:
-                c_owner_address = self._convert_python_address(
-                    owner_address)
+                c_owner_address = move(self._convert_python_address(
+                    owner_address))
                 with nogil:
                     if object_ref is None:
                         check_status(
                             CCoreWorkerProcess.GetCoreWorker().SealOwned(
                                         c_object_id,
                                         pin_object,
-                                        c_owner_address))
+                                        move(c_owner_address)))
                     else:
                         # Using custom object refs is not supported because we
                         # can't track their lifecycle, so we don't pin the
@@ -1159,7 +1160,7 @@ cdef class CoreWorker:
                         check_status(
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
-                                        owner_address=c_owner_address))
+                                        owner_address=move(c_owner_address)))
 
         return c_object_id.Binary()
 

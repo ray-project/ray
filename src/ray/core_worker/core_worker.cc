@@ -1107,17 +1107,12 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const std::vector<ObjectID> &contained_object_ids,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
                                bool created_by_worker,
-                               const std::shared_ptr<rpc::Address> owner_address) {
-  if (options_.is_local_mode) {
-    RAY_CHECK(owner_address == nullptr)
-        << "Specifying owner in `ray.put` is not allowed when running in local mode.";
-  }
+                               const std::unique_ptr<rpc::Address> owner_address) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
-  bool owned_by_us = WorkerID::FromBinary(real_owner_address.worker_id()) ==
-                     WorkerID::FromBinary(rpc_address_.worker_id());
+  bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
   auto status = Status::OK();
   if (owned_by_us) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
@@ -1192,12 +1187,12 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
-                             const std::shared_ptr<rpc::Address> owner_address) {
+                             const std::unique_ptr<rpc::Address> &owner_address) {
   bool owned_by_us = owner_address != nullptr
                          ? WorkerID::FromBinary(owner_address->worker_id()) ==
                                WorkerID::FromBinary(rpc_address_.worker_id())
                          : true;
-  auto status = SealExisting(object_id, pin_object, owner_address);
+  auto status = SealExisting(object_id, pin_object, std::move(owner_address));
   if (status.ok()) return status;
   if (owned_by_us) {
     reference_counter_->RemoveOwnedObject(object_id);
@@ -1208,7 +1203,7 @@ Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
 }
 
 Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
-                                const std::shared_ptr<rpc::Address> owner_address) {
+                                const std::unique_ptr<rpc::Address> &owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
@@ -2196,12 +2191,12 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   if (!return_object) {
     return status;
   }
-  std::shared_ptr<rpc::Address> caller_address =
+  std::unique_ptr<rpc::Address> caller_address =
       options_.is_local_mode ? nullptr
-                             : std::make_shared<rpc::Address>(
+                             : std::make_unique<rpc::Address>(
                                    worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, /*pin_object=*/true, caller_address);
+    status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
@@ -2920,7 +2915,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
                                          rpc::AssignObjectOwnerReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  rpc::Address borrower_address = request.borrower_address();
+  const auto &borrower_address = request.borrower_address();
   std::string call_site = request.call_site();
   // Get a list of contained object ids.
   std::vector<ObjectID> contained_object_ids;

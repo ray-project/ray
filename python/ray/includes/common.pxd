@@ -20,7 +20,7 @@ from ray.includes.function_descriptor cimport (
 )
 
 
-cdef extern from * namespace "polyfill":
+cdef extern from * namespace "polyfill" nogil:
     """
     namespace polyfill {
 
