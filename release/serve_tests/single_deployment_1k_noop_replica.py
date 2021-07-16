@@ -68,6 +68,7 @@ def setup_local_single_node_cluster(num_nodes):
     ray.init(address=cluster.address, dashboard_host="0.0.0.0")
     serve.start()
 
+
 def setup_anyscale_cluster():
     """Setup ray cluster at anyscale via ray.client()
 
@@ -132,16 +133,19 @@ def shutdown_cluster():
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
 @click.option("--run-locally", type=bool, default=True)
 def main(num_replicas: Optional[int], num_trials: Optional[int],
-         trial_length: Optional[str], max_batch_size: Optional[int], 
+         trial_length: Optional[str], max_batch_size: Optional[int],
          run_locally: Optional[bool]):
     num_nodes = int(math.ceil(DEFAULT_NUM_REPLICA / NUM_CPU_PER_NODE))
     if run_locally:
-        print(f"\n\nSetting up local ray cluster with {num_nodes} nodes ....\n\n")
+        print(
+            f"\n\nSetting up local ray cluster with {num_nodes} nodes ....\n\n"
+        )
         setup_local_single_node_cluster(num_nodes)
     else:
-        print(f"\n\nSetting up anyscale ray cluster with {num_nodes} nodes ....\n\n")
+        print(
+            f"\n\nSetting up anyscale ray cluster with {num_nodes} nodes ....\n\n"
+        )
         setup_anyscale_cluster()
-    
 
     print(f"\n\nDeploying with {num_replicas} target replicas ....\n\n")
     deploy_replicas(num_replicas, max_batch_size)
