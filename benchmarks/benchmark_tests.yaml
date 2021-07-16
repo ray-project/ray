@@ -22,7 +22,7 @@
     compute_template: object_store.yaml
 
   run:
-    timeout: 600
+    timeout: 3600
     prepare: sleep 0
     script: python object_store/test_object_store.py
 

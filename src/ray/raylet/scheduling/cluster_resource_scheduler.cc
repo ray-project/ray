@@ -198,7 +198,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
   int violations = 0;
-
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] >
@@ -772,7 +771,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
-
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] > 0) {

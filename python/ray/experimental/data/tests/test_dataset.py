@@ -4,19 +4,22 @@ import shutil
 import time
 
 from unittest.mock import patch
-import dask.dataframe as dd
 import math
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import tensorflow as tf
+import torch
+from torch.utils.data import DataLoader
+
 import ray
 
 from ray.util.dask import ray_dask_get
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.impl.block import Block
+from ray.experimental.data.block import Block
 import ray.experimental.data.tests.util as util
 
 
@@ -168,12 +171,43 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_arrow(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.experimental.data.from_arrow([
+        ray.put(pa.Table.from_pandas(df1)),
+        ray.put(pa.Table.from_pandas(df2))
+    ])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_arrow(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_get_blocks(ray_start_regular_shared):
+    blocks = ray.experimental.data.range(10).get_blocks()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(list(b.iter_rows()))
+    out = sorted(out)
+    assert out == list(range(10)), out
 
 
 def test_pandas_roundtrip(ray_start_regular_shared):
@@ -649,6 +683,7 @@ def test_split_hints(ray_start_regular_shared):
 
 
 def test_from_dask(ray_start_regular_shared):
+    import dask.dataframe as dd
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.experimental.data.from_dask(ddf)
@@ -666,6 +701,143 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_to_tf(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    tfd = ds.to_tf(
+        "label",
+        output_signature=(tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(
+            np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
+
+
+def test_to_tf_feature_columns(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    tfd = ds.to_tf(
+        "label",
+        feature_columns=["one"],
+        output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(
+            np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
+
+
+def test_to_torch(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    torchd = ds.to_torch(label_column="label")
+
+    dataloader = DataLoader(torchd, batch_size=3)
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in iter(dataloader):
+            iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+        combined_iterations = np.concatenate(iterations)
+        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+def test_to_torch_multiple_workers(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    torchd = ds.to_torch(label_column="label")
+
+    dataloader = DataLoader(torchd, batch_size=1, num_workers=2)
+
+    iterations = []
+    for batch in iter(dataloader):
+        numpy_batch = torch.cat((*batch[0], batch[1]), axis=1).numpy()
+        assert np.all(np.isin(numpy_batch, df.values))
+        iterations.append(numpy_batch)
+
+    assert len(iterations) == len(df.values)
+
+
+def test_to_torch_feature_columns(ray_start_regular_shared):
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": [4.0, 5.0, 6.0],
+        "label": [4.0, 5.0, 6.0]
+    })
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    ds = ray.experimental.data.from_pandas(
+        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    torchd = ds.to_torch("label", feature_columns=["one"])
+    iterations = []
+
+    dataloader = DataLoader(torchd, batch_size=3)
+
+    for batch in iter(dataloader):
+        iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+    combined_iterations = np.concatenate(iterations)
+    assert np.array_equal(df.values, combined_iterations)
 
 
 def test_json_read(ray_start_regular_shared, tmp_path):

@@ -1566,6 +1566,12 @@ cdef class CoreWorker:
 
         return self.make_actor_handle(named_actor_handle_pair.first)
 
+    def get_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+
     def list_named_actors(self, c_bool all_namespaces):
         """Returns (namespace, name) for named actors in the system.
 
