@@ -949,7 +949,7 @@ cdef class CoreWorker:
         options.worker_shim_pid = worker_shim_pid
         CCoreWorkerProcess.Initialize(options)
 
-    def shutdown(self):
+    def __dealloc__(self):
         with nogil:
             # If it's a worker, the core worker process should have been
             # shutdown. So we can't call
