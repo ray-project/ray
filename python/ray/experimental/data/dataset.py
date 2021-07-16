@@ -850,7 +850,7 @@ class Dataset(Generic[T]):
         batcher = Batcher(batch_size=batch_size)
         for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
             block_window = list(block_window)
-            ray.wait(block_window, num_returns=1, fetch_local=False)
+            ray.wait(block_window, num_returns=1, fetch_local=True)
             block = ray.get(block_window[0])
             batcher.add(block)
             while batcher.has_batch():
